@@ -42,10 +42,10 @@ Every column that reads `--this-repo` scope (`usd`, `context_pct`, `opus_pct`,
 reading the project directories of removed worktrees under
 `<main>/.claude/worktrees/`. A row recorded with `--this-repo` before that
 change and one recorded after it are not comparable. The default `--record`
-scope is machine-wide and did not change. Each machine takes the change at its
-own `git pull`, and the ledger has no scope column, so an operator who records
-with `--this-repo` marks the step by putting a `--note` (printable ASCII) on the
-first row recorded after pulling the change.
+scope is machine-wide and did not change. An operator who records with
+`--this-repo` puts a `--note` (printable ASCII) on the first row recorded after
+pulling the change. Each machine takes the change at its own `git pull`, and the
+ledger has no scope column to mark it otherwise.
 
 `context_pct` does not separate a warm cache read from an idle-gap TTL-expiry
 rebuild write — both land in the same context-class dollar share; see

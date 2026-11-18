@@ -1281,8 +1281,9 @@ def _add_cost_subparser(subparsers: argparse._SubParsersAction) -> None:
         "--by-project", action="store_true",
         help=(
             "Add a per-project cost breakdown, keyed on (account root, project family)."
-            " Composes with --projects and --this-repo; one repo's own worktrees"
-            " collapse into a single row instead of fragmenting per branch."
+            " Composes with --projects and --this-repo; project dirs that differ only by a"
+            " --claude-worktrees-<branch> suffix collapse into a single row instead of"
+            " fragmenting per branch."
         ),
     )
     p_cost.add_argument(

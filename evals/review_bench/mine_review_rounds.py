@@ -44,8 +44,8 @@ from review_bench.defects import (  # noqa: E402
 
 
 def resolve_scoped_sessions(roots: Sequence[Path] | None = None):
-    """Sessions for mining, scoped to this repo's own worktrees on exactly
-    one config-dir root.
+    """Sessions for mining, scoped as `--this-repo` is (see "Scoping to this
+    repo" in docs/transcript-analysis.md) on exactly one config-dir root.
 
     Exits 2 when more than one root is in scope -- production always calls
     this with roots=None, which resolves to (scope._projects_dir(),) alone

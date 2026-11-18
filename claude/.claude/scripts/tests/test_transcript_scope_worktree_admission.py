@@ -12,14 +12,12 @@ _MODEL = "claude-sonnet-4-6"
 _WORKTREES_INFIX = "--claude-worktrees-"
 
 
-def _write_session_dirs(root, *names, extra_record_fields=None):
+def _write_session_dirs(root, *names):
     """One session per named project directory under `root`, with the directory name as its branch."""
     for name in names:
         project_dir = root / name
         project_dir.mkdir(parents=True)
-        record = _asst(_MODEL, branch=name)
-        record.update((extra_record_fields or {}).get(name, {}))
-        _write_jsonl(project_dir / "s.jsonl", [record])
+        _write_jsonl(project_dir / "s.jsonl", [_asst(_MODEL, branch=name)])
 
 
 def _branches_read(sessions):
@@ -184,6 +182,15 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
                 "this repo (1 project dirs: 0 live, 1 unlisted)",
                 id="bare-first",
             ),
+            pytest.param(
+                _worktree_porcelain("/repo/main", "/elsewhere/wt"),
+                "/elsewhere/wt",
+                "/elsewhere/wt",
+                ["-elsewhere-wt--claude-worktrees-gone", "-repo-main--claude-worktrees-gone"],
+                ["-repo-main--claude-worktrees-gone"],
+                "this repo (1 project dirs: 0 live, 1 unlisted)",
+                id="main-slug-sorts-after-linked-slug",
+            ),
         ],
     )
     def test_unseeded_scope_takes_the_prefix_from_the_first_listed_worktree(
@@ -200,24 +207,18 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
         assert label == expected_label
 
     def test_lookalike_sibling_and_foreign_clone_dirs_are_admitted_as_an_accepted_residual(self, tmp_path):
-        """Pins a known, accepted residual risk: admission is by directory name alone, so a sibling directory whose
-        slug starts with the main checkout's slug plus the worktrees infix, and a foreign repo cloned under the
-        worktrees directory, are both read as this repo's. A change that alters that posture, in either direction,
-        must fail this test."""
+        """Pins a known, accepted residual risk: admission is by directory name alone.
+        A sibling directory whose slug starts with the main checkout's slug plus the worktrees infix, and a foreign
+        repo cloned under the worktrees directory, are therefore both read as this repo's. A change that alters
+        that posture, in either direction, must fail this test."""
         lookalike_sibling = "-repo-main--claude-worktrees-x"
         foreign_clone = "-repo-main--claude-worktrees-clone"
         root = tmp_path / "projects"
-        _write_session_dirs(
-            root, lookalike_sibling, foreign_clone,
-            extra_record_fields={
-                lookalike_sibling: {"cwd": "/repo/main--claude-worktrees-x"},
-                foreign_clone: {"gitBranch": "foreign-clone"},
-            },
-        )
+        _write_session_dirs(root, lookalike_sibling, foreign_clone)
 
         sessions = list(scope._iter_scoped_sessions(["-repo-main"], False, roots=[root]))
 
-        assert _branches_read(sessions) == sorted([lookalike_sibling, "foreign-clone"])
+        assert _branches_read(sessions) == sorted([lookalike_sibling, foreign_clone])
 
 
 class TestThisRepoProjectDirCounts:
@@ -245,10 +246,15 @@ class TestThisRepoProjectDirCounts:
         assert len(list(sessions)) == 4
         assert label == "this repo (4 project dirs: 1 live, 3 unlisted)"
 
-    def test_scan_count_session_count_and_header_agree(self, tmp_path):
+    def test_scan_and_session_counts_are_per_file_while_the_header_counts_directories(self, tmp_path):
+        """The scan and session counts are per transcript file, the header's count is per project directory."""
         root = tmp_path / "projects"
         _write_session_dirs(
             root, "-repo-main", "-repo-main--claude-worktrees-gone", "-repo-main--claude-worktrees-", "-repo-main-fork",
+        )
+        _write_jsonl(
+            root / "-repo-main--claude-worktrees-gone" / "second.jsonl",
+            [_asst(_MODEL, branch="-repo-main--claude-worktrees-gone")],
         )
         (root / "-repo-main--claude-worktrees-file").write_text("not a directory")
         (root / "-repo-main--claude-worktrees-alias").symlink_to(root / "-repo-main--claude-worktrees-gone")
@@ -257,8 +263,8 @@ class TestThisRepoProjectDirCounts:
         scanned, _skipped = scope._scan_root_transcripts(root, "*", slugs=["-repo-main"])
         sessions, label = scope._resolve_project_scope(args, "buckets", roots=[root])
 
-        assert scanned == 2
-        assert len(list(sessions)) == 2
+        assert scanned == 3
+        assert len(list(sessions)) == 3
         assert label == "this repo (2 project dirs: 1 live, 1 unlisted)"
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
