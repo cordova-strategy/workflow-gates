@@ -37,6 +37,14 @@ transcript records alongside the main thread, matching `review-trace`'s own
 widened default scope. A row recorded before that date and one recorded
 after it are not comparable on this column alone.
 
+Every column that reads `--this-repo` scope (`usd`, `context_pct`, `opus_pct`,
+`ge200k_pct`, `denials`, `reviewer_gap_pp`) widened when `--this-repo` began
+reading the project directories of removed worktrees under
+`<main>/.claude/worktrees/`. A row recorded with `--this-repo` before that
+change and one recorded after it are not comparable. The default `--record`
+scope is machine-wide and did not change. See `CHANGELOG.md` for the release
+that carries the change.
+
 `context_pct` does not separate a warm cache read from an idle-gap TTL-expiry
 rebuild write — both land in the same context-class dollar share; see
 `cache-rebuild` for the write-specific breakdown.
