@@ -34,11 +34,16 @@ class TestStubGitWorktreeListingHelper:
 
         assert scope._repo_scoped_project_slugs("buckets") == ["-repo-main", "-repo-wt"]
 
-    def test_a_git_call_other_than_the_two_it_stubs_fails_the_test(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "unstubbed_git_argv",
+        [["git", "status"], ["git", "worktree", "list"], ["git", "worktree", "list", "--porcelain", "-z"]],
+        ids=["other-subcommand", "listing-without-porcelain", "listing-with-extra-flag"],
+    )
+    def test_a_git_call_other_than_the_two_it_stubs_fails_the_test(self, monkeypatch, unstubbed_git_argv):
         _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
 
         with pytest.raises(AssertionError):
-            scope.subprocess.run(["git", "status"])
+            scope.subprocess.run(unstubbed_git_argv)
 
 
 class TestTableColsHelper:

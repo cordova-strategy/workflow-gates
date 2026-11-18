@@ -1537,7 +1537,7 @@ def _stub_git_worktree_listing(monkeypatch, porcelain: str, cwd: str, toplevel: 
     monkeypatch.setattr(os, "getcwd", lambda: cwd)
 
     def fake_run(cmd, *a, **k):
-        if cmd[:3] == ["git", "worktree", "list"]:
+        if cmd == ["git", "worktree", "list", "--porcelain"]:
             return subprocess.CompletedProcess(cmd, 0, porcelain, "")
         assert cmd == ["git", "rev-parse", "--show-toplevel"]
         return subprocess.CompletedProcess(cmd, 0, toplevel + "\n", "")

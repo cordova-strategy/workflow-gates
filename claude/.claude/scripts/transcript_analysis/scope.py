@@ -120,9 +120,10 @@ class _RepoProjectDirMatcher(NamedTuple):
 def _repo_project_dir_matcher(slugs: Sequence[str]) -> _RepoProjectDirMatcher:
     """`slugs[0]` is the first worktree `git worktree list` prints, as `_repo_scoped_project_slugs` returns it.
 
+    Callers must not reorder `slugs`: the prefix comes from `slugs[0]`, the first-listed (main) checkout.
+
     An empty `slugs` admits nothing: the prefix stays None rather than `""`, which every name would start with.
     """
-    # The prefix comes from `slugs[0]`, the first-listed (main) checkout, so callers must not reorder `slugs`.
     prefix = slugs[0] + _WORKTREE_SLUG_INFIX if slugs else None
     return _RepoProjectDirMatcher(frozenset(slugs), prefix)
 
@@ -134,7 +135,7 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     worktree's directory carries no live slug, so `_RepoProjectDirMatcher`, built from these slugs, also admits the
     names that extend the first slug with `_WORKTREE_SLUG_INFIX`.
 
-    `_RepoProjectDirMatcher` is the minimization control for any caller (`command_label`) that must
+    `_RepoProjectDirMatcher` is the minimization control for any caller that must
     scope a transcript read to this repo: output built from it is routinely
     quoted into public PR descriptions, and transcripts under
     ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo" states
@@ -143,11 +144,13 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     in, so scoping alone does not bound skill names under `--include-subagents`.
     The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
     sibling `<repo>-fork` and every main-checkout subdirectory defeat. `_RepoProjectDirMatcher` admits
-    the infix-extended names only. It still over-includes the cases docs/transcript-analysis.md names, such as a
-    foreign repo cloned under the worktrees directory and a lossy-slug collision. A session started in a
-    subdirectory of the main checkout, or in a subdirectory of a worktree outside `<main>/.claude/worktrees/`, is
-    excluded: its project dir is slugged from that subdirectory path, so no live slug or prefix matches it. The
-    documented prefix glob covers only the main checkout's subdirectories.
+    the infix-extended names only. docs/transcript-analysis.md "What `--this-repo` does not cover" lists what it
+    still over-includes.
+
+    A session started in a subdirectory of the main checkout is excluded. A session started in a subdirectory of a
+    worktree outside `<main>/.claude/worktrees/` is excluded. Each project dir is slugged from the subdirectory
+    path, so no live slug or prefix matches it. The documented prefix glob covers only the main checkout's
+    subdirectories.
 
     Fails closed (SystemExit) rather than returning a machine-wide scope whenever
     the environment is not a recognizable git worktree of this repo — a silent

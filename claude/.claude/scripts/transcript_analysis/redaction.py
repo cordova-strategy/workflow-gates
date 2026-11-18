@@ -25,9 +25,7 @@ def _derive_proj_label(jsonl: Path) -> str:
     return jsonl.parent.name.lstrip("-").replace("-", "/", 2).split("/", 2)[-1]
 
 
-# A linked worktree's project-dir slug is the main dir's slug with
-# scope._WORKTREE_SLUG_INFIX and the branch appended, which _derive_proj_label
-# carries through unchanged onto its output.
+# _derive_proj_label carries a linked worktree's scope._WORKTREE_SLUG_INFIX and directory name through unchanged onto its output.
 _WORKTREE_SUFFIX_RE = re.compile(re.escape(scope._WORKTREE_SLUG_INFIX) + r".+$")
 
 

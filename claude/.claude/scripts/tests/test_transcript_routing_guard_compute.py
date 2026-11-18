@@ -19,7 +19,7 @@ import _config
 import _config_dir
 import pytest
 from helpers import REPO_ROOT
-from transcript_analysis import corpus, pricing, review_rounds, routing_guard, scope
+from transcript_analysis import corpus, pricing, review_rounds, review_trace, routing_guard
 
 from ._pr_cost_helpers import _enable_pr_cost
 from ._review_round_helpers import _SONNET
@@ -49,8 +49,8 @@ from ._routing_guard_helpers import (
 )
 from .conftest import (
     _agent_use,
-    _asst,
     _commit,
+    _hook_deny_current,
     _init_repo,
     _priced,
     _skill_block,
@@ -1925,7 +1925,7 @@ class TestGitCheckFailure:
 
 
 class TestUnlistedDenyRemedyCommand:
-    """The command that capture's unlisted-branch refusal names reads a removed worktree's session through the CLI's own parser."""
+    """The command capture's unlisted-branch refusal names, run through the real parser and handler, reads a removed worktree."""
 
     @staticmethod
     def _remedy_argv(config_dir: Path) -> list[str]:
@@ -1944,22 +1944,21 @@ class TestUnlistedDenyRemedyCommand:
         assert placeholder, f"refusal's command carries no <placeholder> for --config-dir: {refusal!r}"
         return [*command[: placeholder.start()].split(), str(config_dir), *command[placeholder.end():].split()]
 
-    def test_the_named_review_trace_command_reads_a_removed_worktrees_session(self, tmp_path, monkeypatch):
+    def test_the_named_review_trace_command_reads_a_removed_worktrees_session(self, tmp_path, monkeypatch, capsys):
         removed_worktree_dir = "-repo-main--claude-worktrees-gone"
         project_dir = tmp_path / "projects" / removed_worktree_dir
         project_dir.mkdir(parents=True)
-        _write_jsonl(project_dir / "s.jsonl", [_asst(_SONNET, branch="gone")])
+        _write_jsonl(project_dir / "removed-worktree-session.jsonl", [
+            _hook_deny_current("Commit blocked by code-review gate: run /code-review.", branch="gone"),
+        ])
         _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
 
         args = _mod.build_parser().parse_args(self._remedy_argv(tmp_path))
-        # Mirrors the scope.resolve_scan_roots / _resolve_project_scope calls in review_trace.cmd_review_trace.
-        sessions, _label = scope._resolve_project_scope(
-            args, "review-trace", include_subagents=True, roots=scope.resolve_scan_roots(args),
-        )
+        review_trace.cmd_review_trace(args)
 
         assert args.deny_only is True
         assert args.this_repo is True
-        assert [jsonl.parent.name for jsonl, _records in sessions] == [removed_worktree_dir]
+        assert "removed-worktree-session.jsonl" in capsys.readouterr().out
 
 
 # --- the reads compute makes -------------------------------------------------
