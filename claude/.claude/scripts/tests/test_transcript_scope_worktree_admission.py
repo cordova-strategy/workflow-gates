@@ -49,6 +49,19 @@ class TestRepoProjectDirMatcherPredicates:
             pytest.param(["-repo-main"], "-repo-main-fork", False, False, id="sibling-fork-is-rejected"),
             pytest.param(["-repo-main"], "-repo-main-sub", False, False, id="main-subdirectory-is-rejected"),
             pytest.param(
+                ["-repo-main"], "-repo-main-fork--claude-worktrees-x", False, False,
+                id="sibling-fork-worktree-dir-is-rejected",
+            ),
+            pytest.param(
+                ["-repo-main"], "-repo-main-sub--claude-worktrees-x", False, False,
+                id="main-subdirectory-worktree-dir-is-rejected",
+            ),
+            pytest.param(["-repo-main"], "-Repo-Main", False, False, id="case-variant-of-live-slug-is-rejected"),
+            pytest.param(
+                ["-repo-main"], "-repo-main--Claude-Worktrees-x", False, False,
+                id="case-variant-of-infix-is-rejected",
+            ),
+            pytest.param(
                 ["-repo-main", "-elsewhere-wt"], "-elsewhere-wt--claude-worktrees-x", False, False,
                 id="prefix-of-a-non-first-slug-is-rejected",
             ),
@@ -79,6 +92,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
             "-repo-main--claude-worktrees-live--claude-worktrees-nested",
             "-repo-main--claude-worktrees-",
             "-repo-main-fork",
+            "-repo-main-fork--claude-worktrees-x",
             "-elsewhere-wt--claude-worktrees-x",
             "-data-repo-main--claude-worktrees-x",
             "-home-user-unrelated",
@@ -121,6 +135,27 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
 
         assert _branches_read(sessions_a) == ["-repo-main"]
         assert label_a == "this repo (1 project dirs: 1 live, 0 unlisted)"
+        assert _branches_read(sessions_b) == ["-repo-main--claude-worktrees-gone"]
+        assert label_b == "this repo (1 project dirs: 0 live, 1 unlisted)"
+
+    def test_unseeded_args_reused_across_per_root_calls_cache_only_the_live_slugs(self, tmp_path, monkeypatch):
+        root_a = tmp_path / "acct-a"
+        root_b = tmp_path / "acct-b"
+        _write_session_dirs(root_a, "-home-user-unrelated")
+        _write_session_dirs(root_b, "-repo-main--claude-worktrees-gone")
+        _stub_git_worktree_listing(
+            monkeypatch,
+            _worktree_porcelain("/repo/main", "/repo/main/.claude/worktrees/live"),
+            "/repo/main",
+            "/repo/main",
+        )
+        args = argparse.Namespace(this_repo=True, projects="*")
+
+        scope._resolve_project_scope(args, "pr-cost", roots=[root_a])
+        slugs_after_first_call = list(args._this_repo_slugs)
+        sessions_b, label_b = scope._resolve_project_scope(args, "pr-cost", roots=[root_b])
+
+        assert slugs_after_first_call == ["-repo-main", "-repo-main--claude-worktrees-live"]
         assert _branches_read(sessions_b) == ["-repo-main--claude-worktrees-gone"]
         assert label_b == "this repo (1 project dirs: 0 live, 1 unlisted)"
 
@@ -186,7 +221,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
 
 
 class TestThisRepoProjectDirCounts:
-    def test_a_live_linked_worktree_dir_counts_live_once_and_never_unlisted(self, tmp_path):
+    def test_live_count_follows_the_dirs_present_not_the_number_of_live_slugs(self, tmp_path):
         slugs = ["-repo-main", "-repo-main--claude-worktrees-live", "-repo-main--claude-worktrees-nodir"]
         root = tmp_path / "projects"
         _write_session_dirs(root, slugs[0], slugs[1], "-repo-main--claude-worktrees-gone")
@@ -255,7 +290,7 @@ class TestThisRepoProjectDirCounts:
         stderr = capsys.readouterr().err
         assert exc_info.value.code == 1
         assert "--this-repo matched zero project directories" in stderr
-        assert "2 live worktree slug(s) and the main checkout's worktrees-directory prefix" in stderr
+        assert f"{len(slugs)} live worktree slug(s)" in stderr
         for identifying_text in (*slugs, _WORKTREES_INFIX, str(tmp_path)):
             assert identifying_text not in stderr
 

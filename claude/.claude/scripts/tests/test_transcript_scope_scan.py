@@ -32,6 +32,18 @@ class TestScanRootTranscripts:
         finally:
             os.chmod(root, 0o755)
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_searchable_but_unlistable_root_raises_permission_error(self, tmp_path):
+        """A probe regressed to X_OK only would return (0, 0) for this root instead of raising."""
+        root = tmp_path / "locked"
+        root.mkdir()
+        os.chmod(root, 0o311)  # searchable and writable, but not listable
+        try:
+            with pytest.raises(PermissionError):
+                scope._scan_root_transcripts(root, "*")
+        finally:
+            os.chmod(root, 0o755)
+
     def test_readable_root_with_no_matches_returns_zero_zero(self, tmp_path):
         root = tmp_path / "empty"
         root.mkdir()

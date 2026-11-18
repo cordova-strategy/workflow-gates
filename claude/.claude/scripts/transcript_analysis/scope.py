@@ -122,6 +122,7 @@ def _repo_project_dir_matcher(slugs: Sequence[str]) -> _RepoProjectDirMatcher:
 
     An empty `slugs` admits nothing: the prefix stays None rather than `""`, which every name would start with.
     """
+    # The prefix comes from `slugs[0]`, the first-listed (main) checkout, so callers must not reorder `slugs`.
     prefix = slugs[0] + _WORKTREE_SLUG_INFIX if slugs else None
     return _RepoProjectDirMatcher(frozenset(slugs), prefix)
 
@@ -142,8 +143,8 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     in, so scoping alone does not bound skill names under `--include-subagents`.
     The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
     sibling `<repo>-fork` and every main-checkout subdirectory defeat. `_RepoProjectDirMatcher` admits
-    the infix-extended names only, and still over-includes the cases docs/transcript-analysis.md names, a foreign
-    repo cloned under the worktrees directory and a lossy-slug collision among them. A session started in a
+    the infix-extended names only. It still over-includes the cases docs/transcript-analysis.md names, such as a
+    foreign repo cloned under the worktrees directory and a lossy-slug collision. A session started in a
     subdirectory of the main checkout, or in a subdirectory of a worktree outside `<main>/.claude/worktrees/`, is
     excluded: its project dir is slugged from that subdirectory path, so no live slug or prefix matches it. The
     documented prefix glob covers only the main checkout's subdirectories.

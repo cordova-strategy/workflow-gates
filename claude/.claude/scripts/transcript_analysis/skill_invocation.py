@@ -43,7 +43,7 @@ def _normalize_skill_name(raw: str) -> str:
 
 
 def cmd_skill_invocation(args: argparse.Namespace) -> None:
-    """Per-skill invocation-source tally across the full corpus.
+    """Per-skill invocation-source tally across the `--this-repo` scope, or the `--projects` glob when given.
 
     Three invocation buckets are counted per skill:
     - top-level: Skill tool_use on a main-thread assistant turn with no attributionSkill.
@@ -69,8 +69,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     --branches scopes to named branches, matching each record's attributed branch
     (scope._attributed_branch): a subagent record counts under the branch its
     dispatching main thread was on, never its own gitBranch. --projects scopes to
-    project dirs and defaults to every project on the machine, which is rarely what
-    a branch-scoped caller wants (branch names are not unique across repos).
+    project dirs. Unset, the scope is the `--this-repo` scope, not machine-wide; an
+    explicit machine-wide glob is rarely what a branch-scoped caller wants (branch
+    names are not unique across repos).
     """
     branch_filter = scope._branch_filter(args)
     include_subagents = bool(getattr(args, "include_subagents", False))

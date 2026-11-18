@@ -19,7 +19,7 @@ import _config
 import _config_dir
 import pytest
 from helpers import REPO_ROOT
-from transcript_analysis import corpus, pricing, review_rounds, routing_guard
+from transcript_analysis import corpus, pricing, review_rounds, routing_guard, scope
 
 from ._pr_cost_helpers import _enable_pr_cost
 from ._review_round_helpers import _SONNET
@@ -47,7 +47,19 @@ from ._routing_guard_helpers import (
     _write_log,
     _write_noisy_config_state_file,
 )
-from .conftest import _agent_use, _commit, _init_repo, _priced, _skill_block, _user_msg, _write_jsonl, _write_subagent_dispatch
+from .conftest import (
+    _agent_use,
+    _asst,
+    _commit,
+    _init_repo,
+    _priced,
+    _skill_block,
+    _stub_git_worktree_listing,
+    _user_msg,
+    _worktree_porcelain,
+    _write_jsonl,
+    _write_subagent_dispatch,
+)
 
 _SCRIPT = Path(__file__).parent.parent / "transcript-analysis.py"
 # "transcript_analysis" below never touches sys.modules (module_from_spec + exec_module
@@ -1913,26 +1925,41 @@ class TestGitCheckFailure:
 
 
 class TestUnlistedDenyRemedyCommand:
-    """The command capture's unlisted-branch refusal names parses through the CLI's own parser."""
+    """The command that capture's unlisted-branch refusal names reads a removed worktree's session through the CLI's own parser."""
 
     @staticmethod
-    def _remedy_words() -> list[str]:
+    def _remedy_argv(config_dir: Path) -> list[str]:
+        """The refusal's `transcript-analysis.py ...` command with its `<placeholder>` replaced by `config_dir`."""
         unlisted_deny = routing_guard._DenyFact("unlisted-branch", 1.0, "sess-1")
         reconciliation = routing_guard._reconcile_denies(
             [unlisted_deny], [routing_guard._KeyState("on", None)], [], Path("/placeholder/account"), set(), {}, {},
         )
         (refusal,) = reconciliation.refusals
-        return [word.rstrip(",;") for word in refusal.split()]
+        command_start, command_end_delimiter = "transcript-analysis.py ", ";"
+        assert command_start in refusal and command_end_delimiter in refusal.split(command_start, 1)[1], (
+            f"refusal must carry `{command_start}<command>{command_end_delimiter}`: {refusal!r}"
+        )
+        command = refusal.split(command_start, 1)[1].split(command_end_delimiter, 1)[0]
+        placeholder = re.search(r"<[^>]*>", command)
+        assert placeholder, f"refusal's command carries no <placeholder> for --config-dir: {refusal!r}"
+        return [*command[: placeholder.start()].split(), str(config_dir), *command[placeholder.end():].split()]
 
-    def test_the_named_review_trace_command_scopes_with_this_repo_alone_and_parses(self, tmp_path):
-        words = self._remedy_words()
-        assert {"--config-dir", "review-trace", "--deny-only", "--this-repo"} <= set(words)
-        assert not [word for word in words if word.startswith("--projects")]
+    def test_the_named_review_trace_command_reads_a_removed_worktrees_session(self, tmp_path, monkeypatch):
+        removed_worktree_dir = "-repo-main--claude-worktrees-gone"
+        project_dir = tmp_path / "projects" / removed_worktree_dir
+        project_dir.mkdir(parents=True)
+        _write_jsonl(project_dir / "s.jsonl", [_asst(_SONNET, branch="gone")])
+        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
 
-        args = _mod.build_parser().parse_args(["--config-dir", str(tmp_path), "review-trace", "--deny-only", "--this-repo"])
+        args = _mod.build_parser().parse_args(self._remedy_argv(tmp_path))
+        # Mirrors the scope.resolve_scan_roots / _resolve_project_scope calls in review_trace.cmd_review_trace.
+        sessions, _label = scope._resolve_project_scope(
+            args, "review-trace", include_subagents=True, roots=scope.resolve_scan_roots(args),
+        )
 
         assert args.deny_only is True
         assert args.this_repo is True
+        assert [jsonl.parent.name for jsonl, _records in sessions] == [removed_worktree_dir]
 
 
 # --- the reads compute makes -------------------------------------------------
