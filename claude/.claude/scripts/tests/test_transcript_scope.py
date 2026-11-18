@@ -1,4 +1,5 @@
-"""scope.py's tests other than the scan-traversal, scan-gap and glob-selection classes in test_transcript_scope_scan.py."""
+"""scope.py's tests other than the scan-traversal, scan-gap and glob-selection classes in test_transcript_scope_scan.py,
+and the worktree-prefix admission and live/unlisted count classes in test_transcript_scope_worktree_admission.py."""
 import argparse
 import importlib.util
 import os
@@ -377,7 +378,7 @@ class TestResolveProjectScope:
         buckets.cmd_buckets(type("A", (), {"projects": "*", "this_repo": True, "branches": None})())
         out_repo = capsys.readouterr().out
         assert (
-            "BUCKETS SOURCES (this repo (1 project dirs); "
+            "BUCKETS SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); "
             "1 root (no ~/.claude/transcript-config-dirs declared))"
         ) in out_repo
 
@@ -465,7 +466,7 @@ class TestThisRepoUnionsAcrossRoots:
     ):
         """Pins a known, accepted residual risk: the slug mapping [/.]→- is
         not injective, so /a/b.c and /a/b/c collide, not a bug to fix here.
-        _iter_scoped_sessions matches by basename equality alone, so it
+        _iter_scoped_sessions admits by directory name alone, so it
         cannot distinguish this repo's own project dir from a foreign
         account's unrelated project dir that happens to collide onto the
         same slug -- under --this-repo, both are admitted. A future change to
@@ -530,9 +531,9 @@ class TestThisRepoUnionsAcrossRoots:
         assert "2 roots" in out
 
     def test_this_repo_fail_closed_across_all_roots(self, tmp_path):
-        """The fail-closed deny case: zero slug matches under EVERY
-        resolved root still exits 1 — direct unit coverage of `any(...
-        for root in roots for slug in slugs)` iterating every root, not just
+        """The fail-closed deny case: zero admitted directories under EVERY
+        resolved root still exits 1 — direct unit coverage of
+        _repo_project_dir_counts counting across every root, not just
         roots[0]. Calls _resolve_project_scope directly with a hand-built
         multi-element `roots` list (unreachable through the real CLI today,
         since an explicit top-level --config-dir always collapses `roots` to
@@ -550,8 +551,7 @@ class TestThisRepoUnionsAcrossRoots:
     def test_this_repo_allow_case_when_only_a_non_first_root_matches(self, tmp_path):
         """Companion allow-case to the deny test above: a match under the
         SECOND resolved root (not roots[0]) must not fail closed — proves the
-        `any(...)` genuinely iterates every root rather than short-circuiting
-        on the first."""
+        count genuinely spans every root rather than stopping at the first."""
         root_a = tmp_path / "acct-a"
         root_a.mkdir()
         root_b = tmp_path / "acct-b"
@@ -559,7 +559,7 @@ class TestThisRepoUnionsAcrossRoots:
         args = argparse.Namespace(this_repo=True, projects="*", config_dir=str(root_a), _this_repo_slugs=["-repo-main"])
         session_iter, scope_label = scope._resolve_project_scope(args, "buckets", roots=[root_a, root_b])
         assert list(session_iter) == []  # no sessions written, but no SystemExit either
-        assert scope_label == "this repo (1 project dirs)"
+        assert scope_label == "this repo (1 project dirs: 1 live, 0 unlisted)"
 
 
 class TestSingleLevelProjectsGlob:

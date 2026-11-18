@@ -1531,6 +1531,19 @@ def _worktree_porcelain(*paths: str) -> str:
     return "\n".join(f"worktree {p}\nHEAD 0000\nbranch refs/heads/x\n" for p in paths)
 
 
+def _stub_git_worktree_listing(monkeypatch, porcelain: str, cwd: str, toplevel: str) -> None:
+    """Make `scope._repo_scoped_project_slugs` see `porcelain` as `git worktree list --porcelain`, `toplevel` as
+    `git rev-parse --show-toplevel`, and `cwd` as the working directory. Any other git call fails the test."""
+    monkeypatch.setattr(os, "getcwd", lambda: cwd)
+
+    def fake_run(cmd, *a, **k):
+        if cmd[:3] == ["git", "worktree", "list"]:
+            return subprocess.CompletedProcess(cmd, 0, porcelain, "")
+        assert cmd == ["git", "rev-parse", "--show-toplevel"]
+        return subprocess.CompletedProcess(cmd, 0, toplevel + "\n", "")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+
 def _exit_plan_mode(tool_id: str = "epm1") -> dict:
     return {"type": "tool_use", "id": tool_id, "name": "ExitPlanMode", "input": {}}
 

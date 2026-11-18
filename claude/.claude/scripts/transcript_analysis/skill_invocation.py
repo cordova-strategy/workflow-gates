@@ -29,9 +29,10 @@ def _normalize_skill_name(raw: str) -> str:
 
     Collapsing these spellings stops one skill from splitting across several rows.
     This is row-hygiene, not the security control: within a repo-scoped read the
-    only path fragment that can appear is *this* repo's own worktree branch (its
-    project dirs are the only ones read), which is public. Cross-project
-    minimization is enforced upstream by _repo_scoped_project_slugs, not here.
+    path fragments that can appear come from this repo's admitted project dirs,
+    which can include a foreign clone under its worktrees directory.
+    Cross-project minimization is enforced upstream by
+    scope._RepoProjectDirMatcher, not here.
 
     A remaining ``plugin:skill`` or ``dir:skill`` prefix is deliberately kept: it
     carries no path, and dropping it would need this script to hardcode the stow
@@ -79,9 +80,10 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # on scrubbing names after the fact: skill names are user-defined strings and
     # can themselves be private-project identifiers (a plugin namespace with no
     # path separator at all). So the control is to scope the read to this repo's
-    # own project dirs (_repo_scoped_project_slugs) — the default when --projects
+    # own project dirs (scope._RepoProjectDirMatcher, which docs/transcript-analysis.md
+    # "Scoping to this repo" describes) — the default when --projects
     # is unset. An explicit --projects is an escape hatch for corpus analysis;
-    # the caller then owns that the output is no longer publish-safe.
+    # the caller then owns that the output is no longer scoped to this repo.
     #
     # Skill names from --include-subagents can come from a cross-repo subagent,
     # so treat that output as local-only (docs/transcript-analysis.md, Limits).
@@ -265,14 +267,14 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope = p_skill_inv.add_mutually_exclusive_group()
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
-        help="Project-dir glob. Default: this repo's own worktrees only (publish-safe without --include-subagents). "
+        help=f"Project-dir glob. Default: {scope._THIS_REPO_SCOPE_HELP}. "
              "Passing an explicit glob is an escape hatch — output is then not scoped to this repo.",
     )
     p_skill_inv_scope.add_argument(
         "--this-repo", action="store_true",
         help=(
-            "Explicit no-op: skill-invocation already defaults to this repo's own "
-            "worktrees. Kept for flag uniformity with every other --projects subcommand."
+            f"Explicit no-op: skill-invocation already defaults to {scope._THIS_REPO_SCOPE_HELP}. "
+            "Kept for flag uniformity with every other --projects subcommand."
         ),
     )
     p_skill_inv.add_argument("--branches", metavar="B1,B2,...", help="Branch name filter (default: all)")

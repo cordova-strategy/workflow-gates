@@ -14,6 +14,7 @@ from .conftest import (
     _attr_ts,
     _bash_use,
     _skill_use,
+    _stub_git_worktree_listing,
     _table_cols,
     _user_msg,
     _worktree_porcelain,
@@ -630,6 +631,33 @@ class TestSkillInvocationRepoScope:
         out = capsys.readouterr().out
         assert "code-review" in out, "the main worktree's skill must appear"
         assert "handoff" in out, "the linked worktree's skill must appear"
+
+    def test_a_removed_worktree_dir_is_in_default_scope_and_a_fork_is_not(self, tmp_path, monkeypatch, capsys):
+        """A removed worktree's project dir (no `git worktree list` entry, but named under the main checkout's
+        worktrees directory) is read by the default scope; a sibling fork's dir is not."""
+        projects = tmp_path / "projects"
+        main_dir = projects / "-repo"
+        removed_dir = projects / "-repo--claude-worktrees-gone"
+        fork_dir = projects / "-repo-fork"
+        for project_dir in (main_dir, removed_dir, fork_dir):
+            project_dir.mkdir(parents=True)
+        monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
+        _write_jsonl(main_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="main", content=[_skill_use("m1", "code-review")]),
+        ])
+        _write_jsonl(removed_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="gone", content=[_skill_use("r1", "handoff")]),
+        ])
+        _write_jsonl(fork_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="fork", content=[_skill_use("f1", "plan-review")]),
+        ])
+        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo"), "/repo", "/repo")
+
+        skill_invocation.cmd_skill_invocation(argparse.Namespace(projects=None, branches=None, include_subagents=False))
+        out = capsys.readouterr().out
+        assert "code-review" in out, "the main worktree's skill must appear"
+        assert "handoff" in out, "the removed worktree's skill must appear"
+        assert "plan-review" not in out, "a sibling fork's dir must stay out of the default scope"
 
 
 def test_slash_invocation_counts_the_command_name_and_never_its_command_args(fake_projects, capsys):

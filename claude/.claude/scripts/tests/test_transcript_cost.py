@@ -617,7 +617,7 @@ class TestCost:
         cost._cost_report(_cost_args(this_repo=True), date(2026, 8, 2))
         out = capsys.readouterr().out
         assert (
-            "COST SOURCES (this repo (1 project dirs); "
+            "COST SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); "
             "1 root (no ~/.claude/transcript-config-dirs declared))"
         ) in out
         cols = _table_cols(out, header_contains="Class", row_contains="input", row_startswith=True)
@@ -772,9 +772,9 @@ class TestCostResolveRoots:
         self, tmp_path, monkeypatch, fake_config_dir_factory
     ):
         """--this-repo no longer refuses an explicit --config-dir extra:
-        _iter_scoped_sessions matches slugs by basename and
-        _path_to_project_slug derives them from `git worktree list` alone,
-        both root-independent, so the refusal's own rationale ("--this-repo
+        _iter_scoped_sessions admits a directory by its name (a live slug or
+        the worktrees-directory prefix) and _path_to_project_slug derives the
+        slugs from `git worktree list` alone, both root-independent, so the refusal's own rationale ("--this-repo
         cannot filter a foreign config dir's worktrees") didn't match the
         mechanism. _resolve_cost_roots just returns the union of both roots;
         --this-repo's own filtering happens downstream in

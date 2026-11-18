@@ -701,9 +701,9 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
                 )
 
     # --summary skips the redact map and the per-project-dir-count scope
-    # header ("this repo (N project dirs)") -- that count comes from `git
-    # worktree list` (this repo's own local worktrees), not account
-    # identity; the input that IS identity-keyed under --summary, a raw
+    # header ("this repo (N project dirs: ...)"). That count is listed from
+    # this account's project directories. --summary never prints it. The input
+    # that IS identity-keyed under --summary, a raw
     # --projects value, is already refused above. Its own scope block below
     # reports total_transcripts_scanned instead.
     redact_map: dict[redaction._RedactMapKey, str] = {}

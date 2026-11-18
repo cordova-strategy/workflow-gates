@@ -26,8 +26,13 @@ _PRIVATE_PROJECT_REDACTION_DOC = REPO_ROOT / "docs" / "private-project-redaction
 _TRANSCRIPT_ANALYSIS_DOC = REPO_ROOT / "docs" / "transcript-analysis.md"
 
 _PROJECT_SLUG = "-home-user-testrepo"
-_HEADER_ACTIVE_ACCOUNT = "REVIEW COST BY SIZE SOURCES (this repo (1 project dirs); active account only)"
-_HEADER_EVERY_ACCOUNT = "REVIEW COST BY SIZE SOURCES (this repo (1 project dirs); every declared account)"
+_HEADER_ACTIVE_ACCOUNT = (
+    "REVIEW COST BY SIZE SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); active account only)"
+)
+# _two_root_corpus puts _PROJECT_SLUG under both roots, so the one live worktree counts once per root.
+_HEADER_EVERY_ACCOUNT = (
+    "REVIEW COST BY SIZE SOURCES (this repo (2 project dirs: 2 live, 0 unlisted); every declared account)"
+)
 # A claude-sonnet-5 turn of 100_000 input tokens prices at this many dollars.
 _ROUND_OPENING_TURN_DOLLARS = 0.20
 # A head name carrying a line break and an ANSI escape, as a hostile gh response could supply.

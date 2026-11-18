@@ -7,6 +7,12 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 ### Changed
 
 - **`check-skill-length.sh` gives `subagent-delegation/SKILL.md` a line cap of 218, above the 200-line default.** Splitting the skill's run-on `review-orchestrator` protocol lines into lists needed more lines than the default cap left, and the protocol could not move out of the skill. Other skills' caps are unchanged. The change is live on `git pull`.
+- **`transcript-analysis --this-repo` now also reads the project directories of removed worktrees under `<main>/.claude/worktrees/`.**
+  - **What moves:** every `--this-repo` figure and `skill-invocation`'s default scope read the added directories, so totals and session counts can rise. `cost-ledger` rows recorded with `--this-repo` before and after this change are not comparable.
+  - **Exposure:** the rule also admits a repo cloned under `<main>/.claude/worktrees/` and a sibling directory whose slug starts with the same prefix, and reads their sessions as this repo's. `cost --summary`, `cost-counts`, `review-cost-by-size`, `read-cost` and `skill-invocation`'s default scope all read them.
+  - **What does not move:** a removed worktree that lived outside `<main>/.claude/worktrees/`, a bare layout's included, stays excluded. See "Scoping to this repo" in `docs/transcript-analysis.md` for the rule.
+  - **Header:** the scope label is `this repo (<N> project dirs: <L> live, <U> unlisted)`. `<N>` now counts admitted directories present, once per resolved path, where it counted listed worktrees before.
+  - **Deny lookup:** the `routing-guard` refusal for a deny on an unlisted branch names one lookup, `review-trace --deny-only --this-repo`, in place of two. That lookup now reads the same directories capture already read, which is why one replaces two.
 - **The evals harness reads SKILL.md and agent frontmatter with PyYAML, and the documented evals commands now run through `scripts/venv-run.sh python3`.** Plugin bumped: `skill-management` 5.1.0 → 5.1.1.
   - A quoted `description` no longer keeps its quotes in the description-fidelity listing.
   - `measure_subagent_model_resolution.py` reads a quoted `model:` value and one followed by a comment.

@@ -322,7 +322,7 @@ def test_read_cost_this_repo_runs_to_a_report_through_main(
     cli.main()
 
     out = capsys.readouterr().out
-    assert out.splitlines()[0].startswith("READ COST SOURCES (this repo (1 project dirs);")
+    assert out.splitlines()[0].startswith("READ COST SOURCES (this repo (1 project dirs: 1 live, 0 unlisted);")
     assert "sessions=1 " in out
 
 

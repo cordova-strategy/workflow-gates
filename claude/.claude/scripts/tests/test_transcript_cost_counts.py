@@ -661,6 +661,24 @@ class TestCostCounts:
         assert "totally-untracked-agent" not in out
         assert "(withheld — untracked agent type)" in out
 
+    def test_an_untracked_agent_type_in_an_unlisted_worktree_dir_is_withheld(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        """A project dir named under the main checkout's worktrees directory but absent from the live slugs is read
+        under --this-repo, and its untracked agent type still never prints."""
+        self._isolate_allowlist(tmp_path, monkeypatch, tracked=["staff-sdet"])
+        unlisted_dir = fake_projects.parent / (fake_projects.name + "--claude-worktrees-foreign")
+        unlisted_dir.mkdir()
+        _write_jsonl(unlisted_dir / "sess.jsonl", [
+            _asst("claude-opus-4-7", branch="feat", content=[_agent_use("a1", "totally-untracked-agent")]),
+        ])
+        subagent_mix.cmd_cost_counts(_cost_counts_args(
+            this_repo=True, branches="feat", this_repo_slugs=["-home-user-testrepo"],
+        ))
+        out = capsys.readouterr().out
+        assert "(withheld — untracked agent type)" in out
+        assert "totally-untracked-agent" not in out
+
     def test_withheld_row_stays_last_even_when_its_total_exceeds_a_disclosed_row(
         self, fake_projects, tmp_path, monkeypatch, capsys,
     ):

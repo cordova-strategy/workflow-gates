@@ -1,4 +1,5 @@
-"""scope.py's scan-traversal, scan-gap and glob-selection classes; test_transcript_scope.py holds scope.py's other tests."""
+"""scope.py's scan-traversal, scan-gap and glob-selection classes; test_transcript_scope.py's docstring
+names where scope.py's other tests live."""
 import argparse
 import errno
 import os
@@ -108,7 +109,7 @@ class TestScanRootTranscripts:
     def test_project_dir_symlinked_outside_the_root_is_counted(self, tmp_path, mode):
         """Only a '..' in the raw glob is rejected. With a single scan root,
         a project directory symlinked to a readable location outside `root`
-        stays in scope, in both the glob and the exact-slug branch, matching
+        stays in scope, in both the glob and the slug-admission branch, matching
         iter_sessions. Multi-root consumers that attribute each session to a
         root do not tolerate it (see the pooled-layer tests in
         test_transcript_review_rounds.py)."""
@@ -326,9 +327,9 @@ class TestScanGapCounter:
     def test_iter_scoped_sessions_symlink_loop_is_skipped_without_raising(self, tmp_path):
         """The slug-matched sibling of
         test_project_dir_symlink_loop_without_scan_gaps_is_skipped_without_raising:
-        _iter_scoped_sessions selects project dirs by exact slug match rather
-        than glob, but shares _dedup_new_project_dirs, so a symlink-loop
-        project dir is skipped there too."""
+        _iter_scoped_sessions selects project dirs by the --this-repo admission
+        rule rather than a glob, but shares _dedup_new_project_dirs, so a
+        symlink-loop project dir is skipped there too."""
         root = tmp_path / "acct-a"
         root.mkdir(parents=True)
         loop_link = root / "-repo-loop"
@@ -410,8 +411,8 @@ class TestScanGapCounter:
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
     def test_iter_scoped_sessions_unreadable_project_dir_records_project_dir_gap(self, tmp_path):
         """The structural sibling of the project-dir test above: _iter_scoped_sessions
-        selects project dirs by exact slug match rather than glob, but shares
-        _iter_project_dir_sessions."""
+        selects project dirs by the --this-repo admission rule rather than a glob,
+        but shares _iter_project_dir_sessions."""
         root = tmp_path / "acct-a"
         proj_open = root / "-repo-open"
         proj_open.mkdir(parents=True)

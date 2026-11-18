@@ -25,10 +25,10 @@ def _derive_proj_label(jsonl: Path) -> str:
     return jsonl.parent.name.lstrip("-").replace("-", "/", 2).split("/", 2)[-1]
 
 
-# iter_sessions documents this repo's own worktree naming: a linked worktree's
-# project-dir slug is the main dir's slug with --claude-worktrees-<branch>
-# appended, which _derive_proj_label carries through unchanged onto its output.
-_WORKTREE_SUFFIX_RE = re.compile(r"--claude-worktrees-.+$")
+# A linked worktree's project-dir slug is the main dir's slug with
+# scope._WORKTREE_SLUG_INFIX and the branch appended, which _derive_proj_label
+# carries through unchanged onto its output.
+_WORKTREE_SUFFIX_RE = re.compile(re.escape(scope._WORKTREE_SLUG_INFIX) + r".+$")
 
 
 def _project_family(raw_proj_label: str) -> str:

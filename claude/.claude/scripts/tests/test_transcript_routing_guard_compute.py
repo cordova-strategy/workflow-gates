@@ -5,7 +5,6 @@ import json
 import math
 import random
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -20,7 +19,7 @@ import _config
 import _config_dir
 import pytest
 from helpers import REPO_ROOT
-from transcript_analysis import corpus, pricing, review_rounds, routing_guard, scope
+from transcript_analysis import corpus, pricing, review_rounds, routing_guard
 
 from ._pr_cost_helpers import _enable_pr_cost
 from ._review_round_helpers import _SONNET
@@ -1916,9 +1915,6 @@ class TestGitCheckFailure:
 class TestUnlistedDenyRemedyCommand:
     """The command capture's unlisted-branch refusal names parses through the CLI's own parser."""
 
-    _SLUG_PLACEHOLDER = "<main-project-slug>"
-    _A_MAIN_CHECKOUT = "/placeholder/checkout"
-
     @staticmethod
     def _remedy_words() -> list[str]:
         unlisted_deny = routing_guard._DenyFact("unlisted-branch", 1.0, "sess-1")
@@ -1928,38 +1924,15 @@ class TestUnlistedDenyRemedyCommand:
         (refusal,) = reconciliation.refusals
         return [word.rstrip(",;") for word in refusal.split()]
 
-    @pytest.mark.parametrize("scope_form", ["this-repo", "projects-glob"])
-    def test_the_named_review_trace_command_parses_in_each_scope_form(self, tmp_path, scope_form):
+    def test_the_named_review_trace_command_scopes_with_this_repo_alone_and_parses(self, tmp_path):
         words = self._remedy_words()
-        assert {"--config-dir", "review-trace", "--deny-only"} <= set(words)
-        if scope_form == "this-repo":
-            assert "--this-repo" in words
-            scope_args = ["--this-repo"]
-        else:
-            (projects_word,) = (word for word in words if word.startswith("--projects"))
-            assert self._SLUG_PLACEHOLDER in projects_word
-            main_project_slug = scope._path_to_project_slug(self._A_MAIN_CHECKOUT)
-            scope_args = shlex.split(projects_word.replace(self._SLUG_PLACEHOLDER, main_project_slug))
+        assert {"--config-dir", "review-trace", "--deny-only", "--this-repo"} <= set(words)
+        assert not [word for word in words if word.startswith("--projects")]
 
-        args = _mod.build_parser().parse_args(
-            ["--config-dir", str(tmp_path), "review-trace", "--deny-only", *scope_args],
-        )
+        args = _mod.build_parser().parse_args(["--config-dir", str(tmp_path), "review-trace", "--deny-only", "--this-repo"])
 
         assert args.deny_only is True
-        if scope_form == "this-repo":
-            assert args.this_repo is True
-        else:
-            removed_worktree_slug = scope._path_to_project_slug(f"{self._A_MAIN_CHECKOUT}/.claude/worktrees/removed-branch")
-            projects_root = tmp_path / "projects"
-            removed_worktree_project = projects_root / removed_worktree_slug
-            removed_worktree_project.mkdir(parents=True)
-            session_file = removed_worktree_project / "sess-removed.jsonl"
-            _write_jsonl(session_file, [_user_msg("hello", branch="removed-branch")])
-            other_project = projects_root / scope._path_to_project_slug("/placeholder/other-checkout")
-            other_project.mkdir()
-            _write_jsonl(other_project / "sess-other.jsonl", [_user_msg("hello", branch="other")])
-
-            assert [path for path, _records in corpus.iter_sessions(projects_root, args.projects)] == [session_file]
+        assert args.this_repo is True
 
 
 # --- the reads compute makes -------------------------------------------------

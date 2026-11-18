@@ -81,7 +81,6 @@ _CAPTURE_TEMP_SUFFIX = ".tmp"
 
 # require-review-orchestrator-routing.sh's DENY_GATE_LABEL, which denials._denial_hook_label returns for its denials.
 _ROUTING_DENY_LABEL = "review-orchestrator routing"
-_WORKTREE_SLUG_INFIX = "--claude-worktrees-"
 
 _UNAUTHENTICATED_INPUTS_STATEMENT = (
     "the key state behind PASSED and FAILED comes from log rows any process running as the account can write,"
@@ -953,12 +952,8 @@ def _capture_scope(root: Path, scan_gaps: Counter[str]) -> _CaptureScope:
             " run it from a worktree of that checkout",
             1,
         )
-    orphan_prefix = slugs[0] + _WORKTREE_SLUG_INFIX
-    on_root = scope._list_dir_recording_gaps(root, scan_gaps, scope._SCAN_GAP_ROOT)
-    orphan_slugs = [entry.name for entry in on_root if entry.name.startswith(orphan_prefix) and entry.name != orphan_prefix]
-    scoped_slugs = list(dict.fromkeys([*slugs, *orphan_slugs]))
-    wanted = set(scoped_slugs)
-    return _CaptureScope(scoped_slugs, sum(1 for entry in on_root if entry.name in wanted))
+    counts = scope._repo_project_dir_counts(slugs, [root], scan_gaps=scan_gaps)
+    return _CaptureScope(slugs, counts.live + counts.unlisted)
 
 
 def _main_thread_turns(records: list[dict]) -> list[tuple[int, str, int]]:
@@ -1348,10 +1343,9 @@ def _reconcile_denies(
     for earliest_ts in unlisted_branches.values():
         refusals.append(
             f"{_COMMAND}: a routing deny at {_utc_minute(earliest_ts)} falls on a branch the note does not list;"
-            " in a terminal outside any agent session, run review-trace with the same top-level --config-dir"
-            " given to capture and --deny-only, once with --this-repo and, if no row matches that minute,"
-            f" once with --projects='<main-project-slug>{_WORKTREE_SLUG_INFIX}*' for a removed worktree's"
-            " sessions; match the row at that minute, then add a note row for its branch:"
+            " in a terminal outside any agent session, run transcript-analysis.py --config-dir <the config"
+            " directory given to capture> review-trace --deny-only --this-repo; match the row at that minute,"
+            " then add a note row for its branch:"
             f" {_STATUS_MERGED} if the branch belongs in the sample, else {_STATUS_EXCLUDED};"
             ' see docs/transcript-analysis.md routing-guard "Deny reconciliation"'
         )

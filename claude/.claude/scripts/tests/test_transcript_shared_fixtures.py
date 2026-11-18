@@ -3,7 +3,7 @@ so a fixture that comes to depend on the shim fails here first."""
 import pytest
 from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, scope
 
-from .conftest import _table_cols
+from .conftest import _stub_git_worktree_listing, _table_cols, _worktree_porcelain
 
 
 def test_fake_projects_patches_every_config_dir_binding_without_a_shim(fake_projects, tmp_path):
@@ -24,6 +24,21 @@ def test_cost_ledger_fixtures_patch_their_targets_without_a_shim(
     assert cost_ledger._cost_ledger_path() == cost_ledger_file
     assert cost_ledger.config_dir() == cost_ledger_enabled
     assert ledger_common.config_dir() == cost_ledger_enabled
+
+
+class TestStubGitWorktreeListingHelper:
+    def test_scope_resolution_sees_the_stubbed_listing_and_working_directory(self, monkeypatch):
+        _stub_git_worktree_listing(
+            monkeypatch, _worktree_porcelain("/repo/main", "/repo/wt"), "/repo/wt/nested", "/repo/wt",
+        )
+
+        assert scope._repo_scoped_project_slugs("buckets") == ["-repo-main", "-repo-wt"]
+
+    def test_a_git_call_other_than_the_two_it_stubs_fails_the_test(self, monkeypatch):
+        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+
+        with pytest.raises(AssertionError):
+            scope.subprocess.run(["git", "status"])
 
 
 class TestTableColsHelper:
