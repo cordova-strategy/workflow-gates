@@ -18,9 +18,9 @@ def cmd_sessions(args: argparse.Namespace) -> None:
     --paths is required: it names the one action this subcommand supports today,
     leaving room for a second sessions action later without a bare `sessions`
     invocation silently doing nothing. Sourced from scope.resolve_scan_roots plus
-    scope._resolve_project_scope (not a flat glob), so a main session file only
-    reaches this repo's own worktrees under --this-repo the same way every other
-    subcommand does. --include-subagents additionally emits each split subagent
+    scope._resolve_project_scope (not a flat glob), so under --this-repo a main
+    session file comes from the directories --this-repo admits (see "Scoping to
+    this repo" in docs/transcript-analysis.md). --include-subagents additionally emits each split subagent
     file's own path, found the same way read_session_file locates
     them for its own record merge -- <session>/subagents/*.jsonl under the main
     file's own directory -- rather than a flat glob across the whole scope, so a

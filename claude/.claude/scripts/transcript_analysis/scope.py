@@ -120,7 +120,7 @@ class _RepoProjectDirMatcher(NamedTuple):
 def _repo_project_dir_matcher(slugs: Sequence[str]) -> _RepoProjectDirMatcher:
     """`slugs[0]` is the first worktree `git worktree list` prints, as `_repo_scoped_project_slugs` returns it.
 
-    Callers must not reorder `slugs`: the prefix comes from `slugs[0]`, the first-listed (main) checkout.
+    Callers must not reorder `slugs`.
 
     An empty `slugs` admits nothing: the prefix stays None rather than `""`, which every name would start with.
     """
@@ -139,13 +139,12 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     scope a transcript read to this repo: output built from it is routinely
     quoted into public PR descriptions, and transcripts under
     ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo" states
-    what it admits. A subagent file
+    what it admits and "What `--this-repo` does not cover" what it still over-includes.
+    A subagent file
     under an in-repo session is read regardless of the repo the subagent worked
     in, so scoping alone does not bound skill names under `--include-subagents`.
     The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
-    sibling `<repo>-fork` and every main-checkout subdirectory defeat. `_RepoProjectDirMatcher` admits
-    the infix-extended names only. docs/transcript-analysis.md "What `--this-repo` does not cover" lists what it
-    still over-includes.
+    sibling `<repo>-fork` and every main-checkout subdirectory defeat.
 
     A session started in a subdirectory of the main checkout is excluded. A session started in a subdirectory of a
     worktree outside `<main>/.claude/worktrees/` is excluded. Each project dir is slugged from the subdirectory
@@ -460,13 +459,10 @@ def _iter_scoped_sessions(
 
     Enumerate the directory names under each root in `roots` (default:
     PROJECTS_DIR alone, so every caller other than cost's --config-dir is
-    unaffected) and keep only those the matcher admits. This deliberately does
-    NOT route the slug through Path.glob — a slug containing a glob metacharacter
-    (a `*`/`?`/`[` in the machine's home or username path) would otherwise be
-    interpreted as a wildcard and could widen the match beyond this repo's own
-    worktrees. Visiting each directory at most once (by resolved real path,
-    spanning every root — covers a root nested inside another, not just two
-    identical roots) also makes double-counting impossible.
+    unaffected) and keep only those the matcher admits. Visiting each directory
+    at most once (by resolved real path, spanning every root — covers a root
+    nested inside another, not just two identical roots) makes double-counting
+    impossible.
 
     A root that raises OSError while being listed (an unreadable directory,
     not merely a missing one — `root.is_dir()` above only requires the
