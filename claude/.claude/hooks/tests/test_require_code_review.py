@@ -892,7 +892,7 @@ class TestRequireCodeReviewComplianceLog:
             [
                 "bash", str(SCRIPTS_DIR / "review-ledger.sh"), "append", "code-review",
                 "--finding", "f", "--disposition", "ADDRESS", "--rationale", "r", "--source", "file.txt:1",
-                "--round", "1", "--reviewer", "staff-sdet",
+                "--round", "1", "--pass-kind", "staged", "--reviewer", "staff-sdet",
             ],
             cwd=git_repo,
             env=env,

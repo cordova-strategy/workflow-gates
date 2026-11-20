@@ -190,6 +190,19 @@ Full descriptions for utility scripts in `claude/.claude/scripts/` (stowed to `~
     - CLEAN and CONSULT take no lanes; ADDRESS, DEFER and SETTLED take at least one lane (`--reviewer`) or `--relog`, never both. `--relog` marks a row that re-logs its `--ref` decision and copies its lanes, unchecked against the roster.
     - The row stores `reviewers` sorted and duplicate-free. It is `[]` on CLEAN and CONSULT and on a copy of a row that holds no lanes, and absent on a row from before schema 5.
     - A second append of one finding with other lanes lands as a second row when the row is ref-less or a carry. On any other `--ref` row it is rejected as no longer live.
+  - **Pass kind.** From schema 7 each row stores `pass_kind`, one of `staged`, `cumulative`, `review-pr` or `other`. `code-review/SKILL.md` § "Step 0.1 — Short-circuit already-reviewed diff" says which value a round passes.
+    - `append` refuses a row without one of the four, so every row at schema 7 or more holds one.
+    - A row is below schema 7 when its `schema_version` is absent, not a number, or less than 7. Such a row has no `pass_kind`.
+    - A pass kind belongs to a round, as "To compare two rounds" below forms rounds. A round's pass kind is the one value its rows at schema 7 or more hold. A round with no such row, or with two values among them, has an unknown pass kind, which is none of the four.
+    - Every row of a round counts under its round's pass kind, a row below schema 7 included. A pair's tally of round N+1's rows therefore counts under round N+1's pass kind.
+    - A row below schema 7 takes its round's pass kind on the round number alone, so the count is only as good as that session's round sequence.
+    - A CONSULT row is left out of its round, as "To compare two rounds" has it. It counts under its own `pass_kind`, or as unknown below schema 7 even when its round has a known pass kind.
+    - The value is the appending session's declaration. Nothing checks it against the diff the round reviewed.
+    - `pass_kind` is in the dedup key, so an append that repeats a landed row with another value is not a retry:
+      - A ref-less row or a carry lands as a second row. Its round then holds two values, and a per-row tally counts that finding twice.
+      - Any other `--ref` row is rejected as no longer live, so a landed `--ref` row's pass kind is final.
+      - A `--ref` append that landed before schema 7, retried after it, is rejected as no longer live, because the landed row has no `pass_kind`.
+    - `show` prints `pass_kind`, and `render` does not.
   - **Id and site hash.** Every row gets a script-stamped `id`, the first 12 hex digits of the row's sha256. Only a range-form `DEFER` or `SETTLED` row also stores a `site_hash`, and it never renders. The `id` renders in full in the Id column, and 12 digits stay below the redaction gate's 32-digit hex-run detector.
   - **Reviewed state.** From schema 6 each row stores `reviewed_head`, the commit HEAD named, and `reviewed_tree`, the index written as a tree object. Both are read when the row is appended.
     - Either field can be empty, and the row lands either way. The row does not record why a field is empty.

@@ -15,6 +15,13 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Pre-flight item 1 ran `git log` with no range, so it also walked the base branch's history and reported almost any branch in a multi-contributor repo as shared. It now runs `git fetch origin`, then `git log --format='%ae %ce' origin/main..origin/<branch>`.
   - **Migration:** pre-flight item 1 can establish a branch as solo-contributor from that log, so the engineer no longer needs to say so.
   - The skill's word "personal" becomes "solo-contributor" throughout. The change is live on `git pull`.
+- **`review-ledger.sh append` now requires `--pass-kind` and records it on each row.**
+  - Each new row stores `pass_kind` (`staged`, `cumulative`, `review-pr` or `other`), and `schema_version` is now 7. `docs/scripts.md`'s `review-ledger.sh` entry says how to read rows written before schema 7.
+  - `/code-review` passes the value on every append, and `/ready-for-review`'s disposition record is no longer the home of a pass's kind.
+  - **Migration:** an `append` without a valid `--pass-kind` now exits 2 and writes nothing, and the rejection says what each value means. Any caller outside the stowed `/code-review` skill must pass the flag.
+  - A session that loaded `/code-review` before the pull may keep its old skill text until it restarts. Each of its appends without `--pass-kind` is rejected (exit 2, nothing written).
+  - The change is live on `git pull`.
+  - Reverting it needs no data change, because the reverted script's readers that read rows by named key ignore the added field. The exception is the retry check: a `--ref` append that landed at schema 7 and is retried after the revert is rejected as no longer live. After a revert, restart any session that loaded `/code-review` since the pull, because the reverted script rejects `--pass-kind` as an unknown argument.
 - **`transcript-analysis.py review-cost-by-size` now reads the pr-cost ledger's `review_rounds` cells instead of transcripts, so a PR's round series outlives transcript retention.**
   - It keeps each PR's one current ledger row for this checkout's origin repository, re-prices each round's stored token splits at this checkout's rate table, and excludes and counts the PRs it cannot trust. See `docs/transcript-analysis.md` § "review-cost-by-size".
   - **Migration:** `gh` is no longer required, and transcripts are no longer read.

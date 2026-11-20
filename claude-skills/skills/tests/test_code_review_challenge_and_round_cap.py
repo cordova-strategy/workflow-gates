@@ -378,7 +378,7 @@ class TestRoundCapSecondNoiseVerdictStop:
             pytest.param(
                 "before retrying the denied spawn, log it with "
                 "`~/.claude/scripts/review-ledger.sh append code-review --disposition CONSULT "
-                "--rationale '<verdict>' --round <N>`",
+                "--rationale '<verdict>' --round <N> --pass-kind <kind>`",
                 id="logs-the-verdict-before-retrying-the-denied-spawn",
             ),
             pytest.param(

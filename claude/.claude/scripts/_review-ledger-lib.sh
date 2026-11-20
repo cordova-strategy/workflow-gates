@@ -22,6 +22,9 @@ _REVIEW_LEDGER_DEFER_CRITERIA=(
 # The three round-cap consult verdicts, named after the verdict words in code-review/SKILL.md's round-cap section.
 _REVIEW_LEDGER_CONSULT_VERDICTS=(re-plan noise one-defect)
 
+# The kinds of review pass a row can record, named after the Step 0.1 sentence in code-review/SKILL.md.
+_REVIEW_LEDGER_PASS_KINDS=(staged cumulative review-pr other)
+
 # The lanes that name a source of findings with no roster agent. No entry may
 # be an agent name or an --authoring-agent value.
 _REVIEW_LEDGER_NON_AGENT_LANES=(orchestrator skill-tool unrostered-agent)
@@ -61,6 +64,13 @@ _review_ledger_consult_hint() {
   local names
   names=$(IFS=,; printf '%s' "${_REVIEW_LEDGER_CONSULT_VERDICTS[*]}")
   printf 'Pass one of: %s' "${names//,/, }"
+}
+
+# Appended to every --pass-kind rejection, so the message alone tells a caller how to correct its call.
+_review_ledger_pass_kind_hint() {
+  local names
+  names=$(IFS=,; printf '%s' "${_REVIEW_LEDGER_PASS_KINDS[*]}")
+  printf "The value names what the round reviewed: cumulative in /ready-for-review step 3's cumulative pass, review-pr in a /review-pr pass, staged in any other round whose diff under review is exactly git diff --cached (a default-branch commit included), and other for any other subject. Pass one of: %s" "${names//,/, }"
 }
 
 # Appended to every lane rejection, so the message alone tells a caller how to
@@ -107,6 +117,22 @@ _review_ledger_validate_consult() {
   [ "$source" = "n/a" ] || { _review_ledger_reject "--source must be omitted for --disposition CONSULT"; return 1; }
   if ! _review_ledger_is_consult_verdict "$rationale"; then
     _review_ledger_reject "--rationale '$rationale' is missing or not a round-cap verdict for --disposition CONSULT. $(_review_ledger_consult_hint)"
+    return 1
+  fi
+  return 0
+}
+
+# _review_ledger_validate_pass_kind VALUE
+# The closed-set rule of --pass-kind, with no I/O. An absent flag arrives as "".
+# Prints the reason to stderr and returns 1 when VALUE is not one of _REVIEW_LEDGER_PASS_KINDS.
+_review_ledger_validate_pass_kind() {
+  local value="$1"
+  if [ -z "$value" ]; then
+    _review_ledger_reject "--pass-kind is required and missing. $(_review_ledger_pass_kind_hint)"
+    return 1
+  fi
+  if ! _lib_list_contains "$value" "${_REVIEW_LEDGER_PASS_KINDS[@]}"; then
+    _review_ledger_reject "--pass-kind '$value' is not a pass kind. $(_review_ledger_pass_kind_hint)"
     return 1
   fi
   return 0

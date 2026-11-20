@@ -1203,7 +1203,7 @@ class TestReviewLedgerSubprocessIntegration:
         env = {**os.environ, "HOME": str(home)}
         env.pop("CLAUDE_CONFIG_DIR", None)
         return subprocess.run(
-            ["bash", str(_REVIEW_LEDGER_SH), "append", "code-review", *args],
+            ["bash", str(_REVIEW_LEDGER_SH), "append", "code-review", "--pass-kind", "staged", *args],
             cwd=cwd, env=env, capture_output=True, text=True,
         )
 
