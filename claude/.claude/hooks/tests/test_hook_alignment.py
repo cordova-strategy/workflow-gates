@@ -837,6 +837,22 @@ def test_syncclaudeaiskills_stays_disabled_in_stow_source_settings() -> None:
     )
 
 
+def test_output_style_stays_concise_in_stow_source_settings() -> None:
+    """Pins the declared `outputStyle` value in the stow-source settings.
+
+    Per the output-styles page, the value is case-sensitive, and a value that
+    matches no style falls back to Default.
+    The pin does not show that Claude Code applies the value.
+    See docs/design-decisions/concise-output-style-stow-default.md.
+    """
+    settings = json.loads(_SETTINGS_PATH.read_text())
+    assert settings.get("outputStyle") == "Concise", (
+        f"outputStyle is not `Concise` in "
+        f"{_SETTINGS_PATH.relative_to(_REPO_ROOT)} — stow consumers no "
+        f"longer get the Concise output style by default"
+    )
+
+
 def test_promptcachettl_stays_unset_in_stow_source_settings() -> None:
     """The declared config-value backing the main-bucket prompt-cache TTL verdict.
 

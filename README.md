@@ -32,6 +32,7 @@ Maintained by [Cordova Strategy](https://cordovastrategy.com).
   - [Output preferences](#output-preferences)
   - [Machine-specific overrides](#machine-specific-overrides)
   - [Artifact and Workflow disabled by default](#artifact-and-workflow-disabled-by-default)
+  - [Concise output style by default](#concise-output-style-by-default)
 - [Context management](#context-management)
 - [Tests](#tests)
 - [Acknowledgments](#acknowledgments)
@@ -523,6 +524,14 @@ The built-in `Artifact` and `Workflow` tools are the two largest eagerly-loaded 
 - **`claude-artifact`** — same, for the `Artifact` tool.
 
 To flip the default itself rather than opting back in per session, set `disableWorkflows: false` (or `disableArtifact: false`) in a repository's own `.claude/settings.json` or `.claude/settings.local.json` — both outrank the User-scope default this repo ships.
+
+### Concise output style by default
+
+The stowed `settings.json` selects Claude Code's built-in [Concise output style](https://code.claude.com/docs/en/output-styles) by default; [the design-decision record](docs/design-decisions/concise-output-style-stow-default.md) says why.
+
+It reaches the main conversation and forks. Other subagents follow `claude/.claude/CLAUDE.md` § "Prose and Output Format".
+
+[Output preferences](#output-preferences) also reaches the main conversation and forks. Claude Code's page does not say which of the two wins when they conflict.
 
 ## Context management
 

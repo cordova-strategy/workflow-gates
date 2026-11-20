@@ -36,6 +36,9 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - **Migration:** a split run prints two pytest summaries and a closing stderr line.
   - **Migration:** each pass writes report files such as `--junitxml`, so the serial pass's report file replaces the parallel pass's.
   - **Migration:** the interpreter that runs `select-tests.py` must be able to import pytest.
+- **The stowed `settings.json` now selects Claude Code's built-in Concise output style (`"outputStyle": "Concise"`) for the main conversation and forks.** Other subagents are unaffected. `README.md` § "Concise output style by default" describes it.
+  - **Migration:** if your checkout's `settings.json` already sets `outputStyle`, check after any pull that the file holds exactly one `outputStyle` line, your own. If git refuses the pull because your checkout's `settings.json` holds an uncommitted change, such as a `model` value that `/config` wrote, save your own lines elsewhere, run `git restore --source=HEAD --staged --worktree claude/.claude/settings.json`, pull, and re-apply only those lines.
+  - **Takes effect** in sessions started after you pulled this change.
 - **`transcript-analysis.py review-cost-by-size` now reads the pr-cost ledger's `review_rounds` cells instead of transcripts, so a PR's round series outlives transcript retention.**
   - It keeps each PR's one current ledger row for this checkout's origin repository, re-prices each round's stored token splits at this checkout's rate table, and excludes and counts the PRs it cannot trust. See `docs/transcript-analysis.md` § "review-cost-by-size".
   - **Migration:** `gh` is no longer required, and transcripts are no longer read.
