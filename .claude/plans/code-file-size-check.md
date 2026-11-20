@@ -58,7 +58,7 @@ Ask: GH-1119, section "F2 — The check" ("Only F2's PR closes this issue"). Thi
 
 ## Approach
 
-A new pytest module, `claude/.claude/tests/test_code_file_size.py`, counts the newline bytes of every tracked regular `.py` and `.sh` file. It fails when a file with no row is over 1,000 lines, or when a file with a row differs from that row's ceiling. The rows live in a TOML table at the repository root, `code-file-size-exceptions.toml`, populated from the check's own output and F1's verdicts. `select-tests.py` gains a supplementary-rules table that `main` applies after `select_pytest_targets`, so any changed `.py` or `.sh` path adds the check without counting as a match. `select_pytest_targets`'s own results and its full-suite fallback are unchanged. The decision record is corrected in place to match what ships.
+A new pytest module, `claude/.claude/tests/test_code_file_size.py`, counts the newline bytes of every tracked regular `.py` and `.sh` file. It fails when a file with no row is over 1,000 lines, or when a file with a row differs from that row's ceiling. The rows live in a TOML table at the repository root, `code-file-size-exceptions.toml`, populated from the check's own output and F1's verdicts. Below its header comment, the table must read exactly as the check would serialize its own rows. `select-tests.py` gains a supplementary-rules table that `main` applies after `select_pytest_targets`, so any changed `.py` or `.sh` path adds the check without counting as a match. `select_pytest_targets`'s own results and its full-suite fallback are unchanged. The decision record is corrected in place to match what ships.
 
 **The check.** Each function below is a seam its controls call directly. The real-repository tests are thin wrappers over the same functions, so a control and the real test cannot exercise different code.
 - `count_physical_lines(content: bytes) -> int` returns `content.count(b"\n")`, F1's unit and what `wc -l` prints (row 35). A final line with no newline is not counted, and U+2028 is not a line break.
@@ -70,14 +70,23 @@ A new pytest module, `claude/.claude/tests/test_code_file_size.py`, counts the n
   - The working tree wins over the index. An unstaged edit is counted, so a commit made with `git add -p` can differ from what the local run counted.
   - An unstaged deletion is not counted, so a deleted file's row reads as not counted.
   - A new file counts once it is staged.
-- `load_table(text: str) -> TableLoad` is the shape validator. It returns the rows and a list of problems, each naming its row ("The exception table" below).
+- `load_table(data: bytes) -> TableLoad` is the shape validator. It takes the table file's bytes, so a file that is not UTF-8 is a decode problem rather than a test error. It returns the rows, the stage that reported a problem, if any, and the list of problems, each naming its row ("The exception table" below).
+- `split_header_comment(text: str) -> tuple[str, str]` returns the header comment and the text after it. `load_table`'s layout stage and the header test both call it.
+- `serialize_row(path, fields) -> str` and `serialize_rows(rows) -> str` write the table's canonical form. `load_table`'s layout stage and `render`'s row skeleton both call them, so the two cannot disagree.
 - `evaluate(counts, rows) -> list[Violation]` applies the rules below. Each violation carries its kind, an `Enum`, plus the path, count and ceiling, and the list is sorted by path.
 - `render(violations, rows) -> str` builds the failure message.
-- `size_report(counts, table_text) -> str | None` is the size test's body. It returns `render`'s text, or one table-problem line when `load_table` reports any problem, or `None` when nothing fails.
+- `size_report(counts, table_data) -> str | None` is the size test's body. What it returns depends on the stage that reported:
+  - decode or schema: one fixed line. It says the exception table has a problem, so no file sizes were checked, and to run the shape test, `claude/.claude/tests/test_code_file_size.py::test_exception_table_shape`, to see it. The rows cannot be trusted, so no rule line prints;
+  - layout only, or none: the rows are valid, so it applies the rules and returns `render`'s text, or `None` when nothing fails. A layout problem alone never hides a size value, and the shape test reports it.
 - `fail_with_report(report: str | None) -> None` returns on `None` and otherwise calls `pytest.fail(report, pytrace=False)`. That prints the message verbatim. A bare `is None` assertion would show it through pytest's truncated repr (row 73).
 - `count_tracked_code_files` runs git with `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR` and `GIT_INDEX_FILE` removed from the environment, because `claude/.claude/tests/` has no conftest that scrubs them (row 74).
-- Two tests run against the real repository. The size test passes `size_report` over `count_tracked_code_files(REPO_ROOT)` and the table's text to `fail_with_report`. The shape test asserts that `load_table` reports no problem. The precedent parametrizes per file (row 39). That is set aside because a row whose file is gone has no per-file case, and after a sync the author needs one message listing every value to write.
-- One module holds the functions, the real tests and the controls, so the selection names one file and no test imports from another test module.
+- Three tests run against the real repository, and each reads the table with `read_bytes()`:
+  - The size test, `test_code_file_sizes`, passes `size_report` over `count_tracked_code_files(REPO_ROOT)` and the table's bytes to `fail_with_report`.
+  - The shape test, `test_exception_table_shape`, passes `load_table`'s problems to `fail_with_report`, joined one per line, or `None` when there are none, so a layout diff prints in full.
+  - The header test, `test_exception_table_header`, decodes the table, takes its header comment with `split_header_comment`, and asserts it holds the opening phrases of the conflict rule, the layout rule and the split rule. The module holds those phrases as constants. The table problems and the skeleton line point readers at the header, so a reworded header would otherwise leave them pointing at nothing.
+
+  The precedent parametrizes per file (row 39). That is set aside because a row whose file is gone has no per-file case, and after a sync the author needs one message listing every value to write.
+- Two modules, so neither starts near its own limit (row 91). `claude/.claude/tests/code_file_size.py` holds every function above. `claude/.claude/tests/test_code_file_size.py` holds the three real tests, the controls and the header-phrase constants. The test module imports the functions module as a top-level module, as it imports `helpers`, and no test imports from another test module. Collection picks up only the test module, because the functions module's name does not start with `test_`. The projection splits the check's about 920 lines into about 400 and about 520.
 - Location: `claude/.claude/tests/`, beside the other repo-wide checks (row 51). The epic plan placed it beside `test_ticket_reference_discipline.py` (`.claude/plans/code-file-size-splits.md:255`). That is set aside because the check is not about hooks, and a change to it would then select all of `HOOKS_TESTS_DIR`, which held 35 of F1's offenders (rows 31, 51).
 - The module docstring has three parts:
   - one line stating what the check enforces;
@@ -91,19 +100,19 @@ A new pytest module, `claude/.claude/tests/test_code_file_size.py`, counts the n
 
 **Rules the size test applies to each file.** `evaluate` checks rule 4 first, then rule 2, then rule 3, so each path gets one violation at most.
 1. No row, and over 1,000 lines: kind `no row`. A file at exactly 1,000 lines passes.
-2. A row, and the file is at or under 1,000 lines: kind `under limit`. The line says to remove the row. It prints no `ceiling =` value and no growth remedies.
+2. A row, and the file is at or under 1,000 lines: kind `under limit`. The line says to remove the row's lines and one blank line beside them. It prints no `ceiling =` value and no growth remedies.
 3. A row, and the count is over 1,000 and differs from the ceiling: kind `over ceiling` or `under ceiling`. The line prints the count as the value to write. Only `over ceiling` gets the growth remedies.
-4. A row whose path is not a counted file: kind `not counted`. The line says the path is not a tracked regular `.py`/`.sh` file, and to remove the row, or to move it to the new path after a rename.
+4. A row whose path is not a counted file: kind `not counted`. The line says the path is not a tracked regular `.py`/`.sh` file, and to remove the row's lines and one blank line beside them, or to move the row to the new path after a rename.
 
 - Boundaries: a row of 1,001 at 1,001 lines passes, a row of 1,002 at 1,001 is `under ceiling`, and a row at 1,000 lines is `under limit` only.
-- A row whose `ceiling` is 1,000 or less never reaches `evaluate`. `load_table` rejects it, and `size_report` returns the table problem instead.
+- A row whose `ceiling` is 1,000 or less never reaches `evaluate`. `load_table` rejects it at the schema stage, and `size_report` returns its fixed table-problem line instead.
 
 Rules 2 and 4, and physical-line counting, are the defaults the engineer confirmed (row 9). Rule 3 in both directions is row 1.
 
 **The failure message.** `render` returns one message, in this order. The additions beyond the content row 10 lists are row 77's.
 - A fixed preface line. CI counts this branch merged with `main`, so merge `origin/main` and run the check again before writing any printed value. For a listed file this branch did not change, write nothing and follow the did-not-change procedure at the end.
 - Per-file lines, one per violation, sorted by path in Python `str` order. Each names the path and its physical count, then the action for its kind:
-  - `no row`: a paste-ready row skeleton. It holds the `["<path>"]` header, `ceiling = <N>`, `verdict = "split pending"`, and `seam` set to a placeholder that `load_table` rejects until it is replaced. It names the row the skeleton goes after in sorted order, or says it is the first row. One line under it says a file that cannot be split takes `verdict = "structural exception"` and a `reason` instead, and that the table header says when.
+  - `no row`: a row skeleton. It holds the `["<path>"]` header, `ceiling = <N>`, `verdict = "split pending"`, and `seam` set to a placeholder that `load_table` rejects until it is replaced. `render` writes it with `serialize_row`, so it is already in canonical form. It prints it between two fixed lines, with no prefix or indent, so it pastes unchanged. The line names the path the skeleton goes after: the nearest preceding path among the table's rows and the skeletons printed before it. When there is none, it says the skeleton is the first row. It says rows are separated by one blank line. One line under it says a file that cannot be split takes `verdict = "structural exception"` and a `reason` instead, and that the table header says when.
   - `over ceiling` and `under ceiling`: `ceiling = <N>`. On a structural-exception row, an `over ceiling` line also prints the row's `reason`.
   - `under limit` and `not counted`: the text in the rules above.
 - A rename line, when a `no row` line and a `not counted` line both appear. It says a renamed file's row moves to its new path: change the header to the new path, write the ceiling printed for it, keep the row's other fields, and move the row to its sorted position. It adds that for a rename the skeleton's `seam` placeholder and the remedies below do not apply to that path. The growth remedies still print, because the check has no base and cannot tell a rename from a new file (row 20's first ground).
@@ -117,13 +126,21 @@ Rules 2 and 4, and physical-line counting, are the defaults the engineer confirm
 - A did-not-change procedure, under its own fixed heading line, for a listed file this branch did not change. `render` has no base, so every message prints it, whatever kinds it holds:
   1. Run `git log --oneline origin/main..HEAD -- <path>` and `git status --short -- <path>`. When both print nothing, this branch did not change the file, and the mismatch came from `main`.
   2. Fetch `origin/main`, merge it into the branch, run the check again, and push. The push runs CI on the new merge. Re-running the failed job does not pick up `main` (row 60).
-  3. If the line is still there, `main` itself fails. Look for the open fix with `gh pr list --state open --search 'in:title "code-file-size row fix"'`.
-     - If one is open, check that it applies every line the check prints at `origin/main`'s tip, and push the missing ones to it. Open no second PR.
-     - If none is open, open one PR titled exactly `code-file-size row fix`. It applies every line the check prints at `origin/main`'s tip: a printed value, a new row, or a removed row. A fix that leaves one line unfixed cannot pass `tests`.
-     - Make no edit to the row in this branch (row 47).
+  3. If the line is still there, `main` itself fails. Make no edit to the row in this branch (row 47). Look for an open fix with `gh pr list --state open --search 'in:title "code-file-size row fix"'`. Then report to the person you are working for, or to a maintainer if no one directs your work: that `main` fails, the lines the check printed for files this branch did not change, and any open fix PR the search found. Open a fix PR only on their go-ahead (row 84). With it:
+     - Make a new checkout of `origin/main`'s tip, such as `git worktree add -b <branch> <dir> origin/main`, and run the check there. Your own branch's run also prints lines for files it changed, so its lines are not the fix.
+     - An open fix PR is complete when the check passes on its branch merged with `origin/main`'s tip. Its CI status does not settle this, because its last run can predate the tip (row 60). If one is complete, open nothing and wait for it. When in doubt, treat it as incomplete.
+     - Otherwise, in the new checkout, write every line the check prints there: a printed value, a new row or a removed row. A fix that leaves one line unfixed cannot pass `tests`.
+     - Search again just before opening the PR. Title it exactly `code-file-size row fix`, and name in its body each open fix PR it supersedes, for the merger to close.
+     - Push to no open fix PR's branch, your own included.
   4. This PR stays red until that fix merges, because `tests` is required and only a human merges. Then repeat step 2.
 
   The same route covers two PRs that changed one file to the same new size and merged without a conflict (G2).
+
+  Step 3's reasons:
+  - It reports before it acts, because the engineer ruled that a reader opens a fix PR only on a go-ahead (row 84). A reader no one directs reports to a maintainer, so the step reads correctly for a human contributor as well as a session (row 85). The report also serves a reader who cannot open a PR.
+  - Its completeness test needs no judgment, because the two errors cost differently. Calling an incomplete fix PR complete stalls every red PR behind one that cannot pass `tests`. Calling a complete one incomplete costs one duplicate.
+  - It supersedes an incomplete fix PR rather than pushing to it (row 82). A push would presume write access to the PR's branch and an owner who is not mid-edit on it, and the reader can check neither. Sessions can share one GitHub account, so "your own" cannot be checked either.
+  - A duplicate costs its opener a full review cycle, because in a session running this repository's hooks the commit, the push and the PR creation each pass a review gate (row 86). Two fix PRs that write the same value merge cleanly (G2), so a duplicate breaks nothing, and the second search makes one rarer.
 
 **The exception table.** It is TOML, read with stdlib `tomllib` (row 41). Each row is its own table under a quoted-path header line, followed by `ceiling`, `verdict`, and either `seam` with an optional `issue`, or `reason`. Shape only, with values from F1's pin:
 
@@ -135,34 +152,53 @@ seam = "Test-class families following marker.sh's status and write halves: ..."
 issue = 1530
 ```
 
-- Layout, enforced by `load_table`:
-  - each row is declared by its own `["<path>"]` line, never as an inline table or with dotted keys;
-  - rows are sorted by path, in Python `str` order;
-  - no string value spans lines.
+- Layout is one rule: below the header comment, the text equals `serialize_rows` of its own parsed rows. `tomllib` reads several spellings of one row to the same value, such as an inline table, dotted keys or a `["<path>"]` table, and a literal or a basic string (row 54). No check over parsed values can see layout. Comparing against the canonical text rejects every other spelling by construction, where a list of banned forms needs a new entry for each spelling found. `serialize_rows` writes:
+  - one block per row, sorted by path in Python `str` order, which is code-point order and matches `git ls-files` for UTF-8 paths;
+  - a block's lines in this order: `["<path>"]`, `ceiling = <N>`, `verdict = "<v>"`, then the fields `verdict` selects: for a split-pending row, `seam = "<s>"` followed by `issue = <N>` when the row has one, and for a structural-exception row, `reason = "<r>"`;
+  - one space on each side of `=`, and no comment;
+  - integers in plain decimal, with no sign, separator or leading zero;
+  - every string, the path included, as a one-line basic string. A `\` becomes `\\`, a `"` becomes `\"`, and a character of Unicode category `Cc` becomes `\u` and four uppercase hex digits. Every other character is written as itself. `tomllib` decodes each of those escapes (row 79), so a path holding `"` or `\` can be a row;
+  - one empty line between blocks, none after the last block, and a final `\n`.
 
-  The later row's header line then sits between any two rows' `ceiling` lines, and no length change edits it. Edits to different rows therefore merge cleanly, and two edits to one row conflict (G2). Sorted rows make two branches that add different rows insert at different points instead of both appending at the end.
-- `load_table` runs five stages and stops at the first that reports a problem, so a malformed header does not also report the nested keys it produced. `tomllib` parses an inline-table row, a dotted-key row and a `["<path>"]` row to the same value, so stages 3 and 4 read the raw text (row 54).
-  1. Decode with `tomllib.loads`. A decode error, such as conflict markers or a path declared twice, is one problem. It carries the decoder's message and points at the header's conflict rule.
-  2. Strings: a triple-quote delimiter (`"""` or `'''`) anywhere in the raw text is a problem, and so is a parsed string value holding a line-break character. The first rule covers a multi-line string whose parsed value holds no line break, such as one with a trimmed first newline or a line-ending backslash (row 75). The second covers a single-line string with an escaped `\n`, and its problem says the value holds a line break.
-  3. Headers: the text is split on `\n` only, never with `str.splitlines()`, which also splits on U+2028. Every line whose first non-blank character is `[` must match `^\s*\[\s*"([^"\\]+)"\s*\]\s*(#.*)?$`. That accepts a double-quoted path with optional spaces inside the brackets and an optional trailing comment. Each other form is a problem naming its line:
-     - a bare key such as `[install.sh]`, which `tomllib` reads as a table `install` holding `sh`; the problem says to quote the path, as `["install.sh"]`;
-     - a literal-string header such as `['a.py']`; the problem says to use double quotes;
-     - an array-of-tables header, or a dotted header such as `["a"."b"]`.
-
-     A path holding `"` or `\` would need a TOML escape and cannot be a row. The repository has no such path.
-  4. Rows: the list of header-line paths must equal the list of parsed top-level keys, with no path repeated. A parsed key with no header line was declared as an inline table or with dotted keys, and the problem says to give that row its own `["<path>"]` line. A header line with no parsed key is a problem naming its line. The header paths must be in Python `str` order, which is code-point order and matches `git ls-files` for UTF-8 paths. An out-of-order row is a problem naming the row it belongs after.
-  5. Schema, per row:
+  The later row's header line then sits between any two rows' `ceiling` lines, and no length change edits it. Edits to different rows therefore merge cleanly, and two edits to one row conflict (G2). Sorted rows make two branches that add different rows insert at different points instead of both appending at the end. A clean merge whose result is not canonical fails the layout stage rather than passing.
+- The header comment is the file's leading run of lines that, with leading spaces and tabs stripped, are empty or begin with `#`.
+  - `split_header_comment` finds it after replacing `\r\n` with `\n`, as `tomllib.loads` does (row 79).
+  - It splits lines on `\n` only, because U+2028 is legal in a comment and `str.splitlines()` splits on it (row 75).
+  - Nothing in that run is TOML content. `tomllib` skips spaces and tabs before each statement, then reads such a line as blank or as a comment (row 87), and no string can open before the run ends.
+  - Every line after it is checked. A comment between or inside rows therefore fails the layout stage, and a comment directly above the first row joins the header comment.
+  - Taking everything above the first `[` line as the header is set aside, because a dotted-key first row would join it.
+- `load_table` runs three stages and stops at the first that reports a problem. A schema problem is then never shown as a diff, and the layout stage only serializes rows that passed the schema.
+  1. Decode the bytes as UTF-8, then with `tomllib.loads`. Any failure is one problem. Failures include conflict markers, a path declared twice, an unquoted path holding `/`, a raw `"` inside a string, and bytes that are not UTF-8. One `except ValueError` catches each, because `UnicodeDecodeError` and `TOMLDecodeError` both subclass it (row 88). The problem carries the error's message, points at the header's conflict rule, and prints the rules block from the layout stage, which gives the quoted-header form and the string escapes.
+  2. Schema, per row, reporting every problem with its row:
+     - A top-level value that is not a table, which an array-of-tables header produces, is a problem saying to declare the row with its own `["<path>"]` line.
+     - A row holding a table is a problem, and that row gets no other problem. `tomllib` reads a bare or dotted header as nested tables, and places an inline-table or dotted-key row written below another row inside that row (row 54). The message depends on what else the row holds:
+       - nothing but tables: it says to quote each whole path, joining the nested keys with `.` down to each table that holds fields or nothing, and lists every such path. A bare `[install.sh]`, read as a table `install` holding `sh`, says to write `["install.sh"]`, and `[install.sh]` with `[install.py]` lists both;
+       - fields as well: it names the nested key as a row written inside this one, and says to give it its own `["<path>"]` line.
      - The key set is closed.
      - `ceiling` is an `int`, not a `bool`, and is over 1,000.
      - `verdict` is exactly `split pending` or `structural exception`, F1's literals (row 37).
-     - A split-pending row needs a non-empty `seam`, and may carry `issue`, a positive `int`.
-     - A structural-exception row needs a non-empty `reason`, and takes no `issue`.
+     - A split-pending row needs a non-empty `seam`, takes no `reason`, and may carry `issue`, a positive `int` that is not a `bool`.
+     - A structural-exception row needs a non-empty `reason`, and takes no `seam` or `issue`.
+     - `seam` and `reason` hold no character of Unicode category `Cc`, `Zl` or `Zp`, because the message prints them on one line. This covers a single-line string with an escaped `\n`, and a multi-line string whose value holds a line break. The problem says the value holds a line break.
      - A `seam` or `reason` equal to the skeleton's placeholder is a problem.
+  3. Layout. The text, with `\r\n` replaced by `\n`, must equal its header comment followed by `serialize_rows` of its parsed rows. A difference is one problem, printed in this order:
+     - the rules block, a module constant with one rule per line:
+       - each row is a `["<path>"]` line, then `ceiling`, `verdict`, and `seam` with an optional `issue`, or `reason`, in that order;
+       - one space on each side of `=`, and integers in plain decimal;
+       - strings are one-line basic strings, with `\"` for `"` and `\\` for `\`;
+       - rows sorted by path, one blank line between rows, none after the last, and exactly one final newline;
+       - no trailing whitespace, and no comment below the header comment;
+     - one line on reading the diff: `-` lines are yours and `+` lines are canonical, and the line numbers after `-` are your file's;
+     - `difflib.unified_diff` from the file, labelled `yours`, to that expected text, labelled `canonical`, over lines split on `\n`, with one line of context. Both sides carry the header comment, so the line numbers after `-` are the file's. Those after `+` drift from them after a hunk that changes the line count;
+     - only the diff's first 40 lines, its two label lines included, because a whole-file difference, such as fields reordered in every row, would otherwise print every row. One line then says how many were left out, and that a file this far from canonical is quicker to restore with `git checkout origin/main -- code-file-size-exceptions.toml` and edit again by hand.
+
+     Each other spelling shows as a hunk with its canonical line beside it: an inline-table or dotted-key first row, a literal or triple-quoted string, an integer with `_`, a trailing comment, extra spaces, a misplaced blank line, or a row out of order. A whitespace-only difference, such as trailing spaces or a missing final newline, shows as two lines that look alike or as a lone `+` or `-`. The rules block's trailing-whitespace and final-newline rules name it, and the plan accepts that limit. A triple-quoted string can never equal the canonical text, so no raw-text ban on it survives. The one raw-text rule left is the header comment's boundary above.
 - Header comment:
   - what the file is, and its fields;
   - how to choose a verdict, one line per literal, after findings.md's verdict rule (row 37);
   - that the table is the split backlog, ranked by exposure, with the recipe in the decision record;
-  - the conflict rule: resolve conflicts in code files first, then keep either side of each table conflict, run the check, and write the values it prints (`.claude/plans/code-file-size-splits.md:247`);
+  - the layout rule: copy the layout of the neighbouring rows, and run the shape test, which prints the canonical form's rules and the diff to apply when the file departs from them;
+  - the conflict rule: resolve conflicts in code files first. In the table, keep every row and every field change from both sides, with added rows in sorted order, and where both sides changed one row's `ceiling`, keep either value. Then run the check and write the values it prints (`.claude/plans/code-file-size-splits.md:247`);
   - the split rule: each new part of a split returns from one default Read call with no `PARTIAL view` notice, and a part that does not is split further, or the PR says why not (row 62);
   - pointers to the check, the decision record, and `docs/reports/2026-11-19-code-file-size-offenders/findings.md` for verdict rationale and the review bench's harness-closure files.
 - Location: the repository root. That is not a stow package, and no domain rule matches it, so a row edit selects only the check, through its own rule. Under `claude/.claude/tests/`, every row edit would select the whole `CLAUDE_TESTS_DIR` domain (row 31). In F1's window, most commits changed an offender's length and would carry a row edit (334 of 509, findings.md's `ceiling_edit_load`).
@@ -180,7 +216,7 @@ issue = 1530
    - a structural exception's reason becomes `reason`;
    - `proposed (not filed)` and `; closure-windows` are dropped (rows 5, 6, 38).
 
-   The five judgment calls stay as recorded (row 13).
+   The five judgment calls stay as recorded (row 13). A scratch script under `agent-reviews/` writes the rows through the module's `serialize_rows`, so the table starts in canonical form.
 4. `claude/.claude/tests/helpers.py` keeps its structural-exception verdict. Its reason reads that #1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file (rows 7, 8). It adds that a helper one test tree uses goes in that tree's local module, only if Verification step 0 finds that guidance in #1015 (row 65). The message prints this reason beside each `over ceiling` line for the file.
 5. An offender F1 did not assess gets a verdict under F1's verdict rule, with a seam named from an outline (row 37). A seam counts only when parts can move without changing how the file is loaded, invoked or installed, so a file whose only seams would change that is a structural exception. The PR description lists each one for the engineer to correct.
 6. An F1 offender no longer over 1,000 lines gets no row. The PR description lists each one.
@@ -196,23 +232,35 @@ issue = 1530
   4. push.
 - The did-not-change procedure does not apply to this PR. Every row is its own, and `main` has no table, so the session writes the printed values.
 - The PR description tells the merger to:
-  1. update the branch from `main` with a merge commit, not a rebase, immediately before merging;
+  1. update the branch from `main` with a merge commit, not a rebase, immediately before merging. If GitHub reports a conflict or offers no update, stop: a session runs the final sync above and pushes, and the merger starts again at step 1 (row 89);
   2. wait for a green `tests` on the resulting commit. If a size line fails, the session runs the final sync above and pushes, and the merger waits again. A line other than a changed ceiling needs the session's judgment, not a one-value edit;
   3. merge promptly once it is green, as one squash commit.
 - It also states two consequences (G1):
-  - a PR that merges after that green run and changes an offender's length leaves `main` failing, along with each open PR that has a changed path outside `tests.yml`'s skip list (row 59), until a one-row fix lands by the message's route;
+  - a PR that merges after that green run and changes an offender's length leaves `main` failing. So does the next run of each open PR with a changed path outside `tests.yml`'s skip list (row 59). Both stay red until a one-row fix lands by the message's route;
   - an open PR that changes an offender's length fails its next run until it edits that row.
-- It names the rollback unit: revert the squash commit. If the revert conflicts, remove these together: the check module, the table, `SUPPLEMENTARY_RULES` with its constants and the `main` call that applies it, the table's `CROSS_DOMAIN_EXCEPTIONS` row, and this branch's `test_select_tests.py` additions. Removing only some of them fails CI, through the existence tests over `_FILE_TARGETS` and `_EXACT_MATCH_LITERAL_PATH_CONSTANTS` (row 58).
+- It names the rollback unit: revert the squash commit. Once a later PR has edited the table or `select-tests.py`, that revert conflicts, so the usual route is to remove these together:
+  - the check module;
+  - the table;
+  - `SUPPLEMENTARY_RULES`, with its constants and the `main` call that applies it;
+  - the table's `CROSS_DOMAIN_EXCEPTIONS` row;
+  - this branch's `test_select_tests.py` additions.
 
-**PR description.** It carries `Fixes GH-1119`, the Landing items above, and these:
+  Removing only some of them fails CI, through the existence tests over `_FILE_TARGETS` and `_EXACT_MATCH_LITERAL_PATH_CONSTANTS` (row 58). The edits to the decision record, `REFERENCES.md` and findings.md revert with the unit, so no doc describes a check that is gone. An open PR that edited the table resolves its conflict by deleting the file.
+
+**PR description.** It carries `Fixes GH-1119`, the Landing items above with the final sync's four steps in full, so a session that has not read this plan can run them, and these:
 - Needs engineer action. This change performs none of them:
   - GH-1113's task-list line "Further files get an issue each from F1's 'split pending' verdicts", which contradicts the record, and its unchecked box for GH-1119 (row 6);
   - a comment on #1396 pointing at the `helpers.py` row, whose reason says #1015 governs (rows 7, 8).
-- Record text that is this session's wording, for the engineer to correct: the reason the record gives for filing no per-file issue (row 64).
-- Three departures from GH-1119's F2 text, one line each with its reason (row 71):
+- Text that is this session's wording, for the engineer to correct:
+  - the reason the record gives for filing no per-file issue (row 64);
+  - the message's preface line and its "If this branch changed the file" heading (row 77);
+  - the did-not-change procedure's step 3 wording of the report-first route (row 85).
+- Four departures from GH-1119's text, one line each with its reason (rows 5, 71). Three are from its F2 section:
   - the check lives in `claude/.claude/tests/`, not beside `test_ticket_reference_discipline.py`;
   - it is selected through a supplementary-rules table that `main` applies, not a `select-tests.py` exception;
   - split-pending rows carry `seam` where F2 asks every row for a non-empty reason.
+
+  One is from its F1 section: a split-pending row carries an `issue` only where one exists, where F1 pairs each split-pending verdict with the issue that tracks the split.
 - The new offenders with their verdicts, the dropped offenders and any seam misses (Verification step 3).
 - The decision record's correction, which the record itself does not narrate (row 25).
 - The GitHub documentation pages behind rows 60 and 61 (Verification step 0).
@@ -314,22 +362,51 @@ issue = 1530
 - Message controls, asserting on `render`'s text:
   - the remedy block is found by its heading line and parsed by line, and its lines numbered 1 to 3 carry the three remedies in order. The did-not-change procedure's own numbering cannot satisfy it, and a swapped order fails it;
   - both prohibitions appear, and the preface line and the remedy heading's "If this branch changed the file" appear by their fixed text;
-  - the did-not-change procedure carries its `git log` and `gh pr list` commands, the fixed fix-PR title, and step 3's "every line the check prints" wording. A message holding only an `under limit` line still prints it;
+  - the did-not-change procedure carries, by fixed text:
+    - its `git log`, `gh pr list` and `git worktree add` commands, and the fixed fix-PR title;
+    - step 3's report-to clause and its go-ahead condition;
+    - the completeness test, with its "When in doubt, treat it as incomplete" sentence;
+    - the "every line the check prints there" wording, the search-again clause, the clause that a new fix PR names each one it supersedes, and the no-push clause.
+
+    A message holding only an `under limit` line still prints the procedure;
   - the rename line carries its sorted-position clause and its clause that the placeholder and remedies do not apply;
-  - a `no row` skeleton, with its placeholder replaced and inserted after the row it names, makes `load_table` report no problem. With the placeholder left in, `load_table` rejects it;
+  - a `no row` skeleton, extracted unchanged from between its two fixed lines in `render`'s text, with its placeholder replaced and inserted after the path its line names, separated by one blank line, makes `load_table` report no problem. With the placeholder left in, `load_table` rejects it at the schema stage. Of two `no row` files that sort next to each other, the second's line names the first;
   - an `over ceiling` line on a structural-exception row prints the row's `reason` and qualifies remedies 1 and 2, and one on a split-pending row does not;
   - a `no row` line and a `not counted` line together add the rename line once, and either alone does not;
-  - an `under limit` line prints no `ceiling =` value and no remedy block;
+  - an `under limit` line prints no `ceiling =` value and no remedy block, and says to remove one blank line beside the row;
   - a `not counted` line says "not a tracked regular `.py`/`.sh` file".
-- Shape controls, on `load_table` over text:
-  - accepted: a header with a trailing comment, a header with spaces inside its brackets, a non-ASCII path, a path with a space, and a trailing comment holding U+2028 followed by header-shaped text, which adds no header;
-  - rejected, each with a problem naming its row: an inline-table row, a dotted-key row, a bare `[install.sh]` header whose problem says to quote the path, a literal-string header, an array-of-tables header, a single-line string with an escaped `\n`, a triple-quoted string whose first newline is trimmed, a triple-quoted string continued with a line-ending backslash, rows out of order whose problem names the row it belongs after, and each schema rule's violation, `ceiling = true`, a missing `ceiling` and `ceiling = 1000` included;
-  - conflict-marker text and a path declared twice each give one decode problem that points at the header's conflict rule.
+- Shape controls, on `load_table` over UTF-8 text. Each rejected case asserts the stage that reports it:
+  - accepted:
+    - a header comment followed by `serialize_rows` of rows covering both verdicts, an `issue`, a non-ASCII path, a path with a space, and a path holding `"` and `\`;
+    - the same text, header comment included, with `\r\n` line ends;
+    - a header-only table;
+    - a header comment holding an indented comment line and a whitespace-only line;
+    - a header comment line holding U+2028 followed by header-shaped text, which adds no row;
+  - decode stage, one problem that points at the conflict rule and prints the rules block: conflict-marker text, a path declared twice, an unquoted header holding `/`, and bytes that are not UTF-8;
+  - schema stage, each problem naming its row:
+    - a bare `[install.sh]` header, whose one problem says to write `["install.sh"]`, and `[install.sh]` with `[install.py]`, whose one problem lists both quoted paths;
+    - an inline-table row and a dotted-key row each written below another row, whose problem names it as a row written inside that one;
+    - an array-of-tables header, and a top-level key that is not a table;
+    - a single-line string with an escaped `\n`, and a multi-line string whose value holds a line break;
+    - each schema rule's violation, including `ceiling = true`, a missing `ceiling`, `ceiling = 1000`, `issue = true`, a structural row with a `seam`, and a split-pending row with a `reason`;
+  - layout stage, each a diff holding the canonical line:
+    - first-row spellings: an inline-table first row and a dotted-key first row;
+    - header spellings: a literal-string header, and a header with spaces inside its brackets;
+    - comments: a trailing comment on a header and on a field, and a comment between rows;
+    - string forms: a literal-string value, a triple-quoted value whose first newline is trimmed, and a triple-quoted value continued with a line-ending backslash;
+    - integer forms: `ceiling = 1_234`;
+    - order and spacing: `issue` before `seam`, rows out of order, two blank lines between rows, a blank line after the last row, and no final newline;
+  - a layout problem holds the rules block, its final-newline and trailing-whitespace rules included, and the diff's `yours` and `canonical` labels;
+  - text with both a schema problem and a layout difference reports only the schema problem;
+  - 50 canonical rows sit behind a header comment of at least two lines, with a trailing comment on one middle row's `ceiling` line. The diff has one hunk. Its `-` range starts one line above that `ceiling` line's file line number, for the one line of context, and it holds no other row's header line;
+  - a trailing comment on every row's `ceiling` line shows the diff's first 40 lines, its two label lines included, then the count left out and the restore line.
+- Round-trip control: `tomllib.loads(serialize_rows(rows))` equals `rows` over rows of both verdicts and a split-pending row with an `issue` and one without. Its paths hold `"`, `\`, a tab, U+0085 and non-ASCII text, and its `seam` and `reason` values hold `"`, `\` and non-ASCII text. No real row exercises those escapes, so this control is their only exercise (row 80).
+- Golden-text control: `serialize_rows` of the shape example's one row equals that example's literal text plus a final `\n`. It is the format's one anchor that does not pass through the serializer, so a serializer that drops a field fails it.
 - `size_report` controls, over synthetic counts and table text:
-  - conflicted text, a missing `ceiling` and `ceiling = true` each return one table-problem line, raise nothing, and produce no rule line;
-  - counts that all match their rows return `None`;
-  - one mismatched row returns text holding that path and the printed value.
-- Reporting control: `fail_with_report` on a multi-line report fails with exactly that text, and on `None` returns.
+  - conflicted text, a missing `ceiling` and `ceiling = true` each return exactly the fixed table-problem line, which names the shape test's node id, and raise nothing;
+  - a layout-only difference with one mismatched row returns `render`'s text holding that path and the printed value, and with matching counts returns `None`;
+  - over canonical text, counts that all match return `None`, and one mismatched row returns text holding that path and the printed value.
+- Reporting control: `fail_with_report` on a multi-line report raises `pytest.fail.Exception` with exactly that text and `pytrace` false, and on `None` returns.
 - Perturbation control, in memory over the real counts. Its baseline is an exact row, `{path: count}`, for every counted path over 1,000 lines, so it does not depend on the real table and runs with a header-only one. It first asserts that the baseline is non-empty and that `evaluate` returns nothing for it. `Violation` compares by value over kind, path, count and ceiling. Each perturbation of the baseline's first path in sorted order then yields exactly one violation, asserted in full:
   - lowering its ceiling by one gives `over ceiling`, with that lowered ceiling;
   - dropping its row gives `no row`;
@@ -348,18 +425,18 @@ issue = 1530
 - G4. The repository is public, and this plan file ships in the PR. Reason: visibility is a GitHub setting. `[verified: CLAUDE.md, opening paragraph and "Plans in this repo affect all stow users"]`
 
 **Mechanisms:**
-- M1 — One check module in `claude/.claude/tests/`, built from named functions: the line counter, the index-listing parser, the enumerator taking `repo_root`, the table loader, the evaluator returning structured violations, the renderer, and the size test's body. The two real tests wrap them. `anchors: root, row9, row35, row39, row40, row43, row44, row51, row68, row70, row73, row74`
-- M2 — A root-level TOML table, one `["<path>"]` table per row, sorted by path, with a closed schema, validated from its text in five stages. It is heavier than an in-module literal. The Approach gives three lighter primitives and why each fails. `anchors: G2, row1, row5, row6, row31, row37, row41, row42, row54, row75`
+- M1 — A functions module and a test module in `claude/.claude/tests/` (row 91). The functions module is built from named functions: the line counter, the index-listing parser, the enumerator taking `repo_root`, the table loader, the header-comment splitter, the evaluator returning structured violations, the renderer, and the size test's body. The three real tests wrap them. `anchors: root, row9, row35, row39, row40, row43, row44, row51, row68, row70, row73, row74, row83`
+- M2 — A root-level TOML table, one `["<path>"]` table per row, sorted by path, with a closed schema. It is validated in three stages: decode, schema, and equality with the canonical serialization of its own rows below a header comment of leading comment lines. It is heavier than an in-module literal. The Approach gives three lighter primitives and why each fails. Canonical equality replaces a list of banned raw-text forms, because each review round had found another spelling `tomllib` accepts. `anchors: G2, row1, row5, row6, row31, row37, row41, row42, row54, row75, row79, row80, row81, row87, row88`
 - M3 — Row rules with a fixed precedence: no row over 1,000 fails, a row must equal the count, and a row at or under 1,000 or for an uncounted path fails. `anchors: row1, row2, row3, row9`
-- M4 — One failure message: per-file lines with a row skeleton or a value, the rename line, the remedy block qualified for structural rows, the prohibitions, and the did-not-change procedure. `anchors: G1, G2, row9, row10, row20, row47, row59, row60, row61, row77`
+- M4 — One failure message: per-file lines with a row skeleton or a value, the rename line, the remedy block qualified for structural rows, the prohibitions, and the did-not-change procedure, which reports a failing `main` before any fix PR is opened. `anchors: G1, G2, row9, row10, row20, row47, row59, row60, row61, row77, row82, row84, row85, row86`
 - M5 — `SUPPLEMENTARY_RULES`, applied by `add_supplementary_targets` in `main` after `select_pytest_targets`, plus one `CROSS_DOMAIN_EXCEPTIONS` row for the table. It is heavier than one more `CROSS_DOMAIN_EXCEPTIONS` row. The Approach gives the lighter primitives, the in-function placement's churn, and why each fails. `anchors: root, row29, row30, row31, row32, row33, row55, row56, row57, row58`
 - M6 — Population from the check's own output, F1's verdicts carried verbatim, and drift in the PR description. `anchors: G1, row4, row5, row7, row8, row13, row36, row37, row38, row48, row49, row65`
 - M7 — Decision-record correction in place with no supersession line, plus the `REFERENCES.md` and `findings.md:136` sibling edits. `anchors: row11, row12, row15, row16, row19, row20, row21, row22, row23, row24, row25, row26, row27, row50, row52, row59, row62, row63, row64, row66, row69, row76, row78`
 - M8 — The epic plan stays unedited. `anchors: row28`
-- M9 — The check's own tests: the vacuity guard; the counting, parser, enumeration, rule, message, shape and table-problem controls; the perturbation control; and the table row's selection case. `anchors: row34, row35, row39, row40, row41, row54, row70`
-- M10 — Three dispatches: the check and its selection; the population; the docs. Dispatches 1 and 3 neither stage nor commit. `anchors: row33, row46, row53, row72`
-- M11 — Landing: a merge-based final sync as the last act before the merge, the merger's steps, one squash commit, and the rollback unit. `anchors: G1, row17, row45, row58, row59, row67`
-- M12 — The PR description's engineer-action list and the three departures from GH-1119's F2 text. `anchors: row6, row7, row8, row10, row69, row71`
+- M9 — The check's own tests: the vacuity guard; the counting, parser, enumeration, rule, message, shape, round-trip, golden-text, table-problem and reporting controls; the perturbation control; the header test; and the table row's selection case. `anchors: row34, row35, row39, row40, row41, row54, row70, row73, row79, row80, row87, row88`
+- M10 — Three dispatches: the check and its selection; the population; the docs. Dispatches 1 and 3 neither stage nor commit. Dispatch 1 passes on exit 0 with the real size test deselected. `anchors: row33, row46, row53, row72, row90`
+- M11 — Landing: a merge-based final sync as the last act before the merge, the merger's steps with a stop when GitHub cannot update the branch, one squash commit, and the rollback unit. `anchors: G1, row17, row45, row58, row59, row67, row89`
+- M12 — The PR description's engineer-action list, its session-wording list, and the four departures from GH-1119's text. `anchors: row5, row6, row7, row8, row10, row64, row69, row71, row77, row85`
 
 **Assumptions:**
 1. `[engineer-verified: "Back to exact, both directions (Recommended)"]` The label answered "Which ceiling semantics should F2 build?". The tag covers one point: a row passes only when its file's physical count equals its ceiling, so a shrink lowers the row.
@@ -374,7 +451,7 @@ issue = 1530
    - physical-line counting;
    - the failure message's content, remedy order and prohibitions;
    - failing a row whose file is gone or whose stored size is at or under 1,000.
-10. Those defaults' content: the message prints the file, its count, and the value to write or "remove the row", then lists the three remedies in order, and forbids positional splits and fitting by deleting comments or joining lines. `[verified: .claude/plans/code-file-size-splits.md:243-254, :552-555]` That GH-1119's own F2 section states the same is `[unverified — relayed: the round-1 staff-product-engineer review read the issue and reports a match on message content, remedy order and prohibitions; the issue was not read by this architect]`. Verification step 0 settles it.
+10. Those defaults' content: the message prints the file, its count, and the value to write or "remove the row", then lists the three remedies in order, and forbids positional splits and fitting by deleting comments or joining lines. `[verified: .claude/plans/code-file-size-splits.md:243-254, :552-555]` That GH-1119's own F2 section states the same, on message content, remedy order and prohibitions, is `[verified: relayed — gh issue view 1119, read by the round-3 staff-product-engineer]`. Verification step 0 re-reads it.
 11. `[engineer-verified: "Second basis, verified in splits (Recommended)"]` The label answered "How should F2 treat the Read cap?".
 12. `[unverified]` The proposal behind row 11's label, Context's third proposal bullet, was the dispatching session's. This plan adopts it.
 13. `[engineer-verified: "Keep all five as recorded (Recommended)"]` The label answered what F2's rows say for the five F1 verdicts PR #1546 listed as judgment calls. Which five they are is `[unverified — PR #1546's body was not read by this architect]`. Step 3 of the population carries every F1 verdict unchanged, so the result does not depend on which five.
@@ -422,7 +499,7 @@ issue = 1530
 51. `claude/.claude/tests/` holds repo-wide checks such as `test_ci_path_filter.py`, `test_ci_workflow_gates.py` and `test_pytest_collection_config.py`. `claude/.claude/hooks/tests/` held 35 of F1's offenders. `[verified: Glob of claude/.claude/tests/; .claude/plans/f1-offender-assessment.md:240]`
 52. `[engineer-verified: "Include both (Recommended)"]` The label answered whether this change includes two edits GH-1119's F2 section does not name: `claude-skills/skills/code-review/REFERENCES.md:218-221`, and one dated superseded line at findings.md:136.
 53. `[engineer-verified: "Proceed anyway"]` The label answered "This plan projects about 1,100 changed lines (an estimate; threshold 400). Split into smaller PRs now, or proceed?".
-54. `tomllib` parses `"a.py" = { ceiling = 1001 }`, `"a.py".ceiling = 1001` and a `["a.py"]` table holding `ceiling = 1001` to the same value. It reads a bare `[install.sh]` header as a table `install` holding `sh`. It raises `TOMLDecodeError` on conflict markers and on a path declared twice. `[verified: relayed — round-1 staff-sdet R2 and staff-platform-engineer R4, scratch-directory probes; not rerun by this architect]` The shape controls check each again.
+54. `tomllib` parses `"a.py" = { ceiling = 1001 }`, `"a.py".ceiling = 1001` and a `["a.py"]` table holding `ceiling = 1001` to the same value when each comes first. That is why layout needs a check over the text. `[verified: relayed — round-1 staff-sdet R2 and staff-platform-engineer R4, scratch-directory probes; not rerun by this architect]` It splits a bare or dotted header key on `.` into nested tables, so `[install.sh]` reads as a table `install` holding `sh`. A `[[...]]` header appends a table to a list. A key-value line belongs to the most recent header, so an inline-table or dotted-key row below another row lands inside it. It raises `TOMLDecodeError` on a line that starts with none of a key character, `[` or `#`, which covers conflict markers, and "Cannot declare ... twice" on a path declared twice. `[verified: CPython 3.14.10 Lib/tomllib/_parser.py:181-196, :365-405, :408-439, :458-493, the interpreter the repository's venv names]` The shape controls check each again.
 55. Adding the target inside `select_pytest_targets` would change about 45 to 51 exact-set assertions on `target_paths`, tuple-equality sites at `test_select_tests.py:1203, :1215, :1227, :1498`, and the exact-argv assertions at `:3192` and `:3281`. `[verified: relayed — round-1 staff-sdet R4, a static AST scan; not rerun by this architect]` Applying it in `main` changes only `:3192` and `:3281`. The `:3317` case keeps its argv because `CLAUDE_TESTS_DIR` already covers the check, and the other `main` tests that pass a `.py` path assert on stderr text or call order. `[verified: test_select_tests.py:3140-3373, :3385-3405, :3842-3867]`
 56. `main` calls `select_pytest_targets` once, between `compute_changed_paths` and `resolve_target_paths`. The only caller outside `select-tests.py` and its tests passes `.md` paths. `[verified: select-tests.py:1385-1393; test_transcript_routing_guard_capture.py:5280-5287]`
 57. `test_every_domain_target_sits_under_a_full_suite_root` requires every rule-table target to sit under a `FULL_SUITE_TARGETS` root, and `claude/.claude/` is one. `[verified: test_select_tests.py:2756-2764; select-tests.py:553]`
@@ -439,23 +516,40 @@ issue = 1530
 68. `DOCS_DIR`'s row selects `HOOKS_TESTS_DIR` and `SKILLS_TESTS_DIR`, which do not cover `claude/.claude/tests/`. A module-level `REPO_ROOT` chain to a `docs/` file would therefore fail the read-completeness scan. `[verified: select-tests.py:1046]` That the scan resolves such a chain is `[verified: relayed — round-1 staff-platform-engineer R8]`.
 69. The record's first Revisit bullet asks whether the assessment finds an unreasonable number or shape of exceptions. `[verified: docs/design-decisions/code-file-line-limit.md:59-63]` Row 76 is the engineer's ruling on it.
 70. Six current offenders have mode `100755`, `install.sh` among them at 1,080 lines. `[verified: relayed — round-1 staff-sdet R2 and R6, git ls-files --stage at HEAD; not rerun by this architect]`
-71. `[unverified — relayed from the round-1 staff-product-engineer review; the issue not read by this architect]` GH-1119's F2 text says the check "lives beside `test_ticket_reference_discipline.py`, with its own `select-tests.py` exception" and that "every exception row needs a non-empty reason". Verification step 0 confirms the wording.
+71. GH-1119's F2 text says the check "lives beside `test_ticket_reference_discipline.py`, with its own `select-tests.py` exception" and that "every exception row needs a non-empty reason". Its F1 text says a split-pending verdict comes "with the issue that tracks the split", which row 5 departs from. `[verified: relayed — gh issue view 1119, read by the round-3 staff-product-engineer]` Verification step 0 re-reads the wording for the PR description's departures list.
 72. `[engineer-verified: "Proceed anyway"]` The label answered a second question, asked after this revision projected about 1,510 changed lines against the about 1,100 named in row 53's question: "Split into smaller PRs now, or proceed as one?".
-73. `[unverified — relayed from the round-2 staff-platform-engineer review, which read pytest 8.4.2's `_pytest/assertion/rewrite.py:440-475` but ran no test]` A bare `assert report is None` shows a string through a repr capped at 240 characters, or 2,400 with `-v`, while `pytest.fail(report, pytrace=False)` prints it verbatim. Verification step 4 settles it.
+73. `[unverified — relayed from the round-2 staff-platform-engineer review, which read pytest 8.4.2's `_pytest/assertion/rewrite.py:440-475` but ran no test]` A bare `assert report is None` shows a string through a repr capped at 240 characters, or 2,400 with `-v`, while `pytest.fail(report, pytrace=False)` prints it verbatim. Verification step 4 settles it. `pytest.fail`'s documented contract for `pytrace=False` is "msg represents the full failure information and no python traceback will be reported". `[verified: the venv's _pytest/outcomes.py:163-177]`
 74. `claude/.claude/scripts/tests/conftest.py` strips `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR` and `GIT_INDEX_FILE`, `claude/.claude/tests/` has no conftest, and `helpers.py` provides `isolated_git_env`. `[verified: relayed — round-2 staff-platform-engineer R4, conftest.py:100 and helpers.py:3987; not reopened]`
-75. `tomllib` parses a triple-quoted string with a trimmed first newline, or with a line-ending backslash, to a value holding no line break, and a header-shaped line inside one matches the stage-3 pattern. U+2028 is legal in a TOML comment, and `str.splitlines()` splits on it. `[verified: relayed — round-2 staff-sdet R3, scratch probes on Python 3.14; not rerun]` The shape controls check each again.
+75. `tomllib` trims a triple-quoted string's first newline and drops a line-ending backslash with the whitespace after it. A multi-line string written either way can parse to a value holding no line break, which no check over values tells from a one-line string. `[verified: CPython 3.14.10 Lib/tomllib/_parser.py:562-575, :612-615]` A comment may hold any character but ASCII control characters other than tab, so U+2028 is legal in one. `[verified: _parser.py:33, :43]` `str.splitlines()` splits on U+2028. `[verified: relayed — round-2 staff-sdet R3, scratch probes on Python 3.14; not rerun]` The shape controls check each again.
 76. `[engineer-verified: "Assessed, limit stands (Recommended)"]` The label answered what the record should say about its first Revisit bullet, in a question that gave the assessment's 112 offenders of 685 files, 89 test and 23 production.
 77. `[engineer-verified: "Accept the additions (Recommended)"]` The label answered whether to accept the message's additions beyond row 10's content: the row skeleton, the rename hint, the structural row's reason and qualifier, and the did-not-change procedure. The preface line and the "If this branch changed the file" heading came after that answer, from round 2, and are `[unverified]` session additions.
 78. `[engineer-verified: "No trigger now (Recommended)"]` The label answered "Should the decision record carry [a Revisit trigger tied to the exception table itself]?".
+79. In a one-line basic string, `tomllib` decodes `\\`, `\"` and a `\u` escape of four hex digits in either case, and rejects a `\u` escape that is not a Unicode scalar value. It accepts every other character raw except ASCII control characters other than tab. `tomllib.loads` replaces `\r\n` with `\n` before parsing. The serializer's output therefore parses back to the rows it came from, and a checkout with CRLF line ends passes once the layout stage normalizes the same way. `[verified: CPython 3.14.10 Lib/tomllib/_parser.py:33-63, :150, :576-600, :643-664]` CI's Python may be a later 3.14 release. A later `tomllib` that accepts more spellings changes nothing, because the layout stage rejects every spelling but the serializer's, and the round-trip control fails if one of the serializer's escapes stops decoding.
+80. F1's offender table holds no `"` or `\` in any cell, so no real row exercises the serializer's escapes. `[verified: Grep of findings.md's 186 table lines]`
+81. `[engineer-verified: "Accept canonical form (Recommended)"]` The label answered whether to accept, as what the plan delivers, a table layout enforced by one rule: below its header comment, the file equals the check's canonical serialization of its rows, with a diff printed on mismatch. The question named two side effects: a comment between or inside rows fails, and paths holding `"` or `\` become allowed.
+82. `[engineer-verified: "Supersede, don't push (Recommended)"]` The label answered whether to accept the did-not-change procedure's changed step 3: an incomplete open fix PR is superseded by a new complete one whose body names it, and no session pushes to another contributor's branch.
+83. `[engineer-verified: "Accept (Recommended)"]` The label answered whether the shape test reports through `fail_with_report`, as the size test does.
+84. `[engineer-verified: "Report, act on go-ahead"]` The label answered "Should the message tell the session to open the fix PR itself, or to report to the engineer and act only on their go-ahead?", asked about the did-not-change procedure for a `main` that itself fails the check. Row 82 still governs a fix PR once one is opened.
+85. `[unverified]` The option description behind row 84's label was the dispatching session's wording, not the engineer's. Step 3's wording is this architect's, including one extension of the label to human contributors: a reader no one directs reports to a maintainer.
+86. In this repository's hooks, `/code-review` gates a commit, and `/ready-for-review` gates a push to a branch with an open PR and a PR creation. `[verified: claude/.claude/hooks/require-code-review.sh:4; claude/.claude/hooks/require-ready-for-review.sh:4-6]`
+87. `tomllib` skips spaces and tabs at the start of each statement, then reads a line that ends there as blank and a `#` as a comment. `[verified: CPython 3.14.10 Lib/tomllib/_parser.py:162-199]`
+88. `TOMLDecodeError` and `UnicodeDecodeError` both subclass `ValueError`. `[verified: _parser.py:71; the interpreter's Lib/test/exception_hierarchy.txt:52-54]` `tomllib.loads` raises `ValueError` on a 5,000-digit integer and `RecursionError` on inline tables nested 3,000 deep. `[verified: relayed — round-3 staff-sdet R5, probes on 3.14.10; not rerun by this architect]` The `RecursionError` stays uncaught, because no cooperative edit produces it and the test still fails.
+89. `[unverified]` GitHub offers no branch update while the branch conflicts with its base. Verification step 0 confirms it. If it does not hold, the merger's stop clause never fires and costs nothing.
+90. pytest's `--deselect` takes a node id prefix and may be repeated. `[verified: the venv's _pytest/main.py:134-138]`
+91. `[engineer-verified: "Split from the start (Recommended)"]` The label answered how the plan handles `claude/.claude/tests/code_file_size.py`, the check's functions in their own module, which round 3's additions put into the approved file list. The question's option description, a functions module always created with tests and controls in `test_code_file_size.py`, was the dispatching session's wording.
+92. `[engineer-verified: "Proceed anyway"]` The label answered a third question, asked after round 3's fixes projected about 1,680 changed lines against the about 1,510 of row 72's answer: "Split into smaller PRs now, or proceed?".
 
 ## Critical files
 
 **Dispatch 1, `code-writer`: the check and its selection.** It neither stages nor commits, because the check enumerates the shared index.
-- Create `claude/.claude/tests/test_code_file_size.py`, holding the functions, the two real tests and every control.
-- Create `code-file-size-exceptions.toml` with only its header comment.
+- Create `claude/.claude/tests/code_file_size.py`, holding the functions.
+- Create `claude/.claude/tests/test_code_file_size.py`, holding the three real tests and every control.
+- Create `code-file-size-exceptions.toml` with only its header comment, which carries every bullet under "Header comment".
 - Modify `claude/.claude/scripts/select-tests.py`: two constants, `_is_code_file_change`, `SUPPLEMENTARY_RULES`, `add_supplementary_targets` and its call in `main`, one docstring line, and one `CROSS_DOMAIN_EXCEPTIONS` row.
 - Modify `claude/.claude/scripts/tests/test_select_tests.py`: the two constant lists, the three target collectors, the two argv assertions, and the new cases.
-- Verification: `scripts/venv-run.sh pytest claude/.claude/tests/test_code_file_size.py claude/.claude/scripts/tests/test_select_tests.py -n0`. Every control passes, the perturbation control included. The real size test fails, listing every offender, until dispatch 2 runs.
+- Verification, two commands:
+  1. `scripts/venv-run.sh pytest claude/.claude/tests/test_code_file_size.py claude/.claude/scripts/tests/test_select_tests.py -n0 --deselect claude/.claude/tests/test_code_file_size.py::test_code_file_sizes` exits 0 (row 90). Every control passes, as do the shape test and the header test over the header-only table.
+  2. `scripts/venv-run.sh pytest claude/.claude/tests/test_code_file_size.py::test_code_file_sizes -n0` reports exactly one failure until dispatch 2 runs. Its output lists every offender with its count, and holds the remedy block's heading and the did-not-change heading. Populating the table or loosening the check to make it pass is dispatch 2's scope, not this one's.
 
 **Dispatch 2, `code-writer`, after dispatch 1: the population.**
 - Modify `code-file-size-exceptions.toml` with every row, per "Populating the table". The reconciliation lists go to a scratch file under `agent-reviews/` for the PR description, not to a tracked file.
@@ -468,24 +562,28 @@ issue = 1530
 - Modify `docs/reports/2026-11-19-code-file-size-offenders/findings.md`: one superseded line at the Proposed-issues paragraph.
 - Verification: `scripts/venv-run.sh pytest claude/.claude/hooks/tests/test_design_decision_files.py claude-skills/skills/tests/test_skill_citation_grammar.py -n0`.
 
-**Reuse:** `helpers.REPO_ROOT` and `helpers.init_git_repo` for the throwaway-repository controls; `tomllib`; `os.fsdecode`; F1's `wc -l` cross-check command (findings.md:573); the precedent's corpus-guard pattern; and, in `select-tests.py`, the existing `(predicate, targets)` tuple shape, `_is_under` and `SelectionResult._replace`.
+**Reuse:** `helpers.REPO_ROOT` and `helpers.init_git_repo` for the throwaway-repository controls; `tomllib`; `difflib.unified_diff` for the layout diff; `unicodedata.category` for the escape and line-break rules; `os.fsdecode`; F1's `wc -l` cross-check command (findings.md:573); the precedent's corpus-guard pattern; and, in `select-tests.py`, the existing `(predicate, targets)` tuple shape, `_is_under` and `SelectionResult._replace`.
 
-Projected diff: about 1,560 changed lines. The table is about 580, the check module about 800 after round 2's added controls, the decision record about 75, `test_select_tests.py` about 60, `select-tests.py` about 40, and the two sibling docs about 6. Against the earlier projection of about 1,100, the check module grew with its named seams and added controls. `test_select_tests.py` shrank, because the supplementary target no longer reaches the domain-mapping assertions. Row 72's answer was given at about 1,510, before round 2 added about 50 lines of controls.
+Projected diff: about 1,680 changed lines. The table is about 580, the check module about 920, the decision record about 75, `test_select_tests.py` about 60, `select-tests.py` about 40, and the two sibling docs about 6. Against the earlier projection of about 1,100, the check module grew with its named seams and added controls. `test_select_tests.py` shrank, because the supplementary target no longer reaches the domain-mapping assertions. Row 72's answer was given at about 1,510. Round 2 then added about 50 lines of controls. The canonical-form check then swapped the header regex, the row matching and the sort check, about 50 lines, for the serializer, the layout diff, the nesting messages and the round-trip control, about 60. Round 3 then added about 110: the header splitter and the header test, the rules block, the per-stage table-problem report, the report-first step 3, the schema's cross-field rules, and their controls.
 
 ## Verification
 
 0. Before dispatch 1:
    - Read GH-1119's F2 section with `gh issue view 1119`. Compare its failure-message content, remedy order and prohibitions against row 10. A difference stops the work for the engineer. Confirm row 71's quoted wording for the PR description's departures list.
    - Read #1015 with `gh issue view 1015`. Population step 4 adds the local-module clause only if #1015 states it (row 65).
-   - Confirm rows 60 and 61 against GitHub's documentation through a `verify-sources` dispatch, quoting the lines that settle them. The same dispatch confirms that GitHub's branch update offers a merge commit and a rebase, which Landing's merger step 1 relies on.
+   - Confirm rows 60 and 61 against GitHub's documentation through a `verify-sources` dispatch, quoting the lines that settle them. The same dispatch confirms that GitHub's branch update offers a merge commit and a rebase, which Landing's merger step 1 relies on, and that it offers no update while the branch conflicts with its base (row 89).
      - If row 60 does not hold, the did-not-change procedure's step 2 drops its re-run sentence.
      - If row 61 does not hold, its step 3 gives a search that works.
    - Each row's tag becomes `[verified: <page>]` before the message text is committed.
    - The PR description names the pages.
-1. Dispatch 1's command, with a header-only table: every control passes, and the size test's output lists every offender with its count. Save that output under `agent-reviews/`.
+1. Dispatch 1's two commands, with a header-only table: the first exits 0, and the second fails only the size test, whose output lists every offender with its count. Save that output under `agent-reviews/`.
 2. That list equals F1's cross-check command (findings.md:573), run at HEAD. The paths and counts match, except where a tracked symlink is involved, which the check excludes by mode.
-3. Each row's verdict and seam or reason match findings.md for every offender F1 assessed, except `helpers.py`'s reason (rows 7, 8, 65). The seam-symbol scratch check has run. The PR description lists the new offenders with their verdicts, the dropped offenders, and any seam misses.
-4. Live probe, as first-run evidence, while no dispatch is running: lower one real row's ceiling by one. The size test then fails, naming that path and its true count. Run it once at default verbosity and once with `-v`: both outputs hold the remedy block's heading and the did-not-change heading in full, which settles row 73. Restore the row. The perturbation control keeps this property under test afterwards.
+3. Each row's verdict, its seam or reason, and its `issue` match findings.md for every offender F1 assessed, except `helpers.py`'s reason (rows 7, 8, 65). The seam-symbol scratch check has run. The PR description lists the new offenders with their verdicts, the dropped offenders, and any seam misses.
+4. Live probes, as first-run evidence, while no dispatch is running. Restore the table after each:
+   1. Lower one real row's ceiling by one, and run the size test once at default verbosity and once with `-v`. Each run fails, naming that path and its true count, and each output holds the remedy block's heading and the did-not-change heading in full. This settles row 73.
+   2. Add a trailing comment to one real row's `ceiling` line, and run the shape test and the size test at default verbosity. The shape test prints that row's diff hunk in full. The size test passes, because a layout problem alone does not stop the size rules.
+
+   The perturbation, shape and `size_report` controls keep these properties under test afterwards.
 5. Grep for `code-file-line-limit` with glob `**/*.py` finds `claude/.claude/tests/test_code_file_size.py` (row 44).
 6. `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. It selects the full suite on its own, because `select-tests.py` changed (row 33).
 7. `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` passes.
@@ -510,6 +608,8 @@ Projected diff: about 1,560 changed lines. The table is about 580, the check mod
 - **A Revisit trigger tied to the table**, such as a row count or repeated raises of one row. The engineer ruled it out for now (row 78).
 - **Measuring how often equal-delta pairs merge cleanly.** The record states that the rate is unmeasured.
 - **Re-checking seams or `issue` state on every run.** The seam check runs once, at population step 7. A recurring check would need seams in a parseable form, and a network call for issue state.
+- **A command that rewrites the table into canonical form.** The edits contributors make, a printed value, a pasted skeleton or a removed row, already keep the canonical form, and the shape test's diff names each edit when one does not. A writer would also be a second entry point into the module.
+- **Updating one's own open fix PR.** Row 82's ruling supersedes an incomplete fix PR rather than pushing to it, and sessions sharing one GitHub account make "own" uncheckable.
 - **Announcing the limit in `CLAUDE.md` or `README.md`.** The failure message carries the remedy, and an always-loaded line is a separate context-cost decision.
 - **Splitting any offender.**
 - **The redaction hook's scope gap.** #1542 tracks it (row 50).
