@@ -11,14 +11,47 @@ Run with: pytest claude/.claude/
 from __future__ import annotations
 
 import ast
+import importlib.util
 import os
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from _timing_split import SERIAL_PASS_MARKER_EXPRESSION, TIMING_MARKER, TimingMarkScan, scan_timing_marks
 from helpers import REPO_ROOT
+from pytest import ExitCode
+
+_SELECT_TESTS_SCRIPT = REPO_ROOT / "claude" / ".claude" / "scripts" / "select-tests.py"
+_select_tests_spec = importlib.util.spec_from_file_location("select_tests", _SELECT_TESTS_SCRIPT)
+_select_tests = importlib.util.module_from_spec(_select_tests_spec)
+_select_tests_spec.loader.exec_module(_select_tests)
+FULL_SUITE_TARGETS = _select_tests.FULL_SUITE_TARGETS
+
+CPU_SATURATING_TEST_FILE = _select_tests.CPU_SATURATING_SHIM_TEST_PATH
+CPU_SATURATING_TEST_NODE_ID = (
+    f"{CPU_SATURATING_TEST_FILE}::TestShimHookRun::"
+    "test_a_hook_that_prints_a_deny_and_exits_at_once_denies_every_time_under_cpu_contention"
+)
+# A real test file under a directory that norecursedirs prunes, so the scan must list it as neither marked nor unmarked.
+PRUNED_FIXTURE_TEST_FILE = "evals/fixtures/temp-project/tests/test_calculator.py"
+# A failed collect-only prints its error after the node-ID listing, so the stdout tail holds the error and the head is noise.
+COLLECTION_FAILURE_STDOUT_TAIL_LINES = 40
+
+
+@dataclass(frozen=True)
+class _TimingCollections:
+    """The collect-only results the timing-marker parity tests share."""
+
+    not_timing_ids: list[str]
+    timing_ids: list[str]
+    all_ids: list[str]
+    timing_files: list[str]
+    scan: TimingMarkScan
+    serial_deselected_ids: list[str]
+    serial_deselected_result: subprocess.CompletedProcess | None
 
 
 class TestNestedWorktreeExcludedFromCollection:
@@ -204,16 +237,22 @@ class TestTimingMarkerCoverageParity:
     silently broken. This does NOT catch a test losing its `timing` marker
     — `not timing` and `timing` are complementary by construction, so a
     test moving between the two buckets leaves their sum unchanged
-    regardless."""
+    regardless.
+
+    The `timing` collection also pins that select-tests.py's scan marks every file pytest collects a `timing` test
+    from. A fourth collection pins that the serial pass's expression deselects the CPU-saturating `timing` test.
+    One class-scoped fixture runs all four collections for the tests below."""
 
     @staticmethod
-    def _collected_node_ids(marker_expr: str | None) -> tuple[list[str], subprocess.CompletedProcess]:
+    def _collected_node_ids(
+        marker_expr: str | None, targets: tuple[str, ...] | list[str] = FULL_SUITE_TARGETS,
+    ) -> tuple[list[str], subprocess.CompletedProcess]:
         # -n0: unnecessary defensive redundancy, not a requirement — xdist's
         # own pytest_configure() unconditionally skips itself on
         # --collect-only regardless of -n, so this collect-only run was
         # never going to spawn workers even without it.
         args = [
-            sys.executable, "-m", "pytest", "claude/.claude/",
+            sys.executable, "-m", "pytest", *targets,
             "--collect-only", "-q", "-n0", "--rootdir", str(REPO_ROOT),
         ]
         if marker_expr is not None:
@@ -228,20 +267,100 @@ class TestTimingMarkerCoverageParity:
         node_ids = [line for line in result.stdout.splitlines() if "::" in line]
         return node_ids, result
 
-    def test_not_timing_plus_timing_selection_equals_unfiltered_total(self):
+    @pytest.fixture(scope="class")
+    def collections(self) -> _TimingCollections:
+        # Under xdist this fixture runs once in each worker that receives one of its requesting tests.
         not_timing_ids, not_timing_result = self._collected_node_ids("not timing")
         timing_ids, timing_result = self._collected_node_ids("timing")
         all_ids, all_result = self._collected_node_ids(None)
-
         for result in (not_timing_result, timing_result, all_result):
+            stdout_tail = "\n".join(result.stdout.splitlines()[-COLLECTION_FAILURE_STDOUT_TAIL_LINES:])
             assert result.returncode == 0, (
-                f"collection failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
+                f"collection failed (exit {result.returncode}); stderr:\n{result.stderr}\n"
+                f"last {COLLECTION_FAILURE_STDOUT_TAIL_LINES} stdout lines:\n{stdout_tail}"
             )
 
-        assert len(not_timing_ids) + len(timing_ids) == len(all_ids), (
-            f'-m "not timing" selected {len(not_timing_ids)}, -m timing selected '
-            f"{len(timing_ids)}, but the unfiltered run collected {len(all_ids)} — "
+        timing_files = sorted({node_id.split("::", 1)[0] for node_id in timing_ids})
+        # An empty target list would make pytest collect the whole rootdir, so the subset run needs a guard.
+        serial_deselected_ids, serial_deselected_result = (
+            self._collected_node_ids(f"{TIMING_MARKER} and not ({SERIAL_PASS_MARKER_EXPRESSION})", timing_files)
+            if timing_files
+            else ([], None)
+        )
+        return _TimingCollections(
+            not_timing_ids=not_timing_ids,
+            timing_ids=timing_ids,
+            all_ids=all_ids,
+            timing_files=timing_files,
+            scan=scan_timing_marks(FULL_SUITE_TARGETS, [], repo_root=REPO_ROOT),
+            serial_deselected_ids=serial_deselected_ids,
+            serial_deselected_result=serial_deselected_result,
+        )
+
+    def test_not_timing_and_timing_selections_sum_to_the_unfiltered_total(self, collections):
+        assert len(collections.not_timing_ids) + len(collections.timing_ids) == len(collections.all_ids), (
+            f'-m "not timing" selected {len(collections.not_timing_ids)}, -m timing selected '
+            f"{len(collections.timing_ids)}, but the unfiltered run collected {len(collections.all_ids)} — "
             "pytest's mark-filtering disagrees with itself across these three invocations"
+        )
+
+    def test_the_scan_marks_every_file_pytest_collects_a_timing_test_from(self, collections):
+        assert collections.timing_ids, "-m timing collected no test, so the scan check below would pass vacuously"
+        assert collections.scan.marked_files, "the scan found no file holding the timing mark text in the real tree"
+
+        unmarked_timing_files = sorted(set(collections.timing_files) - set(collections.scan.marked_files))
+
+        assert not unmarked_timing_files, (
+            f"pytest collects a timing test from {unmarked_timing_files}, whose text lacks the mark; the serial pass "
+            "skips a test file whose text lacks the mark, so the mark must sit in the file pytest collects the test from"
+        )
+
+    def test_the_unfiltered_collection_holds_a_test_under_every_full_suite_root(self, collections):
+        roots_without_ids = [
+            root for root in FULL_SUITE_TARGETS if not any(node_id.startswith(root) for node_id in collections.all_ids)
+        ]
+
+        assert not roots_without_ids, f"the unfiltered collection holds no test ID under {roots_without_ids}"
+
+    def test_the_scan_prunes_the_evals_fixtures_sample_project_as_pytest_does(self, collections):
+        assert (REPO_ROOT / PRUNED_FIXTURE_TEST_FILE).is_file(), f"{PRUNED_FIXTURE_TEST_FILE} no longer exists"
+
+        scanned_files = [*collections.scan.marked_files, *collections.scan.unmarked_test_files]
+
+        assert PRUNED_FIXTURE_TEST_FILE not in scanned_files, (
+            f"the scan lists {PRUNED_FIXTURE_TEST_FILE}; it must prune what pyproject.toml's norecursedirs prunes"
+        )
+
+    def test_the_serial_pass_expression_deselects_the_cpu_saturating_test(self, collections):
+        assert collections.serial_deselected_result is not None, (
+            "-m timing collected no test, so the serial expression had no file to collect from"
+        )
+        serial_deselected_result = collections.serial_deselected_result
+        assert serial_deselected_result.returncode in (ExitCode.OK, ExitCode.NO_TESTS_COLLECTED), (
+            f"collection failed (exit {serial_deselected_result.returncode}):\n"
+            f"{serial_deselected_result.stdout}\n{serial_deselected_result.stderr}"
+        )
+
+        assert serial_deselected_result.returncode == ExitCode.OK and CPU_SATURATING_TEST_NODE_ID in (
+            collections.serial_deselected_ids
+        ), (
+            f"the serial pass's expression does not deselect {CPU_SATURATING_TEST_NODE_ID}. Either the test lost its "
+            "saturates_cpu mark or no longer carries timing beside it, or the test or its class was renamed: "
+            "update CPU_SATURATING_TEST_NODE_ID in the same change as the rename."
+        )
+
+    def test_scan_prunes_a_worktrees_directory_as_the_real_norecursedirs_does(self, tmp_path):
+        shutil.copy(REPO_ROOT / "pyproject.toml", tmp_path / "pyproject.toml")
+        marked_test_text = f"@pytest.mark.{TIMING_MARKER}\ndef test_x():\n    pass\n"
+        for relative_path in ("worktrees/test_x.py", "kept/test_x.py"):
+            (tmp_path / relative_path).parent.mkdir(parents=True)
+            (tmp_path / relative_path).write_text(marked_test_text)
+
+        scan = scan_timing_marks(["."], [], repo_root=tmp_path)
+
+        assert scan == TimingMarkScan(("kept/test_x.py",), ()), (
+            f"the scan must list kept/test_x.py and prune worktrees/test_x.py as pyproject.toml's norecursedirs does, "
+            f"got {scan}"
         )
 
 

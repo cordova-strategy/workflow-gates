@@ -592,7 +592,7 @@ Test trees under `claude/.claude/` that carry their own `conftest.py` are Python
   - Checks ahead of xdist's own core-count detection.
   - Applies to both a direct `scripts/venv-run.sh pytest` run and `select-tests.py`.
   - Wins over `select-tests.py`'s own sizing, which defers whenever the variable is already set.
-- Or pass `-n <N>` on the command line for a single run. It wins over both. `select-tests.py` forwards it through to pytest.
+- Or pass `-n <N>` on the command line for a single run. It wins over both. In a `select-tests.py` split run, only the parallel pass honors it (see the split-run list below).
 - When running several suites at once, size it as logical cores divided by the number of concurrent runs you expect (e.g. a 16-core machine expecting four concurrent runs → `-n 4`). Check xdist's startup banner to confirm a run picked up the value.
 - Agents' Bash-tool subprocesses inherit the environment `claude` had at launch rather than reading the shell live, so export it before starting that session — setting it afterward in a running session's terminal won't reach that session's test runs.
 
@@ -605,6 +605,30 @@ scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py
 ```
 
 This is the required local command for agents, including in `/ready-for-review`. CI still runs the whole suite on every PR and main push — a deliberate choice, see [`docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md`](docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md).
+
+`select-tests.py` splits a run into two pytest passes, as CI does:
+
+- It runs a parallel pass for everything not marked `timing`, then a serial `-n0` pass for the `timing` tests.
+- The serial pass leaves out tests marked `saturates_cpu`, each of which starts one busy process per CPU core. CI's serial step runs them.
+  - A split run never runs them, so `-m saturates_cpu` selects nothing in a split run.
+  - To run them locally, pass `-n 0 -m saturates_cpu`, which runs one unsplit pass, or run `scripts/venv-run.sh pytest <file> -m timing -n0`.
+- The serial pass skips every unmarked test file found by walking a selected directory, where unmarked means the file's text lacks `mark.timing`. Both passes collect a test file named directly, whether you name it or the selection does, and whether or not it holds the mark. The mark must therefore sit in the file pytest collects the test from, and `test_pytest_collection_config.py` fails CI otherwise.
+- In a split run, modes that list the collected tests, such as `--collect-only`/`--co` and `--fixtures-per-test`, print each pass's share, and the two shares together omit `saturates_cpu` tests. `--setup-plan` prints no setup-plan lines from the parallel pass, because xdist discards its workers' output. Modes that collect nothing, such as `--version`, `--help` and `--markers`, print the same output once per pass. Add `-n 0` to get one complete listing.
+- It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
+- It runs one unsplit pass instead, as before, when:
+  - you pass `-n 0`;
+  - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 0 or less, and your `-n`, if any, is `auto` or `logical`;
+  - an argument starts with `@`;
+  - an argument is a bare `--`;
+  - neither a selected file nor a path you pass contains `mark.timing`.
+- Your arguments reach both passes, and the serial pass's `-n0` overrides your `-n`.
+- A `-m` you pass combines as `(<expr>) and not timing` and `(<expr>) and timing and not saturates_cpu`. A `-m` inside a flag cluster such as `-vm`, or in `PYTEST_ADDOPTS`, is not recognized, and each pass's own `-m` overrides it.
+- It does not read `PYTEST_ADDOPTS` or `--pdb` when it decides whether to split.
+- It exits with the first non-zero code, the parallel pass's first. A pass that collected no tests, exit 5, defers to the other unless both did.
+- Each pass writes report files such as `--junitxml` once, so the serial pass's file replaces the parallel pass's.
+- A run where both passes fail may lose the parallel pass's `tmp_path` directories.
+- The serial pass removes only this run's own sibling-worker load, not load from other processes on the machine.
+- The interpreter that runs it must be able to import pytest.
 
 Set `test_selection_tracking = true` in `<config-dir>/claude-config.toml` (off by default) to log every `select-tests.py` invocation's selection outcome to `<config-dir>/.test-selection-log.jsonl`, one JSON line per invocation. Each line always records the selection reason. For a full-suite fallback, it also records which changed path triggered it. When that invocation computed a load-aware worker count, it also records the worker count and the 1-minute load average. This makes fallback-to-full-suite frequency measurable instead of a stderr line that scrolls away. Like [`.permission-prompt-log.jsonl`](docs/permission-prompt-tracking.md#known-limitations), the log is append-only with no automatic rotation; trim it manually if disk space or data age is a concern. Its invocation frequency is structurally higher than that log's, since it appends on every `select-tests.py` run rather than only on an interactive permission dialog.
 
