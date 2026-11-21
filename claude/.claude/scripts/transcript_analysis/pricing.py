@@ -16,9 +16,11 @@ from typing import NamedTuple
 from transcript_analysis.corpus import SUBAGENT_SUBDIR
 
 # Labels persist in pr-cost ledger model_breakdown and review_rounds cells; never rename or remove one.
-# Older checkouts do not tolerate an added label. Their routing-guard capture validator rejects it and reports the whole
-# sample NOT RUN, pr-cost-export drops it from review_rounds, and review-cost-by-size cannot price its group.
-# A new label therefore needs a routing_guard._CAPTURE_REVISION decision and a CHANGELOG Migration line.
+# A new label needs a routing_guard._CAPTURE_REVISION decision and a CHANGELOG Migration line,
+# because older checkouts do not tolerate it:
+# - the routing-guard capture validator rejects it and the whole sample reports NOT RUN;
+# - pr-cost-export drops it from review_rounds;
+# - review-cost-by-size cannot price its group.
 # A new class also needs a mapping in _token_counts and a rate in _rates_from_base.
 _TOKEN_CLASSES: tuple[str, ...] = ("cache_read", "cache_write_5m", "cache_write_1h", "output", "input")
 
@@ -122,10 +124,14 @@ class _LongPromptTier(NamedTuple):
     base_input_rate: float
 
 
+# Remove a model's _LONG_PROMPT_TIERS row only together with its _MODEL_BASE_INPUT_RATES row. Removing only the tier row:
+# - leaves its stored long-prompt groups unpriceable;
+# - prices its over-threshold turns at the lower tier with no notice.
+# Adding a tier row for a model that already has captured groups leaves those groups under non-long-prompt labels,
+# repriced at the lower tier with no notice.
+# A new row therefore needs a routing_guard._CAPTURE_REVISION decision
+# or the remedy in "Known gaps" of the routing-guard section of docs/transcript-analysis.md.
 # A turn whose _context_at_turn is over threshold_tokens pays base_input_rate in place of its _MODEL_BASE_INPUT_RATES row.
-# Removing a row leaves every stored long-prompt group of that model unpriceable.
-# Removing a row while keeping the model's _MODEL_BASE_INPUT_RATES row prices its over-threshold turns at the lower tier
-# with no notice.
 _LONG_PROMPT_TIERS: dict[str, _LongPromptTier] = {
     # Claude Haiku 5.5's over-100,000-token row, fetched 2026-11-20.
     "claude-haiku-5-5": _LongPromptTier(threshold_tokens=100_000, base_input_rate=0.50),
@@ -681,14 +687,14 @@ def _price_turn(model: str, usage: dict) -> tuple[dict[str, float] | None, int, 
 def _pricing_variant(model: str, usage: dict) -> str:
     """The _PRICING_VARIANTS label for the rates _price_turn applies to this usage.
 
-    usage.speed/usage.inference_geo report the API's settled outcome, not an
-    echo of the request, so no per-model eligibility list is needed: exact "fast"
-    speed and exact "us" inference_geo, no case-folding. Neither field is in
-    _USAGE_DRIFT_INVARIANT_KEYS, so a non-run-invariant value on either gets no
-    runtime drift canary today -- a known, accepted gap. The long-prompt condition
-    reads the record's top-level fields. When usage.iterations is present, the
-    top-level input_tokens sums the non-compaction iterations, and whether the cache
-    fields do is unconfirmed. The vendor's compaction page states the input sum:
+    usage.speed and usage.inference_geo report the API's settled outcome, not an echo of the request,
+    so no per-model eligibility list is needed.
+    The match is exact: "fast" speed and "us" inference_geo, with no case-folding.
+    Neither field is in _USAGE_DRIFT_INVARIANT_KEYS, so a non-run-invariant value on either gets no runtime drift canary,
+    a known and accepted gap.
+    The long-prompt condition reads the record's top-level fields.
+    When usage.iterations is present, the top-level input_tokens sums the non-compaction iterations,
+    and whether the cache fields do is unconfirmed. The vendor's compaction page states the input sum:
     https://platform.claude.com/docs/en/build-with-claude/compaction-threshold
     """
     tier = _LONG_PROMPT_TIERS.get(model)

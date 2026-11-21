@@ -53,6 +53,16 @@ class TestLongPromptTierRates:
         us_geo_rates = pricing._rates_for_variant(_HAIKU_5_5, "us_geo_long_prompt")
         assert us_geo_rates == pytest.approx({cls: rate * 1.1 for cls, rate in long_prompt_rates.items()})
 
+    @pytest.mark.parametrize(
+        "label,rate_multiplier",
+        [("fast_long_prompt", 2), ("fast_us_geo_long_prompt", 2 * 1.1)],
+    )
+    def test_fast_applies_to_all_five_token_classes_of_the_higher_tier(self, label, rate_multiplier):
+        long_prompt_rates = pricing._rates_for_variant(_HAIKU_5_5, "long_prompt")
+        label_rates = pricing._rates_for_variant(_HAIKU_5_5, label)
+        assert set(label_rates) == set(pricing._TOKEN_CLASSES)
+        assert label_rates == pytest.approx({cls: rate * rate_multiplier for cls, rate in long_prompt_rates.items()})
+
     @pytest.mark.parametrize("label", pricing._PRICING_VARIANTS)
     def test_every_label_prices_a_fixed_input_at_its_literal_dollars(self, label):
         dollars = pricing._price_token_counts(_HAIKU_5_5, label, {"input": 1_000_000})
@@ -123,6 +133,28 @@ class TestLongPromptTierSelection:
     def test_each_fast_and_geo_combination_on_a_long_prompt_gets_its_own_label(self, label, speed_and_geo_fields):
         usage = {**_haiku_usage(input=_THRESHOLD + 1), **speed_and_geo_fields}
         assert pricing._pricing_variant(_HAIKU_5_5, usage) == label
+
+    def test_a_synthetic_tier_selects_and_prices_by_its_own_threshold_and_rates(self, monkeypatch):
+        """The mechanism reads the tier row, not Haiku's constants: threshold 50,000, base $1.00, long $4.00 per MTok."""
+        synthetic_model = "claude-synthetic-tiered-sentinel"
+        monkeypatch.setitem(pricing._MODEL_BASE_INPUT_RATES, synthetic_model, 1.00)
+        monkeypatch.setitem(pricing._LONG_PROMPT_TIERS, synthetic_model, pricing._LongPromptTier(50_000, 4.00))
+        at_threshold = _priced(synthetic_model, input=50_000)["message"]["usage"]
+        over_threshold = _priced(synthetic_model, input=50_001)["message"]["usage"]
+
+        assert pricing._pricing_variant(synthetic_model, at_threshold) == "standard"
+        assert pricing._pricing_variant(synthetic_model, over_threshold) == "long_prompt"
+        assert pricing._rates_for_variant(synthetic_model, "standard") == pytest.approx(
+            {"input": 1.00, "cache_write_5m": 1.25, "cache_write_1h": 2.00, "cache_read": 0.10, "output": 5.00}
+        )
+        assert pricing._rates_for_variant(synthetic_model, "long_prompt") == pytest.approx(
+            {"input": 4.00, "cache_write_5m": 5.00, "cache_write_1h": 8.00, "cache_read": 0.40, "output": 20.00}
+        )
+        at_threshold_dollars, _context, _unpriced = pricing._price_turn(synthetic_model, at_threshold)
+        over_threshold_dollars, _context, _unpriced = pricing._price_turn(synthetic_model, over_threshold)
+        # 50,000 tokens at $1.00/MTok = $0.05; 50,001 tokens at $4.00/MTok = $0.200004.
+        assert at_threshold_dollars["input"] == pytest.approx(0.05)
+        assert over_threshold_dollars["input"] == pytest.approx(0.200004)
 
     def test_variant_terms_hold_each_condition_combination_once(self):
         condition_count = len(pricing._VariantTerms._fields)

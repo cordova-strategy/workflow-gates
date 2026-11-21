@@ -5418,8 +5418,8 @@ def _documented_capture_grep_command() -> str:
             in_fence = not in_fence
         elif in_fence:
             fence_lines.append(line.strip())
-    grep_commands = [line for line in fence_lines if line.startswith("grep ")]
-    assert len(grep_commands) == 1, "the routing-guard section must hold exactly one grep fence line"
+    grep_commands = [line for line in fence_lines if line.startswith("grep ") and "claude-haiku-5-5" in line]
+    assert len(grep_commands) == 1, "the routing-guard section must hold exactly one Haiku 5.5 grep fence line"
     return grep_commands[0]
 
 
