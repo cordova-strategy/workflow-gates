@@ -2,17 +2,17 @@
 
 ## Context
 
-Goal: give the review benchmark the small-sample decision statistics and the calibration tool that the agreed decision rule needs, as tooling only, with no change to any verdict the benchmark can produce today.
+Goal: give the review benchmark the small-sample decision statistics that the agreed decision rule needs, as tooling only, with no change to any verdict the benchmark can produce today. The calibration tool that exercises them ships in a follow-up PR.
 
 Ask: "yes begin" — the engineer's answer to the session's question "shall I begin PR 1?", where PR 1 was the architect's first step: new statistic functions in `evals/review_bench/analysis.py`, a `calibrate` subcommand, tests and a README line, changing no verdict.
 
-The review benchmark (`evals/review_bench/`) decides whether a capacity-aware read rule may replace "read every changed file fully" for reviewer agents. Its interval for the recall difference is a percentile cluster bootstrap. Synthetic simulations run in this session, using no model, showed that statistic falsely adopts a rule that is 5 percentage points worse more often than its nominal 2.5%, at 15 to 40 fixtures. A sign-flip test on per-fixture differences and a per-fixture linearized t-interval held nearer the nominal rate, and the same holds for pooled precision, a ratio. The decision rule built on them (margins, floors, two error-budget slots, a ledger) lands in a later PR whose constants depend on calibration runs this PR makes possible. The decision record is `~/.local/state/gh1114-src/decision-record-2026-11-20.md`, and the simulation drafts `gh1114-sim3.py` and `gh1114-sim4.py` sit in the same directory. The drafts live outside the repo; port them, do not copy.
+The review benchmark (`evals/review_bench/`) decides whether a capacity-aware read rule may replace "read every changed file fully" for reviewer agents. Its interval for the recall difference is a percentile cluster bootstrap. Synthetic simulations run in this session, using no model, showed that statistic falsely adopts a rule that is 5 percentage points worse more often than its nominal 2.5%, at 15 to 40 fixtures. A sign-flip test on per-fixture differences and a per-fixture linearized t-interval held nearer the nominal rate, and the same holds for pooled precision, a ratio. The decision rule built on them (margins, floors, two error-budget slots, a ledger) lands in a later PR whose constants depend on calibration runs the follow-up calibrate PR makes possible. The decision record is `~/.local/state/gh1114-src/decision-record-2026-11-20.md`, and the simulation drafts `gh1114-sim3.py` and `gh1114-sim4.py` sit in the same directory. The drafts live outside the repo; port them, do not copy.
 
 Scope of this PR: new stdlib-only decision functions in `analysis.py` (sign-flip test on per-fixture differences, per-fixture linearized pooled-precision difference with a t-interval and a sign-flip test) and their tests in a new `evals/test_review_bench_decision_statistics.py`. The parameterized `calibrate` subcommand that runs those functions on synthetic scenarios, with its tests and a README usage line, is a follow-up PR with its own plan review. M7 to M9, Dispatch 2 and Verification steps 4 to 7 below are carried over for that PR and are not part of this one. Not in this PR: the ledger, gate logic, constants changes, the case study, the skill, any edit to `.claude/plans/measure-review-quality.md`.
 
 ## Approach
 
-Add standard-library-only decision statistics to `evals/review_bench/analysis.py` that nothing in `analyze` calls yet. Add a `calibrate` subcommand whose new module, `evals/review_bench/calibrate.py`, feeds synthetic per-defect counts through those production functions and prints false-adopt and power rates. Recall and pooled precision are both treated as a ratio of per-fixture sums and linearized per fixture. That one shape feeds two statistics:
+Add standard-library-only decision statistics to `evals/review_bench/analysis.py` that nothing in `analyze` calls yet. The follow-up PR (M7 to M9) adds a `calibrate` subcommand whose new module, `evals/review_bench/calibrate.py`, feeds synthetic per-defect counts through those production functions and prints false-adopt and power rates. Recall and pooled precision are both treated as a ratio of per-fixture sums and linearized per fixture. That one shape feeds two statistics:
 - a t-interval, using an exact Student t quantile for integer degrees of freedom;
 - a one-sided sign-flip test of H0 "difference = −delta", exact by meet-in-the-middle enumeration up to 20 fixtures and a seeded Monte Carlo above that.
 
@@ -23,12 +23,12 @@ Alternatives weighed:
 - **Equal weight per fixture for recall**, the mean of each fixture's mean difference. It is simpler. But when fixtures hold unequal defect counts it estimates a different quantity than the existing defect-weighted recall difference, so delta would change meaning (row 11).
 - **Plug-in centering for recall too** (`residual + estimate + delta`, as precision uses). Recall has an exactly H0-centered per-fixture value, so the plug-in only adds approximation.
 - **The t quantile by other means.** See M2's over-powered check.
-- **Calibrate on raw arrays, as the drafts do.** It would measure a copy of the statistics, not the functions PR 2 gates on.
-- **The calibrate CLI test in `evals/test_review_bench_cli.py`.** That file is 7,124 lines and its docstring lists the subcommands it covers. `cmd_calibrate` is a thin adapter over `calibrate.py`, so its test sits with calibrate's own (row 19).
+- **Calibrate on raw arrays, as the drafts do** (follow-up PR). It would measure a copy of the statistics, not the functions PR 2 gates on.
+- **The calibrate CLI test in `evals/test_review_bench_cli.py`** (follow-up PR). That file is 7,124 lines and its docstring lists the subcommands it covers. `cmd_calibrate` is a thin adapter over `calibrate.py`, so its test sits with calibrate's own (row 19).
 
 ### Assumption ledger
 
-**Root:** The bench's only decision statistic, a percentile cluster bootstrap, falsely adopts a rule 5 points worse more often than its nominal 2.5% at 15 to 40 fixtures (Context). PR 2 cannot set the decision rule's constants until the agreed replacement statistics exist, along with a tool that calibrates their error rates on synthetic data. Adding them must change no verdict the bench produces today.
+**Root:** The bench's only decision statistic, a percentile cluster bootstrap, falsely adopts a rule 5 points worse more often than its nominal 2.5% at 15 to 40 fixtures (Context). PR 2 cannot set the decision rule's constants until the agreed replacement statistics exist, along with a tool that calibrates their error rates on synthetic data. This PR adds the statistics and the follow-up PR adds the tool. Neither may change a verdict the bench produces today.
 
 **Givens:**
 - G1. The bench's statistics use the standard library only. Reason: a numerical dependency needs the engineer's named-package confirmation under `CLAUDE.md`'s Safety rules, a decision outside this plan, and `analysis.py:1-3` states the constraint (row 4).
@@ -57,13 +57,13 @@ The frozen-conditions design is a condition the plan could change and deliberate
 - **M3.** `sign_flip_p_value(values, *, resamples=SIGN_FLIP_RESAMPLES, seed=SIGN_FLIP_SEED) -> float` returns the one-sided p-value for H0 "values are symmetric about 0" against a positive mean.
   - The statistic is the plain sum (row 8).
   - A sign pattern counts when its flipped sum is at least the observed sum minus the M1 tolerance.
-  - Empty `values` and any non-finite value raise ValueError, so both paths behave alike. A NaN would otherwise make the Monte Carlo path adopt.
+  - Empty `values`, any non-finite value and `resamples < 1` raise ValueError, so both paths behave alike. A NaN would otherwise make the Monte Carlo path adopt.
   - Up to `SIGN_FLIP_EXACT_MAX_FIXTURES` values the test is exact, with p = count / 2^F. It meets in the middle: enumerate each half's partial sums, sort one half, and count each other-half sum's qualifying partners with `bisect`. At F = 20 that is 2,048 sums and 1,024 bisections. A direct loop over 2^20 patterns is about 21 million additions per call, too slow for thousands of calibrate replicates.
   - Above that count it uses `random.Random(seed)`. Each flip draws one `getrandbits(F)`, whose bits set the signs in the order of `values`. p = (1 + count) / (resamples + 1), so p is never 0.
   - The exact path does not use `seed`.
 
   anchors: row2, row8, row20
-- **M4.** `FixtureTerms` is a frozen dataclass of `estimate: float`, `residuals: tuple[float, ...]` and `null_centered: tuple[float, ...]`, one tuple entry per fixture. Two builders make it, in the verdict functions' parameter order: `recall_fixture_terms(recall_counts_by_defect, defect_ids, arm_baseline, arm_x, *, cluster_by_defect, delta=DELTA)` and `precision_fixture_terms(precision_counts_by_defect, defect_ids, arm_baseline, arm_x, *, cluster_by_defect, delta=DELTA)`. Each returns None with fewer than two fixtures, the bootstrap's bar.
+- **M4.** `FixtureTerms` is a frozen dataclass of `estimate: float`, `residuals: tuple[float, ...]` and `null_centered: tuple[float, ...]`, one tuple entry per fixture. Two builders make it, in the verdict functions' parameter order: `recall_fixture_terms(recall_counts_by_defect, defect_ids, arm_baseline, arm_x, *, cluster_by_defect, delta=DELTA)` and `precision_fixture_terms(precision_counts_by_defect, defect_ids, arm_baseline, arm_x, *, cluster_by_defect, delta=DELTA)`. Each returns None with fewer than two fixtures, the bootstrap's bar. `FixtureTerms` raises ValueError on construction when `residuals` and `null_centered` differ in length.
   - Fixtures come from a new `_fixture_groups(defect_ids, cluster_by_defect) -> list[list[str]]`. It is the grouping at `analysis.py:365-368`, moved unchanged. `bootstrap_interval_with_drops` calls it, so the bootstrap's draws do not change (row 9).
   - Recall: for fixture f, S_f is the sum over its defects of `detection_rate(arm_x) − detection_rate(arm_baseline)`, and n_f is its defect count. n̄ = D / F.
     - `estimate` = ΣS / Σn, which equals `recall_difference(…, arm_x, arm_baseline)`.
@@ -76,12 +76,13 @@ The frozen-conditions design is a condition the plan could change and deliberate
     - `null_centered` = residual + estimate + delta, the drafts' plug-in.
 
   anchors: root, row9, row10, row11, row13
-- **M5.** `fixture_t_interval(terms, *, alpha_one_sided=ALPHA_ONE_SIDED) -> tuple[float, float]` returns estimate ± `student_t_upper_quantile(F − 1, alpha_one_sided)` · √(Σ residual² / (F (F − 1))). It is the two-sided 1 − 2α interval, matching how the bootstrap's `confidence` default pairs with `ALPHA_ONE_SIDED` (`analysis.py:350`). A lower limit above −delta is therefore the one-sided test at α.
+- **M5.** `fixture_t_interval(terms, *, alpha_one_sided=ALPHA_ONE_SIDED) -> tuple[float, float]` returns estimate ± `student_t_upper_quantile(F − 1, alpha_one_sided)` · √(Σ residual² / (F (F − 1))). It is the two-sided 1 − 2α interval, matching how the bootstrap's `confidence` default pairs with `ALPHA_ONE_SIDED` (`analysis.py:350`). A lower limit above −delta is therefore the one-sided test at α. It raises ValueError below two fixtures.
 
   anchors: row2, row10
-- **M6.** No existing behavior changes. Besides the additions, `analysis.py` changes in two places:
+- **M6.** No existing behavior changes. Besides the additions, `analysis.py` changes in three places:
   - M4's helper extraction.
   - The module docstring's parenthetical list of standard-library modules (`:2-3`), which M3's `bisect` would make stale. Drop the list and keep "Standard library only ... no numerical dependency".
+  - The `import bisect` line.
 
   `analyze`, the verdict functions, `DELTA`, `ALPHA_ONE_SIDED` and every report field stay as they are.
 
@@ -148,7 +149,7 @@ The frozen-conditions design is a condition the plan could change and deliberate
 **Rows:**
 1. The Ask. [engineer-verified: "yes begin"] The quote covers none of PR 2's constants, ledger or gate logic.
 2. The agreed recall statistic is a sign-flip test on per-fixture differences with a frozen seed. It enumerates exactly up to about 20 fixtures and otherwise uses at least 100,000 flips. A cluster t-interval is reported beside it. [verified: `~/.local/state/gh1114-src/decision-record-2026-11-20.md` § "The design as agreed"] That file is the session's summary of the approvals it quotes. It is not the engineer's words in this session. The plan reads "about 20" as at most 20 and keeps the threshold a named constant. [unverified: reading]
-3. Precision is linearized per fixture, not bootstrapped. It needs its own simulation before freeze. Its 10-point delta is a PR 2 constants change. [verified: decision record § "The design as agreed"; Context's Scope] Calibrate therefore takes delta as a parameter. It defaults to `DELTA`, which `analysis.py:43` applies to both metrics. [verified: read]
+3. Precision is linearized per fixture, not bootstrapped. It needs its own simulation before freeze. Its 10-point delta is a PR 2 constants change. [verified: decision record § "The design as agreed"; Context's Scope] The follow-up PR's calibrate therefore takes delta as a parameter. It defaults to `DELTA`, which `analysis.py:43` applies to both metrics. [verified: read]
 4. `analysis.py` is standard library only, and `random.Random(seed)` is its existing seeded-RNG form (`:371`). [verified: `analysis.py:1-3`, `:15-25`]
 5. The standard library has no Student t distribution. [verified for Python 3.12: `/usr/lib/python3.12/statistics.py` defines only `StatisticsError` and `NormalDist` as classes] CI and the README floor are Python 3.14 (`.github/workflows/tests.yml:115`, `pyproject.toml:3`, `README.md:116`). That 3.14's `statistics` still lacks one is [verified: the worktree's `python3` is 3.14.10 and its `statistics` exports `NormalDist` and no t distribution].
 6. **(sizing)** The harness closure is a static import walk from `review_bench.runner`, `.adjudicate` and `.analysis`. It excludes `run_review_bench.py` (`analysis.py:700`, `:749-771`). The frozen fields are the closure plus the arm directories, judge agents, `defects.json` and prompt templates (`:852-876`). A module none of the three roots imports, such as `calibrate.py`, changes no frozen field, so later calibrate edits never move a freeze. [verified: reads]
@@ -159,22 +160,18 @@ The frozen-conditions design is a condition the plan could change and deliberate
 11. The existing recall is the defect-weighted mean of per-defect detection rates (`analysis.py:131-140`, `:418-425`). [verified: read] The agreed "per-fixture differences" has two readings when fixtures hold unequal defect counts. The plan reads it as each fixture's linearized contribution to the existing defect-weighted difference. That reading keeps delta's meaning and matches the drafts exactly at one defect per fixture. [unverified: reading; the decision record does not say]
 12. The architect checked M2's series by hand against the closed-form CDFs for df = 1 to 4. The tests pin df 1 and 2 against closed-form quantiles and df 3 against its closed-form CDF. [verified analytically for df 4 and 5 by a reviewer this session; larger df rest on the recursion and the independent check planned in Dispatch 1. The source is Abramowitz and Stegun 26.7.3–26.7.4, whose equation numbers were not re-read]
 13. `pooled_precision` skips a defect ID absent from the counts (`analysis.py:198-200`), and `precision_difference` is None when either arm has no finding (`:428-436`). [verified: read]
-14. The ported scenario parameters are synthetic design choices: baseline recall rate Beta(0.8, 0.8), defect noise SD 0.1, 10% concentrated drops of 0.5, precision mean 0.6 with concentration 6, finding volume Gamma(2, 2), and precision noise SD 0.05. That none was drawn from a private corpus is [unverified]. The reviewer confirms this before they ship in a public file.
-15. The repo's precedent for CPU-bound parallelism is `ProcessPoolExecutor` (`run_skill_evals.py:45`, `:1162`), and its tests check the math apart from the pool (`claude-skills/skills/tests/test_trigger_detector.py:911`). [verified: Grep] Python 3.14 defaults to the forkserver start method on Linux, so the worker must be a top-level function taking picklable arguments. [verified: a scratch run on the worktree's Python 3.14.10 showed forkserver as the default, and a top-level worker over plain-tuple jobs gave pool output equal to serial output]
-16. `evals/README.md:10-37` keeps the harness out of CI because of the cost of `claude -p`, while its `evals/test_*.py` unit tests run in CI. The "Usage" block (`:722-758`) is the only place subcommands are listed with commands. [verified: reads; Grep of `docs/`, `README.md` and `evals/*.md` for `snapshot-arms`] `run_review_bench.py:2-5` lists the subcommands. [verified: read]
+14. (Follow-up PR.) The ported scenario parameters are synthetic design choices: baseline recall rate Beta(0.8, 0.8), defect noise SD 0.1, 10% concentrated drops of 0.5, precision mean 0.6 with concentration 6, finding volume Gamma(2, 2), and precision noise SD 0.05. That none was drawn from a private corpus is [unverified]. The reviewer confirms this before they ship in a public file.
+15. (Follow-up PR.) The repo's precedent for CPU-bound parallelism is `ProcessPoolExecutor` (`run_skill_evals.py:45`, `:1162`), and its tests check the math apart from the pool (`claude-skills/skills/tests/test_trigger_detector.py:911`). [verified: Grep] Python 3.14 defaults to the forkserver start method on Linux, so the worker must be a top-level function taking picklable arguments. [verified: a scratch run on the worktree's Python 3.14.10 showed forkserver as the default, and a top-level worker over plain-tuple jobs gave pool output equal to serial output]
+16. (Follow-up PR.) `evals/README.md:10-37` keeps the harness out of CI because of the cost of `claude -p`, while its `evals/test_*.py` unit tests run in CI. The "Usage" block (`:722-758`) is the only place subcommands are listed with commands. [verified: reads; Grep of `docs/`, `README.md` and `evals/*.md` for `snapshot-arms`] `run_review_bench.py:2-5` lists the subcommands. [verified: read]
 17. `select-tests.py` maps `evals/review_bench/**` and `evals/test_review_bench*.py` to every evals test target (`:79-81`, `:709-723`, `:752`), so it needs no edit. [verified: read]
-18. All 35 `from review_bench import` lines in `run_review_bench.py` sit inside functions, and none is at module level. `cmd_snapshot_arms` (`:1125-1135`) is the smallest handler. CLI tests build the parser and call the handler directly (`evals/test_review_bench_cli.py:219-225`). [verified: Grep and reads]
-19. Each `evals/test_review_bench_<area>.py` covers one module or area: adjudicate, analysis, cli, fixtures, mining, runner. [verified: Glob] `calibrate.py` therefore gets its own test file.
-20. Runtime: a scratch port of the plan's `getrandbits` Monte Carlo path took 0.16 s at 21 fixtures, 0.31 s at 30 and 0.40 s at 40 per 100,000-flip call. The exact path took 1 ms at 20 fixtures, 4 ms at 26 and 23 ms at 30. [verified: a reviewer's scratch timings on this machine this session, not the production code] Verification step 5 records the real timings.
-21. Python 3.14 is the floor (row 5), so `random.binomialvariate` is available. [verified: it exists in the worktree's Python 3.14.10]
+18. (Follow-up PR.) All 35 `from review_bench import` lines in `run_review_bench.py` sit inside functions, and none is at module level. `cmd_snapshot_arms` (`:1125-1135`) is the smallest handler. CLI tests build the parser and call the handler directly (`evals/test_review_bench_cli.py:219-225`). [verified: Grep and reads]
+19. (Follow-up PR.) Each `evals/test_review_bench_<area>.py` covers one module or area: adjudicate, analysis, cli, fixtures, mining, runner. [verified: Glob] `calibrate.py` therefore gets its own test file.
+20. (Follow-up PR.) Runtime: a scratch port of the plan's `getrandbits` Monte Carlo path took 0.16 s at 21 fixtures, 0.31 s at 30 and 0.40 s at 40 per 100,000-flip call. The exact path took 1 ms at 20 fixtures, 4 ms at 26 and 23 ms at 30. [verified: a reviewer's scratch timings on this machine this session, not the production code] Verification step 5 records the real timings.
+21. (Follow-up PR.) Python 3.14 is the floor (row 5), so `random.binomialvariate` is available. [verified: it exists in the worktree's Python 3.14.10]
 22. The architect chose these defaults with no engineer quote behind them [unverified]:
-    - M7's acted-fixture semantics;
-    - concentrated harm for precision;
-    - the K·λ finding volume;
-    - the 4,000-replicate default;
-    - the tie tolerance;
-    - the test-file placement.
-23. This plan stays one PR at a `Projected diff:` of about 1,100 lines. The engineer answered "Proceed anyway" [engineer-verified: "Proceed anyway"] to plan-review's question "Split into smaller PRs now, or proceed?". The question was first asked when the projection was about 900 lines. It was asked again at about 1,100 lines, and the engineer again answered "Proceed anyway" [engineer-verified: "Proceed anyway"].
+    - This PR: the tie tolerance, and the test-file placement.
+    - Follow-up PR: M7's acted-fixture semantics, concentrated harm for precision, the K·λ finding volume, and the 4,000-replicate default.
+23. Superseded by row 24: the plan was one PR at a `Projected diff:` of about 1,100 lines. The engineer answered "Proceed anyway" [engineer-verified: "Proceed anyway"] to plan-review's question "Split into smaller PRs now, or proceed?". The question was first asked when the projection was about 900 lines. It was asked again at about 1,100 lines, and the engineer again answered "Proceed anyway" [engineer-verified: "Proceed anyway"].
 24. This plan is cut to Dispatch 1, with a `Projected diff:` of about 1,020 lines, and calibrate moves to a follow-up PR. [engineer-verified: "Split now (Recommended)"] The engineer chose that option when asked whether to split at the dispatch boundary because the PR had grown to about 1,600 lines.
 
 ## Critical files
@@ -230,7 +227,7 @@ This PR ships Dispatch 1 only. Dispatch 2 ships as a follow-up PR, because its m
   - Config validation, one parametrized case per rule at its boundary: share 1.0 passes while 0 and above 1 fail, alpha 0.5 fails, one fixture fails, and each positive-int field fails at 0. Omitted delta, alphas and flips resolve to the `analysis` constants in the row.
   - A positive control in one test shows `"evals/review_bench/analysis.py"` is a key of `analysis.compute_harness_closure()` while `"evals/review_bench/calibrate.py"` is not. The keys are repo-relative strings, so a Path-typed probe would pass vacuously.
 
-This change only reads `evals/replay_bench/summary.py`, `evals/test_review_bench_cli.py` and `claude/.claude/scripts/select-tests.py` (rows 9, 17, 19).
+This change only reads `evals/replay_bench/summary.py` and `claude/.claude/scripts/select-tests.py` (rows 9, 17).
 
 Projected diff: about 1,020 lines for this PR, which is Dispatch 1. That is about 250 in `analysis.py` and about 770 in the new decision-statistics test file. Calibrate's projected 600 or more lines belong to the follow-up PR.
 
@@ -240,7 +237,7 @@ Projected diff: about 1,020 lines for this PR, which is Dispatch 1. That is abou
 2. Lint: `scripts/venv-run.sh ruff check evals/` is clean.
 3. No verdict changes:
    - `git diff --stat origin/main...HEAD -- evals/test_review_bench_analysis.py` is empty, and the existing tests pass in step 1.
-   - In `git diff origin/main...HEAD -- evals/review_bench/analysis.py`, every hunk outside the new constants and new section is the `_fixture_groups` move or the docstring line.
+   - In `git diff origin/main...HEAD -- evals/review_bench/analysis.py`, every hunk outside the new constants and new section is the `_fixture_groups` move, the docstring line or the `import bisect` line.
    - `git diff --stat origin/main...HEAD -- evals/replay_bench` is empty.
 4. (Follow-up PR.) The closure fact: Dispatch 2's closure test passes in step 1, so `calibrate.py` stays out of every frozen field (row 6).
 5. (Follow-up PR.) Worker independence, which CI does not exercise because its tests run with workers 1. These commands run no model and cost nothing:
@@ -253,7 +250,7 @@ Projected diff: about 1,020 lines for this PR, which is Dispatch 1. That is abou
 
 ## Out of scope
 
-- **Wiring the new statistics into `analyze`.** That covers its report, the verdicts, certification, the ledger, error-budget slots, floors, and constants such as the 10-point precision delta. These belong to PR 2 (Context's Scope; the decision record). Until then the new functions have no caller outside `calibrate.py` and the tests.
+- **Wiring the new statistics into `analyze`.** That covers its report, the verdicts, certification, the ledger, error-budget slots, floors, and constants such as the 10-point precision delta. These belong to PR 2 (Context's Scope; the decision record). Until then the new functions have no caller outside the tests. The follow-up PR's `calibrate.py` is the first non-test caller.
 - **Any edit to `.claude/plans/measure-review-quality.md`** (Context's Scope). The decision record notes the engineer's earlier ruling against editing that stale plan.
 - **Running the calibration sweeps PR 2 needs, or committing their output.** Operator output stays under the gitignored `.local/`.
 - **A bootstrap column in calibrate.** The agreed design retires the bootstrap as the decision statistic, and the drafts already measured it.
