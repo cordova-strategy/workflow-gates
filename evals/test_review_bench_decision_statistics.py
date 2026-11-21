@@ -50,8 +50,8 @@ class TestStudentTUpperQuantile:
     @pytest.mark.parametrize("alpha", [1e-4, 1e-5, 1e-6])
     @pytest.mark.parametrize("df", [1, 2])
     def test_df_1_and_df_2_stay_relatively_accurate_in_the_far_tail(self, df: int, alpha: float) -> None:
-        """The df 1 quantile at tail 1e-6 is about 3.2e5, which takes 19 doublings to bracket from 1.0,
-        so a bracketing cap under 19 doublings fails there. The df 1 reference tan(pi * (0.5 - alpha)) itself
+        """The df 1 quantile at tail 1e-6 is about 3.2e5. Bracketing it from 1.0 takes 19 doublings,
+        so a cap under 19 fails here. The df 1 reference tan(pi * (0.5 - alpha)) itself
         loses relative precision near its pole, so the tolerance sits well above the accuracy
         student_t_upper_quantile documents."""
         expected_by_df = {
@@ -471,6 +471,22 @@ class TestRecallFixtureTerms:
         assert terms.residuals == pytest.approx((2 / 9, -2 / 9))
         assert terms.null_centered == pytest.approx((1 / 3, 0.0))
 
+    def test_a_fixture_whose_defects_are_not_adjacent_in_defect_ids_is_one_fixture(self) -> None:
+        """Production feeds sorted defect IDs, so one fixture's defects routinely sit apart in the list."""
+        counts = _recall_counts_by_defect({"a1": (6, 4), "b1": (3, 5), "a2": (7, 7)})
+        clusters = {"a1": ("a", "a"), "b1": ("b", "b"), "a2": ("a", "a")}
+
+        interleaved = analysis.recall_fixture_terms(
+            counts, ["a1", "b1", "a2"], ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+        grouped = analysis.recall_fixture_terms(
+            counts, ["a1", "a2", "b1"], ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+
+        assert interleaved is not None
+        assert len(interleaved.residuals) == 2
+        assert interleaved == grouped
+
     def test_one_defect_per_fixture_gives_each_per_defect_difference_plus_delta(self) -> None:
         counts = _recall_counts_by_defect({"d1": (6, 4), "d2": (3, 5), "d3": (7, 7)})
 
@@ -672,6 +688,22 @@ class TestPrecisionFixtureTerms:
         )
 
         assert with_absent == without_it
+
+    def test_a_fixture_whose_defects_are_not_adjacent_in_defect_ids_is_one_fixture(self) -> None:
+        """Production feeds sorted defect IDs, so one fixture's defects routinely sit apart in the list."""
+        counts = _precision_counts_by_defect(self.UNEQUAL_FIXTURES)
+        clusters = {"d1": ("a", "a"), "d2": ("b", "b"), "d3": ("a", "a")}
+
+        interleaved = analysis.precision_fixture_terms(
+            counts, ["d1", "d2", "d3"], ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+        grouped = analysis.precision_fixture_terms(
+            counts, ["d1", "d3", "d2"], ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+
+        assert interleaved is not None
+        assert len(interleaved.residuals) == 2
+        assert interleaved == grouped
 
     def test_a_present_defect_missing_from_cluster_by_defect_raises_key_error(self) -> None:
         counts = _precision_counts_by_defect(self.UNEQUAL_FIXTURES)

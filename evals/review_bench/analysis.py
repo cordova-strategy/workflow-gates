@@ -493,9 +493,9 @@ def sign_flip_p_value(
     positive mean, from the plain sum under random sign flips.
 
     Exact up to SIGN_FLIP_EXACT_MAX_FIXTURES values, and then `seed` is
-    unused. Above that, `resamples` seeded flips give (1 + count) /
-    (resamples + 1), never 0. A non-finite value raises on both paths: a NaN
-    would otherwise compare false against every flip and look like adoption."""
+    unused. Above that, `resamples` seeded flips give a p-value that is never
+    0. A non-finite value raises on both paths: a NaN would otherwise compare
+    false against every flip and look like adoption."""
     if not values:
         raise ValueError("sign_flip_p_value: no values")
     if not all(math.isfinite(value) for value in values):
@@ -541,9 +541,9 @@ def recall_fixture_terms(
 ) -> FixtureTerms | None:
     """Recall_x - recall_baseline as a ratio of per-fixture sums, so the
     estimate equals recall_difference and each fixture weighs by its defect
-    count. `null_centered` is exact, not a plug-in. None with fewer than two
-    fixtures. A defect absent from the recall counts raises KeyError, as
-    recall_difference does and precision_fixture_terms does not."""
+    count. `null_centered` is exact, not a plug-in. A defect absent from the
+    recall counts raises KeyError, as recall_difference does and
+    precision_fixture_terms does not."""
     fixtures = _fixture_groups(defect_ids, cluster_by_defect)
     if len(fixtures) < 2:
         return None
@@ -584,8 +584,6 @@ def precision_fixture_terms(
     - A fixture with no present defect is dropped from the fixture set.
     - A fixture with present defects but no adjudicated finding stays in the
       fixture set, so it counts in the degrees of freedom and the mean totals.
-    - Returns None below two fixtures, or when either arm has no adjudicated
-      finding.
     - When every finding sits in one fixture all residuals are 0 and the
       interval has zero width.
     """
@@ -630,8 +628,7 @@ def precision_fixture_terms(
 
 def fixture_t_interval(terms: FixtureTerms, *, alpha_one_sided: float = ALPHA_ONE_SIDED) -> tuple[float, float]:
     """The two-sided 1 - 2 * alpha_one_sided interval, so a lower limit above
-    -delta is the one-sided test at alpha_one_sided. Raises ValueError for
-    fewer than two fixtures."""
+    -delta is the one-sided test at alpha_one_sided."""
     fixtures = len(terms.residuals)
     if fixtures < 2:
         raise ValueError(f"fixture_t_interval: needs at least two fixtures, got {fixtures}")
