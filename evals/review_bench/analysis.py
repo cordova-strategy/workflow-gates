@@ -44,7 +44,7 @@ DELTA = 0.05  # the margin, 5 percentage points absolute, on both recall and poo
 ALPHA_ONE_SIDED = 0.025  # FDA (2016)'s one-sided convention; paired with a two-sided 95% interval
 BOOTSTRAP_RESAMPLES = 10_000
 BOOTSTRAP_SEED = 0
-SIGN_FLIP_EXACT_MAX_FIXTURES = 20  # up to this many values the sign-flip p-value is an exact count over every sign pattern
+SIGN_FLIP_EXACT_MAX_FIXTURES = 20
 SIGN_FLIP_RESAMPLES = 100_000
 SIGN_FLIP_SEED = 0
 # Fraction of the sum of the values' magnitudes, not of the observed sum. A sign pattern whose sum falls short of the
@@ -469,8 +469,7 @@ def student_t_upper_quantile(df: int, upper_tail: float) -> float:
 
 def _exact_sign_flip_count(values: Sequence[float], threshold: float) -> int:
     """How many of the 2^len(values) sign patterns have a flipped sum >= threshold,
-    by meet in the middle: each half's partial sums are enumerated and one half
-    is sorted so each partner count is a bisection."""
+    by meet in the middle."""
 
     def partial_sums(half: Sequence[float]) -> list[float]:
         sums = [0.0]
@@ -578,14 +577,18 @@ def precision_fixture_terms(
 ) -> FixtureTerms | None:
     """Pooled precision_x - precision_baseline linearized per fixture, so the
     estimate equals precision_difference. `null_centered` is residual +
-    estimate + delta, a plug-in. A defect absent from the counts is skipped, as
-    pooled_precision skips it, provided cluster_by_defect has an entry for it
-    (a missing entry raises KeyError). A fixture left with none is dropped. None
-    with fewer than two fixtures, or when either arm has no adjudicated
-    finding. A fixture with present defects but no adjudicated finding in
-    either arm stays in the fixture set, so it counts in the degrees of freedom
-    and the mean totals. When every finding sits in one fixture all residuals
-    are 0 and the interval has zero width."""
+    estimate + delta, a plug-in.
+
+    - A defect absent from the counts is skipped, as pooled_precision skips it.
+    - An absent defect still needs a cluster_by_defect entry, else KeyError.
+    - A fixture with no present defect is dropped from the fixture set.
+    - A fixture with present defects but no adjudicated finding stays in the
+      fixture set, so it counts in the degrees of freedom and the mean totals.
+    - Returns None below two fixtures, or when either arm has no adjudicated
+      finding.
+    - When every finding sits in one fixture all residuals are 0 and the
+      interval has zero width.
+    """
     present_fixtures = [
         present_ids
         for fixture in _fixture_groups(defect_ids, cluster_by_defect)

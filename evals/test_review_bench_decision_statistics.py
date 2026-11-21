@@ -8,20 +8,13 @@ from __future__ import annotations
 import math
 import random
 import statistics
+import types
 from collections.abc import Callable, Hashable
 from fractions import Fraction
 
 import pytest
 from review_bench import analysis
-
-ARM_BASELINE = "current-rule"
-ARM_X = "function-context"
-
-
-def _own_fixture_each(defect_ids) -> dict[str, tuple[str, str]]:
-    """Every defect on a fixture of its own, so a cluster bootstrap resamples
-    per defect."""
-    return {defect_id: (defect_id, defect_id) for defect_id in defect_ids}
+from test_review_bench_analysis import ARM_BASELINE, ARM_X, _own_fixture_each
 
 
 def _student_t_central_probability_by_integration(t: float, df: int, *, intervals: int = 2000) -> float:
@@ -128,10 +121,10 @@ class TestStudentTUpperQuantile:
             analysis.student_t_upper_quantile(df, upper_tail)
 
 
-def _exact_integer_sign_flip_p(lattice_values: list[int]) -> float:
+def _exact_integer_sign_flip_p(lattice_values: list[int], *, strictly_above: bool = False) -> float:
     """The one-sided sign-flip p-value counted in exact integers by a
     subset-sum DP, so a tie between two sign patterns is never a float
-    comparison."""
+    comparison. `strictly_above` drops the patterns that tie the observed sum."""
     observed_sum = sum(lattice_values)
     patterns_by_sum = {0: 1}
     for value in lattice_values:
@@ -140,11 +133,17 @@ def _exact_integer_sign_flip_p(lattice_values: list[int]) -> float:
             for signed in (partial_sum + value, partial_sum - value):
                 next_patterns_by_sum[signed] = next_patterns_by_sum.get(signed, 0) + pattern_count
         patterns_by_sum = next_patterns_by_sum
-    at_least_observed = sum(count for total, count in patterns_by_sum.items() if total >= observed_sum)
-    return at_least_observed / 2 ** len(lattice_values)
+    counted_patterns = sum(
+        count for total, count in patterns_by_sum.items()
+        if (total > observed_sum if strictly_above else total >= observed_sum)
+    )
+    return counted_patterns / 2 ** len(lattice_values)
 
 
 class TestSignFlipPValue:
+    # Just under the lowest tied mass, 0.035, among the vectors of the Monte Carlo tie test.
+    MIN_TIED_PATTERN_MASS = 0.03
+
     def test_all_positive_values_give_one_over_two_to_the_f(self) -> None:
         assert analysis.sign_flip_p_value([1, 2, 3]) == 1 / 8
 
@@ -197,18 +196,53 @@ class TestSignFlipPValue:
     def test_the_monte_carlo_path_counts_float_ties_like_the_exact_integer_oracle(
         self, value_count: int, vector_seed: int,
     ) -> None:
-        """Each (value_count, vector_seed) vector is on a 0.1 lattice, and its tied sign patterns hold enough
-        probability mass that a Monte Carlo count comparing against the bare observed sum lands outside the
-        sampling band at the default seed."""
+        """Each (value_count, vector_seed) vector is on a 0.1 lattice and was chosen for its tied sign-pattern mass.
+        The floor fails the test when a changed random.Random stream yields a vector with less tied mass than
+        MIN_TIED_PATTERN_MASS. test_a_drawn_pattern_tying_the_observed_sum_only_in_exact_arithmetic_is_counted pins
+        the tie handling deterministically."""
         rng = random.Random(vector_seed)
         lattice_values = [rng.randint(-3, 6) for _ in range(value_count)]
         resamples = 20_000
         exact_p_value = _exact_integer_sign_flip_p(lattice_values)
+        tied_mass = exact_p_value - _exact_integer_sign_flip_p(lattice_values, strictly_above=True)
+        assert tied_mass >= self.MIN_TIED_PATTERN_MASS
         standard_error = math.sqrt(exact_p_value * (1 - exact_p_value) / resamples)
 
         p_value = analysis.sign_flip_p_value([lattice_value / 10 for lattice_value in lattice_values], resamples=resamples)
 
         assert abs(p_value - exact_p_value) < 4 * standard_error
+
+    def test_a_drawn_pattern_tying_the_observed_sum_only_in_exact_arithmetic_is_counted(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The drawn pattern flips -0.3, 0.4 and -0.1, which sum to zero, so it ties the observed sum exactly.
+        Its float sum rounds below the float observed sum, so a bare >= would miss it."""
+        lattice_values = [6, -3, 3, 4, 6, -3, 0, 4, 4, 1, -1, -3, 5, 4, 2, -2, 0, 2, -3, 3, -1]
+        values = [lattice_value / 10 for lattice_value in lattice_values]
+        flipped_indexes = {1, 3, 10}
+        tied_sign_bits = sum(1 << index for index in range(len(values)) if index not in flipped_indexes)
+        tied_float_sum = sum(
+            value if (tied_sign_bits >> index) & 1 else -value for index, value in enumerate(values)
+        )
+        tied_lattice_sum = sum(
+            lattice_value if (tied_sign_bits >> index) & 1 else -lattice_value
+            for index, lattice_value in enumerate(lattice_values)
+        )
+        assert tied_lattice_sum == sum(lattice_values)
+        assert tied_float_sum < sum(values)
+
+        class FakeRandom:
+            def __init__(self, seed: int) -> None:
+                pass
+
+            def getrandbits(self, count: int) -> int:
+                return tied_sign_bits
+
+        monkeypatch.setattr(analysis, "random", types.SimpleNamespace(Random=FakeRandom))
+
+        resamples = 1
+
+        assert analysis.sign_flip_p_value(values, resamples=resamples) == (1 + 1) / (resamples + 1)
 
     def test_different_seeds_give_different_monte_carlo_p_values(self) -> None:
         rng = random.Random(45)
@@ -254,9 +288,10 @@ class TestSignFlipPValue:
             analysis.sign_flip_p_value([])
 
     def test_the_default_resamples_give_one_over_100_001_for_all_positive_values(self) -> None:
-        """With 24 positive values only the all-positive flip pattern reaches the observed sum, so the
-        Monte Carlo path counts no extreme flip and gives 1 / (resamples + 1). The literal pins the
-        default of 100,000 resamples, which the SIGN_FLIP_RESAMPLES constant cannot pin against itself."""
+        """With 24 positive values only the all-positive flip pattern reaches the observed sum. At the default
+        seed no draw is that pattern, which a 2^-24 chance per draw makes likely but not certain, so the
+        p-value is 1 / (resamples + 1). The literal pins the default of 100,000 resamples, which the
+        SIGN_FLIP_RESAMPLES constant cannot pin against itself."""
         p_value = analysis.sign_flip_p_value([1.0] * 24)
 
         assert p_value == pytest.approx(1 / 100_001)
