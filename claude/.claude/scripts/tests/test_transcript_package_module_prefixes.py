@@ -59,6 +59,7 @@ PRODUCTION_MODULES = (
     "read_scope.py",
     "ledger_rounds.py",
     "publication_scope.py",
+    "ledger_dispositions.py",
 )
 TEST_FILES = (
     "test_transcript_cost_ledger.py",
@@ -140,6 +141,7 @@ TEST_FILES = (
     "test_transcript_scope.py",
     "test_transcript_scope_scan.py",
     "test_transcript_publication_scope.py",
+    "test_transcript_ledger_dispositions.py",
     "test_transcript_corpus.py",
     "test_transcript_routing_guard_capture.py",
     "test_transcript_routing_guard_compute.py",

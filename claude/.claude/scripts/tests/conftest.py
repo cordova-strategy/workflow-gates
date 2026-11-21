@@ -44,7 +44,7 @@ from helpers import (
     install_unwarmed_stub_guard,
 )
 from helpers import TASK_NOTIFICATION_TEXT as _TASK_NOTIFICATION_TEXT
-from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, pricing, redaction, scope
+from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, pricing, publication_scope, redaction, scope
 from transcript_analysis.corpus import SUBAGENT_SUBDIR
 
 # claude/.claude/ itself, so `hooks.tests...` below resolves, as in _cursor_shim_helpers.py.
@@ -985,6 +985,10 @@ def _ledger_row(
     schema_version: int = 2,
     event_time: object = "2026-08-01T10:00:00Z",
     session_id: str | None = None,
+    id: str | None = None,
+    ref: str | None = None,
+    decided_by: str | None = None,
+    reviewers: list[str] | None = None,
 ) -> dict:
     """One review-narrative-ledger row, review-ledger.sh's own row shape.
     round=None omits the `round` key entirely rather than setting it null,
@@ -992,6 +996,7 @@ def _ledger_row(
     writes a null round. session_id=None omits the `session_id` key, the
     shape of a row written before rows carried one (schema v2). Pass
     schema_version=3 alongside a session_id for a row that carries one.
+    id, ref, decided_by and reviewers omit their key when None, as session_id does.
     review-ledger.sh's _LEDGER_SCHEMA_VERSION is the writer's own version, and
     the readers read no version field."""
     row = {
@@ -1008,6 +1013,9 @@ def _ledger_row(
         row["round"] = round
     if session_id is not None:
         row["session_id"] = session_id
+    for key, value in (("id", id), ("ref", ref), ("decided_by", decided_by), ("reviewers", reviewers)):
+        if value is not None:
+            row[key] = value
     return row
 
 
@@ -1042,6 +1050,24 @@ def _write_branch_ledger_file(
     $LEDGER_DIR/$REPO_HASH.$BRANCH_HASH.jsonl. Its rows must carry their own
     `session_id`: nothing in the filename says which session wrote them."""
     return _write_named_ledger_file(config_dir_root, repo_hash, branch_hash, rows)
+
+
+def _write_this_repo_ledger_file(config_dir_root: Path, worktree_path: str | Path, slot: str, rows: list[dict]) -> Path:
+    """Write one ledger file named for `worktree_path`, as review-ledger.sh names a file for the path it ran in."""
+    return _write_named_ledger_file(config_dir_root, publication_scope._ledger_repo_hash(str(worktree_path)), slot, rows)
+
+
+# One edge matrix for a `--since 2026-08-10 --until 2026-08-12` window, shared by the ledger and transcript window tests.
+# Each triple is (timestamp, ledger expectation, transcript expectation). The ledger expectation is "in", "out" or
+# "event_time" (left out under that field): the ledger accepts only the writer's `Z` form, so an offset is left out there,
+# while transcripts convert it through corpus._parse_ts. The transcript expectation is "in" or "out".
+_WINDOW_EDGE_TIMESTAMPS = (
+    ("2026-08-10T00:00:00Z", "in", "in"),
+    ("2026-08-12T23:59:59Z", "in", "in"),
+    ("2026-08-13T00:00:00Z", "out", "out"),
+    ("2026-08-13T00:30:00+02:00", "event_time", "in"),
+    ("not-a-timestamp", "event_time", "out"),
+)
 
 
 def _opus(

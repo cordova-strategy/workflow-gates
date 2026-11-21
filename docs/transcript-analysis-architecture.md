@@ -382,6 +382,22 @@ formula of `_marker_lib_repo_hash` in `hooks/_lib.sh`. It lists the directory th
 access). Cross-module reads are `scope.config_dir`, `scope.TRANSCRIPT_CONFIG_DIRS_LABEL` and the private
 `scope._list_dir_recording_gaps`.
 
+### `ledger_dispositions.py`
+
+The review ledger's terminal dispositions over the files `publication_scope._this_repo_ledger_files` selects:
+`count_ledger_dispositions` takes the config root, the worktree paths, the window and the scanned session ids, and
+returns a `LedgerDispositionCounts` of aggregates only. It reads each file through
+`author_outcome._read_ledger_rows_from_file` with stderr held in a buffer, and counts a file whose read printed anything
+as unreadable, because that reader prints the file's path. A file whose read raises `ValueError` or `RecursionError`, which
+`json.loads` does for an integer over the digit limit or a line nested past the decoder's stack, is unreadable too, and the
+exception reaches no output. Each row is reduced at once to `disposition`, `id`, `ref`,
+`decided_by`, `event_time` and `session_id`, and a wrong-typed field leaves the row out under its name. A disposition row is
+superseded by a later row in the same file that has an id and names its `id` as `ref` before the window's end. The module
+takes no transcript gap counter, so an unreadable ledger directory shows only as its `directory_state`. Imports
+`author_outcome`, `corpus` and `publication_scope` by module (attribute access). Cross-module private reads are
+`author_outcome._read_ledger_rows_from_file`, its disposition and `carry` constants, `_SESSION_ID_PATTERN` and
+`_REVIEW_LEDGER_DIRNAME`, `corpus._parse_ts`, and `publication_scope._this_repo_ledger_files` and `_GAP_LEDGER_DIR`.
+
 ### `ledger_common.py`
 
 Recording primitives shared by the cost-ledger and pr-cost ledgers: the generated per-config-dir
