@@ -323,8 +323,7 @@ def _exact_recall_terms(
     counts: dict[str, analysis.DefectRecallCounts], clusters: dict, *, delta: float,
 ) -> tuple[Fraction, list[Fraction], list[Fraction]]:
     """(estimate, residuals, null_centered) for ARM_X minus ARM_BASELINE recall in exact rationals, with
-    fixtures in order of first appearance in `counts`. The residual and null-centered scale is each
-    fixture's difference sum against its defect count, over the mean defect count."""
+    fixtures in order of first appearance in `counts`."""
     difference_sum_by_fixture: dict[Hashable, Fraction] = {}
     defect_count_by_fixture: dict[Hashable, int] = {}
     for defect_id, defect_counts in counts.items():
@@ -525,7 +524,7 @@ def _exact_precision_terms(
 ) -> tuple[Fraction, list[Fraction], list[Fraction]]:
     """(estimate, residuals, null_centered) for pooled ARM_X minus ARM_BASELINE precision in exact
     rationals, with fixtures in order of first appearance in `counts`. An arm with no key for a defect
-    counts 0, and each arm's residual is (v - p * t) / mean(t) per fixture."""
+    counts 0."""
     fixture_by_defect = {defect_id: clusters[defect_id] for defect_id in counts}
     fixtures = list(dict.fromkeys(fixture_by_defect.values()))
 
