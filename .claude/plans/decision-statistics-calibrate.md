@@ -174,7 +174,7 @@ The frozen-conditions design is a condition the plan could change and deliberate
     - the 4,000-replicate default;
     - the tie tolerance;
     - the test-file placement.
-23. This plan stays one PR at a `Projected diff:` of about 1,100 lines. The engineer answered "Proceed anyway" [engineer-verified: "Proceed anyway"] to plan-review's question "Split into smaller PRs now, or proceed?". That question was asked when the projection was about 900 lines. The projection is now about 1,100 lines, so the answer was given at the smaller size. Whether the answer still covers the larger size is unsettled [unverified: the engineer answered at about 900 lines].
+23. This plan stays one PR at a `Projected diff:` of about 1,100 lines. The engineer answered "Proceed anyway" [engineer-verified: "Proceed anyway"] to plan-review's question "Split into smaller PRs now, or proceed?". The question was first asked when the projection was about 900 lines. It was asked again at about 1,100 lines, and the engineer again answered "Proceed anyway" [engineer-verified: "Proceed anyway"].
 
 ## Critical files
 
