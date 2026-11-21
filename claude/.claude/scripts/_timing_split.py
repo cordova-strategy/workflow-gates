@@ -84,7 +84,8 @@ def _find_option_occurrences(args: Sequence[str], flags: Iterable[str]) -> list[
 
     The arguments must hold no bare `--`: plan_passes collapses such a run before any caller of this reads them.
     A bare flag takes the next token only when it exists and does not start with `-`; otherwise the flag is not
-    an occurrence, and pytest reports its own usage error.
+    an occurrence, and pytest decides what it does. That is a usage error, except that pytest takes a
+    negative-number-shaped next token as the value.
     """
     flags = tuple(flags)
     occurrences: list[_OptionOccurrence] = []
@@ -169,8 +170,7 @@ def scan_timing_marks(
     file patterns, while a file named directly is read whatever its name.
 
     The walk follows no directory symlinks, though pytest's collection does, so a test file reachable only through
-    one is not scanned. An unreadable directory contributes nothing, unlike an unreadable file. The cost is
-    proportional to the test-pattern files under the selected roots.
+    one is not scanned. An unreadable directory contributes nothing, unlike an unreadable file.
     """
     marked: set[str] = set()
 

@@ -614,10 +614,13 @@ This is the required local command for agents, including in `/ready-for-review`.
   - To run them locally, pass `-n 0 -m saturates_cpu`, which runs one unsplit pass, or run `scripts/venv-run.sh pytest <file> -m timing -n0`.
   - A plain `-n 0` run of a selection that includes `claude/.claude/scripts/tests` runs that test. `-n 1` also runs one unsplit pass, but the test skips itself inside an xdist worker, so `-n 1 -m saturates_cpu` runs nothing. Use `-n 0`.
 - The serial pass collects the whole selection and filters it with `-m`. Whether a selection holds `timing` tests is read from file text, so the mark must sit in the file pytest collects the test from, and `test_pytest_collection_config.py` fails CI otherwise.
-- In a split run, modes that list the collected tests, such as `--collect-only`/`--co` and `--fixtures-per-test`, print each pass's share, and the two shares together omit `saturates_cpu` tests. `--setup-plan` prints no setup-plan lines from the parallel pass, because xdist discards its workers' output. Modes that collect nothing, such as `--version`, `--help` and `--markers`, print the same output once per pass. Add `-n 0` to get one complete listing.
-- A split run adds one more collection of the whole selection plus the serial pass's wall time. `-n 1` or `PYTEST_XDIST_AUTO_NUM_WORKERS=1` runs one pass instead.
+- To get one complete listing, add `-n 0`; a split run prints each pass separately:
+  - Modes that list the collected tests, such as `--collect-only`/`--co` and `--fixtures-per-test`, print each pass's share, and the two shares together omit `saturates_cpu` tests.
+  - `--setup-plan` prints no setup-plan lines from the parallel pass, because xdist discards its workers' output.
+  - Modes that collect nothing, such as `--version`, `--help` and `--markers`, print the same output once per pass.
+- A split run adds one more collection of the whole selection plus the serial pass's wall time.
 - It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
-- It runs one unsplit pass instead, as before, when:
+- It runs one unsplit pass instead when:
   - your `-n` is 1 or less, since one worker has no sibling workers for the serial pass to protect;
   - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 1 or less, and your `-n`, if any, is `auto` or `logical`. When it is unset and the 1-minute load average is readable, `select-tests.py` sizes it from the CPU count and load, so a one-CPU machine runs one pass too;
   - an argument starts with `@`;
@@ -628,6 +631,7 @@ This is the required local command for agents, including in `/ready-for-review`.
 - It does not read `PYTEST_ADDOPTS` or `--pdb` when it decides whether to split.
 - It exits with the first non-zero code, the parallel pass's first. A pass that collected no tests, exit 5, defers to the other unless both did.
 - Each pass writes report files such as `--junitxml` once, so the serial pass's file replaces the parallel pass's.
+- `--lf` in a split run reads the cache the parallel pass just wrote. Once that pass clears the recorded failures, the serial pass runs every selected timing test. Pass `-n 0` for an exact rerun.
 - A run where both passes fail may lose the parallel pass's `tmp_path` directories.
 - The serial pass removes only this run's own sibling-worker load, not load from other processes on the machine.
 - The interpreter that runs it must be able to import pytest.

@@ -290,11 +290,12 @@ class TestTimingMarkerCoverageParity:
             deselected_expression, [CPU_SATURATING_TEST_FILE], accepted_exit_codes=(ExitCode.OK, ExitCode.NO_TESTS_COLLECTED),
         )
 
-        assert exit_code == ExitCode.OK and CPU_SATURATING_TEST_NODE_ID in selected_ids, (
-            f"the serial pass's expression does not deselect {CPU_SATURATING_TEST_NODE_ID} from "
+        assert exit_code == ExitCode.OK and set(selected_ids) == {CPU_SATURATING_TEST_NODE_ID}, (
+            f"the serial pass's expression does not deselect exactly {CPU_SATURATING_TEST_NODE_ID} from "
             f"{CPU_SATURATING_TEST_FILE} (exit {exit_code}, selected {selected_ids}). Either the test lost its "
-            "saturates_cpu mark or no longer carries timing beside it, or the test or its class was renamed: "
-            "update CPU_SATURATING_TEST_NODE_ID in the same change as the rename."
+            "saturates_cpu mark or no longer carries timing beside it, the test or its class was renamed "
+            "(update CPU_SATURATING_TEST_NODE_ID in the same change as the rename), or a second test in the file "
+            "carries both marks."
         )
 
 

@@ -1367,7 +1367,6 @@ def _pass_summary(exit_codes: list[int], pass_seconds: list[float], merged_exit_
 def run_pass_plan(
     pass_plan: PassPlan, resolved_targets: list[str], *, repo_root: Path, env: dict[str, str],
 ) -> int:
-    """Runs each planned pass over the same targets and returns the merged exit code."""
     is_split = pass_plan.unsplit_reason is None
     if not is_split:
         print(f"select-tests: one pass, not split: {pass_plan.unsplit_reason}", file=sys.stderr)

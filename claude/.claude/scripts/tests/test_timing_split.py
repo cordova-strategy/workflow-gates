@@ -218,6 +218,16 @@ class TestScanTimingMarks:
                 [], ["sub"], ("sub/test_a.py",),
                 id="bare-caller-argument-naming-a-directory-is-a-path",
             ),
+            pytest.param(
+                {"t/test_z.py": MARKED_TEST_TEXT, "t/a/test_m.py": MARKED_TEST_TEXT, "t/test_b.py": MARKED_TEST_TEXT},
+                ["t"], [], ("t/a/test_m.py", "t/test_b.py", "t/test_z.py"),
+                id="several-marked-files-come-back-sorted-not-in-walk-order",
+            ),
+            pytest.param(
+                {"t/test_a.py": MARKED_TEST_TEXT},
+                ["t"], ["t/test_a.py", "t"], ("t/test_a.py",),
+                id="a-target-and-overlapping-caller-paths-list-a-file-once",
+            ),
         ],
     )
     def test_lists_the_files_that_hold_the_timing_mark(
@@ -236,6 +246,26 @@ class TestScanTimingMarks:
         scan = scan_timing_marks(["t"], [], repo_root=tmp_path)
 
         assert scan == TimingMarkScan(("t/test_dangling.py",))
+
+    def test_directory_symlink_is_not_followed(self, tmp_path):
+        _write_files(tmp_path, {"elsewhere/test_linked.py": MARKED_TEST_TEXT, "t/test_plain.py": UNMARKED_TEST_TEXT})
+        (tmp_path / "t" / "link").symlink_to(tmp_path / "elsewhere", target_is_directory=True)
+
+        scan = scan_timing_marks(["t"], [], repo_root=tmp_path)
+
+        assert scan == TimingMarkScan(())
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root reads a directory whatever its mode")
+    def test_unreadable_directory_contributes_nothing_while_its_readable_sibling_is_scanned(self, tmp_path):
+        _write_files(tmp_path, {"t/locked/test_hidden.py": MARKED_TEST_TEXT, "t/test_visible.py": MARKED_TEST_TEXT})
+        locked_directory = tmp_path / "t" / "locked"
+        locked_directory.chmod(0o000)
+        try:
+            scan = scan_timing_marks(["t"], [], repo_root=tmp_path)
+        finally:
+            locked_directory.chmod(0o700)
+
+        assert scan == TimingMarkScan(("t/test_visible.py",))
 
     def test_caller_path_outside_the_repo_root_is_skipped_without_raising(self, tmp_path):
         repo_root = tmp_path / "repo"
@@ -444,17 +474,21 @@ markers =
     {SATURATES_CPU_MARKER}
 """
 
-# Writes each selected node ID, post-deselection, to a per-process file under the directory the environment names.
-# The hook runs after -m deselection (so the IDs are the selected tests in one format under any verbosity), and each
-# xdist worker writes its own file.
-CONFTEST = """\
+# Names the ids file of a run that is not an xdist worker.
+NO_WORKER_IDS_FILE_STEM = "no-xdist-worker"
+
+# Writes each selected node ID, post-deselection, to a per-worker file under the directory the environment names.
+# The hook runs after -m deselection (so the IDs are the selected tests in one format under any verbosity). Each xdist
+# worker writes its own file, so the file count is the worker count, and a run without workers writes one file.
+CONFTEST = f"""\
 import os
 
 
 def pytest_collection_finish(session):
     output_dir = os.environ.get("TIMING_SPLIT_COLLECTED_IDS_DIR")
     if output_dir:
-        with open(os.path.join(output_dir, f"{os.getpid()}.ids"), "w") as handle:
+        worker = os.environ.get("PYTEST_XDIST_WORKER", "{NO_WORKER_IDS_FILE_STEM}")
+        with open(os.path.join(output_dir, f"{{worker}}.ids"), "w") as handle:
             handle.write("\\n".join(item.nodeid for item in session.items))
 """
 
@@ -490,6 +524,19 @@ def test_saturates_cpu():
     pytest.fail("a split run must never start the CPU-saturating test")
 """
 
+PROJECT_FAILING_TEST = """\
+def test_plain_fails():
+    assert False
+"""
+
+PROJECT_FIXED_TEST = """\
+def test_plain_fails():
+    pass
+"""
+
+# Replaces the ini's addopts, which carries -p no:cacheprovider, so --lf has a cache to read.
+CACHE_ENABLED_OPTIONS = ["-o", "addopts=-n auto"]
+
 PROJECT_PLAIN_TESTS = """\
 import pytest
 
@@ -524,6 +571,7 @@ ALL_TESTS_BUT_THE_CPU_SATURATING_ONE = {
 class _PytestRun(NamedTuple):
     exit_code: int
     node_ids: set[str]
+    ids_file_stems: set[str]
     output: str
 
 
@@ -543,7 +591,6 @@ class TestPlannedPassesAgainstRealPytest:
 
     @staticmethod
     def _run_pytest(project: Path, argv: list[str]) -> _PytestRun:
-        """Runs real pytest in the project and returns its exit code, the node IDs it selected and its combined output."""
         # xdist sets these in each worker, and the child must not see the ones of the worker running this test.
         environment = {
             name: value
@@ -558,9 +605,11 @@ class TestPlannedPassesAgainstRealPytest:
                 cwd=project, env=environment, capture_output=True, text=True, timeout=120, check=False,
             )
             node_ids: set[str] = set()
+            ids_file_stems: set[str] = set()
             for ids_file in Path(ids_dir).glob("*.ids"):
+                ids_file_stems.add(ids_file.stem)
                 node_ids.update(line for line in ids_file.read_text().splitlines() if line)
-        return _PytestRun(completed.returncode, node_ids, f"{completed.stdout}\n{completed.stderr}")
+        return _PytestRun(completed.returncode, node_ids, ids_file_stems, f"{completed.stdout}\n{completed.stderr}")
 
     @staticmethod
     def _plan(project: Path, caller_args: list[str]) -> PassPlan:
@@ -613,6 +662,70 @@ class TestPlannedPassesAgainstRealPytest:
         assert exit_codes == [ExitCode.NO_TESTS_COLLECTED, ExitCode.NO_TESTS_COLLECTED], [run.output for run in runs]
         assert [run.node_ids for run in runs] == [set(), set()]
         assert merge_pass_exit_codes(exit_codes) == ExitCode.NO_TESTS_COLLECTED
+
+    def test_a_pass_that_selects_nothing_exits_5_when_run_for_real_under_workers_and_serially(self, project):
+        parallel_pass, serial_pass = self._plan(project, ["-n", "2", "-m", SATURATES_CPU_MARKER]).passes
+
+        parallel_run = self._run_pytest(project, ["tests", *parallel_pass.pytest_args])
+        serial_run = self._run_pytest(project, ["tests", *serial_pass.pytest_args])
+
+        assert len(parallel_run.ids_file_stems) == 2 and NO_WORKER_IDS_FILE_STEM not in parallel_run.ids_file_stems
+        assert serial_run.ids_file_stems == {NO_WORKER_IDS_FILE_STEM}
+        assert [parallel_run.exit_code, serial_run.exit_code] == [
+            ExitCode.NO_TESTS_COLLECTED, ExitCode.NO_TESTS_COLLECTED,
+        ], [parallel_run.output, serial_run.output]
+        assert parallel_run.node_ids == set() and serial_run.node_ids == set()
+
+    def test_the_parallel_pass_runs_the_non_timing_tests_in_the_callers_number_of_workers(self, project):
+        # Three workers differ from the two the environment sizes -n auto to, so only the caller's -n explains them.
+        parallel_pass, _ = self._plan(project, ["-n", "3"]).passes
+
+        run = self._run_pytest(project, ["tests", *parallel_pass.pytest_args])
+
+        assert run.exit_code == ExitCode.OK, run.output
+        assert len(run.ids_file_stems) == 3 and NO_WORKER_IDS_FILE_STEM not in run.ids_file_stems
+        timing_test_ids = {f"{MARKED}test_timing_serial", f"{MARKED}test_timing_slow"}
+        assert run.node_ids == ALL_TESTS_BUT_THE_CPU_SATURATING_ONE - timing_test_ids
+
+    def test_last_failed_collects_nothing_in_the_serial_pass_while_a_non_timing_test_still_fails_in_a_file_without_timing_tests(
+        self, project,
+    ):
+        _write_files(project, {"tests/test_failing.py": PROJECT_FAILING_TEST})
+        parallel_pass, serial_pass = self._plan(project, []).passes
+        failing_node_id = "tests/test_failing.py::test_plain_fails"
+
+        first_run = self._run_pytest(project, ["tests", *parallel_pass.pytest_args, *CACHE_ENABLED_OPTIONS])
+        parallel_rerun = self._run_pytest(
+            project, ["tests", *parallel_pass.pytest_args, *CACHE_ENABLED_OPTIONS, "--lf"],
+        )
+        serial_rerun = self._run_pytest(project, ["tests", *serial_pass.pytest_args, *CACHE_ENABLED_OPTIONS, "--lf"])
+
+        assert first_run.exit_code == ExitCode.TESTS_FAILED, first_run.output
+        assert (parallel_rerun.exit_code, parallel_rerun.node_ids) == (ExitCode.TESTS_FAILED, {failing_node_id})
+        assert (serial_rerun.exit_code, serial_rerun.node_ids) == (ExitCode.NO_TESTS_COLLECTED, set()), (
+            serial_rerun.output
+        )
+
+    def test_last_failed_after_a_fix_runs_every_timing_test_in_the_serial_pass_because_the_parallel_pass_cleared_the_cache(
+        self, project,
+    ):
+        _write_files(project, {"tests/test_failing.py": PROJECT_FAILING_TEST})
+        parallel_pass, serial_pass = self._plan(project, []).passes
+        fixed_node_id = "tests/test_failing.py::test_plain_fails"
+        timing_test_ids = {f"{MARKED}test_timing_serial", f"{MARKED}test_timing_slow"}
+
+        first_run = self._run_pytest(project, ["tests", *parallel_pass.pytest_args, *CACHE_ENABLED_OPTIONS])
+        _write_files(project, {"tests/test_failing.py": PROJECT_FIXED_TEST})
+        parallel_rerun = self._run_pytest(
+            project, ["tests", *parallel_pass.pytest_args, *CACHE_ENABLED_OPTIONS, "--lf"],
+        )
+        serial_rerun = self._run_pytest(project, ["tests", *serial_pass.pytest_args, *CACHE_ENABLED_OPTIONS, "--lf"])
+
+        assert first_run.exit_code == ExitCode.TESTS_FAILED, first_run.output
+        assert (parallel_rerun.exit_code, parallel_rerun.node_ids) == (ExitCode.OK, {fixed_node_id}), (
+            parallel_rerun.output
+        )
+        assert (serial_rerun.exit_code, serial_rerun.node_ids) == (ExitCode.OK, timing_test_ids), serial_rerun.output
 
     def test_a_caller_double_dash_runs_one_pass_that_collects_while_a_split_argv_would_be_a_usage_error(self, project):
         caller_args = ["--", "tests/test_plain.py"]

@@ -14,7 +14,6 @@ import ast
 import importlib.util
 import json
 import os
-import re
 import shlex
 import signal
 import subprocess
@@ -3023,7 +3022,7 @@ class TestPassOptionsMatchCiPytestSteps:
                     {"run": "pytest a/ -v -m timing"},
                 ],
                 None,
-                "",
+                "serial pass options ['-m', 'timing', '-n0'] match 0 CI steps",
                 id="serial-step-without-n0",
             ),
             pytest.param(
@@ -3032,7 +3031,7 @@ class TestPassOptionsMatchCiPytestSteps:
                     {"run": "pytest a/ -v -m timing -n0"},
                 ],
                 None,
-                "",
+                "parallel pass options ['-m', 'not timing'] match 0 CI steps",
                 id="parallel-step-with-a-different-marker-expression",
             ),
             pytest.param(
@@ -3041,7 +3040,7 @@ class TestPassOptionsMatchCiPytestSteps:
                     {"run": "pytest a/ -v"},
                 ],
                 None,
-                "",
+                "matches 2 passes",
                 id="one-step-holding-both-passes-options",
             ),
             pytest.param(
@@ -3547,13 +3546,26 @@ class TestMainComposition:
         assert f"select-tests: running {', '.join(expected_argv)}" in stderr
 
 
+class TestPassSummary:
+    def test_two_passes_report_each_exit_code_and_duration_and_the_merged_code(self):
+        summary = _mod._pass_summary(
+            [ExitCode.TESTS_FAILED, ExitCode.INTERNAL_ERROR], [12.34, 5.0], ExitCode.TESTS_FAILED,
+        )
+
+        assert summary == "select-tests: parallel pass exited 1 in 12.3s, serial pass exited 3 in 5.0s; exiting 1"
+
+    def test_a_skipped_serial_pass_is_named_and_a_signal_death_keeps_its_negative_code(self):
+        summary = _mod._pass_summary([-signal.SIGKILL], [0.04], -signal.SIGKILL)
+
+        assert summary == "select-tests: parallel pass exited -9 in 0.0s; serial pass skipped; exiting -9"
+
+
 class TestMainPassPlanning:
     """main()'s split into a parallel and a serial pytest pass, with run_pytest faked so each test controls the pass
     exit codes."""
 
     CHANGED_PATH = "claude/.claude/scripts/mark-terminal.py"
     TARGETS = [_mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR]
-    SECONDS = r"\d+\.\d"
 
     def _stub_main(self, monkeypatch, results, *, repo_root=Path("/fake/repo/root")):
         """Fakes the repo root and the changed paths, and has run_pytest return each of results in order, or raise
@@ -3588,23 +3600,18 @@ class TestMainPassPlanning:
         assert exit_code == ExitCode.TESTS_FAILED
         assert "select-tests: parallel pass: -m 'not timing'\n" in stderr
         assert "select-tests: serial pass: -m 'timing and not saturates_cpu' -n0\n" in stderr
-        assert re.search(
-            rf"select-tests: parallel pass exited 1 in {self.SECONDS}s, "
-            rf"serial pass exited 3 in {self.SECONDS}s; exiting 1",
-            stderr,
-        )
+        assert "select-tests: parallel pass exited 1 in " in stderr
+        assert ", serial pass exited 3 in " in stderr
+        assert "s; exiting 1" in stderr
 
-    def test_pass_that_collected_no_tests_defers_to_the_other_pass(self, monkeypatch, capsys):
-        self._stub_main(monkeypatch, [ExitCode.NO_TESTS_COLLECTED, ExitCode.OK])
+    def test_pass_that_collected_no_tests_defers_to_the_other_pass(self, monkeypatch):
+        argvs = self._stub_main(monkeypatch, [ExitCode.NO_TESTS_COLLECTED, ExitCode.OK])
         _patch_timing_scan(monkeypatch)
 
         exit_code = _mod.main([])
 
         assert exit_code == ExitCode.OK
-        assert re.search(
-            rf"parallel pass exited 5 in {self.SECONDS}s, serial pass exited 0 in {self.SECONDS}s; exiting 0",
-            capsys.readouterr().err,
-        )
+        assert len(argvs) == 2
 
     @pytest.mark.parametrize(
         "parallel_exit_code",
@@ -3614,7 +3621,7 @@ class TestMainPassPlanning:
             pytest.param(-signal.SIGKILL, id="killed-by-signal"),
         ],
     )
-    def test_serial_pass_is_skipped_after_a_pytest_error_or_a_kill(self, monkeypatch, capsys, parallel_exit_code):
+    def test_serial_pass_is_skipped_after_a_pytest_error_or_a_kill(self, monkeypatch, parallel_exit_code):
         argvs = self._stub_main(monkeypatch, [parallel_exit_code])
         _patch_timing_scan(monkeypatch)
 
@@ -3622,11 +3629,6 @@ class TestMainPassPlanning:
 
         assert len(argvs) == 1
         assert exit_code == parallel_exit_code
-        assert re.search(
-            rf"select-tests: parallel pass exited {int(parallel_exit_code)} in {self.SECONDS}s; "
-            rf"serial pass skipped; exiting {int(parallel_exit_code)}",
-            capsys.readouterr().err,
-        )
 
     def test_interrupt_in_the_parallel_pass_propagates_before_the_serial_pass_and_the_summary(
         self, monkeypatch, capsys,
