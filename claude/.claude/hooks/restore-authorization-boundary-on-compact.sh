@@ -10,6 +10,7 @@
 # The shapes it names are illustrative, not an exhaustive list — see
 # handoff/SKILL.md §3.5 for the categorization rule this hook echoes a subset
 # of.
+# A 2-second time cap bounds the stdin read, so a pipe the harness never closes cannot stall the hook.
 # Deliberately excluded from `clear`: an emptied context asserts no next step,
 # so there is no false authorization to correct.
 #
@@ -40,7 +41,7 @@ if ! . "${0%/*}/_lib.sh" 2>/dev/null; then
   exit 0
 fi
 
-INPUT=$(cat 2>/dev/null)
+INPUT=$(_lib_capped_for 2 cat 2>/dev/null)
 SOURCE=$(printf '%s' "$INPUT" | _lib_jq -r 'if (.source | type) == "string" then .source else empty end' 2>/dev/null)
 [ "$SOURCE" = "compact" ] || exit 0
 

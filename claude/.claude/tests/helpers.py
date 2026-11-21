@@ -964,6 +964,45 @@ def run_additional_context_session_start_hook(
     )
 
 
+def run_hook_on_held_open_stdin(hook: Path, payload: dict, home: Path, path: str) -> subprocess.CompletedProcess:
+    """Runs a hook whose stdin carries a complete payload but is never closed, as when the harness leaves its pipe open.
+
+    Waits at most the hook's registered SessionStart timeout, then kills the hook and fails, so a missing stdin cap
+    fails the test instead of hanging it. `communicate` is avoided because it closes stdin.
+    The hook's stdout and stderr are not drained while waiting, so output past a pipe buffer would stall it.
+    """
+    registered_timeout_seconds = session_start_registered_timeouts(hook.name)[0]
+    assert isinstance(registered_timeout_seconds, int), f"{hook.name} has no integer SessionStart timeout registered"
+    hook_process = subprocess.Popen(
+        [str(hook)],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "HOME": str(home), "PATH": path},
+    )
+    assert hook_process.stdin is not None
+    assert hook_process.stdout is not None
+    assert hook_process.stderr is not None
+    try:
+        hook_process.stdin.write(json.dumps(payload).encode())
+        hook_process.stdin.flush()
+        try:
+            hook_process.wait(timeout=registered_timeout_seconds)
+        except subprocess.TimeoutExpired:
+            hook_process.kill()
+            hook_process.wait()
+            raise AssertionError(
+                f"{hook.name} was still running {registered_timeout_seconds} s after its stdin payload, held open"
+            ) from None
+        return subprocess.CompletedProcess(
+            hook_process.args, hook_process.returncode, hook_process.stdout.read(), hook_process.stderr.read()
+        )
+    finally:
+        hook_process.stdin.close()
+        hook_process.stdout.close()
+        hook_process.stderr.close()
+
+
 def session_start_additional_context(result: subprocess.CompletedProcess) -> str:
     """Returns the `additionalContext` of a SessionStart hook's output, asserting its event name."""
     hook_specific_output = json.loads(result.stdout)["hookSpecificOutput"]

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from helpers import (
+    _timeout_binary_present,
     git_toplevel,
     init_git_repo_with_commit,
     install_shell_exec_guard,
@@ -40,6 +41,11 @@ TIMEOUT_SHIM_SLEEP_SECONDS = 10
 
 # The "Require jq" step in .github/workflows/tests.yml turns a missing jq into a CI failure instead of a skip.
 requires_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="jq not found in PATH")
+
+requires_timeout = pytest.mark.skipif(
+    not _timeout_binary_present(),
+    reason="neither timeout(1) nor gtimeout(1) available -- BSD/macOS without coreutils",
+)
 
 
 @functools.cache

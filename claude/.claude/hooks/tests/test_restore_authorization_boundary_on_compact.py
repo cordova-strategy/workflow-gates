@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import functools
 import json
+import os
 import re
 from pathlib import Path
 
@@ -24,16 +25,26 @@ import pytest
 from helpers import (
     AUTONOMOUS_SHIPPING_STATEMENT_LEAD,
     HOOKS_DIR,
+    assert_cap_engaged,
     build_path_without,
+    fake_bin_dir,
     hook_beside_degraded_schema,
     init_git_repo_with_commit,
     install_recording_shims,
     run_additional_context_session_start_hook,
+    run_hook_on_held_open_stdin,
     session_start_additional_context,
     session_start_registered_timeouts,
+    write_scaled_timeout_shim,
 )
 
+from .conftest import requires_timeout
+
 RESTORE_BOUNDARY_HOOK = HOOKS_DIR / "restore-authorization-boundary-on-compact.sh"
+# The hook's stdin time cap, pinned to the hook's literal by assert_cap_engaged.
+STDIN_CAP_SECONDS = 2
+# The seconds the settings timeout leaves beyond the stdin cap for the bootstrap and the jq calls.
+BOOTSTRAP_AND_JQ_RESERVE_SECONDS = 2
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _HANDOFF_SKILL = _REPO_ROOT / "claude-skills" / "skills" / "handoff" / "SKILL.md"
 
@@ -224,6 +235,23 @@ class TestRestoreAuthorizationBoundaryOnCompact:
     def test_exit_0_always(self, isolated_home):
         result = _run_hook({"source": "compact"}, isolated_home)
         assert result.returncode == 0
+
+    @pytest.mark.timing
+    @requires_timeout
+    def test_stdin_held_open_after_a_complete_payload_emits_the_boundary_text_once_the_cap_kills_the_read(
+        self, isolated_home, tmp_path
+    ):
+        fake_bin = fake_bin_dir(tmp_path, "stdin-held-open")
+        write_scaled_timeout_shim(fake_bin)
+        path_with_scaled_timeout = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
+
+        with assert_cap_engaged(fake_bin, production_cap=STDIN_CAP_SECONDS, command="cat"):
+            result = run_hook_on_held_open_stdin(
+                RESTORE_BOUNDARY_HOOK, {"source": "compact"}, isolated_home, path_with_scaled_timeout
+            )
+
+        assert result.returncode == 0
+        assert "not engineer authorization" in session_start_additional_context(result)
 
 
 class TestShippingStatementOnCompact:
@@ -445,3 +473,9 @@ class TestRestoreAuthorizationBoundaryRegistration:
     def test_registered_with_a_ten_second_timeout(self):
         """The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery"), so the registered cap is the binding bound."""
         assert session_start_registered_timeouts("restore-authorization-boundary-on-compact.sh") == [10]
+
+    def test_timeout_covers_the_stdin_cap_plus_the_bootstrap_reserve(self):
+        timeouts = session_start_registered_timeouts(RESTORE_BOUNDARY_HOOK.name)
+
+        assert len(timeouts) == 1
+        assert timeouts[0] >= STDIN_CAP_SECONDS + BOOTSTRAP_AND_JQ_RESERVE_SECONDS
