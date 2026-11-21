@@ -65,7 +65,7 @@ When a test is intermittently failing:
 | Smoke tests on every commit | Slow CI, rate limit exhaustion, flaky | Run smoke tests on deploy only |
 | Testing implementation details | Tests break on refactor with no behavior change | Test inputs and outputs, not internal mechanics |
 | Tautological assertions | `assert("error" in body or "data" in body)` passes on any response | Assert specific values |
-| Duplicating production code in tests | Test passes with stale copy, drift | Import or call via integration |
+| Duplicating production logic in tests | Test passes with stale copy, drift | Call the code or use integration; spell out expected values instead of importing them from the code under test, and define a value two test files must keep equal once in a shared test module, per `test-conventions/SKILL.md` § "6. Test data" |
 | Reading source files to test behavior | Tests source text, not runtime behavior | Call function, assert output |
 | Regex-parsing specific field values from runtime output in an assertion (log lines, JSON, XML) | Re-implements the production parser: passes when parsing is broken, breaks on format changes (validity-only assertions on the envelope are exempt). | Parse with the library; assert on the resulting object; or call the production parse/validate function |
 | Unconditional global state deletion | Breaks subsequent tests that need the value | Save and restore in guaranteed cleanup |

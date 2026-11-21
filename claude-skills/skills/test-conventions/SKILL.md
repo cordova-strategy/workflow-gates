@@ -104,10 +104,10 @@ For tests that guard against a specific past bug, include a comment or docstring
 
 ## 6. Test data
 
-- Use **factory/builder helpers** that supply sensible defaults; tests override only the fields relevant to the scenario
-- **Avoid magic values** — if a test uses `status: 3`, name the constant or comment why 3 matters
-- **Prefer inline construction** over shared fixtures when the data is central to the test's assertion. Repeating such data inline is fine. Copying a named helper into a second test file is a defect. Define the helper once, in a plain module that every consuming test imports from the project's shared test-helper location, or from a new test-only directory if the project has none.
-- **Shared fixtures** are appropriate for expensive setup (DB schemas, server instances), not for simple data objects
+- Use factory/builder helpers that supply sensible defaults; tests override only the fields relevant to the scenario. A stand-in is a value the scenario does not depend on, so any other valid value would do (an id, a branch name, a model name). It is a builder default or a constant in the file that uses it, and may repeat across files.
+- Write a value the test chooses in the test body, beside the assertion that depends on it, and make its meaning clear there (name `status: 3` or say why 3 matters). Repeating such a value across tests is fine. Shared fixtures are for expensive setup (DB schemas, server instances), not simple data objects.
+- A second test file never copies, named or pasted inline, a helper (function, builder, stub script), setup steps whose details its assertions do not depend on, fixed text or a number the code under test emits or parses, or any other value two test files must keep equal (a delimiter, a message, a size limit). Two values or helpers that merely look alike are not one fact. They are one fact when a change to one would have to be made to the other.
+- Define each such item once, in a plain module that every consuming test imports from the project's shared test-helper location, or from a new test-only directory if the project has none. Spell out a value the code under test emits or parses in that module rather than importing it from the code under test, so a change in the code still fails a test.
 - For tests against shared databases, use unique prefixes/suffixes (run ID, timestamp) so parallel runs and stale data don't collide
 
 ## 7. Coverage judgment
