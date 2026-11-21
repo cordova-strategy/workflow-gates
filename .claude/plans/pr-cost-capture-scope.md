@@ -73,7 +73,7 @@ After revision 3 the session asked two questions. To "This plan projects about 1
 
 A second architect consult reviewed those four choices and agreed with all four of the engineer's answers. The session's dispositions from it, not the engineer's words:
 
-- The export date fix is cut. `_pr_cost_export_date_only` keeps its current truncation, and the export gains one line applying it to `earliest_activity_at`, whose strict parser check guarantees a `T`. The gap for a space-separated `merged_at` or `captured_at` is pre-existing, reachable only by a hand edit, and goes under Out of scope.
+- The export date fix is cut. `_pr_cost_export_date_only` keeps its current truncation, and the export gains one line applying it to `earliest_surviving_activity_at`, whose strict parser check guarantees a `T`. The gap for a space-separated `merged_at` or `captured_at` is pre-existing, reachable only by a hand edit, and goes under Out of scope.
 - The empty-scope stderr line stays but names no causes. It points at `docs/pr-cost.md`, which is the one home for the list of sessions the repo scope does not read.
 - The helper move stays with a corrected list: `_NOW`, `_arrange_record_run`, `_ledger_rows`, `_run_record` and `_cell_of`. `_arrange_round_run`, `_write_four_round_corpus` and `_fail_the_pass` stay where they are, and the `pass-failed` and captured-cell checks become assertions added to the existing tests.
 - Three tests are cut: the verbatim help-string pins, the `select_ledger_prs` pin in `tests/test_transcript_ledger_rounds.py`, and the `_pr_is_joinable` unit cases for a missing, `None` or string flag, which the payload check makes unreachable.
@@ -103,12 +103,14 @@ The commit gate's third review found that filtering fork PRs out before the join
 
 The commit gate's fourth review raised five more wording findings and no design problem. The engineer asked for an outside consult ("Consult fable please") and then typed: "Let's go with Fable's recommendation". That recommendation, in the session's words: apply the pending fixes in their smallest form, mark the plan's verbatim doc text as draft, stop the residual list claiming completeness, and run one last cycle in which only a finding that changes production code or the persisted ledger format earns another plan edit. Any other finding goes to the engineer to keep as settled.
 
+After the plan was committed, a data-engineer review and an analytics-engineer review of the three new columns both recommended keeping the three columns in one header bump. The analytics review recommended renaming `earliest_activity_at` to `earliest_surviving_activity_at` before the header is first written, and rewording the docs on `review_rounds_absence`. The engineer replied: "Yep, let's do the rename and the docs wording." The session did not take the analytics review's optional trim of the export's `unrecognized` mapping.
+
 ## Approach
 
 `pr-cost` records each new row's capture scope, defaults to a repo scope, and refuses branch joins that name no single PR. The behaviors:
 - Three trailing ledger columns arrive in one header bump:
   - `review_rounds_absence` stores the reason code the writer already computes for an empty `review_rounds` cell;
-  - `earliest_activity_at` stores the branch's earliest surviving session start;
+  - `earliest_surviving_activity_at` stores the earliest first valid-usage turn among the branch's surviving sessions;
   - `capture_scope` stores `repo` or `glob`, set from `args.this_repo`, the field `_resolve_project_scope` picks its arm by.
 - The whole `pr-cost` subcommand defaults to a repo scope: this checkout's worktrees plus every project directory under its main worktree's `.claude/worktrees/` slug prefix, matched by a rule moved out of routing-guard into `scope.py`.
 - `repo` therefore covers more than the identity scope, a departure from GH-1426 guarantee 2's wording that the plan and the PR body name (row 48).
@@ -151,15 +153,15 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
 **`claude/.claude/scripts/transcript_analysis/gh_cli.py` (dispatch 1).** `_gh_discover_merged_prs` appends `isCrossRepository` to its `json_fields` (row 16). workstream-cost, the other caller, reads only `headRefName` and does not change.
 
 **Ledger format: `claude/.claude/scripts/transcript_analysis/pr_cost_ledger.py` (dispatch 2).**
-- Today's `_PR_COST_LEDGER_COLUMNS` becomes the frozen `_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS`, with the "never edit" comment its siblings carry. The current tuple is that one plus `review_rounds_absence`, `earliest_activity_at` and `capture_scope`, in that order. `capture_scope` goes last because a row this checkout writes never leaves it empty, so such a row never ends in a tab. Each new column carries a one-line comment:
-  - `review_rounds_absence`: "Why review_rounds is empty; empty when the cell is present or the row predates this column. Checked for shape only, so a newer checkout's value still parses."
-  - `earliest_activity_at`: "The branch's earliest surviving session start at capture; empty when the scan found none."
+- Today's `_PR_COST_LEDGER_COLUMNS` becomes the frozen `_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS`, with the "never edit" comment its siblings carry. The current tuple is that one plus `review_rounds_absence`, `earliest_surviving_activity_at` and `capture_scope`, in that order. `capture_scope` goes last because a row this checkout writes never leaves it empty, so such a row never ends in a tab. Each new column carries a one-line comment:
+  - `review_rounds_absence`: "Why review_rounds is empty; empty when the cell is present, the row predates this column, or the cell was blanked by hand. Checked for shape only, so a newer checkout's value still parses."
+  - `earliest_surviving_activity_at`: "The earliest first valid-usage turn among the branch's surviving sessions at capture; empty when the scan found none."
   - `capture_scope`: "Empty cell: recorded before this column, so the scope is unknown."
 - `_PR_COST_LEDGER_COLUMNS_BY_HEADER_LINE` adds the frozen tuple. `_PR_COST_LEDGER_COLUMN_DEFAULTS` maps each new column to `""`, which is guarantee 1 (row 22).
 - `capture_scope` is a closed enum beside `status` and `join_confidence` (row 23): `_PR_COST_CAPTURE_SCOPE_REPO = "repo"`, `_PR_COST_CAPTURE_SCOPE_GLOB = "glob"` and `_PR_COST_CAPTURE_SCOPE_VALUES`.
 - `_parse_pr_cost_ledger_row_cells` adds three checks, and none echoes the cell:
   - `review_rounds_absence` is empty or fully matches `_MODEL_BREAKDOWN_KEY_RE`, the label shape both JSON cells already use, else `line N: malformed review_rounds_absence` (row 51);
-  - `earliest_activity_at` is empty, or it fully matches `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z` and parses with `datetime.fromisoformat`, else `line N: malformed earliest_activity_at`. That is the one form the writer emits, and the column has no legacy values to tolerate (row 52);
+  - `earliest_surviving_activity_at` is empty, or it fully matches `\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z` and parses with `datetime.fromisoformat`, else `line N: malformed earliest_surviving_activity_at`. That is the one form the writer emits, and the column has no legacy values to tolerate (row 52);
   - `capture_scope` is empty or in `_PR_COST_CAPTURE_SCOPE_VALUES`, else `line N: unknown capture_scope`.
 - `_current_cells_from_file_row`'s short-row hint keys on defaults, not on JSON columns (row 21). With K the shortfall and the missing columns the file header's last K:
   - every missing column is a key of `_PR_COST_LEDGER_COLUMN_DEFAULTS` whose value is `""`: today's `(if an editor trimmed trailing whitespace, append a tab to this line)` at K of 1, and `append K tabs` in its place above 1;
@@ -209,11 +211,11 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
    - Read mode: `_print_pr_cost_uncaptured` keeps only joinable matches before its `len(matches) != 1` test, so it lists only PRs `--record` can capture. Its docstring's "an unambiguous direct headRefName match (a branch with zero or more-than-one match" becomes "exactly one joinable direct headRefName match (a branch with none, or more than one," (`pr_cost.py:637-644`, row 25).
    - The filter sits at each call site, not inside `_direct_headref_matches`, because the walk needs the unfiltered matches to tell "no merged PR" from "only fork PRs", and `--pr N` looks PRs up by number, not through that function (row 54).
 3. Row cells (rows 18, 19, 29).
-   - `_new_pr_cost_row` gains keyword-only `capture_scope: str` and `review_rounds_absence: str | None`. It writes `review_rounds_absence or ""`, and `earliest_activity_at` from `_earliest_activity_at(agg)`.
-   - `_earliest_activity_at(agg: dict) -> str` takes the smallest epoch in `agg["session_starts"]`, whose entries are `(float_epoch, session_id)` (`cost.py:117-121`). It returns `_iso_utc_seconds(datetime.fromtimestamp(epoch, UTC))`, or `""` when that list is empty.
+   - `_new_pr_cost_row` gains keyword-only `capture_scope: str` and `review_rounds_absence: str | None`. It writes `review_rounds_absence or ""`, and `earliest_surviving_activity_at` from `_earliest_surviving_activity_at(agg)`.
+   - `_earliest_surviving_activity_at(agg: dict) -> str` takes the smallest epoch in `agg["session_starts"]`, whose entries are `(float_epoch, session_id)` (`cost.py:117-121`). It returns `_iso_utc_seconds(datetime.fromtimestamp(epoch, UTC))`, or `""` when that list is empty.
    - `_iso_utc_seconds(moment: datetime) -> str` returns `moment.isoformat(timespec="seconds").replace("+00:00", "Z")` for a UTC datetime, which truncates a fractional second. `captured_at` at `:1090` calls it too.
    - The production caller (`:1101`) passes the run's `capture_scope` and the `rounds_absence` that `_review_rounds_cell_outcome` returned.
-   - The single-account `--pr N` zero-valued row stays. It now carries the run's `capture_scope`, `no-local-activity` and an empty `earliest_activity_at`.
+   - The single-account `--pr N` zero-valued row stays. It now carries the run's `capture_scope`, `no-local-activity` and an empty `earliest_surviving_activity_at`.
 4. Absence vocabulary (row 51). `_ROUNDS_ABSENCES` stays in pr_cost.py as the writer's closed set, and `_review_rounds_cell_outcome` keeps refusing a value outside it. The export reads that same set (Export below), so the vocabulary has one home. `not-built` stays in the set, though this checkout's writer cannot reach it (row 50).
 5. `--force` re-scope (guarantee 4; rows 26, 27). `_review_rounds_force_refusal` gains keyword-only `prior_capture_scope: str` and `new_capture_scope: str`. Its first matching case decides:
    1. prior cell empty: allowed;
@@ -229,9 +231,9 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
    - A `glob` re-capture over a `repo` row falls through to today's same-rule guard; refusing it is the reader PR's question (row 40).
 
 **Export: `claude/.claude/scripts/transcript_analysis/pr_cost_export.py` (dispatch 2).**
-- `_redact_pr_cost_row_for_export` applies the unchanged `_pr_cost_export_date_only` to `earliest_activity_at`, beside `merged_at` and `captured_at`. The parser's strict check guarantees that cell a `T`, so today's truncation reduces it to a date (row 52).
-- The docstring at `pr_cost_export.py:32-36` reads, verbatim: "Date portion of a writer-form ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS[Z|+HH:MM]). Applies to merged_at, captured_at and earliest_activity_at. The parser holds earliest_activity_at to the writer's form. merged_at and captured_at accept any fromisoformat value, so a hand-edited one without a T passes through whole." Its `rate_stamp` sentence stays. It extends no "validated" claim to the new column.
-- The `_redact_pr_cost_row_for_export` docstring at `:103` reads "merged_at/captured_at/earliest_activity_at are truncated to a date" (row 25).
+- `_redact_pr_cost_row_for_export` applies the unchanged `_pr_cost_export_date_only` to `earliest_surviving_activity_at`, beside `merged_at` and `captured_at`. The parser's strict check guarantees that cell a `T`, so today's truncation reduces it to a date (row 52).
+- The docstring at `pr_cost_export.py:32-36` reads, verbatim: "Date portion of a writer-form ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS[Z|+HH:MM]). Applies to merged_at, captured_at and earliest_surviving_activity_at. The parser holds earliest_surviving_activity_at to the writer's form. merged_at and captured_at accept any fromisoformat value, so a hand-edited one without a T passes through whole." Its `rate_stamp` sentence stays. It extends no "validated" claim to the new column.
+- The `_redact_pr_cost_row_for_export` docstring at `:103` reads "merged_at/captured_at/earliest_surviving_activity_at are truncated to a date" (row 25).
 - `capture_scope` passes through as a closed enum (row 24).
 - `review_rounds_absence` passes through when it is empty or in `pr_cost._ROUNDS_ABSENCES`, and any other value exports as `unrecognized` (row 51). This mirrors the vocabulary filter the export applies to `review_rounds`. The import adds no cycle, because only `cli.py` imports `pr_cost_export`.
 
@@ -250,22 +252,22 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
       - counted: a subagent file under an in-repo session, whatever repository the subagent worked in;
       - scoped to the checkout that ran `--record`: `capture_scope` names that checkout's scope;
       - the row's `repo` column comes from that checkout's `origin`, so a reader also matches the row's repository to the publishing one;
-      - zero-valued: a `repo` row whose `review_rounds_absence` is `no-local-activity` and whose `earliest_activity_at` is empty holds zero because the scope read nothing for the branch. That is either a PR built without Claude Code or work the scope does not read, and the row cannot tell the two apart;
+      - zero-valued: a `repo` row whose `review_rounds_absence` is `no-local-activity` and whose `earliest_surviving_activity_at` is empty holds zero because the scope read nothing for the branch. That is either a PR built without Claude Code or work the scope does not read, and the row cannot tell the two apart;
       - joined by name to the wrong PR: sessions on a local branch of a fork PR that was never merged, whose head name a merged same-repository PR also used, because the discovery list holds merged PRs only, up to the cap `docs/transcript-analysis.md:1510` documents. The row keeps its `high` or `medium` grade;
       - asserted, not authenticated: `capture_scope` records the scope of the run that wrote it, and the ledger file has no checksum, so a hand edit to the cell leaves no trace.
 
       The subsection lists the known residuals of a `repo` row and does not claim to be complete. It does not say how a figure from such a row could meet the publication bar, which stays `docs/private-project-redaction.md`'s to say. The PR body links to the subsection (Shipping).
     - `glob`: an explicit `--projects` glob, `*` included, whatever it matched. A glob that matches only this repository's directories still records `glob`.
     - An empty `capture_scope` means the row predates the column, and a new class arrives under a new header.
-    - `review_rounds_absence` holds a reason code when `review_rounds` is empty on a row whose `capture_scope` is not empty, each mapped to its stderr reason. A newer checkout may add a code, and readers tolerate one they do not know.
-    - `earliest_activity_at` is the earliest first-valid-usage-turn timestamp among the sessions the dollar pass attributed to the branch, in UTC to the second, as `YYYY-MM-DDTHH:MM:SSZ`. A span from it to `captured_at` near the capturing account's `cleanupPeriodDays` means older sessions may have aged out. A shorter span makes truncation unlikely but does not rule it out.
+    - `review_rounds_absence` holds a reason code whenever the writer leaves `review_rounds` empty, each mapped to its stderr reason. An empty reason beside an empty `review_rounds` cell means unknown: the row predates the column, or an operator blanked a cell that failed to parse. The only test for a legacy row is an empty `capture_scope`. A newer checkout may add a code, and readers tolerate one they do not know.
+    - `earliest_surviving_activity_at` is the earliest first-valid-usage-turn timestamp among the sessions the dollar pass attributed to the branch, in UTC to the second, as `YYYY-MM-DDTHH:MM:SSZ`. It is not a measured start of the work, and a span from it bounds the work's duration in neither direction. Sessions deleted before capture are not counted, and neither are sessions outside the capture scope. A span from it to `captured_at` near the capturing account's `cleanupPeriodDays` means older sessions may have aged out. A shorter span shows no evidence of truncation but does not rule it out.
   - The header paragraph (`:37`): six headers and the three empty defaults.
   - The hint bullets (`:41-44`): the rule by default and shortfall, with a column outside the defaults map giving no hint.
   - "Trailing cell" (`:89`): `capture_scope` is last and never empty on a row this checkout writes, and a row recorded earlier ends in four empty cells.
   - "Data" (`:244`) reads, verbatim: "Two edits are exempt: restoring the trailing tabs an editor stripped, and blanking a `model_breakdown` or `review_rounds` cell that fails to parse (keep its tab; the blanked cell is no longer the line's last cell, because three columns follow `review_rounds`). Only the tab restore leaves every value unchanged."
   - "Write-time check failures" (`:158`) reads, verbatim: "To find the cause after an exit 1 for a failed review-round pass, run `review-round-cost` with the failed run's scope flags minus `--all-accounts`, and with the top-level `--config-dir PATH` (placed before the subcommand name) set to the failing account's config directory. A bare pr-cost run has no scope flag to copy: it read this checkout's repo scope, so pass `--projects` with the prefix glob from `docs/transcript-analysis.md`'s `--this-repo` section, which reads those directories and more."
   - "Join confidence" (`:222`), the one home for the `low` grade: the `low` bullet reads, verbatim: "`low` — the branch name matched more than one merged PR (branch-name reuse), a cross-repository PR included. The writer resolves among the same-repository matches by highest commit-SHA overlap, ties broken by most recent `mergedAt`, and a remaining tie leaves the row unresolved (no row written). A same-repository PR whose head name a merged cross-repository PR also used records at `low` for that reason alone, its row can hold the cross-repository PR's local review spend, and a `--force` re-capture grades it `low` again. `review-cost-by-size` excludes every `low` row."
-  - "Absence" (`:76-87`): `review_rounds_absence` names which state applies, and the retention bullet points at `earliest_activity_at` in place of "No field marks that case".
+  - "Absence" (`:76-87`): `review_rounds_absence` names which state applies, and the retention bullet points at `earliest_surviving_activity_at` in place of "No field marks that case".
   - "Upgrading an existing ledger" (`:198`): the three empty defaults.
   - "Default (read) output" (`:248`):
     - the uncaptured-PR listing reads the run's scope, the repo scope by default, while the ledger listing prints every row;
@@ -285,22 +287,22 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - the six-case table above;
     - the reasons at `:302` and `:305`, for a row whose `capture_scope` is empty: a bare run is now narrower than the bare run that recorded it, and `--projects '*'` reproduces that original scan and records `glob`;
     - the same reasons, for a row recorded with explicit flags: repeating them stays correct;
-    - at case 4: the waiver also passes a shrink from aged-out transcripts, and the new row's `earliest_activity_at` is the operator's check for it;
+    - at case 4: the waiver also passes a shrink from aged-out transcripts, and the new row's `earliest_surviving_activity_at` is the operator's check for it;
     - a `glob` re-capture over a `repo` row appends a `glob` row, which becomes the current row.
   - Export, the opening paragraph (`:396`): "the two remaining timestamps" becomes three, truncated to a date for a writer-form value.
   - Export, "Parsing" (`:402`): the new last column.
-  - Export, "Columns" (`:410`): `earliest_activity_at` joins the date-truncated set, the truncation is qualified to writer-form values for `merged_at` and `captured_at`, and an unknown `review_rounds_absence` exports as `unrecognized`.
+  - Export, "Columns" (`:410`): `earliest_surviving_activity_at` joins the date-truncated set, the truncation is qualified to writer-form values for `merged_at` and `captured_at`, and an unknown `review_rounds_absence` exports as `unrecognized`.
   - Export, the byte-identical sentence (`:413`): `review_rounds_absence` joins its exceptions, because an unknown value exports as `unrecognized`.
   - Export, the correlation bullet (`:445`): three truncated dates.
   - Export, the publication bullet (`:455`): it keeps every ledger-row figure in its "does not meet" list. It reads "A figure read from any ledger row, `review-cost-by-size`'s included: a row whose `capture_scope` is not `repo` can hold another repository's session on a same-named branch, and a `repo` row carries the residuals in "Capture scope, rounds absence and earliest activity" above." It names the subsection the way this file's other self-references do, with no `§`, because the citation grammar takes a backticked target.
-  - "Combining exports" (`:483`, `:491`): the three columns are optional, and the retention bullet points at `earliest_activity_at`.
+  - "Combining exports" (`:483`, `:491`): the three columns are optional, and the retention bullet points at `earliest_surviving_activity_at`.
 - `docs/transcript-analysis.md`:
   - `:49`: the sentence saying `--this-repo` resolves worktrees "by identity ... matched as exact project-directory names" already carves out `review-cost-by-size`. It gains the same kind of exception for pr-cost's `--this-repo`, which matches by name prefix and includes removed worktrees, with a pointer to `docs/pr-cost.md` § "Capture scope, rounds absence and earliest activity" (row 25).
   - `:53`: pr-cost joins the repo-scoped defaults.
   - The orphaned-directory bullet (`:67`): pr-cost's repo scope and routing-guard's capture both read these directories by the name prefix, with the residuals pr-cost.md states.
   - The pr-cost flags bullet (`:1195`): the default, and that pr-cost's `--this-repo` includes removed worktrees.
   - The pr-cost "Default (read) output" paragraph (`:1210`): the same clause as the `docs/pr-cost.md:248` edit. The uncaptured-PR listing reads the run's scope, the repo scope by default, and names only PRs `--record` can capture.
-  - review-cost-by-size's "Known limits" (`:1511-1515`): the report does not filter on `capture_scope` or read `earliest_activity_at`. Each exposure names the rows it holds for, and each sentence cites the `docs/pr-cost.md` section that states it:
+  - review-cost-by-size's "Known limits" (`:1511-1515`): the report does not filter on `capture_scope` or read `earliest_surviving_activity_at`. Each exposure names the rows it holds for, and each sentence cites the `docs/pr-cost.md` section that states it:
     - the fork and default-branch exposure holds only for rows recorded before this change, because the writer now records nothing for such a PR. It cites `docs/pr-cost.md` § "`--record`'s capture". This fork sub-bullet (`:1513`) gains, verbatim: "A same-repository PR whose head name a merged fork PR also used records as `low`, which the report excludes (`docs/pr-cost.md` § "Join confidence").";
     - the same-named-branch exposure holds for `glob` rows and for rows recorded before this change, and can hold for `repo` rows. It cites `docs/pr-cost.md` § "Capture scope, rounds absence and earliest activity".
   - review-cost-by-size's "Publication" (`:1522`) reads, verbatim, backticks included: ``The report is not a publication instrument. It applies no filter on the capture scope a row records and is not a command that refuses a wider project-directory scope for the reads behind its rows. See `docs/pr-cost.md` § "Capture scope, rounds absence and earliest activity" for what a `repo` row can still hold. A figure from the report publishes only under `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case".``
@@ -318,7 +320,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - fork PRs and default-branch, detached-`HEAD` and `worktree-agent-*` heads record nothing. A merged fork PR's local review spend stays out of the ledger unless a same-repository PR used the same head name, and then it lands in that PR's row at `low`, which `review-cost-by-size` excludes. `--pr N` exits 1 for one, and read mode's uncaptured listing no longer names one;
     - a merged-PR payload that is not a list of objects with a boolean `isCrossRepository` exits 1;
     - the `--force` re-scope, and that it also waives a retention shrink;
-    - the three new export columns, with `earliest_activity_at` truncated to a date as `merged_at` and `captured_at` are;
+    - the three new export columns, with `earliest_surviving_activity_at` truncated to a date as `merged_at` and `captured_at` are;
     - the review-cost-by-size notice wording.
 
 ### Alternatives set aside
@@ -443,7 +445,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - The design reason is this plan's: read mode's uncaptured listing then names only PRs a bare `--record` would capture.
     - Under a machine-wide read scope, a PR whose only matching activity is another repository's same-named branch would stay listed as uncaptured after every `--record`.
     - Row 38 does not change this: the default changes which PRs the gap listing names and the scope the unbranched-dollars stderr line sums over.
-29. [unverified] This plan's choice: the single-account `--pr N` zero-valued row stays, because a PR built without Claude Code is real data. Its `review_rounds_absence` and empty `earliest_activity_at` mark it.
+29. [unverified] This plan's choice: the single-account `--pr N` zero-valued row stays, because a PR built without Claude Code is real data. Its `review_rounds_absence` and empty `earliest_surviving_activity_at` mark it.
 30. `pr_cost.py` is 1,272 lines, and `test_transcript_pr_cost.py` and `test_transcript_pr_cost_ledger.py` are 3,563 and 1,985. All three exceed the limit in `docs/design-decisions/code-file-line-limit.md`, which nothing enforces yet, so new tests go in seam files. [verified: Read of `pr_cost.py`, whose last line is 1272; Grep line counts; `code-file-line-limit.md:19,50-57`]
 31. [retired] Superseded by row 51: the absence set has one home, and the parser checks the column by shape.
 32. [engineer-verified: "Include removed worktrees (Recommended)"] The repo scope of a repo-scoped `pr-cost --record` also includes this repository's removed-worktree directories. The question named pr-cost's `--record`, not `--this-repo` in other subcommands.
@@ -501,7 +503,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - the export's `split("T", 1)[0]` leaves a space-separated value whole, time included [verified: `pr_cost_export.py:31-37`];
     - that `fromisoformat` accepts a space-separated value is [unverified] here: two reviewers ran it and reported so;
     - this plan leaves that pre-existing gap open, because the writer never emits that form and only a hand edit reaches it (row 59, Out of scope). The docs qualify the date-only wording to writer-form values;
-    - `earliest_activity_at` does not inherit the gap: its parser check accepts only the writer's `T`-separated form, so the unchanged truncation always reduces it to a date.
+    - `earliest_surviving_activity_at` does not inherit the gap: its parser check accepts only the writer's `T`-separated form, so the unchanged truncation always reduces it to a date.
 53. The payload check's precedent:
     - period-cost classifies a merged-PR entry whose `isCrossRepository` is not a boolean as an unexpected payload, then degrades and exits 0 [verified: `period_cost.py:764-769`];
     - discovery has no per-row result to degrade into, so pr-cost exits 1, as its unparseable-JSON exit does [verified: `gh_cli.py:486-488`];
@@ -533,13 +535,13 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
 **Mechanisms.**
 - M1. Repo default through the `repo_scope_default` and `projects_help` keywords, with the default applied inline in `_pr_cost_report`. anchors: row4, row11, row12, row28, row41, row46. Lighter options set aside: (a) a pr-cost-only scope group, as skill-invocation has, which copies the group a third time; (b) `set_defaults(this_repo=True)`, which keeps the repo arm under an explicit `--projects`.
 - M2. `capture_scope` set once per run from `args.this_repo`, with both passes resolving through `_resolve_pr_cost_scope`. anchors: root, row9, row10, row47. Heavier options set aside: a resolver variant that reports each pass's arm, and a shared predicate helper with pr-cost as its only caller (row 46). Lighter option set aside: parsing the label, which carries the raw glob.
-- M3. Three columns in one header bump, `capture_scope` last: `capture_scope` a closed enum, `review_rounds_absence` checked by shape, and `earliest_activity_at` accepting only the writer's form. anchors: root, G1, G2, row18, row22, row23, row51, row52.
+- M3. Three columns in one header bump, `capture_scope` last: `capture_scope` a closed enum, `review_rounds_absence` checked by shape, and `earliest_surviving_activity_at` accepting only the writer's form. anchors: root, G1, G2, row18, row22, row23, row51, row52.
 - M4. Short-row hint keyed on defaults and shortfall. anchors: row21, row22.
 - M5. Joinability: the payload check, `_branch_never_joins_a_pr` in scope.py and `_pr_is_joinable` in pr_cost.py, applied at each call site in the walk, the `--pr N` arm and read mode, with one line per skip cause. anchors: row2, row3, row7, row15, row16, row17, row53, row54, row57, row62, row63, G4. Lighter option set aside: the filter inside `_direct_headref_matches`, which would merge the fork skip into the no-match skip (row 54).
-- M6. `earliest_activity_at` from `session_starts`. anchors: G2, row19, row20.
+- M6. `earliest_surviving_activity_at` from `session_starts`. anchors: G2, row19, row20.
 - M7. The force table's re-scope case. anchors: row26, row27, row40.
 - M8. The wording edits this PR makes necessary. anchors: row1, row6, row25, row61.
-- M9. Export triage: `earliest_activity_at` truncated by the unchanged `_pr_cost_export_date_only`, `capture_scope` passed through, and `review_rounds_absence` filtered to the writer's set. anchors: row24, row51, row52, row59.
+- M9. Export triage: `earliest_surviving_activity_at` truncated by the unchanged `_pr_cost_export_date_only`, `capture_scope` passed through, and `review_rounds_absence` filtered to the writer's set. anchors: row24, row51, row52, row59.
 - M10. The zero-valued `--pr N` row, kept and marked. anchors: row14, row29.
 - M11. Removed-worktree widening: `_WORKTREE_SLUG_INFIX` and `_with_removed_worktree_slugs` in scope.py, used by routing-guard and by `_resolve_project_scope(include_removed_worktrees=True)`, which pr-cost reaches only through `_resolve_pr_cost_scope`. anchors: row32, row33, row34, row35, row36, row48, row62. Lighter options set aside: (a) a second copy of routing-guard's rule in pr_cost.py, which gives one rule two homes; (b) widening inside `_iter_scoped_sessions`, which every `--this-repo` caller shares.
 - M12. [retired] The scope-downgrade refusal left this plan (row 40).
@@ -593,12 +595,13 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
   - imports the moved helpers from `_pr_cost_helpers.py`;
   - the pass-failure test at `:2718` also asserts that each row's `review_rounds_absence` is `pass-failed`, beside its `review_rounds` check at `:2735`;
   - the capture test at `:2332` also asserts that the row's `review_rounds_absence` is `""`, beside its cell check at `:2340`;
+  - the check-rule and not-built tests also assert the code the row records: the parametrized test at `:2954` asserts the rule's code on its nulled row and `""` on the other, `:2971` asserts `size`, `:2983` asserts `build`, and `:3041` asserts `not-built`;
   - `TestReviewRoundsForceRefusal`'s calls, and `TestReviewRoundsAbsenceClosedSet`'s at `:3188` and `:3205`, pass `prior_capture_scope="glob", new_capture_scope="glob"`, so they pin today's same-class behavior unchanged;
   - the `_new_pr_cost_row` calls at `:538` and `:1106` (`_row_from_agg`) pass `capture_scope` and `review_rounds_absence`;
   - `:3167` and `:3197` stay as they are, because `_ROUNDS_ABSENCES` stays;
   - the rename-warning test at `:653` also asserts the new "or its sessions sit outside this run's scope" clause;
   - the mode-level test at `:2104` strips all four trailing tabs of a legacy-shaped current-header row, the realistic editor trim, and expects `append 4 tabs`. Its comment names the four trailing columns;
-  - the same hand-edit table (`TestPrCostPrescribedHandEdits`, `:2078`) gains one param: an `earliest_activity_at` that `datetime.fromisoformat` accepts and that carries a time but is not in writer form, such as a space separator, with no `_REJECTED_MARKER`. Read mode, `--record` and export each refuse it and write no export file, and blanking the cell fixes it.
+  - the same hand-edit table (`TestPrCostPrescribedHandEdits`, `:2078`) gains one param: an `earliest_surviving_activity_at` that `datetime.fromisoformat` accepts and that carries a time but is not in writer form, such as a space separator, with no `_REJECTED_MARKER`. Read mode, `--record` and export each refuse it and write no export file, and blanking the cell fixes it.
 - `tests/test_transcript_pr_cost_ledger.py`:
   - `TestPrCostLedgerFrozenHeaders` covers five frozen lines, and the current header is the newest frozen line plus the three columns in order;
   - the test at `:408` compares each case's parsed `review_rounds` with its parsed dict's, in place of `is None`;
@@ -609,7 +612,7 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
 - `tests/test_transcript_pr_cost_ledger_capture_scope.py` (new; seam: the capture-scope columns of `pr_cost_ledger.py`):
   - `capture_scope`: an unknown value refuses. The record tests, the new orchestration and every frozen-header case read back `glob`, `repo` and `""`;
   - `review_rounds_absence`: every `pr_cost._ROUNDS_ABSENCES` value, an unknown shape-valid word and `""` parse, and a shape-invalid value refuses;
-  - `earliest_activity_at`: the writer's form and `""` parse, and a space separator, a missing `Z`, a fractional second and a `+00:00` offset each refuse;
+  - `earliest_surviving_activity_at`: the writer's form and `""` parse, and a space separator, a missing `Z`, a fractional second and a `+00:00` offset each refuse;
   - each refusal is its fixed message with no cell text;
   - hints: a pre-`invalid_usage_records` row two short gets none;
   - hints: a pre-`review_rounds` row two short gets none.
@@ -622,7 +625,7 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
     - a shrink from `""` to `repo` and from `glob` to `repo`, allowed;
     - a shrink from `repo` to `repo`, `repo` to `glob` and `""` to `glob`, refused;
     - a non-shrinking `glob` re-capture over a `repo` row, allowed (row 40);
-  - `_earliest_activity_at` on hand-built `session_starts`: the smaller of two epochs, an epoch ending `.999` truncated down, and `""` for an empty list;
+  - `_earliest_surviving_activity_at` on hand-built `session_starts`: the smaller of two epochs, an epoch ending `.999` truncated down, and `""` for an empty list;
   - `_pr_is_joinable`: false for a `True` flag and for a guarded head, true for `False` with an ordinary head. The payload check makes a missing or non-boolean flag unreachable here, so no case covers one;
   - `_require_well_formed_merged_prs` exits 1 with its verbatim line for each bad input, every bad entry placed after a good one so a first-entry-only check fails:
     - a missing, a `None`, a string and an integer flag;
@@ -635,13 +638,13 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
     - it reads both live directories and a removed worktree's, built as in dispatch 1;
     - it skips a foreign directory holding a session on the same branch name, so the row's dollars and rounds exclude that session;
     - the row records `repo`;
-    - its `earliest_activity_at` is the UTC-second form of the earliest turn with valid usage across the in-repo directories, where the foreign session's turn is the earliest of all;
+    - its `earliest_surviving_activity_at` is the UTC-second form of the earliest turn with valid usage across the in-repo directories, where the foreign session's turn is the earliest of all;
     - both scans resolved with `this_repo` true and `include_removed_worktrees=True` (guarantee 2);
     - the removed-worktree directory stands in for row 35's foreign clone too, because the prefix cannot tell them apart;
   - (2) parametrized over `--projects '*'` and a narrower glob that matches only this repository's directory: the row records `glob`, and both scans resolved with `this_repo` false;
   - (3) a bare `--record` whose `["git", "worktree", "list", "--porcelain"]` call raises `CalledProcessError`, through a wrapper over the fake, exits 1 and leaves a seeded ledger byte-identical;
   - (4) a single-account `--pr N` whose only session sits outside the patched slugs, parametrized:
-    - bare: it prints the empty-scope line and no rename warning, and writes a zero-valued row recording `repo`, `no-local-activity` and an empty `earliest_activity_at`;
+    - bare: it prints the empty-scope line and no rename warning, and writes a zero-valued row recording `repo`, `no-local-activity` and an empty `earliest_surviving_activity_at`;
     - under a `--projects` glob that matches nothing: it prints no empty-scope line and writes a zero-valued row recording `glob`;
   - (5) bare read mode:
     - it lists the repo-scoped PR as uncaptured;
@@ -661,8 +664,8 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
   - (10)'s shape is the refusal test at `test_transcript_pr_cost.py:3310`: `_arrange_record_run` over one plain priced session, and a row seeded through `_sample_pr_cost_row` with a `_cell_of` cell, keeping that helper's own `captured_at`.
 - `tests/test_transcript_pr_cost_gh.py`: the real-parser test at `:998` patches `scope._repo_scoped_project_slugs` and asserts the recorded row's `capture_scope` is `repo`. It stays the one parser-to-report composition test.
 - `tests/test_transcript_pr_cost_export.py`:
-  - the triage test adds `earliest_activity_at` to the date-truncated set, `capture_scope` to the passthrough set, and `review_rounds_absence` to a vocabulary-filtered set beside `review_rounds`;
-  - an exported row carries the date of `earliest_activity_at`, `""` for an empty cell and `capture_scope` unchanged;
+  - the triage test adds `earliest_surviving_activity_at` to the date-truncated set, `capture_scope` to the passthrough set, and `review_rounds_absence` to a vocabulary-filtered set beside `review_rounds`;
+  - an exported row carries the date of `earliest_surviving_activity_at`, `""` for an empty cell and `capture_scope` unchanged;
   - a known `review_rounds_absence` exports unchanged, and an unknown shape-valid one exports as `unrecognized`, its raw text absent from the whole exported file.
 - `tests/test_transcript_review_cost_by_size.py`: `_NOTICE_TEXT` (`:37`).
 - `docs/transcript-analysis.md:1530` only: the sample's notice line, because that test file compares the sample with the report's output.
@@ -708,7 +711,7 @@ No live `--record` smoke runs, because it needs `gh` auth and writes a permanent
 - Reaching a worktree removed from outside `.claude/worktrees/` (rows 14, 35). Nothing records such a worktree's path once git forgets it.
 - Excluding prefix-admitted directories from the repo scope, by a third class or a content check (row 48).
 - A GH-1426 comment on the fork-PR skip (Shipping).
-- The export date gap for `merged_at` and `captured_at`: the parser accepts a space-separated timestamp there, and today's truncation exports it whole (row 52). The writer never emits that form, so only a hand edit reaches it. The new `earliest_activity_at` column does not share the gap (row 59).
+- The export date gap for `merged_at` and `captured_at`: the parser accepts a space-separated timestamp there, and today's truncation exports it whole (row 52). The writer never emits that form, so only a hand edit reaches it. The new `earliest_surviving_activity_at` column does not share the gap (row 59).
 - An absence reason for `model_breakdown`.
 - Read mode printing `capture_scope`. The reader PR's exclusion counts are the intended surface for unscoped rows, and read mode's table already widened once in this release (`CHANGELOG.md:26-28`).
 - workstream-cost's merged-branch set, which still includes fork PRs' head names. It has the same join shape, but it is a diagnostic listing with no durable write.
