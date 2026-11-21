@@ -359,10 +359,28 @@ name `build_parser()` reaches bare. `context_composition.py` reads `_READ_SCOPE_
 ### `read_cost.py`
 
 The read-cost command: `cmd_read_cost`, its `_add_read_cost_subparser` registration, and every helper
-used only by it. Imports `corpus`, `pricing`, `redaction`, `render`, `scope`, `session_pricing`, and `subagent_mix`
-all by module (attribute access). `cli.py` reads `_add_read_cost_subparser` bare. Cross-module private
-reads include `session_pricing._usage_is_invalid`, `redaction._repo_tracked_agent_type_names`, and
-`subagent_mix._WITHHELD_AGENT_TYPE_LABEL`.
+used only by it. Imports `corpus`, `pricing`, `publication_scope`, `redaction`, `render`, `scope`, `session_pricing`,
+and `subagent_mix` all by module (attribute access). `cli.py` reads `_add_read_cost_subparser` bare. Cross-module
+private reads include `session_pricing._usage_is_invalid`, `redaction._repo_tracked_agent_type_names`,
+`subagent_mix._WITHHELD_AGENT_TYPE_LABEL`, and the single-account root, scope refusal and scope header from
+`publication_scope`, called with the `read-cost` label.
+
+`_scan_window` also reads each Read's structured `toolUseResult.file` fields into `_ReadEvent`, with a
+`structured_status` naming the first failed check when they are absent. It records failed Read calls as
+`_FailedRead` entries, each classified by `limit_refusal` without keeping the error text, and collects the
+`toolUseID` of each `read_truncation_notice` attachment. None of this changes the printed report. The unit caption
+and the skipped-input line are separate functions, so another command can print them over its own counters.
+
+### `publication_scope.py`
+
+The scope a command's figures may be published under: one account, the working directory's repository only.
+`_single_account_roots`, `_refuse_wider_scope` and `_scope_header` take the command label, which prefixes the
+refusals and titles the header. `_this_repo_ledger_files` selects the review-ledger files named for one of the
+checkout's worktree paths, hashing each path as printed and as resolved with `_ledger_repo_hash`, which repeats the
+formula of `_marker_lib_repo_hash` in `hooks/_lib.sh`. It lists the directory through
+`scope._list_dir_recording_gaps` into the caller's counter and opens no file. Imports `scope` by module (attribute
+access). Cross-module reads are `scope.config_dir`, `scope.TRANSCRIPT_CONFIG_DIRS_LABEL` and the private
+`scope._list_dir_recording_gaps`.
 
 ### `ledger_common.py`
 

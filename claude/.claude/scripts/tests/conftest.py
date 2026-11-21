@@ -941,11 +941,27 @@ def _api_request_blob_rec(
     return rec
 
 
-def _read_result(tool_id: str, content, *, is_error: bool = False) -> dict:
+_NO_TOOL_USE_RESULT = object()
+
+
+def _read_result(tool_id: str, content, *, is_error: bool = False, tool_use_result=_NO_TOOL_USE_RESULT) -> dict:
     """A user-record tool_result for a Read call, shared by the read-scope and read-cost tests. `content` is
     either a plain string (a real Read's text output) or a content-block list (e.g. an image result); the
-    string-versus-list split is how an image result is told apart from text."""
-    return _user_msg([{"type": "tool_result", "tool_use_id": tool_id, "content": content, "is_error": is_error}])
+    string-versus-list split is how an image result is told apart from text. `tool_use_result`, when given
+    (None included), is the record's top-level `toolUseResult`; it is absent otherwise."""
+    record = _user_msg([{"type": "tool_result", "tool_use_id": tool_id, "content": content, "is_error": is_error}])
+    if tool_use_result is not _NO_TOOL_USE_RESULT:
+        record["toolUseResult"] = tool_use_result
+    return record
+
+
+def _read_truncation_notice(tool_id: str) -> dict:
+    """The attachment record the harness writes beside a Read result it truncated at the token cap."""
+    return {
+        "type": "attachment",
+        "toolUseID": tool_id,
+        "attachment": {"type": "read_truncation_notice"},
+    }
 
 
 def _agent_use(tool_id: str, subagent_type: str, *, tool_name: str = "Agent", prompt: str = "y") -> dict:
@@ -1531,13 +1547,18 @@ def _attr_ts(minute: int) -> str:
     return f"2026-05-12T12:{minute:02d}:00.000Z"
 
 
-def _read_use(tool_id: str, file_path: str, *, offset: int | None = None, limit: int | None = None) -> dict:
-    """Build a Read tool_use block with the given file_path."""
+def _read_use(
+    tool_id: str, file_path: str, *, offset: int | None = None, limit: int | None = None,
+    allow_large: bool | None = None,
+) -> dict:
+    """Build a Read tool_use block with the given file_path. `allow_large` is absent from the input unless given."""
     tool_input: dict = {"file_path": file_path}
     if offset is not None:
         tool_input["offset"] = offset
     if limit is not None:
         tool_input["limit"] = limit
+    if allow_large is not None:
+        tool_input["allow_large"] = allow_large
     return {"type": "tool_use", "id": tool_id, "name": "Read", "input": tool_input}
 
 

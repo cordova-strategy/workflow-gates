@@ -117,6 +117,11 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     fallback to "*" would reintroduce the cross-project read this exists to
     prevent.
     """
+    return [_path_to_project_slug(p) for p in _repo_worktree_paths(command_label)]
+
+
+def _repo_worktree_paths(command_label: str) -> list[str]:
+    """This repo's worktree paths as `git worktree list` prints them, failing closed as `_repo_scoped_project_slugs` does."""
     try:
         # timeout guards the fail-closed posture: a hung local git (stale lock,
         # network-mounted .git) would otherwise block the whole CLI with no exit.
@@ -200,7 +205,7 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
         )
         sys.exit(1)
 
-    return [_path_to_project_slug(p) for p in worktree_paths]
+    return worktree_paths
 
 
 def _path_stripped_scan_error(exc: OSError) -> OSError:

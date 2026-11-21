@@ -17,6 +17,7 @@ from ._read_cost_helpers import (
 from .conftest import (
     _edit_use,
     _read_result,
+    _read_truncation_notice,
     _read_use,
     _write_jsonl,
     _write_subagent_dispatch,
@@ -142,6 +143,22 @@ class TestSkippedInput:
 
         assert _skipped_input_counts(out) == {**_NO_SKIPPED_INPUT, "invalid_usage_turns": 1}
         assert "sessions=1 api_calls=1" in out
+
+    def test_line_prints_every_count_in_its_fixed_order_and_wording(self, fake_projects, capsys):
+        _write_jsonl(fake_projects / "sess.jsonl", [
+            _turn("m1", usage={"output_tokens": -1}), _turn("m2", usage={"output_tokens": 1}),
+        ])
+        for agent_id in ("agent-a", "agent-b"):
+            _write_subagent_dispatch(
+                fake_projects, "sess", agent_id, f"tool-{agent_id}", _sidechain_copies([_turn(f"s-{agent_id}")]),
+            )
+            (fake_projects / "sess" / "subagents" / f"{agent_id}.meta.json").write_text("not json")
+
+        out = self._run(capsys)
+
+        assert "\nskipped input: unreadable_roots=0 unreadable_project_dirs=0 unreadable_main_files=0" \
+            " unreadable_subagent_dirs=0 unreadable_subagent_files=0 unreadable_subagent_meta=2" \
+            " invalid_usage_turns=1\n" in out
 
 
 @pytest.mark.usefixtures("only_the_tracked_agent_type_is_tracked")
@@ -308,6 +325,76 @@ class TestReport:
             " cache read (1) per later turn in its context window."
         ) in out_lines
         assert f"Class weights: {class_weights}." in out_lines
+
+    def test_unit_caption_prints_its_three_paragraphs_in_full_ahead_of_the_totals(self, capsys):
+        weights = _weights()
+        class_weights = ", ".join(f"{cls}={weight:g}" for cls, weight in weights.items())
+
+        read_cost._print_read_cost_report(read_cost._ReadCostTotals(), weights, frozenset())
+
+        assert capsys.readouterr().out.startswith(
+            "\nUnit: cache-read-token equivalents. A read's weight is its estimated tokens"
+            f" (4 chars/token) times one 5-minute cache write ({weights['cache_write_5m']:g}) plus one"
+            " cache read (1) per later turn in its context window.\n"
+            "One price ratio, taken from the base multipliers in pricing.py, is applied across all models;"
+            " per-model cache-read exceptions, the fast-mode multiplier and the inference-geo multiplier are not"
+            " applied, so every share is a token-equivalent share, not a dollar share.\n"
+            f"Class weights: {class_weights}.\n"
+            "\nsessions=0 "
+        )
+
+    def test_structured_results_notices_failed_reads_and_replayed_blocks_leave_the_report_unchanged(
+        self, fake_projects, capsys,
+    ):
+        refusal = "File content (51.2KB) exceeds maximum allowed size (50KB)"
+        whole_file_result = {"type": "text", "file": {
+            "filePath": self._MAIN_PATH, "numLines": 1000, "startLine": 1, "totalLines": 1000,
+        }}
+        paged_result = {"type": "text", "file": {
+            "filePath": self._OTHER_PATH, "numLines": 20, "startLine": 10, "totalLines": 1000,
+        }}
+        seeded_main_records = [
+            _turn("m1", [
+                _read_use("r-whole", file_path=self._MAIN_PATH),
+                _read_use("r-paged", file_path=self._OTHER_PATH, offset=10, limit=20),
+                _read_use("r-failed", file_path=self._OTHER_PATH),
+            ], usage={"output_tokens": 10}),
+            _read_result("r-whole", "line\n" * 1000, tool_use_result=whole_file_result),
+            _read_truncation_notice("r-whole"),
+            _read_result("r-paged", "line\n" * 20, tool_use_result=paged_result),
+            _read_result("r-failed", refusal, is_error=True, tool_use_result=f"Error: {refusal}"),
+            _turn("m2", [
+                _read_use("r-whole", file_path=self._MAIN_PATH),
+                _read_use("r-failed", file_path=self._OTHER_PATH),
+            ], usage={"output_tokens": 10}),
+            _read_result("r-failed", refusal, is_error=True, tool_use_result=f"Error: {refusal}"),
+            _turn("m3", [_edit_use(self._EDIT_ID, path=self._MAIN_PATH)], usage={"output_tokens": 10}),
+        ]
+        stripped_main_records = [
+            {key: value for key, value in record.items() if key != "toolUseResult"}
+            for record in seeded_main_records if record["type"] != "attachment"
+        ]
+        assert any("toolUseResult" in record for record in seeded_main_records)
+        assert any(record["type"] == "attachment" for record in seeded_main_records)
+        stdout_by_corpus = {}
+        stderr_by_corpus = {}
+        for corpus_name, main_records in (("seeded", seeded_main_records), ("stripped", stripped_main_records)):
+            _write_jsonl(fake_projects / f"{self._SESSION_ID}.jsonl", main_records)
+            read_cost.cmd_read_cost(_read_cost_args())
+            captured = capsys.readouterr()
+            stdout_by_corpus[corpus_name] = captured.out
+            stderr_by_corpus[corpus_name] = captured.err
+
+        assert stdout_by_corpus["seeded"] == stdout_by_corpus["stripped"]
+        assert "main-thread whole-file reads scanned=1\n" in stdout_by_corpus["seeded"]
+        assert "repeated_reads_skipped=1" in stdout_by_corpus["seeded"]
+        seeded_values = (
+            refusal, "r-whole", "r-paged", "r-failed", self._EDIT_ID, self._MAIN_PATH, self._OTHER_PATH,
+            whole_file_result["file"]["filePath"], paged_result["file"]["filePath"],
+        )
+        for seeded_value in seeded_values:
+            assert seeded_value not in stdout_by_corpus["seeded"]
+            assert seeded_value not in stderr_by_corpus["seeded"]
 
 
 @pytest.mark.usefixtures("only_the_tracked_agent_type_is_tracked")
