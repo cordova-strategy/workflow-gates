@@ -204,8 +204,11 @@ Machine-wide, multi-account, and cross-machine questions are worth
 asking. They are not worth publishing. Measure them with the same
 tools at their wider scope — `cost` without `--summary` (add
 `--share-only` to keep raw absolutes out of the agent's context),
-`pr-cost --all-accounts`, or any subcommand at its default machine-wide
-scope. Report the figures to the owner in session or through another
+`pr-cost --all-accounts`, any narrowed `transcript-analysis` command
+under `--all-accounts` or `--this-repo` (the list is in
+`docs/transcript-analysis.md` under "Corpus scope: the declared-roots
+file"), or any other subcommand at its default machine-wide scope.
+Report the figures to the owner in session or through another
 non-public channel.
 
 Publish nothing computed from such a read: no total, no rate, no

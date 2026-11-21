@@ -2,7 +2,7 @@
 
 Full descriptions for utility scripts in `claude/.claude/scripts/` (stowed to `~/.claude/scripts/`). User-facing scripts are installed as wrappers under `~/.local/bin/` — see [README PATH setup](../README.md#requirements).
 
-- **`analyze-context.py`** — inspect context window growth for a Claude Code session. Reads `<config-dir>/projects/<project>/<session>.jsonl` and `<config-dir>/usage-data/session-meta/` locally (`<config-dir>` means `$CLAUDE_CONFIG_DIR` when set, else `~/.claude`), scanning every root declared in `~/.claude/transcript-config-dirs` in addition to the active profile (see [`docs/transcript-analysis.md`](transcript-analysis.md)); no network calls, no writes.
+- **`analyze-context.py`** — inspect context window growth for a Claude Code session. Reads `<config-dir>/projects/<project>/<session>.jsonl` and `<config-dir>/usage-data/session-meta/` locally (`<config-dir>` means `$CLAUDE_CONFIG_DIR` when set, else `~/.claude`), scanning every root declared in `~/.claude/transcript-config-dirs` in addition to the active profile (see [`docs/transcript-analysis.md`](transcript-analysis.md)); no network calls, no writes. Its `--top` view carries the project-name and session-ID hazard that the `token-analyzer.py` entry below states.
 
   ```bash
   # Latest session in current project (run from project root)
@@ -25,7 +25,7 @@ Full descriptions for utility scripts in `claude/.claude/scripts/` (stowed to `~
   reads excluded) from session metadata, and prints the session ID so you can
   drill in with the per-session view.
 
-- **`token-analyzer.py`** — cross-session per-model token breakdown (Opus / Sonnet / Haiku) with cache-hit rates, plus a list of Opus sessions that likely could have run on Sonnet (no plan-mode, no edits, no sub-agent dispatch, no extended thinking, no judgment-skill invocations). Reads `<config-dir>/projects/*/*.jsonl`, scanning every root declared in `~/.claude/transcript-config-dirs` in addition to the active profile; no network calls, no writes.
+- **`token-analyzer.py`** — cross-session per-model token breakdown (Opus / Sonnet / Haiku) with cache-hit rates, plus a list of Opus sessions that likely could have run on Sonnet (no plan-mode, no edits, no sub-agent dispatch, no extended thinking, no judgment-skill invocations). Reads `<config-dir>/projects/*/*.jsonl`, scanning every root declared in `~/.claude/transcript-config-dirs` in addition to the active profile; no network calls, no writes. `analyze-context.py --top` and `token-analyzer.py` print project names and session IDs from every declared account.
 
   ```bash
   token-analyzer             # all-time

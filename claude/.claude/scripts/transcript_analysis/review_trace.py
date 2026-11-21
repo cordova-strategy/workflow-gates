@@ -789,7 +789,9 @@ def cmd_review_trace(args: argparse.Namespace) -> None:
     deny_summary: bool = bool(getattr(args, "deny_summary", False))
     skill_filter: str | None = getattr(args, "skill", None) or None
     omit_plan_review_spawns: bool = bool(getattr(args, "omit_plan_review_spawns", False))
-    roots = scope.resolve_scan_roots(args)
+    # --deny-summary pools every declared account; the timeline reads the active account unless widened.
+    active_account_only = scope._narrows_to_active_account(args) and not deny_summary
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "review-trace", include_subagents=True, roots=roots)
 
     since_ts, until_epoch = scope._parse_absolute_window_args(args, "review-trace")
@@ -797,7 +799,7 @@ def cmd_review_trace(args: argparse.Namespace) -> None:
     if deny_summary:
         # Ahead of the scan, matching the default arm below: a crash partway
         # through the corpus still leaves the scanned scope on stdout.
-        scope.print_resolved_scope("review-trace", scope_label, roots)
+        scope.print_resolved_scope("review-trace", scope_label, roots, active_account_only=active_account_only)
         data = compute_deny_summary_data(
             session_iter, since_ts=since_ts, until_ts=until_epoch,
             branch_filter=branch_filter, deny_only=deny_only,
@@ -819,7 +821,7 @@ def cmd_review_trace(args: argparse.Namespace) -> None:
     # Printed before the scan, not on the first emitted block: a run matching
     # no session must still state the corpus it read, or a wrongly-scoped scan
     # is indistinguishable from a correctly-scoped empty one.
-    scope.print_resolved_scope("review-trace", scope_label, roots)
+    scope.print_resolved_scope("review-trace", scope_label, roots, active_account_only=active_account_only)
     emitted_any_session = False
 
     for jsonl, records in session_iter:
@@ -907,7 +909,8 @@ def _add_review_trace_subparser(subparsers: argparse._SubParsersAction) -> None:
             " and reviewer-agent spawns."
         ),
     )
-    scope._add_project_scope_args(p_review_trace)
+    scope._add_project_scope_args(p_review_trace, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_review_trace)
     p_review_trace.add_argument("--branches", metavar="B1,B2,...")
     p_review_trace.add_argument("--since", metavar="DATE", type=scope._iso_date, help="Inclusive start date (YYYY-MM-DD)")
     p_review_trace.add_argument("--until", metavar="DATE", type=scope._iso_date, help="Inclusive end date (YYYY-MM-DD)")

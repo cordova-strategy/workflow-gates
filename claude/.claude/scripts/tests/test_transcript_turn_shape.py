@@ -5,6 +5,7 @@ commands end to end.
 import pytest
 from transcript_analysis import corpus, pricing, render, scope, turn_shape
 
+from ._turn_shape_helpers import _turn_shape_holdout_samples_args, _turn_shape_samples_args
 from .conftest import _asst, _bash_use, _priced, _table_cols, _write_jsonl
 
 
@@ -18,42 +19,6 @@ def _turn_shape_args(
         "projects": projects,
         "this_repo": this_repo,
         "since": since,
-    })()
-
-
-def _turn_shape_samples_args(
-    *,
-    projects: str = "*",
-    this_repo: bool = False,
-    since: str | None = None,
-    sample: int = 100,
-    seed: int | None = 42,
-) -> object:
-    return type("A", (), {
-        "projects": projects,
-        "this_repo": this_repo,
-        "since": since,
-        "sample": sample,
-        "seed": seed,
-    })()
-
-
-def _turn_shape_holdout_samples_args(
-    *,
-    projects: str = "*",
-    this_repo: bool = False,
-    since: str | None = None,
-    sample: int = 30,
-    seed: int = 0,
-    offset: int = 0,
-) -> object:
-    return type("A", (), {
-        "projects": projects,
-        "this_repo": this_repo,
-        "since": since,
-        "sample": sample,
-        "seed": seed,
-        "offset": offset,
     })()
 
 

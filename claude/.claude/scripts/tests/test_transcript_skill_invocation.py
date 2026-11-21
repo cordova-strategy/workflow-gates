@@ -8,13 +8,16 @@ import subprocess
 import pytest
 from transcript_analysis import cli, scope, skill_invocation
 
+from ._account_scope_helpers import ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, SHARED_PROJECT_SLUG
 from ._skill_helpers import _skill_inv_args
 from .conftest import (
     _asst,
     _attr_ts,
     _bash_use,
     _skill_use,
+    _skill_use_rec,
     _table_cols,
+    _two_declared_roots,
     _user_msg,
     _worktree_porcelain,
     _write_jsonl,
@@ -660,3 +663,90 @@ class TestSkillInvocationArgparseWiring:
         """None, not "*", is what makes skill-invocation default to this repo's worktrees."""
         parsed = cli.build_parser().parse_args(["skill-invocation"])
         assert parsed.projects is None
+
+
+class TestSkillInvocationAccountScope:
+    """An explicit --projects glob reads the active account alone, and --all-accounts reads the glob in every
+    declared account."""
+
+    def _seed_one_skill_per_root(self, roots, *, subdirectory: str = ""):
+        for root, skill in zip(roots, (ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL), strict=True):
+            project_dir = root / subdirectory / SHARED_PROJECT_SLUG
+            project_dir.mkdir(parents=True)
+            _write_jsonl(project_dir / "sess.jsonl", [_skill_use_rec(skill, "2026-05-20T10:00:00.000Z")])
+
+    def test_all_accounts_with_a_star_glob_prints_both_roots_skills(self, tmp_path, monkeypatch, capsys):
+        self._seed_one_skill_per_root(_two_declared_roots(tmp_path, monkeypatch))
+        args = argparse.Namespace(projects="*", branches=None, include_subagents=False, all_accounts=True)
+
+        skill_invocation.cmd_skill_invocation(args)
+
+        out = capsys.readouterr().out
+        assert ACTIVE_ROOT_SENTINEL in out
+        assert DECLARED_ROOT_SENTINEL in out
+
+    def test_a_nested_projects_glob_counts_the_active_roots_nested_session(self, tmp_path, monkeypatch, capsys):
+        """A nested pattern is valid at one root, where Path.glob reads it; above one root it exits 2."""
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        self._seed_one_skill_per_root(roots, subdirectory="sub")
+        args = argparse.Namespace(
+            projects=f"sub/{SHARED_PROJECT_SLUG}", branches=None, include_subagents=False,
+        )
+
+        skill_invocation.cmd_skill_invocation(args)
+
+        out = capsys.readouterr().out
+        assert ACTIVE_ROOT_SENTINEL in out
+        assert DECLARED_ROOT_SENTINEL not in out
+
+    def test_a_parent_traversing_glob_does_not_reach_the_declared_root(self, tmp_path, monkeypatch, capsys):
+        """The glob's parent, resolved from the active root, is the declared root's projects/ directory."""
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        self._seed_one_skill_per_root(roots)
+        parent_traversing_glob = f"{os.path.relpath(roots[1], roots[0])}/*"
+        # Positive control: Path.glob itself reaches the declared session file through this pattern, so an empty
+        # result below can only come from the '..' guard.
+        reached = [path.resolve() for path in roots[0].glob(f"{parent_traversing_glob}/*.jsonl")]
+        assert reached == [(roots[1] / SHARED_PROJECT_SLUG / "sess.jsonl").resolve()]
+        parent_traversing_args = argparse.Namespace(
+            projects=parent_traversing_glob, branches=None, include_subagents=False,
+        )
+
+        skill_invocation.cmd_skill_invocation(parent_traversing_args)
+
+        out = capsys.readouterr().out
+        assert "No skill invocations found." in out
+        assert DECLARED_ROOT_SENTINEL not in out
+
+    def test_an_absolute_projects_value_exits_2_before_any_scan(self, tmp_path, monkeypatch, capsys):
+        """Path.glob raises NotImplementedError on an absolute pattern, so one root would die with a traceback."""
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        self._seed_one_skill_per_root(roots)
+        args = argparse.Namespace(projects=f"{roots[0]}/*", branches=None, include_subagents=False)
+
+        with pytest.raises(SystemExit) as exc_info:
+            skill_invocation.cmd_skill_invocation(args)
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "skill-invocation: --projects:" in captured.err
+        assert "not an absolute path" in captured.err
+        assert captured.out == ""
+
+    def test_an_absolute_projects_value_prints_the_same_refusal_under_all_accounts(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        self._seed_one_skill_per_root(roots)
+        refusal_stderr_by_mode = {}
+        for mode, widening in (("default", {}), ("all-accounts", {"all_accounts": True})):
+            args = argparse.Namespace(
+                projects=f"{roots[0]}/*", branches=None, include_subagents=False, **widening,
+            )
+            with pytest.raises(SystemExit) as exc_info:
+                skill_invocation.cmd_skill_invocation(args)
+            assert exc_info.value.code == 2
+            refusal_stderr_by_mode[mode] = capsys.readouterr().err
+
+        assert "not an absolute path" in refusal_stderr_by_mode["default"]  # positive control: a refusal printed
+        assert refusal_stderr_by_mode["all-accounts"] == refusal_stderr_by_mode["default"]

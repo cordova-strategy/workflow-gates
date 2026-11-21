@@ -27,10 +27,10 @@ Note the branch names — you will pass them to later subcommands via `--branche
 Get the transcript file set and read only those files:
 
 ```bash
-python3 ~/.claude/scripts/transcript-analysis.py sessions --paths --include-subagents
+python3 ~/.claude/scripts/transcript-analysis.py sessions --paths --this-repo --include-subagents
 ```
 
-`sessions --paths` prints its resolved-scope header (`SESSIONS SOURCES (...)`) to stderr — record that line. This invocation passes no `--projects`, so its scope label is always `*`; the root-count clause is what tells you whether the corpus covers every declared account or just one.
+`sessions --paths` prints its resolved-scope header (`SESSIONS SOURCES (...)`) to stderr — record that line. This invocation passes `--this-repo`, so its scope label then reads `this repo (...)` and the root-count clause says how many accounts were read. Step 2 reads this repo's live worktrees only; for sessions outside them, see the subdirectory-session fallback in `docs/transcript-analysis.md`'s "Scoping to this repo" section.
 
 Read each returned path directly with the Read tool. Do not vendor a script or hand-roll a shell expression or glob for this step — `sessions --paths` is the single source of the file set. Check the `SESSIONS SOURCES (...)` line from Step 2: if its root-count clause reads "1 root (no ~/.claude/transcript-config-dirs declared)", the corpus covers only the active account — say so in the case study rather than assuming every declared account was scanned. From the records you read, filter to turns where:
 - `role == "user"`
@@ -50,7 +50,7 @@ Group the extracted turns by branch and investigative phase. For each phase, rec
 |---|---|
 | Date range | Timestamps from Step 2 turns |
 | Session count | Count of distinct session IDs in the phase |
-| Active minutes | `duration --branches <branch>` → `Active(min)` column |
+| Active minutes | `duration --this-repo --branches <branch>` → `Active(min)` column |
 | Artifact produced | PR number or branch name |
 | 1–3 most consequential verbatim prompts | Selected from Step 2 extractions |
 
@@ -65,7 +65,7 @@ Run these subcommands and include their output as a quantitative appendix that g
 python3 ~/.claude/scripts/transcript-analysis.py fail-seq --branches <branch>
 
 # Active vs idle time
-python3 ~/.claude/scripts/transcript-analysis.py duration --branches <branch>
+python3 ~/.claude/scripts/transcript-analysis.py duration --this-repo --branches <branch>
 
 # Subagent vs main-thread split
 python3 ~/.claude/scripts/transcript-analysis.py subagents --branches <branch>
@@ -81,7 +81,7 @@ For `fail-seq` interpretation: a spike followed by zeros is convergent (expected
 
 ## Step 5 — Redact before sharing or persisting
 
-Quoted prompts come from direct JSONL extraction in Step 2 — the CLI's `--redact` flag is available only on `audit-routing` and does not touch them. Run this scan before Step 7 writes the artifact to disk, not only before publishing to a shared or public surface:
+Quoted prompts come from direct JSONL extraction in Step 2 — no subcommand's `--redact` flag touches them. Run this scan before Step 7 writes the artifact to disk, not only before publishing to a shared or public surface:
 
 - Manually scan every quoted prompt for customer PII and credentials
 - For the quantitative appendix, use `audit-routing --redact` to anonymize project-dir names when posting output to GitHub issues or external surfaces

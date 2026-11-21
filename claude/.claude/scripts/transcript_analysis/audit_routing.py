@@ -79,14 +79,15 @@ def cmd_audit_routing(args: argparse.Namespace) -> None:
     since_ts, since_raw = scope._parse_since_nd_arg(args, "audit-routing")
     since_label = since_raw or ""
 
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     multi_root = len(roots) > 1
 
     # scope._resolve_project_scope's fail-closed --this-repo check runs before
     # redaction._build_redact_map's full-corpus disk scan, so an out-of-repo failure
     # exits without paying for that scan.
     session_iter, scope_label = scope._resolve_project_scope(args, "audit-routing", roots=roots)
-    scope.print_resolved_scope("audit-routing", scope_label, roots)
+    scope.print_resolved_scope("audit-routing", scope_label, roots, active_account_only=active_account_only)
 
     redact_map: dict[redaction._RedactMapKey, str] = redaction._build_redact_map(roots) if redact else {}
     session_redact_map: dict[str, str] = {}
@@ -602,6 +603,10 @@ def cmd_audit_routing_samples(args: argparse.Namespace) -> None:
     code-read turn, and the kind of action taken in the next non-user Opus turn. Designed
     for manual curation of which turns should/should not have been delegated.
 
+    cmd_audit_routing_shape pools every declared account by default while this command
+    reads the active account. --all-accounts on this command, or --this-repo on both,
+    makes their populations match.
+
     The judgment-span state machine is intentionally duplicated from cmd_audit_routing —
     tests cross-validate the two copies to guard against drift.
     """
@@ -609,10 +614,15 @@ def cmd_audit_routing_samples(args: argparse.Namespace) -> None:
 
     sample_n: int = getattr(args, "sample", 30) or 30
     seed: int | None = getattr(args, "seed", None)
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "audit-routing-samples", roots=roots)
     # stderr, not stdout: stdout is this subcommand's JSON/markdown data stream.
-    scope.print_resolved_scope("audit-routing-samples", scope_label, roots, file=sys.stderr)
+    scope.print_resolved_scope(
+        "audit-routing-samples", scope_label, roots, file=sys.stderr, active_account_only=active_account_only,
+    )
+    if len(roots) > 1:
+        print(scope._DO_NOT_PUBLISH_BANNER, file=sys.stderr)
 
     candidates: list[dict] = []
 
@@ -792,7 +802,8 @@ def _add_audit_routing_subparser(subparsers: argparse._SubParsersAction) -> None
             " per class across all sessions."
         ),
     )
-    scope._add_project_scope_args(p_audit)
+    scope._add_project_scope_args(p_audit, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_audit)
     p_audit.add_argument(
         "--since", metavar="Nd",
         help="Limit to turns with timestamp in the last N days (e.g. 35d).",
@@ -835,7 +846,8 @@ def _add_audit_routing_samples_subparser(subparsers: argparse._SubParsersAction)
             " next-turn lookahead classification. JSON array output for manual curation."
         ),
     )
-    scope._add_project_scope_args(p_audit_samples)
+    scope._add_project_scope_args(p_audit_samples, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_audit_samples)
     p_audit_samples.add_argument(
         "--since", metavar="Nd",
         help="Limit to turns with timestamp in the last N days (e.g. 35d).",

@@ -1,11 +1,13 @@
 """Test helpers shared by the handoff-nudge family's test files and by
-test_transcript_analysis_multi_root_scope.py's cross-subcommand table."""
+test_transcript_analysis_multi_root_scope.py's and
+test_transcript_analysis_listing_scope.py's cross-subcommand tables."""
 import argparse
 import json
+from pathlib import Path
 
 from transcript_analysis import handoff_nudge
 
-from .conftest import _bash_use, _priced
+from .conftest import _bash_use, _priced, _tool_result, _user_msg, _write_jsonl
 
 
 def _spend_over_threshold_args(since: str | None = None, projects: str = "*") -> argparse.Namespace:
@@ -31,6 +33,48 @@ def _rearm_backtest_args(
         "extra_config_dirs": extra_config_dirs,
         "spacings": spacings,
     })()
+
+
+def _handoff_signal_response_args(
+    *, projects: str = "*", this_repo: bool = False, config_dir: str | None = None,
+    no_redact: bool = False, sample: int = 0, seed: int | None = None,
+    output_format: str = "json", context_turns: int = 0,
+) -> object:
+    return type("A", (), {
+        "projects": projects,
+        "this_repo": this_repo,
+        "config_dir": config_dir,
+        "no_redact": no_redact,
+        "sample": sample,
+        "seed": seed,
+        "output_format": output_format,
+        "context_turns": context_turns,
+    })()
+
+
+def _write_signal_with_excerpt_under_each_root(
+    roots: list[Path], project_slug: str, excerpts: list[str],
+) -> None:
+    """One session per root under the same `project_slug`, each holding one
+    over-threshold signal followed by an assistant text turn reading that
+    root's entry in `excerpts` (parallel to `roots`)."""
+    for root, excerpt in zip(roots, excerpts, strict=True):
+        project_dir = root / project_slug
+        project_dir.mkdir(parents=True, exist_ok=True)
+        _write_jsonl(project_dir / f"sess-{excerpt}.jsonl", [
+            _check_call_turn(input=200_000, output=1_000, request_id="r1"),
+            _user_msg([_tool_result("chk1", _check_result_json(over_threshold=True))]),
+            _priced(
+                "claude-sonnet-5", input=210_000, output=500, request_id="r2",
+                content=[{"type": "text", "text": excerpt}],
+            ),
+        ])
+
+
+def _handoff_cards(stdout: str) -> list[dict]:
+    """The curation cards of a `handoff-signal-response --sample` json run, whose first stdout line is the scope header."""
+    header_line_dropped = stdout.split("\n", 1)[1]
+    return json.loads(header_line_dropped)
 
 
 def _ramp_curve_from_records(*sessions_records: list[dict]) -> tuple[dict[str, dict[str, float]], int]:

@@ -38,7 +38,10 @@ Ask: "GH-1157: close the unredacted multi-root output paths in transcript-analys
 - On what `audit-routing` should do above one account, typed in place of an option, excerpted: "Yo if we retract my decision to redact account names, how bad is that? I honestly don't think it's that big of a deal and I think we're finding more edge cases and it's getting complicated"
 - On whether the plan drops all new relabelling and uses one rule instead (commands that print raw names, paths or text read the active account by default, `--this-repo` pools this repo across accounts, and a new `--all-accounts` flag pools everything raw): selected label "One rule with --all-accounts (Recommended)". The question said this applies to the seven narrowed commands plus `audit-routing` and the four sample commands, and replaces "Drop the flag" and "Keep pooling for samples only".
 - On how a pooled `--all-accounts` run marks itself, given that `review-cost-by-size --all-accounts` prints a DO NOT PUBLISH line: selected label "Help text only (Recommended)".
+- On code review's request that a widened run print the DO NOT PUBLISH line in-band, replacing the answer above for `--all-accounts` only: selected label "Banner on --all-accounts only (Recommended)". Plan-review then found four gaps in that line, and a plan-architect consult recommended returning to the earlier answer. The engineer withdrew the banner: selected label "Withdraw it: help text only (Recommended)". The answer two bullets up stands.
 - On whether PR 1 stays whole at a projected 900 changed lines or splits into seven commands then five: selected label "Keep it whole (Recommended)".
+- On whether PR 1 adds a validator refusing an absolute `--projects` value at every root count, leaving `user_input.py`'s identical defect to the follow-up issue: selected label "Add the validator (Recommended)".
+- On whether PR 1 splits after review fixes raise its projection to about 1,350 changed lines: selected label "Proceed anyway".
 
 Problem: a multi-root scan reads transcripts from more than one account.
 
@@ -61,6 +64,7 @@ Intended outcome, with the exceptions the Approach lists:
 - A run that read the active account alone says so in its scope header.
 - Nothing is relabelled that prints raw today. `audit-routing` keeps its opt-in `--redact`.
 - `audit-routing-samples` and `handoff-signal-response --sample` print the existing DO NOT PUBLISH line on stderr when they read more than one root.
+- An absolute `--projects` value exits 2 with one stderr line at every root count, before any scan or redact-map build.
 - `reviewer-yield --redact` relabels agent types this repo does not track, at any root count, and nothing relabels there without it.
 - `subagents`, `subagent-mix`, `review-round-cost` and the subcommands that already redact at every root count keep their behavior.
 - One shared helper refuses `--no-redact` above one root, and both root resolvers backstop it.
@@ -99,7 +103,7 @@ Order and reverts:
 
 Closure:
 - PR 2's body closes GH-1157.
-- The remnants left open go in one follow-up issue: `fail-seq`'s part of S7, `post-crash-sessions.py`, `token-analyzer.py` and `analyze-context.py --top`. The engineer approves that issue when PR 2 is opened, and the plan does not file it.
+- The remnants left open go in one follow-up issue: `fail-seq`'s part of S7, `post-crash-sessions.py`, `token-analyzer.py`, `analyze-context.py --top`, `user_input.py`'s absolute `--projects` crash, the `.` and `./` `--projects` crash in `_scan_root_transcripts`' four callers at one root, and the `review-loop-cost-audit/SKILL.md:35` label mismatch. The engineer approves that issue when PR 2 is opened, and the plan does not file it.
 
 Alternatives weighed:
 - **Relabel the branch tables above one root through a shared labeler**, an earlier revision. Set aside by row 13. It added attestation, a labeler class and per-account rows, and it changed the Branch cell that skills copy into `--branches`.
@@ -142,7 +146,7 @@ Alternatives weighed:
   anchors: row32, row33, row44
 - **M3 (PR 1).** `--all-accounts` widens a narrowed command to every declared root.
   - `scope._add_all_accounts_arg(parser) -> None`, beside `_add_project_scope_args`, registers `--all-accounts` as `store_true` outside the `--projects`/`--this-repo` group, with the help `Read every account ~/.claude/transcript-config-dirs declares, not the active account's alone. The output carries every declared account's raw names, paths and text and is not for publication (see docs/private-project-redaction.md).`
-  - That help and the docs bullet (M8) are the flag's only marker. No runtime marker is added beyond M4's two banners (row 54).
+  - The help, the docs bullet (M8) and the `N roots` clause every header prints are the flag's markers (row 54).
   - Each of the twelve narrowed subcommands' registrars calls it once, and no other registrar does. A pooled mode accepts the flag and reads what it reads without it.
   - It reads the same accounts as the existing `--all-accounts` on `pr-cost` and `review-cost-by-size`: every declared account in one run (row 51). Those two keep their own registration and help, since each help text is specific to its ledger.
   - Beside `--this-repo` it changes nothing, since `--this-repo` already reads every declared root. Both existing registrants accept the two together.
@@ -241,7 +245,7 @@ Alternatives weighed:
 23. [engineer-verified: "Leave it out (Recommended)"; "Leave them out (Recommended)"] `post-crash-sessions.py`, `token-analyzer.py` and `analyze-context.py --top` are unchanged.
 24. [engineer-verified: "Leave paths raw"] `review-trace`'s per-session path line stays raw above one root, under `--this-repo` or `--all-accounts`.
 25. [unverified: the session's reading recorded in Context] "Yes, disclose (Recommended)", "Require cwd in this repo (Recommended)", "Keep the refactor (Recommended)", "Apply it to all six (Recommended)" and "Hide untracked names (Recommended)" shaped the relabelling that rows 13, 16 and 17 replaced. They apply to nothing beyond row 17's opt-in.
-26. [engineer-verified: "Proceed anyway"; "Keep it whole (Recommended)"] "Proceed anyway" was selected on plan-review's question whether to split a plan projecting more than 400 changed lines into smaller PRs or proceed. "Keep it whole (Recommended)" was selected on whether PR 1 stays whole at a projected 900 changed lines or splits into seven commands then five. This revision projects about 1,200 for PR 1 (Projected diff).
+26. [engineer-verified: "Proceed anyway"; "Keep it whole (Recommended)"] "Proceed anyway" was selected on plan-review's question whether to split a plan projecting more than 400 changed lines into smaller PRs or proceed. "Keep it whole (Recommended)" was selected on whether PR 1 stays whole at a projected 900 changed lines or splits into seven commands then five. The current projection is under Projected diff. "Proceed anyway" was selected again at about 1,350 for PR 1.
 27. [engineer-verified: "Check which session holds GH-1116 (the transcript-analysis decomposition) and which files it owns before choosing where edits land."] Context's state check found GH-1116 closed with no open work, so every edit lands under `transcript_analysis/`.
 28. `resolve_scan_roots` (`scope.py:472-506`) returns the top-level `--config-dir`'s `projects/` before it reads the declared-roots file (`:493-495`). It has 26 call sites in the package. Twelve of them are the narrowed commands'. Two more sit outside the package, `analyze-context.py:295` and `token-analyzer.py:208`. [verified: read; grep of `resolve_scan_roots(`]
 29. The narrowed commands' sites at `b7129175`. [verified: reads]
@@ -316,10 +320,11 @@ Alternatives weighed:
 51. `pr-cost` and `review-cost-by-size` already register `--all-accounts` (`pr_cost.py:1220-1227`, `review_cost_by_size.py:333-340`). Each reads every declared account in one run, and neither calls a shared helper. Both accept the flag beside `--this-repo`, and `review-cost-by-size` requires `--this-repo` (`:276-284`). `review-cost-by-size`'s flag prints a private-view banner on both streams (`:58-62`, `:286-290`). [verified: reads; grep of `--all-accounts` in the package]
 52. `_add_project_scope_args` puts `--projects` and `--this-repo` in one mutually exclusive group (`scope.py:509-521`). Eleven of the twelve narrowed subcommands call it, and `skill-invocation` builds its own group (`skill_invocation.py:265-277`). [verified: read; grep of `_add_project_scope_args(`]
 53. `cmd_turn_shape_holdout_samples` shuffles every candidate in scope with a fixed default seed and pages them by `--offset` (`turn_shape.py:358-361`). A different scope therefore yields a different shuffled population, and an earlier pass's pages no longer line up. [verified: read]
-54. [engineer-verified: "Help text only (Recommended)"] Selected on how a pooled `--all-accounts` run marks itself, given that `review-cost-by-size --all-accounts` prints a DO NOT PUBLISH line. The `--all-accounts` help and the docs bullet are the marker, and no runtime marker is added beyond M4's two banners.
+54. [engineer-verified: "Help text only (Recommended)"] Selected on how a pooled `--all-accounts` run marks itself, given that `review-cost-by-size --all-accounts` prints a DO NOT PUBLISH line. The `--all-accounts` help and the docs bullet are the marker beside the `N roots` clause of M2's header, and no runtime marker is added beyond M4's two banners. Context records a later "Banner on --all-accounts only (Recommended)" answer, which the engineer then withdrew.
 55. [unverified: the session's default, not an engineer answer] On the twelve narrowed subcommands, the top-level `--config-dir` together with `--all-accounts` exits 2 with one stderr line naming the contradiction, in place of reading the `--config-dir` root alone.
 56. `cli.main()` exits 2 on the top-level `--config-dir` for every member of `_SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR` before it dispatches (`cli.py:171-199`), and `pr-cost` and `review-cost-by-size` are members (`scope.py:702-708`). A check placed after that block therefore reaches only the twelve narrowed subcommands among `--all-accounts` registrants. [verified: reads]
 57. `_add_project_scope_args` has 40 call sites, and only `review-cost-by-size` passes `this_repo_help` (`review_cost_by_size.py:326-332`). `read-cost` and `cost-counts` take the default help and read the active account alone (`read_cost.py:390`, `subagent_mix.py:528`). `pr-cost` refuses more than one root without `--all-accounts`. [verified: grep of `_add_project_scope_args(`; round-3 staff-product-engineer's reads of `read_cost.py`, `subagent_mix.py` and `pr_cost.py`]
+58. [engineer-verified: "Add the validator (Recommended)"] Selected on whether PR 1 refuses an absolute `--projects` value, leaving `user_input.py` to the follow-up issue. The placement is a plan-architect consult's recommendation, not the engineer's answer. A guard in `corpus.iter_sessions` runs only on the first `next()`, after `audit-routing --redact` has built its redact map. An argparse `type=` reaches 40 registrants, breaks `TestProjectsFlagHasNoArgparseType` and needs a parser-driven test layer. A runtime check inside `_resolve_project_scope` runs before every scan and redact-map build, since each caller resolves scope first (`audit_routing.py:89` before `:92`; `cost.py:641` before `:685`). [unverified: that `Path(value).anchor` refuses every value `Path.glob` rejects on Pythons older than the 3.14 CI interpreter]
 
 ## Critical files
 
@@ -333,7 +338,8 @@ Alternatives weighed:
 - `TA/scope.py`:
   - adds M1's `_narrows_to_active_account`, M3's `_add_all_accounts_arg` beside `_add_project_scope_args`, and M8's `_POOLED_THIS_REPO_HELP`;
   - `resolve_scan_roots` gains M1's `active_account_only` keyword and one docstring sentence on it;
-  - `_root_count_desc`, `_resolved_scope_header` and `print_resolved_scope` gain M2's keyword.
+  - `_root_count_desc`, `_resolved_scope_header` and `print_resolved_scope` gain M2's keyword;
+  - adds `_refuse_absolute_projects_glob(projects_glob, subcommand)`, which exits 2 on stderr with `<subcommand>: --projects: must be a glob under each root's projects/ directory, not an absolute path; --this-repo scopes to this repository` when `Path(projects_glob).anchor` is non-empty. It is a syntactic check with no `resolve`, `expanduser` or stat call, and `_resolve_project_scope` calls it after its `--this-repo` return and before its root-count branch, so it refuses at every root count.
 - `TA/cli.py`: `main()` refuses `--all-accounts` beside the top-level `--config-dir` after its existing refusal block (M3).
 - `TA/review_trace.py`, `TA/buckets.py`, `TA/duration.py` and `TA/struggle.py`: the shared edits only.
 - `TA/judgment_pair.py`: `cmd_judgment_pair` passes M1's local to all three of its header calls.
@@ -342,6 +348,7 @@ Alternatives weighed:
   - `cmd_skill_invocation` reads `projects_arg` before resolving roots;
   - its multi-root `--projects` branch (`:96-106`) stays, for `--all-accounts`;
   - the `--projects` help adds `An explicit glob reads the active account only, unless --all-accounts.`;
+  - `cmd_skill_invocation` calls `_refuse_absolute_projects_glob` inside `if projects_arg:`, before its root-count branch;
   - its own `--this-repo` help stays, since it builds its own group (row 52).
 - `TA/audit_routing.py`: `cmd_audit_routing_samples` prints the banner on stderr after its header above one root (M4), and `--redact` is unchanged.
 - `TA/turn_shape.py`: `cmd_turn_shape_samples`' docstring says `audit-routing-samples` prints the banner on stderr above one root.
@@ -392,13 +399,15 @@ Alternatives weighed:
   - `TestSkillFilesQuoteRootCountDescLiteral` gains an assertion over an empty roots file. It derives `_root_count_desc([root], active_account_only=True)`, asserts the result differs from the absent-state literal, and asserts the result appears whole in `transcript-analysis/SKILL.md`.
 - `T/test_transcript_scope.py`:
   - `test_skill_invocation_multi_root_rejects_a_multi_segment_projects_value_at_runtime` drops its one-argument `resolve_scan_roots` stub. Over `_two_declared_roots` with the real resolver, `projects="a/b"` with `all_accounts=True` exits 2 with `--projects` on stderr. The same value without the flag exits 0 over the active root alone;
-  - `test_sessions_found_via_declared_root_despite_nonexistent_projects_dir` runs `buckets` with `all_accounts=True`.
-- `T/test_transcript_skill_invocation.py`, over `_two_declared_roots` with a distinct skill name per root:
+  - `test_sessions_found_via_declared_root_despite_nonexistent_projects_dir` runs `buckets` with `all_accounts=True`;
+  - a new test calls `_resolve_project_scope` with `projects="/abs/*"` over one root and asserts exit 2 with `--projects` on stderr and empty stdout, and the same call with `projects="*"` still returns its generator. On the base the absolute call returns a generator.
+- `T/test_transcript_skill_invocation.py`: an absolute `--projects` over one root exits 2 with `--projects` on stderr. Then, over `_two_declared_roots` with a distinct skill name per root:
   - `--projects '*'` with `all_accounts=True` prints both skill names;
   - `--projects 'sub/<slug>'` exits 0 and counts a nested active-root session's skill;
   - `--projects '../../<declared-account>/projects/*'` prints `No skill invocations found.` and not the declared root's skill. The glob's parent, resolved from the active root, is the declared root's `projects/`.
 - `T/test_transcript_audit_routing.py`:
   - `test_same_raw_label_under_two_roots_resolves_to_distinct_account_tokens` sets `all_accounts=True`;
+  - a new test runs `redact=True, projects="/abs/*"` over one root with no declared-roots file and asserts exit 2 and no call to `redaction._build_redact_map`. On the base the map is built and `NotImplementedError` follows;
   - a new test runs `redact=True` over `_two_declared_roots` with no widening flag. A spy on `redaction._build_redact_map` records the active root alone. The active root's session prints with a flat `private-project-<N>` label and no `account-` prefix, and the declared root's project label does not print;
   - the same test's `this_repo=True` run, with slugs preset, prints `account-<K>/` prefixed labels.
 - `T/test_transcript_handoff_signal_response.py`:
@@ -417,7 +426,7 @@ Alternatives weighed:
 - `docs/transcript-analysis.md`:
   - `:53` says the default outside `skill-invocation` reads every project, and defers to "Corpus scope: the declared-roots file" for which accounts;
   - `:55` says the timeline reads the active account's projects by default and every declared account under `--this-repo` or `--all-accounts`, and that `--deny-summary` pools by default;
-  - the subdirectory-fallback bullet (`:60-66`) says the fallback glob reads the active account only on a narrowed command, and adding `--all-accounts` reads it in every declared account;
+  - the subdirectory-fallback bullet (`:60-66`) says the fallback glob reads the active account only on a narrowed command, and adding `--all-accounts` reads it in every declared account. It also says an absolute `--projects` value exits 2 and `--this-repo` is the route to this repository;
   - the active-account list (`:78-86`) gains one bullet for the narrowed commands, whose sub-bullets:
     - name the twelve narrowed commands;
     - state M3's combination rules with `--this-repo` and `--projects GLOB`;
@@ -466,14 +475,16 @@ Alternatives weighed:
   - `:142` holds `--branches` and whichever scope Step 1 used constant across sub-windows: `--this-repo`, or `--projects '<glob>'` with or without `--all-accounts`;
   - `:145` runs `review-trace --this-repo --since <window-start> --until <window-end>`, Step 1's default scope.
 - `CHANGELOG.md`: an `### Changed` entry with these Migration bullets:
-  - the twelve narrowed commands, named, read only the active account's projects on a machine that declares more roots. They exit 0 with fewer rows or smaller per-row figures. `review-trace` narrows only without `--deny-summary`, `skill-invocation` only with `--projects`, and `handoff-signal-response` only with `--sample`, and their other modes keep reading every declared account. `--all-accounts` reproduces the previous output, and also combines with `--projects GLOB`. `--this-repo` also reads every declared account, but bounds the run to this repository's sessions;
+  - a script that needs the previous output adds `--all-accounts`. The twelve narrowed commands, named, read only the active account's projects on a machine that declares more roots, and they exit 0 with fewer rows or smaller per-row figures. `review-trace` narrows only without `--deny-summary`, `skill-invocation` only with `--projects`, and `handoff-signal-response` only with `--sample`, and their other modes keep reading every declared account. `--all-accounts` reproduces the previous output, and also combines with `--projects GLOB`. `--this-repo` also reads every declared account, but bounds the run to this repository's sessions;
   - `sessions --paths` prints fewer paths on stdout and states why only in its stderr header, so a script reading stdout alone sees a shorter list with exit 0;
   - a default `audit-routing --redact` run reads one root, so its project labels lose their `account-<K>/` prefix. `--this-repo` or `--all-accounts` restores the prefixed labels;
   - `turn-shape-holdout-samples` shuffles a smaller population on a default run. A calibration pass paged with `--offset` that began before this change adds `--all-accounts` to every later invocation to keep its population;
   - a default `handoff-signal-response --sample` run ranks its top N, and computes each card's `exceeds_startup_burn_benchmark` and the `--format md` benchmark line, over the active account only. Its cards are therefore not comparable to a census run's pooled benchmark. `--all-accounts` restores the pooled ranking and benchmark;
   - `handoff-signal-response --sample --no-redact` now runs on a default invocation where it exited 2, and prints raw session IDs under the banner. It still exits 2 under `--this-repo` or `--all-accounts` above one root;
   - `audit-routing-samples` and `handoff-signal-response --sample` print a `DO NOT PUBLISH` line on stderr above one root, and stdout is unchanged;
-  - the narrowed commands' one-root header clause reads `1 root (active account only; --this-repo or --all-accounts also reads ~/.claude/transcript-config-dirs)`, so a wrapper matching `declared but contributed no additional root` on them matches the new clause instead.
+  - the narrowed commands' one-root header clause reads `1 root (active account only; --this-repo or --all-accounts also reads ~/.claude/transcript-config-dirs)`, so a wrapper matching `declared but contributed no additional root` on a default narrowed run no longer matches. The three pooled modes and the widened or `--config-dir` runs still print the old text;
+  - the four sample commands (`audit-routing-samples`, `turn-shape-samples`, `turn-shape-holdout-samples` and `handoff-signal-response --sample`) keep their row count but draw it from the smaller population, so a seeded run returns a different sample with exit 0. Their scope header is on stderr only, and `--all-accounts` re-draws over the old population;
+  - an absolute `--projects` value exits 2 with one stderr line at every root count. On a default narrowed run at one root it raised an uncaught `NotImplementedError` (exit 1) under this change's narrowing, and above one root it exited 2 with the one-level message. A value containing `/` or `**`, or equal to `.` or `..`, exited 2 above one root and is accepted on a default narrowed run, and it still exits 2 under `--all-accounts`.
 
 **PR 2, one code-writer dispatch.** Files:
 - `TA/redaction.py`: adds M5's `_untracked_agent_type_labels`.
@@ -502,7 +513,7 @@ Alternatives weighed:
   - the ten family subcommands' refusal reads `<subcommand>: --no-redact is refused when more than one root is in scope; drop --no-redact`, still on stderr with exit 2, so a wrapper matching `(--config-dir was given)` or `scope to a single` matches the new text instead;
   - `read-scope` numbers per-account rows by sorted resolved root path, so they renumber on a machine whose active root does not sort first.
 
-Projected diff: about 1,580 changed lines, about 1,200 in PR 1 and 380 in PR 2. [unverified estimate]
+Projected diff: about 1,650 changed lines, about 1,270 in PR 1 and 380 in PR 2. [unverified estimate]
 
 ## Verification
 
@@ -516,7 +527,8 @@ Projected diff: about 1,580 changed lines, about 1,200 in PR 1 and 380 in PR 2. 
   - the `--config-dir` refusal cases print argparse's unrecognized-argument error, not the refusal line;
   - the default `audit-routing --redact` case builds its map over both roots;
   - the unflagged multi-segment `--projects` case, the `sub/<slug>` case and the `..` case exit 2 on the multi-root one-level check;
-  - the new helper and keyword tests find no such helper or keyword.
+  - the new helper and keyword tests find no such helper or keyword;
+  - an absolute `--projects` over one root returns a generator from `_resolve_project_scope` instead of exiting 2, and `audit-routing --redact` with it builds the redact map before `NotImplementedError` is raised.
 - In PR 2:
   - the `reviewer-yield` case prints the untracked name raw;
   - the `resolve_scan_roots` backstop case refuses nothing;
@@ -541,14 +553,14 @@ Projected diff: about 1,580 changed lines, about 1,200 in PR 1 and 380 in PR 2. 
 - `skill-invocation`'s default scope under `--include-subagents` reads subagent files under this repo's sessions in every declared account, so it can print another project's skill names. `docs/transcript-analysis.md`'s Limits already states this.
 - `fail-seq` keeps pooling identically named branches across accounts, which leaves S7's `fail-seq` part open for Approach's follow-up issue. It prints only typed branch names.
 - Under the top-level `--config-dir`, the one-root header keeps row 33's wording.
-- An absolute `--projects` value on a narrowed command's default run raises an uncaught `NotImplementedError` from `Path.glob` in `corpus.iter_sessions` (`corpus.py:212-214`). Above one root, `_single_level_projects_glob` refused that value with exit 2 (`scope.py:925-928`). The defect predates this plan at one root, and PR 1 makes it reachable by default on multi-root machines. Its guard belongs in `corpus.iter_sessions`, which neither PR edits, so it is a follow-up and not a PR 1 guard.
+- `user_input.py` registers its own `--projects` and calls `corpus.iter_sessions` with the raw value, so an absolute value raises an uncaught `NotImplementedError` there. The command reads the active account only and has no pooling flag, so the defect is a crash and no leak. The plan does not cause it and the command is not narrowed, so it goes to Approach's follow-up issue.
 - `review-loop-cost-audit/SKILL.md:35` takes a set difference between `buckets --this-repo`'s bare branch cell and `review-round-cost --this-repo`'s `account-<K>/` cell above one root. That mismatch predates this plan and is a follow-up.
 - `subagents`, `subagent-mix` and `review-round-cost` keep their relabelling and disclose rules (row 21).
 - `subagents`, `subagent-mix`, `review-round-cost`, `cost`, `cache-efficiency`, `cache-rebuild`, `edit-format`, `read-scope`, and `audit-routing --redact` under `--this-repo` or `--all-accounts`, keep aborting on a project directory symlinked outside every root (rows 18, 35). The abort's message names `cost:` whichever command raised it.
 - `pr-cost` and `review-cost-by-size` keep their own `--all-accounts` registration and help text (row 51). `review-cost-by-size --all-accounts` prints a private-view banner on both streams, and the new flag on the twelve prints none (row 54).
 - `ready-for-review/SKILL.md:103` keeps saying `review-trace` "defaults machine-wide". After PR 1 that default reads every project of one account, which is still not repo-scoped, so the sentence's instruction to pass `--this-repo` stays correct. The wording fix would cost a `/skill-review` of that skill.
 - Several private projects in one account print raw at one root, since nothing redacts by default at one root (row 3).
-- The top-level `--config-dir` and `--all-accounts` reach other accounts' directories and print them raw. Scoping here is output hygiene, not an access boundary. Transcript text an agent reads can ask it to rerun with `--all-accounts`, and only the flag's help and the docs say the output is not for publication (row 54).
+- The top-level `--config-dir` and `--all-accounts` reach other accounts' directories and print them raw. Scoping here is output hygiene, not an access boundary. Transcript text an agent reads can ask it to rerun with `--all-accounts`, and only the flag's help and the docs say the output is not for publication (row 54). `--this-repo` also reads every declared account and says nothing of it.
 - Text a hook echoes into its deny message prints raw with the rest of free text (row 10).
 - The nine `_resolve_cost_roots` members of the `--no-redact` family still cannot narrow below the declared roots, so their `--no-redact` stays unusable on a machine that declares roots (row 39).
 - Splitting `scope.py` below the 1,000-line target (row 48).

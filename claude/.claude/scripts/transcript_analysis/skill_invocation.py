@@ -90,10 +90,14 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # which holds absolute paths even for in-scope sessions); and
     # _normalize_skill_name collapses this repo's own worktree-qualified spellings
     # for row-hygiene. Neither is the security boundary — scoping is.
-    roots = scope.resolve_scan_roots(args)
-
     projects_arg = getattr(args, "projects", None)
+    # The default scope (no --projects) is this repo's worktrees across every declared account, so only an
+    # explicit glob narrows.
+    active_account_only = scope._narrows_to_active_account(args) and bool(projects_arg)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
+
     if projects_arg:
+        scope._refuse_absolute_projects_glob(projects_arg, "skill-invocation")
         if len(roots) > 1:
             # Same one-level restriction as _resolve_project_scope's own
             # multi-root branch; see _single_level_projects_glob's docstring
@@ -161,7 +165,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
         scope_parts.append(f"branches: {','.join(sorted(branch_filter))}")
     # Printed above the zero-match return, not after it: "found nothing" is only
     # interpretable alongside the corpus that was searched.
-    scope.print_resolved_scope("skill-invocation", "; ".join(scope_parts), roots)
+    scope.print_resolved_scope(
+        "skill-invocation", "; ".join(scope_parts), roots, active_account_only=active_account_only,
+    )
 
     if not all_skills:
         print("No skill invocations found.")
@@ -265,8 +271,10 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope = p_skill_inv.add_mutually_exclusive_group()
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
-        help="Project-dir glob. Default: this repo's own worktrees only (publish-safe without --include-subagents). "
-             "Passing an explicit glob is an escape hatch — output is then not scoped to this repo.",
+        help="Project-dir glob. Default: this repo's own worktrees only (publish-safe without --include-subagents), "
+             "read across every declared account, so its counts are cross-account pooled figures. "
+             "Passing an explicit glob is an escape hatch — output is then not scoped to this repo. "
+             "An explicit glob reads the active account only, unless --all-accounts.",
     )
     p_skill_inv_scope.add_argument(
         "--this-repo", action="store_true",
@@ -275,6 +283,7 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
             "worktrees. Kept for flag uniformity with every other --projects subcommand."
         ),
     )
+    scope._add_all_accounts_arg(p_skill_inv)
     p_skill_inv.add_argument("--branches", metavar="B1,B2,...", help="Branch name filter (default: all)")
     p_skill_inv.add_argument(
         "--include-subagents", action="store_true",
