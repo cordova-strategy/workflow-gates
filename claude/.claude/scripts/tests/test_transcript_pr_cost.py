@@ -1160,6 +1160,27 @@ class TestPrCostBranchTotalsByModel:
         }
         pr_cost._check_model_breakdown_cell(row["model_breakdown"], row)  # the zero-valued group passes too
 
+    def test_haiku_5_5_turns_file_under_the_tier_their_prompt_selects(self, fake_projects):
+        agg = _branch_agg(fake_projects, [
+            _priced("claude-haiku-5-5", input=100_000, branch="feature-a"),
+            _priced("claude-haiku-5-5", input=1_000_000, branch="feature-a"),
+        ])
+
+        row = _row_from_agg(agg)
+
+        def input_group(tokens, usd_micros):
+            cell_group = _zero_group()
+            cell_group["input"] = {"tokens": tokens, "usd_micros": usd_micros}
+            return cell_group
+
+        assert row["model_breakdown"] == {
+            "claude-haiku-5-5": {
+                "standard": input_group(100_000, 10_000),
+                "long_prompt": input_group(1_000_000, 500_000),
+            },
+        }
+        pr_cost._check_model_breakdown_cell(row["model_breakdown"], row)
+
     def test_unpriced_model_is_absent_from_the_cell_and_its_tokens_land_in_unpriced_tokens(self, fake_projects):
         agg = _branch_agg(fake_projects, [
             _priced("claude-sonnet-5", input=1_000, branch="feature-a"),
@@ -1612,6 +1633,28 @@ class TestSeededBreakdownSweep:
                 leaf = row["model_breakdown"][model][variant][token_class]
                 assert leaf["tokens"] == expected_tokens[(model, variant, token_class)], (model, variant, token_class)
         ledger_path = tmp_path / "sweep-ledger.tsv"
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [row])
+        written_row = pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())[0]
+        assert written_row["model_breakdown"] == row["model_breakdown"]
+
+    def test_haiku_5_5_cell_holding_every_long_prompt_label_survives_a_ledger_write_and_parse(
+        self, fake_projects, tmp_path,
+    ):
+        over_threshold_usage_fields = (
+            {}, {"speed": "fast"}, {"inference_geo": "us"}, {"speed": "fast", "inference_geo": "us"},
+        )
+        records = [_priced("claude-haiku-5-5", input=100_000, branch="feature-a")] + [
+            _priced("claude-haiku-5-5", input=100_001, branch="feature-a", **usage_fields)
+            for usage_fields in over_threshold_usage_fields
+        ]
+
+        row = _row_from_agg(_branch_agg(fake_projects, records))
+
+        assert set(row["model_breakdown"]["claude-haiku-5-5"]) == {
+            "standard", "long_prompt", "fast_long_prompt", "us_geo_long_prompt", "fast_us_geo_long_prompt",
+        }
+        pr_cost._check_model_breakdown_cell(row["model_breakdown"], row)
+        ledger_path = tmp_path / "haiku-5-5-ledger.tsv"
         pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [row])
         written_row = pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())[0]
         assert written_row["model_breakdown"] == row["model_breakdown"]

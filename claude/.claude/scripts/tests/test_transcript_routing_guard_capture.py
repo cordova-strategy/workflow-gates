@@ -3197,6 +3197,15 @@ class TestValidator:
 
         assert refusal.value.reason == reason
 
+    @pytest.mark.parametrize("variant", pricing._PRICING_VARIANTS)
+    def test_the_capture_validator_accepts_every_pricing_variant_label(self, variant):
+        overhead_tokens = {_SONNET: {variant: {"input": 1}}}
+        text = _capture_file_text([_capture_loop(overhead_tokens=overhead_tokens)])
+
+        record = routing_guard._parse_capture_bytes(text.encode("utf-8"))
+
+        assert record.loops[0]["overhead_tokens"] == overhead_tokens
+
     def test_accepts_a_hand_written_literal_file_independent_of_the_writer(self):
         literal = (
             b'{"loops": [{"overhead_tokens": {"claude-sonnet-5": {"fast": {"input": 5, "cache_write_1h": 2}}},'
@@ -3382,6 +3391,42 @@ class TestGoldenFile:
             "The stored text changed. Bump _CAPTURE_REVISION only when the change alters what a stored row means;"
             " otherwise update this literal, because a bump strands every standing file."
         )
+
+    def test_the_documented_capture_grep_pattern_matches_a_haiku_overhead_group_and_not_a_later_turns_only_loop(self):
+        # The doc's pattern is matched against the serializer's own text, so a change to its separators fails here.
+        haiku = "claude-haiku-5-5"
+        states = routing_guard._KeyStates("off", "off", "off")
+        overhead_group_loop = routing_guard._Loop({haiku: {"standard": {"input": 5}}}, None, {}, False, 1, 0)
+        later_turns_only_loop = routing_guard._Loop({_SONNET: {"standard": {"input": 5}}}, None, {haiku: 4}, False, 1, 0)
+
+        pattern = _documented_capture_grep_pattern()
+        overhead_group_text = routing_guard._serialize_capture([overhead_group_loop], states)
+        later_turns_only_text = routing_guard._serialize_capture([later_turns_only_loop], states)
+
+        assert pattern in overhead_group_text
+        assert haiku in later_turns_only_text
+        assert pattern not in later_turns_only_text
+
+    def test_the_documented_capture_listing_command_lists_only_the_capture_with_a_haiku_overhead_group(self, tmp_path):
+        haiku = "claude-haiku-5-5"
+        states = routing_guard._KeyStates("off", "off", "off")
+        overhead_group_loop = routing_guard._Loop({haiku: {"standard": {"input": 5}}}, None, {}, False, 1, 0)
+        later_turns_only_loop = routing_guard._Loop({_SONNET: {"standard": {"input": 5}}}, None, {haiku: 4}, False, 1, 0)
+        captures_dir = tmp_path / routing_guard._CAPTURES_DIR_NAME
+        captures_dir.mkdir()
+        revision = routing_guard._CAPTURE_REVISION
+        overhead_group_file = captures_dir / routing_guard._capture_file_name("branch-with-overhead", revision)
+        later_turns_only_file = captures_dir / routing_guard._capture_file_name("branch-later-turns", revision)
+        overhead_group_file.write_text(routing_guard._serialize_capture([overhead_group_loop], states))
+        later_turns_only_file.write_text(routing_guard._serialize_capture([later_turns_only_loop], states))
+        command = _documented_capture_grep_command().replace("<config-dir>", shlex.quote(str(tmp_path)))
+
+        run = subprocess.run(
+            ["bash", "-c", command], capture_output=True, text=True, check=False, timeout=_DOCUMENTED_LOOP_TIMEOUT_SECONDS,
+        )
+
+        assert run.returncode == 0, run.stderr
+        assert run.stdout.splitlines() == [str(overhead_group_file)]
 
 
 # --- the reads a capture makes -----------------------------------------------
@@ -5362,6 +5407,26 @@ def _documented_capture_loop(note: Path) -> str:
             fence_lines.append(line)
     assert fence_lines, "the routing-guard section holds no fence that prints capture exit lines"
     return textwrap.dedent("\n".join(fence_lines)).replace("<note-path>", shlex.quote(str(note)))
+
+
+def _documented_capture_grep_command() -> str:
+    """The `grep` line in the routing-guard section's fence that lists the captures holding a Haiku 5.5 group."""
+    fence_lines: list[str] = []
+    in_fence = False
+    for line in _routing_guard_section_lines(_TRANSCRIPT_ANALYSIS_DOC.read_text()):
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+        elif in_fence:
+            fence_lines.append(line.strip())
+    grep_commands = [line for line in fence_lines if line.startswith("grep ")]
+    assert len(grep_commands) == 1, "the routing-guard section must hold exactly one grep fence line"
+    return grep_commands[0]
+
+
+def _documented_capture_grep_pattern() -> str:
+    """The `grep -F` pattern in the documented capture-listing command."""
+    command = shlex.split(_documented_capture_grep_command())
+    return command[command.index("-F") + 1]
 
 
 def _install_stub_at_documented_path(home: Path, stub_script: str) -> None:

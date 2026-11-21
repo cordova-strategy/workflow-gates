@@ -105,6 +105,47 @@ class TestSubagentMixDollars:
         assert cols["Counterfactual$"] == "$1.00"
         assert cols["Delta"] == "$2.00"
 
+    def test_reprice_as_a_tiered_model_prices_an_over_threshold_turn_at_the_higher_tier(self, fake_projects, capsys):
+        """The same 1,000,000-input-token dispatch re-priced as claude-haiku-5-5, whose prompt is over
+        its 100,000-token tier threshold, pays $0.50/MTok: Actual $3.00, Counterfactual $0.50, Delta $2.50."""
+        session_id = "sess-reprice-tiered"
+        _write_jsonl(fake_projects / f"{session_id}.jsonl", [
+            _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-sdet")]),
+        ])
+        _write_subagent_dispatch(
+            fake_projects, session_id, "agent-1", "a1",
+            [_priced_sidechain_asst("claude-sonnet-4-6", input_tokens=1_000_000)],
+            agent_type="staff-sdet",
+        )
+        subagent_mix.cmd_subagent_mix(_subagent_mix_args(reprice_as="claude-haiku-5-5"))
+        out = capsys.readouterr().out
+        cols = _table_cols(out, header_contains="Actual$", row_contains="staff-sdet", max_labels=7)
+        assert cols["Actual$"] == "$3.00"
+        assert cols["Counterfactual$"] == "$0.50"
+        assert cols["Delta"] == "$2.50"
+
+    def test_reprice_as_a_tiered_model_tiers_each_turn_not_the_dispatch_sum(self, fake_projects, capsys):
+        """Two 60,000-input-token turns re-priced as claude-haiku-5-5 each sit under the 100,000-token threshold,
+        so the counterfactual is $0.01. A summed 120,000-token prompt would price at the higher tier, $0.06."""
+        session_id = "sess-reprice-tiered-sum"
+        _write_jsonl(fake_projects / f"{session_id}.jsonl", [
+            _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-sdet")]),
+        ])
+        _write_subagent_dispatch(
+            fake_projects, session_id, "agent-1", "a1",
+            [
+                _priced_sidechain_asst("claude-sonnet-4-6", input_tokens=60_000, ts="2026-05-19T10:00:00.000Z"),
+                _priced_sidechain_asst("claude-sonnet-4-6", input_tokens=60_000, ts="2026-05-19T10:01:00.000Z"),
+            ],
+            agent_type="staff-sdet",
+        )
+        subagent_mix.cmd_subagent_mix(_subagent_mix_args(reprice_as="claude-haiku-5-5"))
+        out = capsys.readouterr().out
+        cols = _table_cols(out, header_contains="Actual$", row_contains="staff-sdet", max_labels=7)
+        assert cols["Actual$"] == "$0.36"
+        assert cols["Counterfactual$"] == "$0.01"
+        assert cols["Delta"] == "$0.35"
+
     def test_reprice_as_same_model_yields_zero_delta(self, fake_projects, capsys):
         """--reprice-as set to the dispatch's own real model must not diverge
         from the actual-dollars path -- Delta is exactly $0.00, not merely

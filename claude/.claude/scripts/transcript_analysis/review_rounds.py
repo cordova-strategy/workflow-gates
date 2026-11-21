@@ -293,7 +293,7 @@ def _turn_model(rec: dict) -> str:
 
 def _add_turn_tokens(tokens: dict[str, dict[str, dict[str, int]]], model: str, usage: dict) -> None:
     variants = tokens.setdefault(model, {})
-    variant = pricing._pricing_variant(usage)
+    variant = pricing._pricing_variant(model, usage)
     if variant not in variants:
         variants[variant] = dict.fromkeys(pricing._TOKEN_CLASSES, 0)
     group = variants[variant]
