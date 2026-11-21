@@ -8,7 +8,7 @@ Ask: "yes begin" — the engineer's answer to the session's question "shall I be
 
 The review benchmark (`evals/review_bench/`) decides whether a capacity-aware read rule may replace "read every changed file fully" for reviewer agents. Its interval for the recall difference is a percentile cluster bootstrap. Synthetic simulations run in this session, using no model, showed that statistic falsely adopts a rule that is 5 percentage points worse more often than its nominal 2.5%, at 15 to 40 fixtures. A sign-flip test on per-fixture differences and a per-fixture linearized t-interval held nearer the nominal rate, and the same holds for pooled precision, a ratio. The decision rule built on them (margins, floors, two error-budget slots, a ledger) lands in a later PR whose constants depend on calibration runs this PR makes possible. The decision record is `~/.local/state/gh1114-src/decision-record-2026-11-20.md`, and the simulation drafts `gh1114-sim3.py` and `gh1114-sim4.py` sit in the same directory. The drafts live outside the repo; port them, do not copy.
 
-Scope: new stdlib-only decision functions in `analysis.py` (sign-flip test on per-fixture differences, per-fixture linearized pooled-precision difference with a t-interval and a sign-flip test), a parameterized `calibrate` subcommand that imports those production functions and runs synthetic scenarios, tests, and a README usage line. Not in this PR: the ledger, gate logic, constants changes, the case study, the skill, any edit to `.claude/plans/measure-review-quality.md`.
+Scope of this PR: new stdlib-only decision functions in `analysis.py` (sign-flip test on per-fixture differences, per-fixture linearized pooled-precision difference with a t-interval and a sign-flip test) and their tests in a new `evals/test_review_bench_decision_statistics.py`. The parameterized `calibrate` subcommand that runs those functions on synthetic scenarios, with its tests and a README usage line, is a follow-up PR with its own plan review. M7 to M9, Dispatch 2 and Verification steps 4 to 7 below are carried over for that PR and are not part of this one. Not in this PR: the ledger, gate logic, constants changes, the case study, the skill, any edit to `.claude/plans/measure-review-quality.md`.
 
 ## Approach
 
@@ -86,7 +86,7 @@ The frozen-conditions design is a condition the plan could change and deliberate
   `analyze`, the verdict functions, `DELTA`, `ALPHA_ONE_SIDED` and every report field stay as they are.
 
   anchors: root, row1, row9
-- **M7.** Add `evals/review_bench/calibrate.py`. Only `run_review_bench.py`'s handler imports it, so it stays outside the closure (row 6).
+- **M7 (follow-up PR, not in this PR).** Add `evals/review_bench/calibrate.py`. Only `run_review_bench.py`'s handler imports it, so it stays outside the closure (row 6).
   - `CalibrationConfig` holds the metric (`recall` or `precision`), delta, alphas, fixture counts, k, harm (`normal` or `concentrated`), over-cap share, replicates, seed, workers and flips. It validates on construction and raises ValueError naming the field:
     - fixture counts >= 2;
     - 0 < alpha < 0.5;
@@ -121,7 +121,7 @@ The frozen-conditions design is a condition the plan could change and deliberate
   - **A thread pool, the review_bench precedent** (`runner.py:1795-1799`): the work is CPU-bound, so the GIL serializes it.
 
   anchors: row3, row6, row14, row15, row20
-- **M8.** Changes to `evals/run_review_bench.py`:
+- **M8 (follow-up PR, not in this PR).** Changes to `evals/run_review_bench.py`:
   - `cmd_calibrate(args)` imports `review_bench.calibrate` inside the function, as every handler does (row 18). It builds the config and solves every cell's shift. On a ValueError it prints the message to stderr, prints no row, writes no `--out` file and returns 2; otherwise it runs the sweep and returns 0.
   - `build_parser` registers `calibrate` after `freeze`, with these flags:
     - `--metric`: required, with choices.
@@ -141,7 +141,7 @@ The frozen-conditions design is a condition the plan could change and deliberate
   - The module docstring's subcommand list (`:2-5`) gains `calibrate`.
 
   anchors: row1, row16, row18
-- **M9.** `evals/README.md`'s "Usage" block under "Review bench" gains one comment line and one command after the `analyze` example (`:755-757`). The comment says the command simulates the decision statistics' false-adopt and power rates on synthetic data, with no model and no spend.
+- **M9 (follow-up PR, not in this PR).** `evals/README.md`'s "Usage" block under "Review bench" gains one comment line and one command after the `analyze` example (`:755-757`). The comment says the command simulates the decision statistics' false-adopt and power rates on synthetic data, with no model and no spend.
 
   anchors: row16
 
@@ -175,18 +175,19 @@ The frozen-conditions design is a condition the plan could change and deliberate
     - the tie tolerance;
     - the test-file placement.
 23. This plan stays one PR at a `Projected diff:` of about 1,100 lines. The engineer answered "Proceed anyway" [engineer-verified: "Proceed anyway"] to plan-review's question "Split into smaller PRs now, or proceed?". The question was first asked when the projection was about 900 lines. It was asked again at about 1,100 lines, and the engineer again answered "Proceed anyway" [engineer-verified: "Proceed anyway"].
+24. This plan is cut to Dispatch 1, with a `Projected diff:` of about 1,020 lines, and calibrate moves to a follow-up PR. [engineer-verified: "Split now (Recommended)"] The engineer chose that option when asked whether to split at the dispatch boundary because the PR had grown to about 1,600 lines.
 
 ## Critical files
 
-Two `code-writer` dispatches run in sequence, because Dispatch 2's module calls Dispatch 1's functions. Their file sets are disjoint. The session runs `/code-review` and commits after each dispatch. Line numbers are base lines.
+This PR ships Dispatch 1 only. Dispatch 2 ships as a follow-up PR, because its module calls Dispatch 1's functions and the two dispatches' file sets are disjoint. The session runs `/code-review` and commits Dispatch 1. Line numbers are base lines.
 
 **Before Dispatch 1:** commit this plan (plan-it Step 7).
 
-**Dispatch 1: the statistics.** Verify with `scripts/venv-run.sh pytest evals/test_review_bench_analysis.py` and `scripts/venv-run.sh ruff check evals/review_bench/analysis.py evals/test_review_bench_analysis.py`.
+**Dispatch 1: the statistics.** Verify with `scripts/venv-run.sh pytest evals/test_review_bench_analysis.py evals/test_review_bench_decision_statistics.py` and `scripts/venv-run.sh ruff check evals/review_bench/analysis.py evals/test_review_bench_decision_statistics.py`.
 - `evals/review_bench/analysis.py`: M1 to M6.
   - Put the new functions in a new section after the bootstrap section (`:330-398`) and before "Verdicts" (`:401`).
   - Reuse `DefectRecallCounts.detection_rate` (`:87`), `DELTA` and `ALPHA_ONE_SIDED` (`:43-44`), and the moved `_fixture_groups`.
-- `evals/test_review_bench_analysis.py`: add new classes and edit no existing test.
+- `evals/test_review_bench_decision_statistics.py` (new file): the new test classes. `evals/test_review_bench_analysis.py` is not edited, because it already exceeds the repo's test-file line cap.
   - `student_t_upper_quantile`:
     - df 1 equals tan(π(½ − α)), and df 2 equals (1 − 2α) / √(2α(1 − α)), for α 0.025 and 0.0125.
     - At df 3, the closed-form CDF ½ + (1/π)(atan(t/√3) + (t/√3)/(1 + t²/3)) of the returned t is 1 − α.
@@ -214,7 +215,7 @@ Two `code-writer` dispatches run in sequence, because Dispatch 2's module calls 
     - A defect ID absent from the counts is skipped, and a fixture left with no present defect is dropped from F.
   - `fixture_t_interval`: residuals (1, −1, 2, −2) with estimate 0.5 give 0.5 ± `student_t_upper_quantile(3, α)` · √(10/12).
 
-**Dispatch 2: calibrate.** Verify with `scripts/venv-run.sh pytest evals/test_review_bench_calibrate.py` and `scripts/venv-run.sh ruff check evals/review_bench/calibrate.py evals/run_review_bench.py evals/test_review_bench_calibrate.py`.
+**Dispatch 2: calibrate (follow-up PR, not in this PR).** Verify with `scripts/venv-run.sh pytest evals/test_review_bench_calibrate.py` and `scripts/venv-run.sh ruff check evals/review_bench/calibrate.py evals/run_review_bench.py evals/test_review_bench_calibrate.py`.
 - New `evals/review_bench/calibrate.py` (M7). Port the drafts' generators and shift solvers; do not copy their script structure.
 - `evals/run_review_bench.py` (M8).
 - `evals/README.md` (M9).
@@ -231,24 +232,24 @@ Two `code-writer` dispatches run in sequence, because Dispatch 2's module calls 
 
 This change only reads `evals/replay_bench/summary.py`, `evals/test_review_bench_cli.py` and `claude/.claude/scripts/select-tests.py` (rows 9, 17, 19).
 
-Projected diff: about 1,100 lines. That is about 215 in `analysis.py`, 290 in `calibrate.py`, 75 in `run_review_bench.py`, 2 in the README, 290 in the analysis tests and 230 in the calibrate tests.
+Projected diff: about 1,020 lines for this PR, which is Dispatch 1. That is about 250 in `analysis.py` and about 770 in the new decision-statistics test file. Calibrate's projected 600 or more lines belong to the follow-up PR.
 
 ## Verification
 
 1. Scoped suite: `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. It selects every evals test target for this diff (row 17).
 2. Lint: `scripts/venv-run.sh ruff check evals/` is clean.
 3. No verdict changes:
-   - `git diff --numstat origin/main...HEAD -- evals/test_review_bench_analysis.py` shows 0 deleted lines, and the existing tests pass in step 1.
+   - `git diff --stat origin/main...HEAD -- evals/test_review_bench_analysis.py` is empty, and the existing tests pass in step 1.
    - In `git diff origin/main...HEAD -- evals/review_bench/analysis.py`, every hunk outside the new constants and new section is the `_fixture_groups` move or the docstring line.
    - `git diff --stat origin/main...HEAD -- evals/replay_bench` is empty.
-4. The closure fact: Dispatch 2's closure test passes in step 1, so `calibrate.py` stays out of every frozen field (row 6).
-5. Worker independence, which CI does not exercise because its tests run with workers 1. These commands run no model and cost nothing:
+4. (Follow-up PR.) The closure fact: Dispatch 2's closure test passes in step 1, so `calibrate.py` stays out of every frozen field (row 6).
+5. (Follow-up PR.) Worker independence, which CI does not exercise because its tests run with workers 1. These commands run no model and cost nothing:
    - Run `scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --fixtures 30 --replicates 200 --workers 1 --out evals/review_bench/.local/calibration/w1.json`.
    - Run the same with `--workers 4 --out evals/review_bench/.local/calibration/w4.json`.
    - `cmp evals/review_bench/.local/calibration/w1.json evals/review_bench/.local/calibration/w4.json` exits 0.
    - Record both runs' wall-clock times in the PR body, replacing row 20's estimates.
-6. Parity with the drafts, which CI cannot exercise: run `scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --replicates 4000 --workers 4`. Its t and sign-flip adopt rates stay within 0.01 and 0.03 of `gh1114-sim3.py`'s results at 20 fixtures, normal harm, share 1.0: t 0.0248 and sign-flip 0.0222 at a true difference of −0.05, and 0.197 and 0.1895 at 0.
-7. `scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric precision --k 10 --harm concentrated --over-cap-share 0.5 --fixtures 20 --replicates 100` exits 0 and prints two rows.
+6. (Follow-up PR.) Parity with the drafts, which CI cannot exercise: run `scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --replicates 4000 --workers 4`. Its t and sign-flip adopt rates stay within 0.01 and 0.03 of `gh1114-sim3.py`'s results at 20 fixtures, normal harm, share 1.0: t 0.0248 and sign-flip 0.0222 at a true difference of −0.05, and 0.197 and 0.1895 at 0.
+7. (Follow-up PR.) `scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric precision --k 10 --harm concentrated --over-cap-share 0.5 --fixtures 20 --replicates 100` exits 0 and prints two rows.
 
 ## Out of scope
 
