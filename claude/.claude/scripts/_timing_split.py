@@ -1,7 +1,6 @@
 """Plans the pytest passes for a selection: the parallel and serial passes tests.yml runs, or one unsplit pass."""
 import fnmatch
 import os
-import tomllib
 from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import NamedTuple
@@ -29,8 +28,8 @@ UNSPLIT_PASS = "unsplit"
 
 UNSPLIT_REASON_ARGUMENT_FILE = "a caller argument starts with @"
 UNSPLIT_REASON_BARE_DOUBLE_DASH = "a caller argument is --"
-UNSPLIT_REASON_CALLER_NO_WORKERS = "the caller's -n is 0 or less"
-UNSPLIT_REASON_ENVIRONMENT_NO_WORKERS = f"{XDIST_WORKER_ENV_VAR} is 0 or less"
+UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS = "the caller's -n starts one or fewer workers"
+UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS = f"{XDIST_WORKER_ENV_VAR} sets one or fewer workers"
 UNSPLIT_REASON_NO_MARKED_FILES = f"no selected file contains {TIMING_MARK_TEXT}"
 
 _MARKER_FLAG = "-m"
@@ -38,22 +37,22 @@ _KEYWORD_FLAG = "-k"
 _WORKERS_SHORT_FLAG = "-n"
 _WORKERS_LONG_FLAG = "--numprocesses"
 _SERIAL_WORKERS_OPTION = "-n0"
-_IGNORE_OPTION_PREFIX = "--ignore="
 _DOUBLE_DASH = "--"
 
 _AUTO_WORKER_COUNTS = ("auto", "logical")
+# One worker has no sibling workers for the serial pass to protect, and a split would pay a second whole-selection
+# collection for nothing.
+_MIN_WORKERS_TO_SPLIT = 2
 _NODE_ID_SEPARATOR = "::"
 
 
 class TimingMarkScan(NamedTuple):
     marked_files: tuple[str, ...]
-    unmarked_test_files: tuple[str, ...]
 
 
 class PytestPass(NamedTuple):
     name: str
     added_options: tuple[str, ...]
-    ignored_paths: tuple[str, ...]
     pytest_args: list[str]
 
 
@@ -112,8 +111,8 @@ def split_caller_marker_expression(caller_args: list[str]) -> tuple[str, list[st
     return expression, remaining_args
 
 
-def no_workers_reason(caller_args: list[str], *, auto_num_workers: str | None) -> str | None:
-    """Returns the reason the run would start no xdist workers, or None.
+def one_or_fewer_workers_reason(caller_args: list[str], *, auto_num_workers: str | None) -> str | None:
+    """Returns the reason the run would start one worker or none, or None.
 
     The last `-n` decides, read the way xdist reads it. auto_num_workers decides only when that `-n` is absent,
     `auto` or `logical`.
@@ -124,13 +123,13 @@ def no_workers_reason(caller_args: list[str], *, auto_num_workers: str | None) -
             caller_worker_count = int(occurrences[-1].value)
         except ValueError:
             return None
-        return UNSPLIT_REASON_CALLER_NO_WORKERS if caller_worker_count <= 0 else None
+        return UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS if caller_worker_count < _MIN_WORKERS_TO_SPLIT else None
     try:
         environment_worker_count = int(auto_num_workers) if auto_num_workers is not None else None
     except ValueError:
         return None
-    if environment_worker_count is not None and environment_worker_count <= 0:
-        return UNSPLIT_REASON_ENVIRONMENT_NO_WORKERS
+    if environment_worker_count is not None and environment_worker_count < _MIN_WORKERS_TO_SPLIT:
+        return UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS
     return None
 
 
@@ -154,38 +153,6 @@ def _caller_paths(caller_args: Sequence[str], repo_root: Path) -> list[str]:
     return paths
 
 
-def _read_norecursedirs(repo_root: Path) -> tuple[str, ...]:
-    """The pyproject.toml norecursedirs patterns, or () when the file or the key is missing or malformed."""
-    try:
-        with (repo_root / "pyproject.toml").open("rb") as handle:
-            config = tomllib.load(handle)
-    except (OSError, ValueError):
-        return ()
-    patterns = config
-    for key in ("tool", "pytest", "ini_options", "norecursedirs"):
-        if not isinstance(patterns, dict) or key not in patterns:
-            return ()
-        patterns = patterns[key]
-    if not isinstance(patterns, list) or not all(isinstance(pattern, str) for pattern in patterns):
-        return ()
-    return tuple(patterns)
-
-
-def _matches_norecursedirs(directory: str, patterns: Iterable[str]) -> bool:
-    # Mirrors pytest's fnmatch_ex: a pattern without "/" matches the directory name, and one with "/" matches the
-    # absolute path with "*/" prefixed.
-    absolute = os.path.abspath(directory)
-    for pattern in patterns:
-        if "/" not in pattern:
-            if fnmatch.fnmatch(os.path.basename(absolute), pattern):
-                return True
-        else:
-            anchored = pattern if pattern.startswith("/") else f"*/{pattern}"
-            if fnmatch.fnmatch(absolute, anchored):
-                return True
-    return False
-
-
 def _holds_timing_mark(path: str) -> bool:
     try:
         return TIMING_MARK_TEXT.encode() in Path(path).read_bytes()
@@ -196,14 +163,16 @@ def _holds_timing_mark(path: str) -> bool:
 def scan_timing_marks(
     target_paths: Iterable[str], caller_args: Sequence[str], *, repo_root: Path,
 ) -> TimingMarkScan:
-    """Reports which files under the selection hold the timing mark text and which test files do not.
+    """Reports which files under the selection hold the timing mark text.
 
-    An unreadable file counts as marked. Only a file found by walking a directory can be an unmarked test file,
-    because pytest collects a file named directly whatever its name.
+    An unreadable file counts as marked. A walk over a directory reads only files whose names match pytest's test
+    file patterns, while a file named directly is read whatever its name.
+
+    The walk follows no directory symlinks, though pytest's collection does, so a test file reachable only through
+    one is not scanned. An unreadable directory contributes nothing, unlike an unreadable file. The cost is
+    proportional to the test-pattern files under the selected roots.
     """
-    prune_patterns = _read_norecursedirs(repo_root)
     marked: set[str] = set()
-    unmarked: set[str] = set()
 
     def repo_relative(path: str) -> str:
         return Path(os.path.relpath(path, repo_root)).as_posix()
@@ -214,17 +183,14 @@ def scan_timing_marks(
             if _holds_timing_mark(absolute):
                 marked.add(repo_relative(absolute))
         elif os.path.isdir(absolute):
-            for directory, subdirectories, filenames in os.walk(absolute):
-                subdirectories[:] = [
-                    name for name in subdirectories
-                    if not _matches_norecursedirs(os.path.join(directory, name), prune_patterns)
-                ]
+            for directory, _subdirectories, filenames in os.walk(absolute):
                 for filename in filenames:
                     if not any(fnmatch.fnmatch(filename, pattern) for pattern in TEST_FILE_PATTERNS):
                         continue
                     file_path = os.path.join(directory, filename)
-                    (marked if _holds_timing_mark(file_path) else unmarked).add(repo_relative(file_path))
-    return TimingMarkScan(tuple(sorted(marked)), tuple(sorted(unmarked)))
+                    if _holds_timing_mark(file_path):
+                        marked.add(repo_relative(file_path))
+    return TimingMarkScan(tuple(sorted(marked)))
 
 
 def _combine_marker_expression(caller_expression: str, pass_expression: str) -> str:
@@ -232,7 +198,7 @@ def _combine_marker_expression(caller_expression: str, pass_expression: str) -> 
 
 
 def _unsplit_plan(caller_args: list[str], reason: str) -> PassPlan:
-    return PassPlan((PytestPass(UNSPLIT_PASS, (), (), list(caller_args)),), reason)
+    return PassPlan((PytestPass(UNSPLIT_PASS, (), list(caller_args)),), reason)
 
 
 def _unsplit_reason_from_arguments(caller_args: list[str], *, auto_num_workers: str | None) -> str | None:
@@ -241,7 +207,7 @@ def _unsplit_reason_from_arguments(caller_args: list[str], *, auto_num_workers: 
     # pytest reads every token after a `--` as a path, so a split pass's appended options would become missing paths.
     if _DOUBLE_DASH in caller_args:
         return UNSPLIT_REASON_BARE_DOUBLE_DASH
-    return no_workers_reason(caller_args, auto_num_workers=auto_num_workers)
+    return one_or_fewer_workers_reason(caller_args, auto_num_workers=auto_num_workers)
 
 
 def plan_passes(
@@ -270,14 +236,10 @@ def plan_passes(
         _combine_marker_expression(caller_expression, SERIAL_PASS_MARKER_EXPRESSION),
         _SERIAL_WORKERS_OPTION,
     )
-    ignored_paths = scan.unmarked_test_files
-    ignore_options = [f"{_IGNORE_OPTION_PREFIX}{path}" for path in ignored_paths]
     return PassPlan(
         (
-            PytestPass(PARALLEL_PASS, parallel_options, (), [*remaining_args, *parallel_options]),
-            PytestPass(
-                SERIAL_PASS, serial_options, ignored_paths, [*remaining_args, *serial_options, *ignore_options],
-            ),
+            PytestPass(PARALLEL_PASS, parallel_options, [*remaining_args, *parallel_options]),
+            PytestPass(SERIAL_PASS, serial_options, [*remaining_args, *serial_options]),
         ),
         None,
     )

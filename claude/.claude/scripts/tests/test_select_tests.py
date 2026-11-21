@@ -691,13 +691,12 @@ class TestSelectPytestTargets:
         assert _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH in result.target_paths
         assert _mod.SCRIPTS_TESTS_DIR in result.target_paths
 
-    def test_cpu_saturating_shim_test_change_also_selects_the_pytest_collection_config_test(self):
-        """The row is hand-declared; the guard in test_pytest_collection_config.py names the file by path to require
-        its saturates_cpu mark, and SCRIPTS_DIR's domain rule alone would skip the guard."""
-        result = _mod.select_pytest_targets([_mod.CPU_SATURATING_SHIM_TEST_PATH])
+    def test_cpu_saturating_shim_test_change_selects_the_pytest_collection_config_guard(self):
+        """test_pytest_collection_config.py's guard collects the shim test file for its saturates_cpu mark, so a
+        change to that file must select the guard, by whichever rule."""
+        result = _mod.select_pytest_targets(["claude/.claude/scripts/tests/test_cursor_adapter_shim_hook_run.py"])
         assert result.is_full_suite is False
-        assert _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH in result.target_paths
-        assert _mod.SCRIPTS_TESTS_DIR in result.target_paths
+        assert _selection_covers(result.target_paths, _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH)
 
     def test_non_skill_auxiliary_file_under_skills_is_unmatched_and_falls_open(self):
         """A skill-directory file that is not SKILL.md or one of the
@@ -2543,7 +2542,6 @@ class TestPytestSubprocessEnv:
 _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
     _mod.SKILL_AUXILIARY_FILES_MODULE,
     _mod.TIMING_SPLIT_MODULE,
-    _mod.CPU_SATURATING_SHIM_TEST_PATH,
     _mod.CONFIG_MODULE,
     _mod.CONFIG_DIR_MODULE,
     _mod.SKILL_STRUCTURE_VALIDATOR_MODULE,
@@ -3002,7 +3000,7 @@ class TestPassOptionsMatchCiPytestSteps:
     @staticmethod
     def _live_passes() -> tuple[PytestPass, ...]:
         plan = plan_passes(
-            [], auto_num_workers=None, scan_selection=lambda: TimingMarkScan(("a/test_marked.py",), ()),
+            [], auto_num_workers=None, scan_selection=lambda: TimingMarkScan(("a/test_marked.py",)),
         )
         return plan.passes
 
@@ -3052,8 +3050,8 @@ class TestPassOptionsMatchCiPytestSteps:
                     {"run": "pytest a/ -v -m timing -n0"},
                 ],
                 (
-                    PytestPass(PARALLEL_PASS, ("-m", "not timing"), (), []),
-                    PytestPass(SERIAL_PASS, ("-m", "timing and not slow", "-n0"), (), []),
+                    PytestPass(PARALLEL_PASS, ("-m", "not timing"), []),
+                    PytestPass(SERIAL_PASS, ("-m", "timing and not slow", "-n0"), []),
                 ),
                 f"lacks {_SERIAL_PASS_CPU_EXCLUSION_SUFFIX!r}",
                 id="serial-pass-with-a-different-exclusion",
@@ -3277,14 +3275,14 @@ _PARALLEL_PASS_OPTIONS = ["-m", "not timing"]
 _SERIAL_PASS_OPTIONS = ["-m", "timing and not saturates_cpu", "-n0"]
 
 
-def _patch_timing_scan(monkeypatch, *, marked_files=(_MARKED_FILE_STUB,), unmarked_test_files=()):
+def _patch_timing_scan(monkeypatch, *, marked_files=(_MARKED_FILE_STUB,)):
     """Replaces main()'s scan with a recording stub, so a test that uses a fake repo root does not depend on where
     marks sit in the tree. Returns the list the stub appends each call's arguments to."""
     calls = []
 
     def fake_scan(target_paths, caller_args, *, repo_root):
         calls.append({"target_paths": list(target_paths), "caller_args": list(caller_args), "repo_root": repo_root})
-        return TimingMarkScan(tuple(marked_files), tuple(unmarked_test_files))
+        return TimingMarkScan(tuple(marked_files))
 
     monkeypatch.setattr(_mod, "scan_timing_marks", fake_scan)
     return calls
@@ -3308,6 +3306,7 @@ class TestMainComposition:
             return 0
 
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: fake_repo_root)
         monkeypatch.setattr(_mod, "compute_changed_paths", fake_compute_changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
@@ -3342,6 +3341,7 @@ class TestMainComposition:
             return 0
 
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: fake_repo_root)
         monkeypatch.setattr(_mod, "compute_changed_paths", fake_compute_changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
@@ -3528,6 +3528,7 @@ class TestMainComposition:
             return 0
 
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: _REPO_ROOT)
         monkeypatch.setattr(_mod, "compute_changed_paths", lambda repo_root: changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
@@ -3568,6 +3569,8 @@ class TestMainPassPlanning:
             return result
 
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        # Sizes workers from a fixed CPU budget, so a one-CPU host does not collapse these runs to one pass.
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: repo_root)
         monkeypatch.setattr(_mod, "compute_changed_paths", lambda root: [self.CHANGED_PATH])
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
@@ -3577,17 +3580,14 @@ class TestMainPassPlanning:
         self, monkeypatch, capsys,
     ):
         self._stub_main(monkeypatch, [ExitCode.TESTS_FAILED, ExitCode.INTERNAL_ERROR])
-        _patch_timing_scan(monkeypatch, unmarked_test_files=("claude/.claude/scripts/tests/test_plain.py",))
+        _patch_timing_scan(monkeypatch)
 
         exit_code = _mod.main([])
 
         stderr = capsys.readouterr().err
         assert exit_code == ExitCode.TESTS_FAILED
         assert "select-tests: parallel pass: -m 'not timing'\n" in stderr
-        assert (
-            "select-tests: serial pass: -m 'timing and not saturates_cpu' -n0; "
-            "skipping unmarked test files found by directory walks: 1\n"
-        ) in stderr
+        assert "select-tests: serial pass: -m 'timing and not saturates_cpu' -n0\n" in stderr
         assert re.search(
             rf"select-tests: parallel pass exited 1 in {self.SECONDS}s, "
             rf"serial pass exited 3 in {self.SECONDS}s; exiting 1",
@@ -3645,11 +3645,19 @@ class TestMainPassPlanning:
         [
             pytest.param(
                 ["-n", "0", "-k", "foo"], None, (_MARKED_FILE_STUB,),
-                "the caller's -n is 0 or less", 0, id="caller-n-zero",
+                "the caller's -n starts one or fewer workers", 0, id="caller-n-zero",
+            ),
+            pytest.param(
+                ["-n", "1", "-k", "foo"], None, (_MARKED_FILE_STUB,),
+                "the caller's -n starts one or fewer workers", 0, id="caller-n-one",
             ),
             pytest.param(
                 ["-k", "foo"], "0", (_MARKED_FILE_STUB,),
-                "PYTEST_XDIST_AUTO_NUM_WORKERS is 0 or less", 0, id="environment-workers-zero",
+                "PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers", 0, id="environment-workers-zero",
+            ),
+            pytest.param(
+                ["-k", "foo"], "1", (_MARKED_FILE_STUB,),
+                "PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers", 0, id="environment-workers-one",
             ),
             pytest.param(
                 ["@args.txt"], None, (_MARKED_FILE_STUB,),
@@ -3682,7 +3690,21 @@ class TestMainPassPlanning:
         assert f"select-tests: one pass, not split: {reason}\n" in stderr
         assert "pass exited" not in stderr
 
-    def test_scan_over_a_real_tree_gives_only_the_serial_pass_the_unmarked_file_to_ignore(
+    def test_a_one_cpu_budget_runs_one_unsplit_pass_without_reading_any_file(self, monkeypatch, capsys):
+        argvs = self._stub_main(monkeypatch, [ExitCode.OK])
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 1)
+        monkeypatch.setattr(os, "getloadavg", lambda: (0.0, 0.0, 0.0))
+        recorded_scans = _patch_timing_scan(monkeypatch)
+
+        exit_code = _mod.main([])
+
+        stderr = capsys.readouterr().err
+        assert exit_code == ExitCode.OK
+        assert argvs == [self.TARGETS]
+        assert recorded_scans == []
+        assert "select-tests: one pass, not split: PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers\n" in stderr
+
+    def test_scan_over_a_real_tree_gives_both_passes_the_whole_selection_with_no_ignore_option(
         self, monkeypatch, tmp_path,
     ):
         tests_dir = tmp_path / _mod.SCRIPTS_TESTS_DIR
@@ -3693,11 +3715,11 @@ class TestMainPassPlanning:
 
         exit_code = _mod.main([])
 
-        ignore_token = f"--ignore={_mod.SCRIPTS_TESTS_DIR}/test_plain.py"
         assert exit_code == ExitCode.OK
-        assert len(argvs) == 2
-        assert ignore_token not in argvs[0]
-        assert argvs[1][-1] == ignore_token
+        assert argvs == [
+            [*self.TARGETS, *_PARALLEL_PASS_OPTIONS],
+            [*self.TARGETS, *_SERIAL_PASS_OPTIONS],
+        ]
 
     def test_scan_over_a_real_tree_with_no_marked_file_runs_one_unsplit_pass(
         self, monkeypatch, capsys, tmp_path,
@@ -4205,6 +4227,7 @@ class TestRecordSelection:
             return 0
 
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
         _patch_timing_scan(monkeypatch)
 

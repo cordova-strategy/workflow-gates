@@ -22,7 +22,6 @@ from _config_dir import config_dir
 from _skill_auxiliary_files import SKILL_AUXILIARY_MD_NAMES
 from _timing_split import (
     PARALLEL_PASS,
-    SERIAL_PASS,
     XDIST_WORKER_ENV_VAR,
     PassPlan,
     PytestPass,
@@ -228,8 +227,6 @@ SKILL_AUXILIARY_FILES_MODULE = "claude/.claude/scripts/_skill_auxiliary_files.py
 # Import dependency of PYTEST_COLLECTION_CONFIG_TEST_PATH's timing-marker guard, which calls its scan and marker expressions.
 TIMING_SPLIT_MODULE = "claude/.claude/scripts/_timing_split.py"
 PYTEST_COLLECTION_CONFIG_TEST_PATH = "claude/.claude/tests/test_pytest_collection_config.py"
-# PYTEST_COLLECTION_CONFIG_TEST_PATH's guard requires this file's CPU-saturating test to keep its saturates_cpu mark.
-CPU_SATURATING_SHIM_TEST_PATH = "claude/.claude/scripts/tests/test_cursor_adapter_shim_hook_run.py"
 
 # marker.sh's `clear-stale` arm shells out to this script; its end-to-end
 # coverage (TestMarkerScriptClearStale) lives in HOOKS_TESTS_DIR's
@@ -797,8 +794,6 @@ DOMAIN_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
 # module, and that import is invisible to path-constant scanning.
 # TIMING_SPLIT_MODULE: PYTEST_COLLECTION_CONFIG_TEST_PATH imports the module
 # by name, which path-constant scanning cannot see.
-# CPU_SATURATING_SHIM_TEST_PATH: PYTEST_COLLECTION_CONFIG_TEST_PATH collects the file's marks by path, which
-# path-constant scanning cannot see.
 # CONFIG_MODULE: every HOOKS_TESTS_IMPORTING_CONFIG and
 # SKILLS_TESTS_IMPORTING_CONFIG member imports it by name.
 # CONFIG_DIR_MODULE: same shape as CONFIG_MODULE's row, but each group
@@ -1001,7 +996,6 @@ CROSS_DOMAIN_EXCEPTIONS: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ..
     (_is_skill_management_or_evals_change, (SKILLS_TESTS_DIR,)),
     (lambda p: p == SKILL_AUXILIARY_FILES_MODULE, (SKILLS_TESTS_DIR,)),
     (lambda p: p == TIMING_SPLIT_MODULE, (PYTEST_COLLECTION_CONFIG_TEST_PATH,)),
-    (lambda p: p == CPU_SATURATING_SHIM_TEST_PATH, (PYTEST_COLLECTION_CONFIG_TEST_PATH,)),
     (
         lambda p: p == CONFIG_MODULE,
         tuple(sorted(HOOKS_TESTS_IMPORTING_CONFIG | SKILLS_TESTS_IMPORTING_CONFIG)),
@@ -1357,10 +1351,7 @@ def run_pytest(
 
 
 def _pass_header(planned_pass: PytestPass) -> str:
-    header = f"select-tests: {planned_pass.name} pass: {shlex.join(planned_pass.added_options)}"
-    if planned_pass.name == SERIAL_PASS:
-        header += f"; skipping unmarked test files found by directory walks: {len(planned_pass.ignored_paths)}"
-    return header
+    return f"select-tests: {planned_pass.name} pass: {shlex.join(planned_pass.added_options)}"
 
 
 def _pass_summary(exit_codes: list[int], pass_seconds: list[float], merged_exit_code: int) -> str:

@@ -23,14 +23,14 @@ from _timing_split import (
     UNSPLIT_PASS,
     UNSPLIT_REASON_ARGUMENT_FILE,
     UNSPLIT_REASON_BARE_DOUBLE_DASH,
-    UNSPLIT_REASON_CALLER_NO_WORKERS,
-    UNSPLIT_REASON_ENVIRONMENT_NO_WORKERS,
+    UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS,
+    UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS,
     UNSPLIT_REASON_NO_MARKED_FILES,
     PassPlan,
     PytestPass,
     TimingMarkScan,
     merge_pass_exit_codes,
-    no_workers_reason,
+    one_or_fewer_workers_reason,
     plan_passes,
     scan_timing_marks,
     skips_serial_pass,
@@ -69,7 +69,7 @@ class TestSplitCallerMarkerExpression:
         assert split_caller_marker_expression(caller_args) == (expected_expression, expected_remaining_args)
 
 
-class TestNoWorkersReason:
+class TestOneOrFewerWorkersReason:
     @pytest.mark.parametrize(
         ("caller_args", "auto_num_workers"),
         [
@@ -82,10 +82,20 @@ class TestNoWorkersReason:
             pytest.param(["-n=-1"], None, id="negative-equals-value"),
             pytest.param(["-n", "4", "-n0"], None, id="a-later-zero-wins"),
             pytest.param(["-n", "0"], "4", id="caller-zero-beats-environment"),
+            pytest.param(["-n", "1"], None, id="separate-one"),
+            pytest.param(["-n1"], None, id="attached-one"),
+            pytest.param(["-n=1"], None, id="equals-one"),
+            pytest.param(["--numprocesses", "1"], None, id="long-separate-one"),
+            pytest.param(["--numprocesses=1"], None, id="long-equals-one"),
+            pytest.param(["-n", "4", "-n1"], None, id="a-later-one-wins"),
+            pytest.param(["-n", "1"], "4", id="caller-one-beats-environment"),
         ],
     )
-    def test_names_the_callers_n_when_it_starts_no_workers(self, caller_args, auto_num_workers):
-        assert no_workers_reason(caller_args, auto_num_workers=auto_num_workers) == UNSPLIT_REASON_CALLER_NO_WORKERS
+    def test_names_the_callers_n_when_it_starts_one_worker_or_fewer(self, caller_args, auto_num_workers):
+        assert (
+            one_or_fewer_workers_reason(caller_args, auto_num_workers=auto_num_workers)
+            == UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS
+        )
 
     @pytest.mark.parametrize(
         ("caller_args", "auto_num_workers"),
@@ -94,30 +104,50 @@ class TestNoWorkersReason:
             pytest.param(["-n", "auto"], "0", id="auto-and-zero-environment"),
             pytest.param(["--numprocesses=logical"], "0", id="logical-and-zero-environment"),
             pytest.param([], "-1", id="negative-environment"),
+            pytest.param([], "1", id="no-n-and-one-environment-worker"),
+            pytest.param(["-n", "auto"], "1", id="auto-and-one-environment-worker"),
+            pytest.param(["--numprocesses=logical"], "1", id="logical-and-one-environment-worker"),
         ],
     )
-    def test_names_the_environment_when_it_decides_and_starts_no_workers(self, caller_args, auto_num_workers):
-        assert no_workers_reason(caller_args, auto_num_workers=auto_num_workers) == UNSPLIT_REASON_ENVIRONMENT_NO_WORKERS
+    def test_names_the_environment_when_it_decides_and_starts_one_worker_or_fewer(
+        self, caller_args, auto_num_workers,
+    ):
+        assert (
+            one_or_fewer_workers_reason(caller_args, auto_num_workers=auto_num_workers)
+            == UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS
+        )
 
     @pytest.mark.parametrize(
         ("caller_args", "auto_num_workers"),
         [
             pytest.param([], None, id="no-n-and-unset-environment"),
-            pytest.param([], "1", id="no-n-and-one-environment-worker"),
+            pytest.param([], "2", id="no-n-and-two-environment-workers"),
             pytest.param([], "", id="empty-environment-counts-as-unset"),
             pytest.param([], "x", id="unparseable-environment-counts-as-unset"),
+            pytest.param(["-n", "2"], None, id="two-workers-is-the-smallest-split-count"),
             pytest.param(["-n", "4"], None, id="positive-n"),
             pytest.param(["-n", "2"], "0", id="positive-n-beats-zero-environment"),
+            pytest.param(["-n", "2"], "1", id="positive-n-beats-one-environment-worker"),
+            pytest.param(["-n2"], None, id="attached-two"),
+            pytest.param(["-n=2"], None, id="equals-two"),
+            pytest.param(["--numprocesses", "2"], None, id="long-separate-two"),
+            pytest.param(["--numprocesses=2"], None, id="long-equals-two"),
+            pytest.param(["-n", "auto"], "2", id="auto-and-two-environment-workers"),
+            pytest.param(["-n", "auto"], "4", id="auto-and-four-environment-workers"),
             pytest.param(["-n0", "-n", "4"], None, id="a-later-positive-wins"),
+            pytest.param(["-n1", "-n", "2"], None, id="a-later-two-beats-an-earlier-one"),
             pytest.param(["-n"], None, id="trailing-bare-n"),
             pytest.param(["-n", "-1"], None, id="separated-negative-value-is-not-read"),
             pytest.param(["-n", "x"], None, id="unparseable-n"),
             pytest.param(["--numproc", "0"], None, id="abbreviated-long-option-is-not-recognized"),
             pytest.param(["-vn0"], None, id="short-flag-cluster-is-not-recognized"),
+            pytest.param(["--numproc", "1"], None, id="abbreviated-long-option-with-one-is-not-recognized"),
         ],
     )
-    def test_returns_none_when_workers_start_or_the_option_is_not_read(self, caller_args, auto_num_workers):
-        assert no_workers_reason(caller_args, auto_num_workers=auto_num_workers) is None
+    def test_returns_none_when_two_workers_or_more_start_or_the_option_is_not_read(
+        self, caller_args, auto_num_workers,
+    ):
+        assert one_or_fewer_workers_reason(caller_args, auto_num_workers=auto_num_workers) is None
 
 
 def test_pyproject_registers_the_marker_the_serial_pass_deselects_by_name():
@@ -140,64 +170,64 @@ def _write_files(root: Path, files: dict[str, str]) -> None:
 
 class TestScanTimingMarks:
     @pytest.mark.parametrize(
-        ("files", "targets", "caller_args", "expected_marked", "expected_unmarked"),
+        ("files", "targets", "caller_args", "expected_marked"),
         [
             pytest.param(
                 {"t/test_a.py": MARKED_TEST_TEXT, "t/test_b.py": UNMARKED_TEST_TEXT},
-                ["t"], [], ("t/test_a.py",), ("t/test_b.py",),
+                ["t"], [], ("t/test_a.py",),
                 id="directory-with-one-marked-and-one-unmarked-file",
             ),
             pytest.param(
                 {"t/x/y/test_a.py": MARKED_TEST_TEXT},
-                ["t"], [], ("t/x/y/test_a.py",), (),
+                ["t"], [], ("t/x/y/test_a.py",),
                 id="marked-file-two-directories-deep",
             ),
             pytest.param(
                 {"t/test_a.py": UNMARKED_TEST_TEXT, "t/b_test.py": UNMARKED_TEST_TEXT},
-                ["t"], [], (), ("t/b_test.py", "t/test_a.py"),
-                id="directory-with-no-mark-lists-both-test-files-as-unmarked",
+                ["t"], [], (),
+                id="directory-with-no-mark-finds-no-marked-file",
             ),
             pytest.param(
                 {"t/test_a.py": MARKED_TEST_TEXT, "t/test_b.py": UNMARKED_TEST_TEXT},
-                ["t/test_a.py", "t/test_b.py"], [], ("t/test_a.py",), (),
-                id="files-named-directly-are-never-listed-as-unmarked",
+                ["t/test_a.py", "t/test_b.py"], [], ("t/test_a.py",),
+                id="files-named-directly-are-marked-only-when-they-hold-the-mark",
             ),
             pytest.param(
                 {"t/helper.py": MARKED_TEST_TEXT, "t/notes.txt": MARKED_TEST_TEXT, "t/test_a.py": UNMARKED_TEST_TEXT},
-                ["t"], [], (), ("t/test_a.py",),
+                ["t"], [], (),
                 id="walked-files-outside-the-test-patterns-do-not-count",
             ),
             pytest.param(
                 {"t/helper.py": MARKED_TEST_TEXT},
-                ["t/helper.py"], [], ("t/helper.py",), (),
+                ["t/helper.py"], [], ("t/helper.py",),
                 id="file-named-directly-is-read-whatever-its-name",
             ),
-            pytest.param({}, ["missing"], [], (), (), id="missing-target"),
+            pytest.param({}, ["missing"], [], (), id="missing-target"),
             pytest.param(
                 {"t/test_a.py": MARKED_TEST_TEXT},
-                [], ["t/test_a.py::Class::test[a::b]"], ("t/test_a.py",), (),
+                [], ["t/test_a.py::Class::test[a::b]"], ("t/test_a.py",),
                 id="caller-path-with-a-node-id-suffix",
             ),
             pytest.param(
                 {"sub/test_a.py": MARKED_TEST_TEXT},
-                [], ["-k", "sub"], (), (),
+                [], ["-k", "sub"], (),
                 id="keyword-value-naming-a-directory-is-not-a-path",
             ),
             pytest.param(
                 {"sub/test_a.py": MARKED_TEST_TEXT},
-                [], ["sub"], ("sub/test_a.py",), (),
+                [], ["sub"], ("sub/test_a.py",),
                 id="bare-caller-argument-naming-a-directory-is-a-path",
             ),
         ],
     )
-    def test_classifies_marked_files_and_unmarked_test_files(
-        self, tmp_path, files, targets, caller_args, expected_marked, expected_unmarked,
+    def test_lists_the_files_that_hold_the_timing_mark(
+        self, tmp_path, files, targets, caller_args, expected_marked,
     ):
         _write_files(tmp_path, files)
 
         scan = scan_timing_marks(targets, caller_args, repo_root=tmp_path)
 
-        assert scan == TimingMarkScan(expected_marked, expected_unmarked)
+        assert scan == TimingMarkScan(expected_marked)
 
     def test_dangling_symlink_counts_as_marked_because_it_cannot_be_read(self, tmp_path):
         (tmp_path / "t").mkdir()
@@ -205,7 +235,7 @@ class TestScanTimingMarks:
 
         scan = scan_timing_marks(["t"], [], repo_root=tmp_path)
 
-        assert scan == TimingMarkScan(("t/test_dangling.py",), ())
+        assert scan == TimingMarkScan(("t/test_dangling.py",))
 
     def test_caller_path_outside_the_repo_root_is_skipped_without_raising(self, tmp_path):
         repo_root = tmp_path / "repo"
@@ -214,63 +244,15 @@ class TestScanTimingMarks:
 
         scan = scan_timing_marks([], [str(tmp_path / "outside" / "test_o.py")], repo_root=repo_root)
 
-        assert scan == TimingMarkScan((), ())
-
-    def test_prunes_the_directories_norecursedirs_names_but_never_a_scanned_path_itself(self, tmp_path):
-        _write_files(
-            tmp_path,
-            {
-                "pyproject.toml": '[tool.pytest.ini_options]\nnorecursedirs = ["worktrees", "fixtures/nested"]\n',
-                "root/worktrees/test_x.py": MARKED_TEST_TEXT,
-                "root/fixtures/nested/test_y.py": MARKED_TEST_TEXT,
-                "root/test_z.py": UNMARKED_TEST_TEXT,
-            },
-        )
-
-        scan_below = scan_timing_marks(["root"], [], repo_root=tmp_path)
-        scan_of_pruned_directory = scan_timing_marks(["root/worktrees"], [], repo_root=tmp_path)
-
-        assert scan_below == TimingMarkScan((), ("root/test_z.py",))
-        assert scan_of_pruned_directory == TimingMarkScan(("root/worktrees/test_x.py",), ())
-
-    @pytest.mark.parametrize(
-        "pyproject_content",
-        [
-            pytest.param(None, id="directory-instead-of-a-file"),
-            pytest.param("this is = not [valid", id="invalid-toml"),
-            pytest.param(b"\xff\xfe", id="invalid-utf8"),
-            pytest.param("[other]\nkey = 1\n", id="no-tool-pytest-table"),
-            pytest.param('[tool]\npytest = "x"\n', id="tool-pytest-is-a-string"),
-            pytest.param("[tool.pytest]\nini_options = 5\n", id="ini-options-is-an-integer"),
-            pytest.param("[tool.pytest.ini_options]\naddopts = []\n", id="no-norecursedirs-key"),
-            pytest.param("[tool.pytest.ini_options]\nnorecursedirs = 5\n", id="norecursedirs-is-an-integer"),
-            pytest.param(
-                '[tool.pytest.ini_options]\nnorecursedirs = ["worktrees", 5]\n',
-                id="list-with-a-non-string-prunes-nothing-not-even-its-strings",
-            ),
-        ],
-    )
-    def test_a_pyproject_that_cannot_be_read_as_norecursedirs_prunes_nothing(self, tmp_path, pyproject_content):
-        _write_files(tmp_path, {"worktrees/test_x.py": MARKED_TEST_TEXT})
-        pyproject = tmp_path / "pyproject.toml"
-        if pyproject_content is None:
-            pyproject.mkdir()
-        elif isinstance(pyproject_content, bytes):
-            pyproject.write_bytes(pyproject_content)
-        else:
-            pyproject.write_text(pyproject_content, encoding="utf-8")
-
-        scan = scan_timing_marks(["."], [], repo_root=tmp_path)
-
-        assert "worktrees/test_x.py" in scan.marked_files
+        assert scan == TimingMarkScan(())
 
 
 def _scan_that_fails_the_test() -> TimingMarkScan:
     raise AssertionError("the scan must not run for this plan")
 
 
-def _scan_of(marked_files=("t/test_marked.py",), unmarked_test_files=()) -> TimingMarkScan:
-    return TimingMarkScan(tuple(marked_files), tuple(unmarked_test_files))
+def _scan_of(marked_files=("t/test_marked.py",)) -> TimingMarkScan:
+    return TimingMarkScan(tuple(marked_files))
 
 
 class TestPlanPassesUnsplit:
@@ -293,8 +275,10 @@ class TestPlanPassesUnsplit:
                 ["-m", "slow", "-k", "foo", "--", "tests/x.py"], None, UNSPLIT_REASON_BARE_DOUBLE_DASH,
                 id="double-dash-keeps-the-callers-marker-option",
             ),
-            pytest.param(["-n", "0"], None, UNSPLIT_REASON_CALLER_NO_WORKERS, id="caller-n-zero"),
-            pytest.param([], "0", UNSPLIT_REASON_ENVIRONMENT_NO_WORKERS, id="environment-workers-zero"),
+            pytest.param(["-n", "0"], None, UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS, id="caller-n-zero"),
+            pytest.param(["-n", "1"], None, UNSPLIT_REASON_CALLER_ONE_OR_FEWER_WORKERS, id="caller-n-one"),
+            pytest.param([], "0", UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS, id="environment-workers-zero"),
+            pytest.param([], "1", UNSPLIT_REASON_ENVIRONMENT_ONE_OR_FEWER_WORKERS, id="environment-workers-one"),
         ],
     )
     def test_argument_only_collapse_plans_one_pass_without_reading_any_file(
@@ -304,16 +288,14 @@ class TestPlanPassesUnsplit:
             caller_args, auto_num_workers=auto_num_workers, scan_selection=_scan_that_fails_the_test,
         )
 
-        assert plan == PassPlan((PytestPass(UNSPLIT_PASS, (), (), list(caller_args)),), expected_reason)
+        assert plan == PassPlan((PytestPass(UNSPLIT_PASS, (), list(caller_args)),), expected_reason)
 
-    def test_selection_with_no_marked_file_plans_one_pass_with_no_ignored_paths(self):
-        scan = _scan_of(marked_files=(), unmarked_test_files=("t/test_plain.py",))
+    def test_selection_with_no_marked_file_plans_one_unsplit_pass(self):
+        scan = _scan_of(marked_files=())
 
         plan = plan_passes(["-k", "foo"], auto_num_workers=None, scan_selection=lambda: scan)
 
-        assert plan == PassPlan(
-            (PytestPass(UNSPLIT_PASS, (), (), ["-k", "foo"]),), UNSPLIT_REASON_NO_MARKED_FILES,
-        )
+        assert plan == PassPlan((PytestPass(UNSPLIT_PASS, (), ["-k", "foo"]),), UNSPLIT_REASON_NO_MARKED_FILES)
 
 
 class TestPlanPassesSplit:
@@ -368,18 +350,6 @@ class TestPlanPassesSplit:
         assert [planned_pass.added_options for planned_pass in plan.passes] == [
             ("-m", "not timing"),
             ("-m", "timing and not saturates_cpu", "-n0"),
-        ]
-
-    def test_only_the_serial_pass_ignores_the_unmarked_test_files(self):
-        scan = _scan_of(unmarked_test_files=("u/test_a.py", "u/test_b.py"))
-
-        parallel_pass, serial_pass = plan_passes([], auto_num_workers=None, scan_selection=lambda: scan).passes
-
-        assert parallel_pass.ignored_paths == ()
-        assert parallel_pass.pytest_args == ["-m", "not timing"]
-        assert serial_pass.ignored_paths == ("u/test_a.py", "u/test_b.py")
-        assert serial_pass.pytest_args == [
-            "-m", "timing and not saturates_cpu", "-n0", "--ignore=u/test_a.py", "--ignore=u/test_b.py",
         ]
 
 
@@ -521,11 +491,7 @@ def test_saturates_cpu():
 """
 
 PROJECT_PLAIN_TESTS = """\
-import pathlib
-
 import pytest
-
-pathlib.Path(__file__).with_name("imported.sentinel").touch()
 
 
 def test_plain_unmarked():
@@ -659,26 +625,10 @@ class TestPlannedPassesAgainstRealPytest:
         )
 
         assert self._plan(project, caller_args) == PassPlan(
-            (PytestPass(UNSPLIT_PASS, (), (), caller_args),), UNSPLIT_REASON_BARE_DOUBLE_DASH,
+            (PytestPass(UNSPLIT_PASS, (), caller_args),), UNSPLIT_REASON_BARE_DOUBLE_DASH,
         )
         assert unsplit_run.exit_code == ExitCode.OK, unsplit_run.output
         assert split_shape_run.exit_code == ExitCode.USAGE_ERROR, split_shape_run.output
-
-    def test_the_serial_pass_ignores_the_unmarked_file_by_the_path_pytest_builds(self, project):
-        sentinel = project / "tests" / "imported.sentinel"
-        _, serial_pass = self._plan(project, []).passes
-
-        serial_run = self._run_pytest(project, ["--collect-only", "tests", *serial_pass.pytest_args])
-        sentinel_after_serial_collection = sentinel.exists()
-        parallel_pass, _ = self._plan(project, []).passes
-        parallel_run = self._run_pytest(project, ["--collect-only", "tests", *parallel_pass.pytest_args])
-
-        assert serial_pass.ignored_paths == ("tests/test_plain.py",)
-        assert serial_run.exit_code == ExitCode.OK, serial_run.output
-        assert serial_run.node_ids == {f"{MARKED}test_timing_serial", f"{MARKED}test_timing_slow"}
-        assert not sentinel_after_serial_collection
-        assert parallel_run.exit_code == ExitCode.OK, parallel_run.output
-        assert sentinel.exists()
 
     @pytest.mark.parametrize(
         "caller_args",

@@ -612,12 +612,14 @@ This is the required local command for agents, including in `/ready-for-review`.
 - The serial pass leaves out tests marked `saturates_cpu`, each of which starts one busy process per CPU core. CI's serial step runs them.
   - A split run never runs them, so `-m saturates_cpu` selects nothing in a split run.
   - To run them locally, pass `-n 0 -m saturates_cpu`, which runs one unsplit pass, or run `scripts/venv-run.sh pytest <file> -m timing -n0`.
-- The serial pass skips every unmarked test file found by walking a selected directory, where unmarked means the file's text lacks `mark.timing`. Both passes collect a test file named directly, whether you name it or the selection does, and whether or not it holds the mark. The mark must therefore sit in the file pytest collects the test from, and `test_pytest_collection_config.py` fails CI otherwise.
+  - A plain `-n 0` run of a selection that includes `claude/.claude/scripts/tests` runs that test. `-n 1` also runs one unsplit pass, but the test skips itself inside an xdist worker, so `-n 1 -m saturates_cpu` runs nothing. Use `-n 0`.
+- The serial pass collects the whole selection and filters it with `-m`. Whether a selection holds `timing` tests is read from file text, so the mark must sit in the file pytest collects the test from, and `test_pytest_collection_config.py` fails CI otherwise.
 - In a split run, modes that list the collected tests, such as `--collect-only`/`--co` and `--fixtures-per-test`, print each pass's share, and the two shares together omit `saturates_cpu` tests. `--setup-plan` prints no setup-plan lines from the parallel pass, because xdist discards its workers' output. Modes that collect nothing, such as `--version`, `--help` and `--markers`, print the same output once per pass. Add `-n 0` to get one complete listing.
+- A split run adds one more collection of the whole selection plus the serial pass's wall time. `-n 1` or `PYTEST_XDIST_AUTO_NUM_WORKERS=1` runs one pass instead.
 - It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
 - It runs one unsplit pass instead, as before, when:
-  - you pass `-n 0`;
-  - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 0 or less, and your `-n`, if any, is `auto` or `logical`;
+  - your `-n` is 1 or less, since one worker has no sibling workers for the serial pass to protect;
+  - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 1 or less, and your `-n`, if any, is `auto` or `logical`. When it is unset and the 1-minute load average is readable, `select-tests.py` sizes it from the CPU count and load, so a one-CPU machine runs one pass too;
   - an argument starts with `@`;
   - an argument is a bare `--`;
   - neither a selected file nor a path you pass contains `mark.timing`.
