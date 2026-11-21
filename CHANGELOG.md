@@ -17,9 +17,9 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - The skill's word "personal" becomes "solo-contributor" throughout. The change is live on `git pull`.
 - **`/pr-description` can cite a multi-PR ticket without closing it.**
   - `/pr-description` cites a ticket as `Part of <TICKET-ID>`, with no closing keyword, when the caller, the engineer or the plan the work implements says a later PR will finish it.
-    - To mark a phase PR, say so in plain words in the arguments passed to `/ready-for-review`, or in the plan the work implements. Say it on the run that first drafts the body. A later statement may not rewrite a published body that already carries `Fixes`, so edit that line by hand.
+    - To mark a PR that a later PR will finish, say so in plain words in the arguments passed to `/ready-for-review`, or in the plan the work implements. Say it on the run that first drafts the body. A later statement may not rewrite a published body that already carries `Fixes`, so edit that line by hand.
     - An existing `Part of` citation is kept unless one of them says this PR finishes the ticket.
-    - Every other ticket still gets `Fixes <TICKET-ID>`, including a phase PR whose session holds no such statement.
+    - Every other ticket still gets `Fixes <TICKET-ID>`, including a PR that a later PR will finish when its session holds no such statement.
     - GitHub does not list a `Part of` PR among the issue's linked pull requests.
   - **Migration:** the `pr-description-claude-config` skill is deleted. It was this repository's own project layer and never loaded. An install that `install.sh` produced drops it on `git pull`, with no re-run. See GH-1528.
 - **`transcript-analysis.py review-cost-by-size` now reads the pr-cost ledger's `review_rounds` cells instead of transcripts, so a PR's round series outlives transcript retention.**

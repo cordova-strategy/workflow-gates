@@ -322,12 +322,12 @@ def _missing_bullet_lead_ins(names: Iterable[str], section_text: str) -> list[st
 class TestPrDescriptionTicketReference:
     """Pin the clauses of pr-description's ticket-reference bullet (GH-1528).
 
-    Pins 1 to 4 are plain `in` checks on one clause each, because the bullet is
-    one line and `_assert_pinned_clause_right_bounded` passes only at a line or
-    bullet boundary. Each fails only when its own clause is deleted or reworded.
+    The first four pins are plain `in` checks, because the bullet is one line
+    and `_assert_pinned_clause_right_bounded` passes only at a line or bullet
+    boundary. Each fails only when a clause it pins is deleted or reworded.
     A contradicting clause inserted after a pinned clause does not fail it, and
     no pin catches one inserted mid-bullet, so the diff review is that check.
-    The last pin runs to the bullet's end and is right-bounded, so a sentence
+    The tail pin runs to the bullet's end and is right-bounded, so a sentence
     appended at the end fails it.
     """
 
@@ -341,16 +341,18 @@ class TestPrDescriptionTicketReference:
 
     def test_ticket_reference_defaults_to_fixes_unless_a_named_source_states_a_later_pr(self):
         """Dropping this clause leaves a phase PR with no stated way to avoid a
-        closing keyword that closes its ticket on the first merge, or drops
-        one of the three sources that may state it."""
+        closing keyword that closes its ticket on the first merge.
+        Rewording it can drop one of the three sources that may state a later PR.
+        Dropping "replacing any `Part of` line" leaves a stale `Part of` line
+        beside the `Fixes` that closes the ticket on merge."""
         assert (
-            "Include `Fixes <TICKET-ID>` in the body alongside any existing citation of it "
-            "(see REFERENCES.md for why), unless the caller, the engineer or the plan this work "
-            "implements says a later PR will finish the ticket"
+            "Include `Fixes <TICKET-ID>` in the body alongside any other existing citation of it "
+            "(see REFERENCES.md for why), replacing any `Part of <TICKET-ID>` line, unless the caller, "
+            "the engineer or the plan this work implements says a later PR will finish the ticket"
         ) in self._bullet()
 
     def test_ticket_reference_keeps_part_of_unless_a_source_says_this_pr_finishes_it(self):
-        """Dropping this clause lets a sync upgrade a kept `Part of` citation to
+        """Dropping this clause lets a later run upgrade a kept `Part of` citation to
         `Fixes` with no stated finish, closing a ticket with work outstanding."""
         assert (
             "or the body already cites it as `Part of <TICKET-ID>` and none of them says this PR finishes it"
@@ -358,17 +360,19 @@ class TestPrDescriptionTicketReference:
 
     def test_ticket_reference_cites_part_of_with_no_closing_keyword_anywhere_in_the_body(self):
         """Dropping the `Part of` instruction leaves a later-PR body with no stated
-        non-closing form, and dropping the bar lets a body cite `Part of` in one
-        place and carry a closing keyword before the same ID in another, which
-        closes the ticket."""
+        non-closing form.
+        Dropping the bar lets a body cite `Part of` in one place and carry a
+        closing keyword before the same ID in another, which closes the ticket."""
         assert (
             "Then cite it as `Part of <TICKET-ID>`, with no closing keyword before the ID anywhere in the body"
         ) in self._bullet()
 
     def test_ticket_reference_names_what_the_later_pr_covers(self):
         """Dropping this clause leaves a reader of a `Part of` body with no
-        statement of what remains for the later PR."""
-        assert "and name what the later PR covers" in self._bullet()
+        statement of what remains for the later PR.
+        Dropping ", as they or the body already say" lets the drafter invent the
+        later PR's scope and publish it as fact."""
+        assert "and name what the later PR covers, as they or the body already say" in self._bullet()
 
     def test_ticket_reference_ends_with_the_exclusion_and_unclear_means_fixes_sentences(self):
         """Dropping the exclusion sentence lets follow-up work outside the ticket

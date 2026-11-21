@@ -232,7 +232,7 @@ request's description," immediately followed by the reference (`Fixes
 `fixed`, `resolve`, `resolves`, `resolved`. A bare mention of the same
 issue elsewhere in the body (e.g. a citation like `(GH-754)`) does not
 create that relationship and does not auto-close the issue on merge.
-A PR that a later PR will finish gives the linked-issue relationship up on
+A PR that a later PR will finish (a phase PR) gives the linked-issue relationship up on
 purpose, because the keyword that creates it also closes the issue on merge.
 GitHub does not list such a PR among the issue's linked pull requests.
 `Fixes` stays the default for single-PR tickets, so a phase PR needs a stated
