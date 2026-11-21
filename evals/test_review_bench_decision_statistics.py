@@ -289,9 +289,9 @@ class TestSignFlipPValue:
 
     def test_the_default_resamples_give_one_over_100_001_for_all_positive_values(self) -> None:
         """With 24 positive values only the all-positive flip pattern reaches the observed sum. At the default
-        seed no draw is that pattern, which a 2^-24 chance per draw makes likely but not certain, so the
-        p-value is 1 / (resamples + 1). The literal pins the default of 100,000 resamples, which the
-        SIGN_FLIP_RESAMPLES constant cannot pin against itself."""
+        seed no draw is that pattern, so the p-value is 1 / (resamples + 1). That outcome is likely but not
+        certain, because each draw has a 2^-24 chance of hitting the pattern. The literal pins the default of
+        100,000 resamples, which the SIGN_FLIP_RESAMPLES constant cannot pin against itself."""
         p_value = analysis.sign_flip_p_value([1.0] * 24)
 
         assert p_value == pytest.approx(1 / 100_001)
@@ -302,10 +302,11 @@ class TestSignFlipPValue:
 
         assert p_value in {1 / 2, 1.0}
 
+    @pytest.mark.parametrize("value_count", [2, 24])
     @pytest.mark.parametrize("resamples", [0, -5])
-    def test_fewer_than_one_resample_raises(self, resamples: int) -> None:
+    def test_fewer_than_one_resample_raises_on_both_paths(self, value_count: int, resamples: int) -> None:
         with pytest.raises(ValueError, match="resamples"):
-            analysis.sign_flip_p_value([1.0, 2.0], resamples=resamples)
+            analysis.sign_flip_p_value([1.0] * value_count, resamples=resamples)
 
 
 def _recall_counts_by_defect(found_x_and_baseline_of_ten: dict[str, tuple[int, int]]) -> dict[str, analysis.DefectRecallCounts]:
