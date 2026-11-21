@@ -1,10 +1,10 @@
 """Zero-reference tripwire for the shared shell libraries.
 
-Every function defined at column 0 in `_lib.sh` and `_config.sh` must have its
-name appear somewhere in the reference corpus outside its own definition line.
-The corpus is every tracked shell file (via `scripts/list-shell-files.sh`) plus
-every tracked `.py` file. Any mention satisfies the check, including one in a
-test file, so a function consumed only by tests passes. This is a dead-code
+Every function defined at column 0 in a helper library of
+`claude/.claude/hooks/` must have its name appear somewhere in the reference
+corpus outside its own definition line. The corpus is every tracked shell file
+(via `scripts/list-shell-files.sh`) plus every tracked `.py` file. Any mention
+satisfies the check, including one in a test file, so a function consumed only by tests passes. This is a dead-code
 check, not a test-coverage requirement and not a production-consumer check.
 
 Scan rules:
@@ -47,7 +47,7 @@ unreferenced.
 A new function whose only consumer is a file not yet `git add`ed fails locally,
 since the shell and Python corpus comes from `git ls-files`. It passes once the file is staged.
 
-The two lib-path constants are built from `HOOKS_DIR`, imported by bare name so
+The lib-path constants are built from `HOOKS_DIR`, imported by bare name so
 `TestCrossDomainReadCompleteness` can resolve them. That resolver cannot see
 corpus enumeration. This file is selected because it lives under `HOOKS_DIR`.
 """
@@ -59,10 +59,10 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import HOOKS_DIR, REPO_ROOT
+from helpers import HOOKS_DIR, REPO_ROOT, helper_libraries
 
 _LIB_SH = HOOKS_DIR / "_lib.sh"
-_CONFIG_SH = HOOKS_DIR / "_config.sh"
+_MAIN_HELPER_LIBRARIES = helper_libraries(HOOKS_DIR)
 _LIST_SHELL_FILES = REPO_ROOT / "scripts" / "list-shell-files.sh"
 _SELF_PATH = Path(__file__).resolve()
 
@@ -133,14 +133,14 @@ def _tracked_reference_corpus() -> list[Path]:
     return [REPO_ROOT / relative for relative in sorted(relative_paths)]
 
 
-def _shell_declared_functions(lib_path: Path) -> set[str]:
-    """Function names the shell defines after sourcing lib_path, including anything it sources.
+def _functions_declared_after_sourcing(library_paths: list[Path]) -> set[str]:
+    """Function names the shell defines after sourcing each of library_paths in order, including anything they source.
 
     The environment is reduced to PATH so an exported function (`BASH_FUNC_*`) or a `BASH_ENV`
     file in the caller's shell cannot add names to `declare -F` that the libs never define.
     """
     declared = subprocess.run(
-        ["bash", "-c", '. "$1"; declare -F', "bash", str(lib_path)],
+        ["bash", "-c", 'for library; do . "$library"; done; declare -F', "bash", *map(str, library_paths)],
         env={"PATH": os.environ["PATH"]},
         capture_output=True,
         text=True,
@@ -149,16 +149,25 @@ def _shell_declared_functions(lib_path: Path) -> set[str]:
     return {line.split()[-1] for line in declared.splitlines() if line}
 
 
-@pytest.mark.parametrize("lib_path", [_LIB_SH, _CONFIG_SH], ids=lambda path: path.name)
+def _shell_declared_functions(lib_path: Path) -> set[str]:
+    """Function names the shell defines after sourcing `_lib.sh` and then lib_path.
+
+    `_lib.sh` goes first so a library that checks for it at source time is probed as its consumers load it.
+    """
+    library_paths = [_LIB_SH] if lib_path == _LIB_SH else [_LIB_SH, lib_path]
+    return _functions_declared_after_sourcing(library_paths)
+
+
+@pytest.mark.parametrize("lib_path", _MAIN_HELPER_LIBRARIES, ids=lambda path: path.name)
 def test_scanned_definitions_match_the_functions_the_shell_declares(lib_path: Path) -> None:
     """A function in a definition shape the scan skips (`function foo {`) would be exempt from the guard.
 
-    `_lib.sh` sources `_config.sh`, so its declared set also holds config's functions.
+    `_lib.sh` is sourced first and sources `_config.sh`, so the declared set also holds their functions.
     """
     scanned_from_lib = set(_defined_functions(lib_path.read_text(errors="replace")))
-    scanned_from_either_lib = {
+    scanned_from_any_lib = {
         name
-        for scanned_lib in (_LIB_SH, _CONFIG_SH)
+        for scanned_lib in _MAIN_HELPER_LIBRARIES
         for name in _defined_functions(scanned_lib.read_text(errors="replace"))
     }
     declared = _shell_declared_functions(lib_path)
@@ -166,16 +175,28 @@ def test_scanned_definitions_match_the_functions_the_shell_declares(lib_path: Pa
     assert scanned_from_lib <= declared, (
         f"Names the scan extracts but the shell does not declare: {sorted(scanned_from_lib - declared)}"
     )
-    assert declared <= scanned_from_either_lib, (
+    assert declared <= scanned_from_any_lib, (
         f"Functions the shell declares but the scan skips, so the guard exempts them: "
-        f"{sorted(declared - scanned_from_either_lib)}"
+        f"{sorted(declared - scanned_from_any_lib)}"
     )
 
 
+def test_a_library_needing_lib_sh_at_source_time_declares_its_functions(tmp_path: Path) -> None:
+    """The seed needs `_lib_jq` to stay a column-0 function of `_lib.sh`; a rename fails here for that reason."""
+    seeded_library = tmp_path / "_needs-lib.sh"
+    seeded_library.write_text("declare -F _lib_jq >/dev/null || return 1\nneeds_lib_sh_marker_fn() { :; }\n")
+
+    declared_with_lib_sh_first = _shell_declared_functions(seeded_library)
+    declared_alone = _functions_declared_after_sourcing([seeded_library])
+
+    assert "needs_lib_sh_marker_fn" in declared_with_lib_sh_first
+    assert "needs_lib_sh_marker_fn" not in declared_alone
+
+
 def test_every_shell_lib_function_is_referenced_outside_its_definition() -> None:
-    violations = unreferenced_functions([_LIB_SH, _CONFIG_SH], _tracked_reference_corpus())
+    violations = unreferenced_functions(_MAIN_HELPER_LIBRARIES, _tracked_reference_corpus())
     assert not violations, (
-        "Functions defined in _lib.sh/_config.sh with no reference anywhere in the tracked "
+        "Functions defined in a helper library of `claude/.claude/hooks/` with no reference anywhere in the tracked "
         f"shell and Python corpus outside their own definition: {violations}. "
         "A function that is truly dead should be deleted. "
         "A function whose only consumer lives outside the scanned corpus (a workflow `run:` block, "
