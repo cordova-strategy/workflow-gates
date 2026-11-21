@@ -1670,7 +1670,7 @@ The command refuses a top-level `--config-dir` (exit 2). It has no `--config-dir
 8. `complete`: `numLines` equals `totalLines`. An empty file, with both counts 0 and `startLine` 0 or 1, is complete.
 9. `partial_unflagged`: `numLines` is below `totalLines`. That is the 2,000-line default limit, or a harness version that does not set the flag.
 
-**Targeted calls**, which carry an `offset` or a `limit`, take no outcome class, a refused one included. They enter no outcome table, no headline count and no follow-up population. In reviewer windows their only trace in the call counts is as a later `Read` under follow-up and coverage, so a refused `limit`-only call leaves none there. A successful one also adds its weight to the Read share. Main-thread round Reads count them beside whole-file calls.
+**Targeted calls**, which carry an `offset` or a `limit`, take no outcome class, a refused one included. They enter no outcome table, no headline count and no follow-up population. In reviewer windows a targeted call appears in the call counts only as a later `Read` under follow-up and coverage. A refused `limit`-only call therefore leaves no trace in the call counts. A `read_truncation_notice` record can also name a targeted call, such as one with `offset` 1 and no `limit`, which the notice-agreement diagnostics count as naming another call. A successful targeted call adds its weight to the Read share. Its `totalLines` can also set the size bucket of a whole-file call on the same path in the same window that has none of its own. Main-thread round Reads count them beside whole-file calls.
 
 **Size bucket**, by the file's `totalLines`: up to 1,000 (an empty file included), 1,001 to 2,000, over 2,000, and unknown. A call without its own `totalLines`, a failed call included, takes the largest one any `Read` in the same window saw for its path.
 
@@ -1743,6 +1743,11 @@ Those are the fields that `read-cost`'s scan, the request-id deduplication, roun
 - A transcript older than `cleanupPeriodDays` (default 30 days) is gone, and `review-ledger.sh append` sweeps ledger files idle longer than 30 days, so a window older than that is incomplete.
 - `read-cost`'s limits apply to the weights and the turn counts.
 - Reviewer windows include plan-review dispatches, whose reads of code files stay in `code/other`, so the per-type rows do not isolate the review skill.
+- `covered_after` can be wrong around the last line of a `truncatedByTokenCap` result, in both directions:
+  - A flagged result that ends short of the file's last line adds its reported range. Its last reported line can have arrived only in part when the harness cuts by characters. A later read starting after it can then make `covered_after` true for a line never fully read.
+  - A flagged result whose range reaches the file's last line adds no interval, although the lines before the last arrived whole. A later read of only the last line then leaves `covered_after` false for a file that was fully read.
+
+  The command sees structured fields only and cannot tell a cut by characters from a cut by lines. It drops the whole range in the second case on purpose, because that under-credits a call and never over-credits one. The reading that a cut by characters delivers the last reported line in part was checked against Claude Code 2.1.318 and 2.1.330 only, and older versions are unverified.
 - Ledger shares count disposition rows, so a finding re-raised without `--ref` counts again.
 
 **Publication.** Publishes under `docs/private-project-redaction.md` § "This repository, one account", with the ledger-file scope stated there. Publish only from this repository's own checkout. Cite the command beside any figure. A new figure from it still takes the check in `docs/private-project-redaction.md` § "New figures against the grandfathered set".

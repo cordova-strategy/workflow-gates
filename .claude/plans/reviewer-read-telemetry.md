@@ -71,7 +71,7 @@ The engineer settled these choices:
   9. `partial_unflagged`: `numLines` below `totalLines`. That is the 2,000-line default limit, or a harness version without the flag.
 - **Targeted calls**, which carry an `offset` or a `limit`, take no outcome class, a refused one included.
   - They enter no outcome table, no headline count and no follow-up population, so the headline's numerator and denominator hold whole-file calls alone.
-  - In reviewer windows their only trace is as a later Read under follow-up and coverage. A refused `limit`-only call therefore leaves none.
+  - In reviewer windows a targeted call appears in the call counts only as a later Read under follow-up and coverage. A refused `limit`-only call therefore leaves no trace in the call counts. A successful targeted call adds its weight to the Read share. Its `totalLines` can also set the size bucket of a whole-file call on the same path in the same window that has none of its own.
   - Main-thread round Reads count them beside whole-file calls.
 - **Size bucket**, by the file's `totalLines`: up to 1,000, an empty file included; 1,001–2,000; over 2,000; unknown. A call without its own `totalLines` takes the largest one any call saw for that path in the same window.
 - **Headline, for GH-1529's first question.**
@@ -90,9 +90,10 @@ The engineer settled these choices:
   - `covered_after`: the union of `[startLine, startLine + numLines − 1]` over the call itself and that window's later successful Reads of the path covers `[1, totalLines]`.
     - The union is computed over intervals, never over a set of line numbers.
     - A Read whose structured fields are `None` adds no interval.
+    - A result flagged `truncatedByTokenCap` whose reported range reaches the file's last line adds no interval, because the flag means the result stopped before the end of the file (row 90). A flagged result that ends short of the last line still adds its reported range.
     - A call whose file size is unknown is never covered.
   - `neither`: no later offset Read and not covered after. Its printed label says what it counts: no later offset Read, and not covered by later Reads.
-    - It is an upper bound on calls after which the reviewer went on with a truncated or empty view, because the instrument sees Read calls only. Grep, Bash and diff reads are not seen.
+    - It is an upper bound on calls after which the reviewer made no further attempt to read on, because the instrument sees Read calls only. A recovery by Grep, Bash or a diff read is not seen, and its call counts here.
   - All three print for `code/other`, for prose, and for diff handoffs.
 - **Read share of reviewer spend, for GH-1529's second question.**
   - The share is the reviewer windows' summed `read_cost._read_weight` over successful Reads, divided by those windows' own summed billed weight from `read_cost._new_billed_weight` (row 29). Its label says it is a share of modeled billed weight, not of tokens.
@@ -116,7 +117,11 @@ The engineer settled these choices:
   - whole-file diff-handoff calls.
 - **Reviewer-yield.** `reviewer_yield.compute_reviewer_yield_data` runs over a second, subagent-inclusive iterator built from the same single root and scope (M9). It renders with the same fold: dispatches, verdict mix, findings, and cited/active/edited.
   - The report repeats reviewer-yield's caveat that `--until` does not bound the edit table (`reviewer_yield.py`:729-730).
-  - The second pass keeps its own gap counter and prints its total on this section's line. Only the first pass's counter feeds the skipped-input line.
+  - The second pass keeps its own gap counter. On a completed pass it prints that counter's total on this section's line. Only the first pass's counter feeds the skipped-input line.
+  - When the shared `reviewer_yield` or `corpus` code raises an `AttributeError`, `TypeError` or `ValueError` on a record or sidecar field it cannot take, the pass ends (`reviewer_reads.py`:759-763).
+    - One fixed notice, starting `reviewer-yield pass: not completed`, prints in place of the gap-counter line and the yield rows. It names the three exception classes and prints no count. The exception text is dropped, because it can hold record content.
+    - The exit status stays 0, so Verification step 4's yield-completed floor checks the report for the notice.
+    - Any other exception propagates.
 - **Review-ledger dispositions** (M10), over the files `publication_scope._this_repo_ledger_files` selects (M15):
   - Each row is reduced on read to `session_id`, `disposition`, `decided_by`, `id`, `ref` and `event_time` (M20).
   - Each kept field has one rule for absence and one for a wrong type:
@@ -234,7 +239,12 @@ The engineer settled these choices:
    - reviewer windows include plan-review dispatches, whose reads of code files stay in `code/other`, and per-type rows do not isolate the review skill (M17);
    - prose is `instruction` plus `other_prose` (row 72). `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`. Only its markdown part lies outside #1115 for every reviewer. `other_prose` lies outside it for `comment-discipline-reviewer` alone (row 59);
    - ADDRESS and DEFER shares count disposition rows, and a finding re-raised without `--ref` counts again;
-   - `neither` is an upper bound, because Grep, Bash and diff reads are not seen;
+   - `neither` is an upper bound on calls with no further attempt to read on, because Grep, Bash and diff reads are not seen;
+   - `covered_after` can be wrong at a flagged result's last reported line, in both directions (row 90):
+     - A flagged range that ends short of the file's last line still adds `[1, numLines]`, though line `numLines` can have arrived only in part. A later Read from `numLines + 1` can then make `covered_after` true with that line never fully read.
+     - A flagged range that reaches the file's last line adds no interval, though lines 1 to `numLines − 1` arrived whole. A later Read of only the last line then leaves `covered_after` false for a fully read file.
+     - Dropping the whole range in the second case is a deliberate conservatism: it under-credits a call and never over-credits one. No field the instrument reads records which lines arrived whole. Keeping all but the last line would therefore rest on row 90's reading of the cut, which covers two harness versions only.
+     - `docs/transcript-analysis.md`'s `reviewer-reads` Known limits carries the same statement. It lands in a PR 1 doc commit before PR 1 opens.
    - the window holds this change's own review rounds, as an after-run's window will hold #1115's.
 10. PR 2 closes GH-1529 and no other issue. One human step follows its merge (G4): ticking #1113's "A-field baseline captured" box with the date and the page's path. That tick does not cover #1115's late-findings watch, which has no before-value until the new issue delivers one.
 
@@ -273,9 +283,10 @@ The engineer settled these choices:
   - The headline's denominator is defined by file size, so it matches GH-1529's "files larger than one Read call". `anchors: G3`
   - The token estimate applies only to `complete_allow_large`, the one complete class the harness's own cap does not vouch for. `anchors: G3`
   - Diff-handoff calls print as their own rows. `anchors: row34, row35`
-- M6 — Follow-up and coverage are counted per partial or refused call, as `later_offset_read`, `covered_after` and `neither`. `anchors: row6, row7, row34`
+- M6 — Follow-up and coverage are counted per partial or refused call, as `later_offset_read`, `covered_after` and `neither`. `anchors: row6, row7, row34, row90`
   - A later offset Read can be a targeted read of one function. `covered_after` is therefore the figure for reading the rest.
-  - `neither` is an upper bound on going on with a partial view, because the instrument sees Read calls only.
+  - A flagged result whose range reaches the file's last line adds no interval, because a flagged range reaches `totalLines` only when its last reported line arrived in part (row 90). Capture step 9's limitations state the bias this leaves in both directions, and why the whole range drops. `anchors: row90`
+  - `neither` is an upper bound on calls with no further attempt to read on, because the instrument sees Read calls only.
   - Rejected: the bench-compatible paged-follow-up count. The reduced forms cut it, and the bench's own partial detection may read zero (row 21). `anchors: row21, row34`
 - M7 — The Read share divides by the reviewer windows' own billed weight. `anchors: row2, row29`
 - M8 — Main-thread round Reads join to round windows by `tool_use` id over deduplicated records. `anchors: row19`
@@ -485,7 +496,7 @@ The engineer settled these choices:
 82. `pricing._model_rates` looks a model up with `dict.get`, which raises `TypeError` for an unhashable value such as a list or a dict. `[verified: pricing.py:163-173]`
 83. `test_case_study_pooled_figure_markers_are_registered_or_new` fails when a case-study page holds `pooled across`, `machine-wide`, `cross-machine` or `multi-account` and is neither on Remediation's list nor allowlisted, and its allowlist is empty. `[verified: claude-skills/skills/tests/test_doc_cross_references.py:507-550]` `_PER_ACCOUNT_STATE_PATH_RE` matches home-rooted per-account state paths, `<name>-markers/` directories included. `[verified: claude-skills/skills/tests/test_per_account_path_contracts.py:55-64]` That every `docs/**/*.md` file outside `reports/` and `case-studies/` is scanned with it is `[unverified: staff-platform-engineer's round-2 read of :154-162]`.
 84. Path identity, which both halves of the scope rest on, does not exclude these cases: `[verified: claude/.claude/hooks/_lib.sh:644-649; docs/transcript-analysis.md:59; scope.py:104-106]`
-    - a worktree path another repository reuses after this one's worktree there was removed or replaced;
+    - a live worktree path of this checkout that another repository's checkout occupied earlier, whose sessions and ledger files then match as this repository's;
     - ledger rows appended from this checkout about work elsewhere;
     - a checkout of any repository whose path maps to the same project-directory slug as one of this checkout's worktrees;
     - a subagent file under an in-scope session, whatever repository the subagent worked in.
@@ -494,6 +505,13 @@ The engineer settled these choices:
 87. `_ReadEvent` has six fields on this base: `path`, `whole_file`, `tokens`, `lines`, `remaining_turns` and `edited_later`. `[verified: read_cost.py:59-67]`
 88. The harness can write a Read call's `tool_use` block twice in one transcript, and a failed call's error result twice. `[verified: staff-backend-engineer's round-2 bounded read-only scan of transcript records, shape evidence only]` Read-cost today pends a failed call again on its replayed block, because only a successful result marks an id seen. `[verified: read_cost.py:217-231]`
 89. PR 1 proceeds at its projection of about 4,250 lines (Critical files), asked as "PR 1 now projects about 4,250 changed lines (an estimate; you approved about 3,600) … Proceed at that size, split, or cut the review-ledger ADDRESS/DEFER counts …?". `[engineer-verified: "Proceed anyway"]` The option's description, everything in one PR at about 4,250 lines built in three dispatches that each finish green, is the session's, not the engineer's words. `[unverified]` Cutting row 1's ledger counts was a separate option the engineer did not choose, so row 1 stands. The round-2 test cases account for most of the rise above about 3,600.
+90. The Read tool sets `truncatedByTokenCap` and the line fields as follows. `[verified: an architect consult's local read of the installed Read implementation in Claude Code 2.1.318 and 2.1.330]`
+    - A flagged result comes only from a call with no `limit` and an `offset` absent or at most 1, so it starts at line 1.
+    - When the harness cuts by lines, `numLines` is the delivered count and stays below `totalLines`.
+    - When it cuts by characters, because a line is too long to fit, `numLines` counts the lines the delivered text touches. The last reported line then arrived in part, and the range can reach `totalLines`.
+    - A paged call over the cap fails, so it adds no interval.
+    - A flagged range that ends short of `totalLines` can therefore end on a line that arrived in part, and the instrument cannot tell that case from a cut by lines.
+    - Whether older harness versions behave the same, and what the third parameter of the auto-pagination condition does, is `[unverified]`.
 
 ## Critical files
 
@@ -655,6 +673,7 @@ Each dispatch prompt states the directed growth of any file it edits that alread
     - a call of unknown size;
     - a `totalLines` of 10**12, which returns at once;
     - a call that is `neither`;
+    - flagged ranges, in `test_transcript_reviewer_reads_command.py` through the printed follow-up line (`test_a_token_cap_flagged_call_reaching_the_last_line_adds_no_coverage_to_the_printed_follow_up`): a flagged call whose range reaches the file's last line is not covered by itself and counts as `neither`, and a flagged call that ends short of the last line is covered by a later paged Read;
   - a nested reviewer dispatch, counted in the read figures and not in the yield figures (row 18);
   - the Read share: `skill-fidelity-reviewer` and non-reviewer windows outside both sides, billed weight deduplicated by message id, and the parts reconciling to the Read weight;
   - per-type rows and the withheld fold, with an untracked `staff-` name;
@@ -677,7 +696,8 @@ Each dispatch prompt states the directed growth of any file it edits that alread
 - Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_report.py`, about 390 lines:
   - one hand-computed fixture in the style of `TestPrintedFigures` (`test_transcript_read_cost_report.py`:314), with each printed figure asserted against its own expected value. It holds every outcome class, ADDRESS, DEFER and SETTLED terminal rows with their shares, per-type rows, the yield section and the left-out count;
   - `no data (0/0)` and `insufficient (n/d)` for each rate, at zero, below the floor and at it;
-  - the yield section's wiring: `compute_reviewer_yield_data` receives the window's `since_ts` and the next day's 00:00:00Z as `until_ts`, untracked names fold, the `--until` caveat line prints, and the second pass's gap counter prints on its own line and not in the skipped-input line.
+  - the yield section's wiring: `compute_reviewer_yield_data` receives the window's `since_ts` and the next day's 00:00:00Z as `until_ts`, untracked names fold, the `--until` caveat line prints, and the second pass's gap counter prints on its own line and not in the skipped-input line;
+  - the not-completed yield branch: `test_a_yield_pass_that_could_not_complete_prints_one_fixed_notice_and_no_rows` and `test_a_sidecar_the_shared_yield_code_cannot_read_leaves_the_rest_of_the_report_intact` here. `test_transcript_reviewer_reads_command.py`'s `TestYieldPassOverHostileInput` drives it through the command, in `test_a_decode_failure_in_the_yield_pass_prints_the_fixed_notice_and_leaves_the_rest_of_the_report` and `test_a_field_shape_the_shared_yield_code_cannot_take_ends_the_pass_with_a_fixed_notice`, with `test_a_non_object_line_and_a_non_object_message_leave_the_yield_pass_complete` as the case that stays completed.
 - Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_command.py`, about 335 lines:
   - the real registrar round-trip;
   - refusal without `--this-repo` under the command's own label, without either date, with `--since` after `--until`, and with an unpadded `--since` and an unpadded `--until` such as `2026-1-5`, each exiting 2 before any scan; `--since` equal to `--until` accepted. The rest of the refusal matrix lives in `test_transcript_publication_scope.py`;
@@ -752,6 +772,11 @@ Projected diff: about 4,375 lines in PR 1 (about 1,325 code, 2,775 tests and 275
 4. Self-checks, on every dry run and on the PR 2 run, before the page is written:
    - Reviewer-window floor: the reviewer-window count is above zero. The header's project-directory count gets no floor, because it counts worktrees listed and is never zero (row 81).
    - Ledger floor: when the report counts any `code-review` round window, it also counts at least one ledger file read. Every `/code-review` round appends a ledger row (row 80), so a zero there is a hash miss, not an empty ledger (M15).
+   - Yield-completed floor: the report holds no line starting `reviewer-yield pass: not completed`. The command prints that notice in place of the yield rows, prints no count on it, and still exits 0, so a capture that prints it fails this check.
+     - The pass ends on a record or sidecar field the shared code cannot take (Approach, Reviewer-yield), so a re-run over the same corpus prints the notice again.
+     - A notice that reproduces on a re-run stops the capture, and the session asks the engineer, as the sample check does.
+     - The engineer then decides between a fix to the shared code that cannot take the field and publishing the page with the missing yield section disclosed.
+     - The worktree-cleanup hold stays on until that decision. A decision to publish counts as this check passing, as a go-ahead at a sample-check stop does (Capture step 6). A decision to fix keeps the hold until a re-run passes.
    - Sample check: when the pooled headline or the Read share prints `insufficient` or `no data`, the session tells the engineer. At PR 2 it also stops, and asks the engineer before the page claims a baseline or PR 2 closes GH-1529.
    - By-hand trace, at every dry run, and at PR 2 only when Capture step 2 found a diff:
      - Its reads stay inside the project directories named by this clone's `git worktree list` slugs, under the pinned account's `projects/` directory. No other file under the account directory is read.
