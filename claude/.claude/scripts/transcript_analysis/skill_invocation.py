@@ -110,7 +110,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
         else:
             session_iter = corpus.iter_sessions(roots[0], projects_arg, include_subagents=include_subagents)
     else:
-        session_iter = scope._iter_scoped_sessions(scope._repo_scoped_project_slugs(), include_subagents, roots=roots)
+        session_iter = scope._iter_scoped_sessions(
+            scope._repo_scoped_project_slugs(), include_subagents, roots=roots, branch_prefilter=branch_filter,
+        )
 
     # Counters are keyed by (skill, thread). Without --include-subagents every
     # thread is "main", which keeps the default output shape unchanged.

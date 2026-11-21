@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence, Set
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -35,6 +35,8 @@ from _config_dir import (
     declared_transcript_roots,
 )
 from transcript_analysis.corpus import (
+    _branch_prefilter,
+    _BranchPrefilter,
     _parse_ts,
     _projects_glob_steps_to_parent,
     _read_session_file_partitioned,
@@ -139,7 +141,7 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     scope a transcript read to this repo: output built from it is routinely
     quoted into public PR descriptions, and transcripts under
     ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo" states
-    what it admits and "What `--this-repo` does not cover" what it still over-includes.
+    what it admits and "Over-inclusions" the cases it admits beyond this repo.
     A subagent file
     under an in-repo session is read regardless of the repo the subagent worked
     in, so scoping alone does not bound skill names under `--include-subagents`.
@@ -418,6 +420,7 @@ def _failed_transcript_read_is_gap(jsonl: Path) -> bool:
 
 def _iter_project_dir_sessions(
     project_dirs: Iterable[Path], include_subagents: bool, scan_gaps: Counter[str] | None,
+    prefilter: _BranchPrefilter | None = None,
 ) -> Iterator[tuple[Path, list[dict]]]:
     """Shared inner generator for both multi-root iterators
     (_iter_scoped_sessions, _iter_glob_scoped_sessions): lists each project
@@ -429,17 +432,21 @@ def _iter_project_dir_sessions(
 
     `scan_gaps` here cannot see any subagent-level drop. With
     include_subagents=True, a real Counter stays blind to all of:
-    - _read_session_file_partitioned's subagent_dir.is_dir() OSError
-      swallowing (that function takes no scan_gaps parameter),
+    - _session_source_files' subagent_dir.is_dir() OSError swallowing (it takes
+      no scan_gaps parameter),
     - an unlistable subagents/ directory (Path.glob swallows the OSError),
     - an unreadable subagent file (_parse_jsonl_records returns None and the
       file is skipped).
+
+    A transcript the `prefilter` skips is never read, so it records no gap.
     """
     for project_dir in project_dirs:
         for jsonl in _list_dir_recording_gaps(project_dir, scan_gaps, _SCAN_GAP_PROJECT_DIR):
             # Transcripts are not deduplicated by resolved path, so a *.jsonl
             # symlink to another in-root transcript is read twice.
             if not fnmatch.fnmatchcase(jsonl.name, "*.jsonl"):
+                continue
+            if prefilter is not None and not prefilter.may_carry(jsonl, include_subagents):
                 continue
             groups = _read_session_file_partitioned(jsonl, include_subagents)
             if not groups:
@@ -453,7 +460,7 @@ def _iter_project_dir_sessions(
 
 def _iter_scoped_sessions(
     slugs: list[str], include_subagents: bool, roots: Sequence[Path] | None = None,
-    *, scan_gaps: Counter[str] | None = None,
+    *, scan_gaps: Counter[str] | None = None, branch_prefilter: Set[str] | None = None,
 ):
     """Yield sessions from the project dirs `_RepoProjectDirMatcher` admits for `slugs`.
 
@@ -471,10 +478,14 @@ def _iter_scoped_sessions(
     cost's per-root diagnostic), so the reported detail always omits the raw
     path — an OSError's `strerror` (e.g. "Permission denied"), never
     `str(exc)`, which embeds the offending path.
+
+    `branch_prefilter` skips a session unparsed when no `gitBranch` field of its files holds one of its names.
+    Only a caller whose output reads no record outside its `--branches` filter passes it.
     """
     if roots is None:
         roots = (_projects_dir(),)
     matcher = _repo_project_dir_matcher(slugs)
+    prefilter = _branch_prefilter(branch_prefilter)
     visited_dirs: set[Path] = set()
     multi_root = len(roots) > 1
     # Ordinal, not scan-order index: the same physical root must read as the
@@ -504,6 +515,7 @@ def _iter_scoped_sessions(
             continue
         yield from _iter_project_dir_sessions(
             _dedup_new_project_dirs(candidates, visited_dirs, scan_gaps=scan_gaps), include_subagents, scan_gaps,
+            prefilter,
         )
 
 
@@ -611,6 +623,7 @@ def _resolve_project_scope(
     roots: Sequence[Path] | None = None,
     *,
     scan_gaps: Counter[str] | None = None,
+    branch_prefilter: Set[str] | None = None,
 ) -> tuple[Iterator[tuple[Path, list[dict]]], str]:
     """Resolve --projects/--this-repo into a fresh session iterator and a scope label.
 
@@ -671,6 +684,12 @@ def _resolve_project_scope(
     cannot record gaps, so it raises ValueError rather than ignore the
     counter. See _iter_project_dir_sessions's own docstring for the
     subagent-level drops this counter cannot see even off that branch.
+
+    `branch_prefilter`, the branch names of a `--branches` filter, skips a --this-repo session unparsed when no
+    `gitBranch` field of its files holds one of them.
+    Only a caller whose output reads no record outside its `--branches` filter passes it.
+    The glob arms ignore it, so they only run slower.
+    A skip never changes a figure such a caller prints.
     """
     if roots is None:
         roots = (_projects_dir(),)
@@ -701,7 +720,9 @@ def _resolve_project_scope(
             )
             sys.exit(1)
         return (
-            _iter_scoped_sessions(slugs, include_subagents, roots=roots, scan_gaps=scan_gaps),
+            _iter_scoped_sessions(
+                slugs, include_subagents, roots=roots, scan_gaps=scan_gaps, branch_prefilter=branch_prefilter,
+            ),
             f"this repo ({counts.live + counts.unlisted} project dirs: {counts.live} live, {counts.unlisted} unlisted)",
         )
     glob = getattr(args, "projects", None) or "*"
@@ -1189,7 +1210,9 @@ def _attributed_branch(rec: dict, ctx: _SessionBranchContext) -> str | None:
     Returns None — the "?" sentinel (see cmd_review_trace's docstring for the
     carry-forward convention this parallels) — for a main-thread record
     with no gitBranch, and for a sidechain record in a session with no
-    branch-bearing main-thread record."""
+    branch-bearing main-thread record.
+
+    corpus._BranchPrefilter relies on every branch this returns being a gitBranch string from the session's own records."""
     return _attribute_pre_branch(*_timeline_entry(rec, ctx), ctx.pre_branch_run)
 
 

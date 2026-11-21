@@ -4,13 +4,21 @@ cmd_* subcommand, scope resolution, redaction, or pricing.
 from __future__ import annotations
 
 import json
+import re
 import shlex
-from collections.abc import Iterator
+from collections.abc import Iterator, Set
 from datetime import datetime
 from pathlib import Path
+from typing import NamedTuple
 
 # Subdirectory name where Claude Code writes split subagent transcripts.
 SUBAGENT_SUBDIR = "subagents"
+
+# The branch review-trace gives an event it cannot attribute.
+UNTAGGED_BRANCH_LABEL = "?"
+
+# Assumes Claude Code writes the gitBranch key the same way in every record of a file, which JSON does not require.
+_GIT_BRANCH_FIELD_RE = re.compile(rb'"gitBranch"[ \t\r]*:[ \t\r]*"([^"\\\x00-\x1f]*)(")?')
 
 # Record types that carry the conversation itself. Other types (e.g. api-request-blob) hold copies of
 # request content and carry no isSidechain key, so a walk over message.content must filter on this.
@@ -127,8 +135,8 @@ def _read_session_file_partitioned(jsonl: Path, include_subagents: bool) -> list
     <session_id>/subagents/*.jsonl in sorted order. An unreadable main file
     yields [] (no groups at all); an unreadable subagent file is skipped. A
     readable-but-empty main file still yields its subagent groups.
-    subagent_dir.is_dir() raising OSError (e.g. an unreadable ancestor) is
-    treated the same as absent.
+    _session_source_files treats a subagent_dir.is_dir() OSError (e.g. an
+    unreadable ancestor) the same as an absent directory.
 
     The per-file boundary matters to any caller that differences consecutive
     turns: separate files are separate context windows, so a delta taken across
@@ -144,7 +152,21 @@ def _read_session_file_partitioned(jsonl: Path, include_subagents: bool) -> list
     if main is None:
         return []
     groups = [main]
+    for sub_jsonl in _session_source_files(jsonl, include_subagents)[1:]:
+        sub_records = _parse_jsonl_records(sub_jsonl)
+        if sub_records:
+            groups.append(sub_records)
+    return groups
 
+
+def _session_source_files(jsonl: Path, include_subagents: bool) -> list[Path]:
+    """One session's files: the main transcript, then with include_subagents each
+    <session_id>/subagents/*.jsonl in sorted order.
+
+    An is_dir() OSError reads as no subagents, and Path.glob swallows an
+    unlistable subagents/ directory's OSError, so the listing never raises.
+    """
+    files = [jsonl]
     if include_subagents:
         subagent_dir = jsonl.parent / jsonl.stem / SUBAGENT_SUBDIR
         try:
@@ -152,12 +174,56 @@ def _read_session_file_partitioned(jsonl: Path, include_subagents: bool) -> list
         except OSError:
             subagent_dir_exists = False
         if subagent_dir_exists:
-            for sub_jsonl in sorted(subagent_dir.glob("*.jsonl")):
-                sub_records = _parse_jsonl_records(sub_jsonl)
-                if sub_records:
-                    groups.append(sub_records)
+            files.extend(sorted(subagent_dir.glob("*.jsonl")))
+    return files
 
-    return groups
+
+class _BranchPrefilter(NamedTuple):
+    branch_names: frozenset[str]
+
+    def may_carry(self, jsonl: Path, include_subagents: bool) -> bool:
+        """False only when no `gitBranch` field of the session's files holds a name in branch_names.
+
+        Sound only while every branch a `--branches` filter matches is a `gitBranch` string from the session's own
+        records.
+        A value the pattern does not close keeps the session, because only a value holding no escape or control byte
+        reads the same without `json.loads`.
+        A false positive costs only a parse.
+        """
+        return any(self._file_may_carry(source_file) for source_file in _session_source_files(jsonl, include_subagents))
+
+    def _file_may_carry(self, source_file: Path) -> bool:
+        # Reads the file whole, so a MemoryError aborts the run as the parse of the same file would.
+        try:
+            with open(source_file, "rb") as fh:
+                file_bytes = fh.read()
+        except OSError:
+            return True
+        found_a_field = False
+        for match in _GIT_BRANCH_FIELD_RE.finditer(file_bytes):
+            found_a_field = True
+            if match.group(2) is None:
+                return True
+            try:
+                # The decode _parse_jsonl_records applies to a line before its json.loads.
+                branch_name = match.group(1).decode("utf-8")
+            except UnicodeDecodeError:
+                return True
+            if branch_name in self.branch_names:
+                return True
+        return not found_a_field
+
+
+def _branch_prefilter(branch_names: Set[str] | None) -> _BranchPrefilter | None:
+    """None, which skips nothing, for no names or for UNTAGGED_BRANCH_LABEL among them.
+
+    A set type, because a bare str would read as a set of single characters and skip nearly every session.
+    """
+    if isinstance(branch_names, str):
+        raise TypeError("branch_names must be a set of names, not a str")
+    if not branch_names or UNTAGGED_BRANCH_LABEL in branch_names:
+        return None
+    return _BranchPrefilter(frozenset(branch_names))
 
 
 def read_session_file(jsonl: Path, include_subagents: bool) -> list[dict]:

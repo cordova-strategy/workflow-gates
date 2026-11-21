@@ -1913,7 +1913,8 @@ class TestPrDescriptionCostSectionWiring:
     delimiters, the heading, and the reproducibility trailer are emitted by
     pr-cost-section.sh and pinned byte-exactly by test_pr_cost_section.py.
     This class only proves the skill body still names the script, both
-    delimiters, the heading, and the raw-markdown rule.
+    delimiters, the heading, the raw-markdown rule, the call's ten-minute
+    ceiling, its wait, its re-run, and exit 3's kill case.
     """
 
     def _body(self):
@@ -1937,6 +1938,24 @@ class TestPrDescriptionCostSectionWiring:
         body = self._body()
         assert "raw markdown" in body
         assert "code fence" in body
+
+    def test_declares_call_ceiling_wait_and_kill_reading(self):
+        body = self._body()
+        _assert_pinned_clause_right_bounded(
+            "Resolve the section with one foreground Bash call with `timeout: 600000`. "
+            "If the harness moves the call to the background, start no second copy, and read "
+            "its exit status and stdout as below once its completion notification arrives. "
+            "A harness timeout kill is not an exit status, so re-run a killed call once:",
+            body,
+            context="pr-description no longer carries the cost call's ceiling, wait and re-run sentences",
+        )
+        _assert_pinned_clause_right_bounded(
+            "- **Exit 3, or a call the harness killed twice:** the cost report failed or never "
+            "finished — omit the block and note in the body that the report failed to generate, "
+            "unlike exit 1's silent deletion.",
+            body,
+            context="pr-description's exit-3 bullet no longer carries the twice-killed case and its omit-and-note outcome",
+        )
 
 
 class TestPrDescriptionProseTighteningPassWiring:
@@ -5781,14 +5800,34 @@ def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> No
 
 
 def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review_rows() -> None:
-    """Step 4 must name the rerun that recovers the plan-review rows the omit flag drops."""
-    step_4_text = _heading_section_text(
-        _skill_file("ready-for-review"), "## 4. Skill-procedural-fidelity review (halt on findings)"
-    )
+    """Step 4 must name the rerun that recovers the plan-review rows the omit flag drops.
+
+    Step 4 runs both calls under the Bash tool's ten-minute ceiling and waits for either one the harness moves to the background.
+    """
+    step_4_heading = "## 4. Skill-procedural-fidelity review (halt on findings)"
+    step_4_text = _heading_section_text(_skill_file("ready-for-review"), step_4_heading)
     for literal in ("without `--omit-plan-review-spawns`", "`round=plan-review`"):
         assert literal in step_4_text, (
             f"ready-for-review step 4 no longer carries {literal!r}"
         )
+    step_4_raw_text = _raw_heading_section_text(_skill_file("ready-for-review"), step_4_heading)
+    _assert_pinned_clause_right_bounded(
+        "List invocations and the reviewer-spawn timeline with one foreground Bash call with "
+        "`timeout: 600000`. If the harness moves the call to the background, start no second copy, "
+        "and use its exit status and stdout once its completion notification arrives. "
+        "A harness timeout kill is not an exit status, so re-run a killed call once, "
+        "and halt and report only if the re-run is killed too or any call exits nonzero:",
+        step_4_raw_text,
+        context="ready-for-review step 4 no longer carries the fidelity call's ceiling, wait, re-run and halt",
+    )
+    rerun_ceiling = "as one foreground Bash call with `timeout: 600000`"
+    assert rerun_ceiling in step_4_text, f"ready-for-review step 4's rerun no longer carries {rerun_ceiling!r}"
+    _assert_pinned_clause_right_bounded(
+        "If the harness moves the rerun to the background, start no second copy, and wait for its "
+        "completion notification. A killed or failed rerun leaves the finding standing; say so in the report.",
+        step_4_raw_text,
+        context="ready-for-review step 4's rerun no longer carries its wait and standing-finding sentences",
+    )
 
 
 _HANDOFF_WARRANT_CHECK_HEADING = "## Before writing: is a handoff warranted?"

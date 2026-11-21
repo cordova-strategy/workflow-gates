@@ -784,3 +784,29 @@ class TestGlobScopedSessionsSelection:
             assert yielded_paths < every_project_paths
         assert backup_copy not in every_project_paths
         assert non_transcript not in every_project_paths
+
+
+class TestBranchPrefilterGaps:
+    """scope._iter_scoped_sessions with a branch prefilter: a skipped session is no scan gap."""
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_a_skipped_session_records_no_gap_and_an_unreadable_one_still_does(self, tmp_path):
+        root = tmp_path / "acct-a"
+        proj = root / "-repo-main"
+        proj.mkdir(parents=True)
+        carried = proj / "carried.jsonl"
+        _write_jsonl(carried, [_asst("claude-sonnet-4-6", branch="feature-x")])
+        _write_jsonl(proj / "skipped.jsonl", [_asst("claude-sonnet-4-6", branch="other-branch")])
+        unreadable = proj / "unreadable.jsonl"
+        unreadable.write_text("{}\n")
+        os.chmod(unreadable, 0o000)
+        scan_gaps = Counter()
+        try:
+            sessions = list(scope._iter_scoped_sessions(
+                ["-repo-main"], False, roots=[root], scan_gaps=scan_gaps, branch_prefilter={"feature-x"},
+            ))
+        finally:
+            os.chmod(unreadable, 0o644)
+
+        assert [jsonl for jsonl, _records in sessions] == [carried]
+        assert scan_gaps == Counter({scope._SCAN_GAP_SESSION_FILE: 1})

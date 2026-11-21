@@ -53,7 +53,7 @@ Under `--this-repo` the header's scope label reads `this repo (<N> project dirs:
 
 - `<N>` counts admitted directories present across the scanned roots, once per resolved path, so one worktree's directory under two accounts counts twice. An admitted directory that exists but cannot be read still counts.
 - `<L>` counts directories named for a worktree `git worktree list` prints, including one whose checkout is gone but not yet pruned. A live worktree with no session yet adds nothing.
-- `<U>` counts the unlisted ones: removed worktrees' directories and the over-inclusions under "What `--this-repo` does not cover", except the slug collision, which shares a live worktree's directory and adds nothing.
+- `<U>` counts the unlisted ones: removed worktrees' directories and the over-inclusions under "Over-inclusions" below, except the slug collision, which shares a live worktree's directory and adds nothing.
 
 **`--projects` under more than one root.** When the invocation resolves more than one root (a populated `~/.claude/transcript-config-dirs`, or an explicit `--config-dir` extra), `--projects` must match one project-directory name: a value containing `/` or `**`, or equal to `.` or `..`, exits 2. A single-root invocation has no such restriction — `--projects` there supports `Path.glob`'s full nested-directory syntax, except that a `..` component reads nothing. A single-root invocation keeps a project directory or transcript symlinked outside the scan root in scope. Under more than one root, one symlinked outside every declared root makes any run that attributes sessions to a root abort. Under `review-round-cost --pooled`, that surfaces as the generic unexpected-error refusal.
 
@@ -61,19 +61,23 @@ The default differs by subcommand: `skill-invocation` defaults to the repo-scope
 
 **`review-trace` output is not publish-safe under the default machine-wide scope** — each event line's branch string can carry a ticket ID or project name. `--this-repo` does not guarantee single-account output either: once `~/.claude/transcript-config-dirs` declares more than one root, or an explicit `--config-dir` extra is combined with `--this-repo`, it unions across every resolved root the same way the default scope does (see "Corpus scope: the declared-roots file" below). No flag on `review-trace` narrows output to one account short of an explicit single top-level `--config-dir PATH`; use that before quoting output anywhere public. This applies to a zero-match run too: its scope header echoes an explicit `--projects` glob verbatim, so a glob naming a private project reaches the output even when no session matched.
 
-The over-inclusions under "What `--this-repo` does not cover", a repo cloned under `<main>/.claude/worktrees/` among them, contribute their branch strings, and the project-directory name that `review-trace` prints per session, to `--this-repo` output.
+The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.claude/worktrees/` among them, reach anything a subcommand prints per session, and every transcript read through `sessions --paths`. The classes known today:
+
+- branch strings
+- project-directory names
+- denial and friction text, from `review-trace`
+- skill names, from `skill-invocation` and `review-trace`
+- reviewer types, from `review-trace`
+- review and user text, from `judgment-pair`
+- raw transcript paths, from `sessions --paths`, and the one absolute path per session that `review-trace` prints
 
 **What `--this-repo` does not cover, and the documented fallback:**
 
-- **Other clones of this repo.** `git worktree list` enumerates the linked worktrees of the checkout you ran it from — a second, independent clone of the same repo elsewhere on the machine is correctly outside that set. There is no fallback for this; it is not this checkout's data. Four cases are over-inclusions that `--this-repo` reads as this repo's:
-  - A slug collision: any checkout, of this repo or not, whose path maps to the same project-directory slug as one of this checkout's worktrees, such as `/w/app.v2` and `/w/app-v2`. Its sessions share that project directory, and `cost --summary` counts them under its `this repository only` caption. Its scanned-files count includes them whatever the branch and date filters, while priced sessions, priced turns, tokens, and dollars include only their turns whose branch and timestamp match those filters. The "Transcript files scanned" and "Of those, unreadable" columns are the `cost --summary` figures that move whatever the branch and date filters.
-  - A repo cloned under `<main>/.claude/worktrees/` counts as unlisted, and `cost --summary` counts it under its `this repository only` caption.
-  - A prefix lookalike: a path whose slug starts with the prefix, such as a sibling directory named `<repo>--claude-worktrees-x`.
-  - A same-named earlier branch: a `--branches` filter matches a removed worktree's sessions on an earlier branch of the same name.
+- **Other clones of this repo.** `git worktree list` enumerates the linked worktrees of the checkout you ran it from — a second, independent clone of the same repo elsewhere on the machine is correctly outside that set. There is no fallback for this; it is not this checkout's data.
 - **A session started in a repo subdirectory.** Claude Code slugs a project directory from the session's *startup cwd*, not the repo root — replacing `/` and `.` with `-` — so a session started inside a subdirectory of a worktree has a slug that is string-unequal to that worktree's own slug.
   - A session started in a subdirectory of a linked worktree under `<main>/.claude/worktrees/`, and a worktree nested in a linked worktree's own `.claude/worktrees/`, match. Each counts as unlisted unless git lists it.
-  - A session started in a main-checkout subdirectory is still excluded. The `--git-common-dir` glob below covers it, because that glob starts with the main checkout's slug.
-  - A session started in a subdirectory of a worktree outside `<main>/.claude/worktrees/` is still excluded, and no prefix route reaches it. The only route is an explicit `--projects` glob built from that worktree's own path slug.
+  - A session started in a main-checkout subdirectory is excluded. The `--git-common-dir` glob below covers it, because that glob starts with the main checkout's slug.
+  - A session started in a subdirectory of a worktree outside `<main>/.claude/worktrees/` is excluded, and no prefix route reaches it. The only route is an explicit `--projects` glob built from that worktree's own path slug.
 
   The fallback for the main checkout's subdirectories is a prefix glob derived from `--git-common-dir`, not `pwd` (`--git-common-dir` resolves to the main repo's `.git` from inside any worktree, so the prefix is stable regardless of which worktree the session started in):
 
@@ -87,7 +91,12 @@ The over-inclusions under "What `--this-repo` does not cover", a repo cloned und
 
 The three gaps after "Other clones of this repo" are silent under-coverage, not an error: a narrower-than-expected corpus reads identically to "no evidence exists". The resolved-scope header reveals none of them.
 
-The reverse case, silent over-inclusion, is the four cases in the first gap. A slug collision shares a live worktree's directory, so the count does not move. A foreign clone under the worktrees directory or a prefix lookalike adds to the unlisted count. That count cannot tell either from a removed worktree's directory, so it is not a check for them. A same-named earlier branch's sessions sit in a removed worktree's directory, which the count already includes, so only a `--branches` figure moves.
+**Over-inclusions.** Four cases are over-inclusions that `--this-repo` reads as this repo's. The resolved-scope header's count is not a check for them:
+
+- A slug collision: any checkout, of this repo or not, whose path maps to the same project-directory slug as one of this checkout's worktrees, such as `/w/app.v2` and `/w/app-v2`. Its sessions share that project directory, so the count does not move. `cost --summary` counts them under its `this repository only` caption. Its scanned-files count includes them whatever the branch and date filters, while priced sessions, priced turns, tokens, and dollars include only their turns whose branch and timestamp match those filters. The "Transcript files scanned" and "Of those, unreadable" columns are the `cost --summary` figures that move whatever the branch and date filters.
+- A repo cloned under `<main>/.claude/worktrees/`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory. `cost --summary` counts it under its `this repository only` caption.
+- A prefix lookalike: a path whose slug starts with the prefix, such as a sibling directory named `<repo>--claude-worktrees-x`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory.
+- A same-named earlier branch: a `--branches` filter matches a removed worktree's sessions on an earlier branch of the same name. Those sessions sit in a removed worktree's directory, which the count already includes, so only a `--branches` figure moves.
 
 `cost --config-dir` does not refuse `--this-repo`: since `--this-repo`'s admission rule is derived from `git worktree list` alone, it is root-independent, so `cost --config-dir DIR --this-repo` unions across the default corpus and every `--config-dir` extra the same way `--this-repo` does everywhere else. See the `cost` section below for the full `--config-dir` contract.
 
@@ -467,12 +476,12 @@ bin          sessions   turns  skill-inv  skill/1k commits  w-skill  wo-skill  n
 
 **Purpose.** Per-skill invocation-source tally for a scoped set of projects (this repo by default), split into three buckets: `top-level` (description-triggered Skill tool_use on a main-thread turn with no parent skill active), `routed` (Skill tool_use fired while another skill's body was active — `attributionSkill` is non-empty), and `user-slash` (user record containing `<command-name>/skillname</command-name>`, the `/slash` invocation path). The classification summary at the bottom identifies routed-only candidates (name-only eligible) and slash-only candidates (disable-model-invocation eligible) for skill-description budget analysis.
 
-**Scope defaults to this repo.** With `--projects` unset, the read takes the `--this-repo` scope (see "Scoping to this repo" above for what it admits), derived from `git worktree list`. This is a minimization control: the output is routinely quoted into public PR descriptions, and skill names on the machine can themselves be private-project identifiers. `--include-subagents` weakens this bound; see its flag bullet below. It fails closed (error, no output) rather than falling back to a machine-wide read if the repo scope cannot be derived. Passing an explicit `--projects` glob is an escape hatch for corpus analysis — the output is then no longer scoped to this repo. The header labels that state as `explicit --projects (not repo-scoped)` rather than interpolating the glob, so the glob itself never reaches stdout; `review-trace`, whose scope label is the glob, differs here.
+**Scope defaults to this repo.** With `--projects` unset, the read takes the `--this-repo` scope (see "Scoping to this repo" above for what it admits and what its over-inclusions add to output), derived from `git worktree list`. This is a minimization control: the output is routinely quoted into public PR descriptions, and skill names on the machine can themselves be private-project identifiers. `--include-subagents` weakens this bound; see its flag bullet below. It fails closed (error, no output) rather than falling back to a machine-wide read if the repo scope cannot be derived. Passing an explicit `--projects` glob is an escape hatch for corpus analysis — the output is then no longer scoped to this repo. The header labels that state as `explicit --projects (not repo-scoped)` rather than interpolating the glob, so the glob itself never reaches stdout; `review-trace`, whose scope label is the glob, differs here.
 
 **Flags.**
 - `--projects GLOB` — project directory glob. Default: the `--this-repo` scope (see "Scoping to this repo" for what it admits, and the `--include-subagents` bullet below for that flag); an explicit glob is the escape hatch (not repo-scoped).
 - `--this-repo` — explicit no-op: `skill-invocation` already defaults to the `--this-repo` scope. Kept so the flag is uniform across every `--projects` subcommand; mutually exclusive with `--projects` like everywhere else.
-- `--branches B1,B2,...` — restrict to the named branches (default: all branches in scope). Attribution follows the "Pre-branch default-branch attribution" block under `cost`, and with `--include-subagents` the "Subagent attribution" block too.
+- `--branches B1,B2,...` — restrict to the named branches (default: all branches in scope). Attribution follows the "Pre-branch default-branch attribution" block under `cost`, and with `--include-subagents` the "Subagent attribution" block too. Under `--this-repo` it also skips non-matching sessions unparsed, unless the filter lists `?`, as the cost paragraph on format drift describes.
 - `--include-subagents` — also count invocations inside spawned subagents, adding a `thread` column (`main` vs `sidechain`). Off by default so budget analysis stays main-thread-only; the fidelity consumer opts in. Its output can carry another project's skill names, because a subagent file under an in-repo session is read whatever repo the subagent worked in (see also the Limits list under `cost`).
 
 **Sample output** (default scope — this repo, main thread):
@@ -512,8 +521,8 @@ CLASSIFICATION SUMMARY
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's worktree project dirs, instead of a machine-wide glob (see "Scoping to this repo" above); required, but not sufficient, before quoting output publicly (see "Scoping to this repo" above for what it admits and why its output can span accounts)
-- `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
+- `--this-repo` — scope to this repo's worktree project dirs, instead of a machine-wide glob (see "Scoping to this repo" above); required, but not sufficient, before quoting output publicly (see "Scoping to this repo" above for what it admits, what its over-inclusions add to output, and why its output can span accounts)
+- `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`. Under `--this-repo` it also skips non-matching sessions unparsed, unless the filter lists `?`, as the format-drift paragraph under `cost` describes.
 - `--since DATE` — inclusive start date (`YYYY-MM-DD`)
 - `--until DATE` — inclusive end date (`YYYY-MM-DD`)
 - `--deny-only` — restrict to sessions containing at least one hook denial
@@ -704,6 +713,17 @@ Pricing is looked up per exact model ID (Sonnet 5 and Sonnet 4.6 price different
 Two further multipliers apply on top of the per-model rate, read from the usage record itself rather than a per-model eligibility list: `usage.speed == "fast"` doubles every class's dollars (2×, the vendor's fast-mode rate), and `usage.inference_geo == "us"` multiplies every class's dollars by 1.1× (the vendor's data-residency surcharge). Both compose multiplicatively when present on the same turn (2.2× total) and apply regardless of whether the turn's model is actually eligible for fast mode or data residency — `speed`/`inference_geo` report the API's own settled outcome, not an echo of the request, so a turn that carries either field is trusted as-is.
 
 Like `subagents` and `skill-pair`, `cost` calls `_warn_if_subagent_format_drift` after its own scan: a corpus with subagent spawns but zero `isSidechain` assistant turns read back prints a `WARNING` on stderr, since that signature means the `subagents/*.jsonl` split-file format has drifted rather than that no subagent work happened.
+
+Under `--this-repo --summary --branches` without `--since`, `cost` skips parsing a session only when no `gitBranch` field in its transcript files holds a filtered branch name, as `cost-counts`, `skill-invocation` and `review-trace` do with `--branches` in the `--this-repo` scope. A `cost` figure in doubt can be checked against `cost`'s full report run with the same `--this-repo --branches`, which never skips a session.
+
+Detail by topic:
+
+- In that mode the `PRICING INTEGRITY` banner narrows on both canary sides: usage drift, and spawns with no subagent turn. The usage-drift side reads only the sessions `cost` parses. The spawn side can stay silent when the parsed sessions hold no spawn, even if a skipped session holds spawns with no subagent turn.
+- The spawn-without-subagent-turn re-read runs when the parsed sessions hold spawns but no subagent turn, and it drops the spawn-side `WARNING` and banner trigger if any admitted session holds a subagent turn. That re-read parses the admitted sessions again, skipped ones included, up to the first one that holds a subagent turn. Its sidechain test counts raw sidechain records, not deduped turns. A usage-drift warning in a parsed session still raises the banner.
+- A malformed record in a session these four commands skip, such as a line that is not a JSON object, does not abort them. A record the parser cannot read in a skipped session the re-read reaches still aborts the run.
+- `cost` and `cost-counts` print their non-contiguous-merge NOTICE and usage-drift WARNING lines only for the sessions they parse.
+
+`skill-invocation` and `review-trace` skip no session outside the `--this-repo` scope, such as under an explicit `--projects` glob or `review-trace`'s machine-wide default. Under `--this-repo`, none of the four skips when the `--branches` filter lists a `?` entry, because `review-trace` prints `?` for an event with no attributable branch. In the other three commands a `?` entry matches no session.
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`, all projects)
@@ -1311,7 +1331,7 @@ It counts inside round windows only, as the unpriced and dangling lines do, and 
 
 **Sample output.**
 ```
-REVIEW ROUND COST SOURCES (this repo; 1 root)
+REVIEW ROUND COST SOURCES (this repo (N project dirs: L live, U unlisted); 1 root (no ~/.claude/transcript-config-dirs declared))
 
 account-1/some-feature-branch
   rounds=6  (code-review=3  plan-review=1  ready-for-review=2)
@@ -1972,7 +1992,7 @@ Compute, the `--out` file (`routing_guard._out_file_text`):
 
 **Flags.**
 - `--this-repo` — required; there is no machine-wide or `--projects`-scoped mode
-- `--branches B1,B2,...` — required at runtime (refused with exit 2 when absent, not an argparse-level requirement); a corpus-wide count is never a legitimate PR-body figure. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
+- `--branches B1,B2,...` — required at runtime (refused with exit 2 when absent, not an argparse-level requirement); a corpus-wide count is never a legitimate PR-body figure. Attribution follows the "Pre-branch default-branch attribution" block under `cost`. Under `--this-repo` it also skips non-matching sessions unparsed, unless the filter lists `?`, as the format-drift paragraph under `cost` describes.
 
 Always scoped to the active account alone (`config_dir()/projects`), with no `--config-dir` flag of its own — a populated `~/.claude/transcript-config-dirs` contributes nothing here, unlike every other multi-root subcommand in this reference (see "Corpus scope: the declared-roots file" above).
 

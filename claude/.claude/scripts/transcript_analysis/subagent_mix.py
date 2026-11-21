@@ -528,7 +528,7 @@ def cmd_cost_counts(args: argparse.Namespace) -> None:
     roots = [scope.config_dir() / "projects"]
 
     session_iter, _scope_label = scope._resolve_project_scope(
-        args, "cost-counts", include_subagents=True, roots=roots,
+        args, "cost-counts", include_subagents=True, roots=roots, branch_prefilter=branch_filter,
     )
     round_counts = dict.fromkeys(review_rounds.REVIEW_SKILLS, 0)
     raw_spawn_counts: dict[str, int] = defaultdict(int)

@@ -9,9 +9,10 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from helpers import worktree_porcelain
 from transcript_analysis import buckets, corpus, cost, scope, skill_invocation
 
-from .conftest import _asst, _cost_args, _priced, _worktree_porcelain, _write_cost_root, _write_jsonl
+from .conftest import _asst, _cost_args, _priced, _write_cost_root, _write_jsonl
 
 
 def test_projects_dir_honors_claude_config_dir(monkeypatch, tmp_path):
@@ -159,7 +160,7 @@ class TestRepoScopedProjectSlugsGuard:
         monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit):
             scope._repo_scoped_project_slugs("duration")
@@ -172,7 +173,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -186,7 +187,7 @@ class TestRepoScopedProjectSlugsGuard:
         monkeypatch.setattr(os, "getcwd", lambda: "/repo-fork/nested")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         with pytest.raises(SystemExit):
@@ -204,7 +205,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/outer\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -220,7 +221,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             raise FileNotFoundError("git")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -238,7 +239,7 @@ class TestRepoScopedProjectSlugsContainmentGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -254,7 +255,7 @@ class TestRepoScopedProjectSlugsContainmentGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo", "/other/wt"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo", "/other/wt"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/other/wt\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -310,7 +311,7 @@ class TestRepoScopedProjectSlugsGitCallFailureModes:
                     raise subprocess.TimeoutExpired(cmd, k["timeout"])
                 pytest.fail("git call passed no timeout")
             assert cmd == ["git", "worktree", "list", "--porcelain"]
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         with pytest.raises(SystemExit) as exc_info:
@@ -343,7 +344,7 @@ class TestResolveProjectScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -370,7 +371,7 @@ class TestResolveProjectScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -518,7 +519,7 @@ class TestThisRepoUnionsAcrossRoots:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                porcelain = _worktree_porcelain("/repo/main")
+                porcelain = worktree_porcelain("/repo/main")
                 return subprocess.CompletedProcess(cmd, 0, porcelain, "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")

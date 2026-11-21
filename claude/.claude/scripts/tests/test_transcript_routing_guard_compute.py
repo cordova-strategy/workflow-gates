@@ -18,7 +18,7 @@ from typing import NamedTuple
 import _config
 import _config_dir
 import pytest
-from helpers import REPO_ROOT
+from helpers import REPO_ROOT, stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import corpus, pricing, review_rounds, review_trace, routing_guard
 
 from ._pr_cost_helpers import _enable_pr_cost
@@ -54,9 +54,7 @@ from .conftest import (
     _init_repo,
     _priced,
     _skill_block,
-    _stub_git_worktree_listing,
     _user_msg,
-    _worktree_porcelain,
     _write_jsonl,
     _write_subagent_dispatch,
 )
@@ -1951,7 +1949,7 @@ class TestUnlistedDenyRemedyCommand:
         _write_jsonl(project_dir / "removed-worktree-session.jsonl", [
             _hook_deny_current("Commit blocked by code-review gate: run /code-review.", branch="gone"),
         ])
-        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
 
         args = _mod.build_parser().parse_args(self._remedy_argv(tmp_path))
         review_trace.cmd_review_trace(args)

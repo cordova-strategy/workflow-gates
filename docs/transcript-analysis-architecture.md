@@ -32,7 +32,9 @@ handler reads at call time, not `cli.py`.
 JSONL transcript read/parse and session iteration: `iter_sessions`, `read_session_file`,
 `SUBAGENT_SUBDIR` (the `<session_id>/subagents/*.jsonl` split-transcript convention),
 `CONVERSATION_RECORD_TYPES` (the record types a walk over `message.content` must filter to), `_parse_ts`,
-and `_index_subagent_dispatches` (one session's toolUseId → paired subagent `.jsonl`/requested-model
+`_session_source_files` (one session's main file, then its sorted subagent files), `_branch_prefilter`
+(the `--this-repo` `--branches` skip of a session no filtered name can match), and
+`_index_subagent_dispatches` (one session's toolUseId → paired subagent `.jsonl`/requested-model
 join). The harness writes every nested dispatch's `.meta.json` into the session's own flat
 `subagents/` directory. One session's index therefore also resolves a dispatch spawned from inside
 another subagent. `review_rounds.py`'s nested-dispatch descent reuses it. No dependency on scope
@@ -707,7 +709,7 @@ is the one name `build_parser()` reaches bare.
 The sessions command: `cmd_sessions`, the resolved scope's transcript paths one per line, plus split
 subagent files under `--include-subagents`, and the `_add_sessions_subparser` registration. Imports
 `corpus` and `scope` both by module (attribute access), matching `cost.py`'s convention: it reads
-`corpus.SUBAGENT_SUBDIR`. `_add_sessions_subparser` is the one name `build_parser()` reaches bare.
+`corpus._session_source_files`. `_add_sessions_subparser` is the one name `build_parser()` reaches bare.
 
 ### `context_distribution.py`
 

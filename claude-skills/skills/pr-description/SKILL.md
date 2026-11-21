@@ -86,7 +86,7 @@ Machine-managed, delimited by `<!-- pr-cost:start -->` / `<!-- pr-cost:end -->` 
 
 When the script below exits 0, its block is pre-cleared for publication (the account's `pr-cost-disclosure` sentinel is the standing approval), so embed it without asking for per-PR approval — see `docs/private-project-redaction.md` § "Publishing a tooling measurement".
 
-Resolve the section with a single script call:
+Resolve the section with one foreground Bash call with `timeout: 600000`. If the harness moves the call to the background, start no second copy, and read its exit status and stdout as below once its completion notification arrives. A harness timeout kill is not an exit status, so re-run a killed call once:
 
 ```bash
 ~/.claude/scripts/pr-cost-section.sh
@@ -103,12 +103,12 @@ Resolve the section with a single script call:
   — delete the block if one exists, no stdout.
 - **Exit 2:** enabled but the branch is the literal `HEAD` (detached) — omit
   the block and say why, no stdout.
-- **Exit 3:** branch resolved but the downstream cost report itself failed —
-  omit the block and note in the body that the report failed to generate,
-  unlike exit 1's silent deletion.
+- **Exit 3, or a call the harness killed twice:** the cost report failed or
+  never finished — omit the block and note in the body that the report failed
+  to generate, unlike exit 1's silent deletion.
 
 The sentinel check (`<config-dir>/pr-cost-disclosure`, trimmed and lowercased, exactly `dollars`) is per Claude account, not per repo: cost is an organizational fact, and each account is its own billing entity.
-Resolves that one config-dir path only — never unions it with `$HOME/.claude`, or one account's opt-in would activate disclosure under another; call the script once, it performs the sentinel check internally.
+Resolves that one config-dir path only — never unions it with `$HOME/.claude`, or one account's opt-in would activate disclosure under another; do not pre-check the sentinel yourself, the script performs that check internally.
 **One deliberate narrowing:** a sentinel consisting of a blank line followed by `dollars` reads as
 two lines and is judged disabled, where a whitespace-collapsing read would have judged it enabled
 — in the direction this gate already prefers (under-disclosing over guessing). Session/turn counts,

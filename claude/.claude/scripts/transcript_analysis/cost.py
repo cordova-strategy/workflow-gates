@@ -272,6 +272,21 @@ def cmd_cost(args: argparse.Namespace) -> None:
     _cost_report(args, datetime.now(UTC).date(), roots)
 
 
+def _admitted_scope_holds_a_sidechain_turn(args: argparse.Namespace, roots: Sequence[Path] | None) -> bool:
+    """True when any admitted session holds an assistant record flagged isSidechain.
+
+    The subagent-format canary is sound only over every admitted session: a branch whose dispatches a hook denied
+    holds a spawn and no subagent turn.
+    Tests raw records, because every dedup path fires the per-run usage canary and the NOTICE lines on each session it reads.
+    """
+    session_iter, _scope_label = scope._resolve_project_scope(args, "cost", include_subagents=True, roots=roots)
+    for _jsonl, records in session_iter:
+        for rec in records:
+            if isinstance(rec, dict) and rec.get("type") == "assistant" and bool(rec.get("isSidechain")):
+                return True
+    return False
+
+
 def _accumulate_per_account_turn(
     account_totals: dict, dollars_by_class: dict[str, float], token_counts: dict[str, int],
     turn_total: float, model: str,
@@ -635,10 +650,17 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
     since_label = since_raw or ""
     branch_filter = scope._branch_filter(args)
 
+    # Only --summary without --since prefilters: the full report's exclusions table
+    # and the --since coverage warning read every session.
+    prefilter_names = branch_filter if summary_mode and since_ts is None else None
+    prefilter_active = corpus._branch_prefilter(prefilter_names) is not None
+
     # _resolve_project_scope's fail-closed --this-repo check runs before
     # _build_redact_map's full-corpus disk scan, so an out-of-repo failure
     # exits without paying for that scan.
-    session_iter, scope_label = scope._resolve_project_scope(args, "cost", include_subagents=True, roots=roots)
+    session_iter, scope_label = scope._resolve_project_scope(
+        args, "cost", include_subagents=True, roots=roots, branch_prefilter=prefilter_names,
+    )
 
     # Resolved once, outside the per-session loop below — _root_index_for_path
     # runs once per session (per-account ordinal resolution needs it even for
@@ -910,7 +932,13 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
                     if current_repr is None or raw_part < current_raw_part:
                         project_repr_label[project_key] = scoped_label
 
-    pricing._warn_if_subagent_format_drift(total_spawns, total_sidechain_turns)
+    if not (
+        prefilter_active
+        and total_spawns > 0
+        and total_sidechain_turns == 0
+        and _admitted_scope_holds_a_sidechain_turn(args, roots)
+    ):
+        pricing._warn_if_subagent_format_drift(total_spawns, total_sidechain_turns)
 
     if since_ts is not None:
         for ordinal, earliest_ts in sorted(root_earliest_ts.items()):

@@ -894,6 +894,20 @@ class TestCostMultiRootReport:
         assert "cost: account-1: scanned 0 transcripts, 0 skipped (unreadable)" in out
         assert "WARNING: cost: account-1: no transcripts found for this scope" in out
 
+    def test_this_repo_scan_count_includes_an_unlisted_worktree_dir(self, tmp_path, monkeypatch, capsys):
+        """A root holding only a removed worktree's directory (named under the main checkout's worktrees
+        directory, listed by no live worktree) still counts that directory's transcript in the per-root scan line."""
+        root = _write_cost_root(tmp_path, "acct-a", "-home-user-this-repo--claude-worktrees-gone", "sess-a",
+                                 [_priced("claude-sonnet-5", input=1_000_000)])
+        args = _cost_args(this_repo=True)
+        args._this_repo_slugs = ["-home-user-this-repo"]
+        monkeypatch.setattr(scope, "_repo_scoped_project_slugs", lambda *a, **k: args._this_repo_slugs)
+
+        cost._cost_report(args, date(2026, 8, 2), roots=[root])
+        out = capsys.readouterr().out
+        assert "cost: account-1: scanned 1 transcripts, 0 skipped (unreadable)" in out
+        assert "no transcripts found for this scope" not in out
+
     def test_permission_error_while_scanning_root_caught_and_reported_per_root(
         self, tmp_path, capsys
     ):

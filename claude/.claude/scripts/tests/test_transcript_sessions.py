@@ -56,3 +56,28 @@ def test_sessions_paths_emits_subagent_paths_only_under_include_subagents(
     captured = capsys.readouterr()
     assert captured.out.splitlines() == [str(fake_projects / path) for path in expected_relative_paths]
     assert "SESSIONS SOURCES (*; " in captured.err
+
+
+def test_sessions_paths_include_subagents_prints_main_then_subagent_files_in_sorted_order(fake_projects, capsys):
+    """Subagent files written out of sorted order print sorted, and an empty one still prints.
+
+    The reader drops an empty subagent file from its merge, so printing it is the documented difference.
+    """
+    _write_jsonl(fake_projects / "sess.jsonl", [_asst("claude-sonnet-5")])
+    _write_subagent_jsonl(fake_projects, "sess", "agent-beta", [_asst("claude-sonnet-5", sidechain=True)])
+    _write_subagent_jsonl(fake_projects, "sess", "agent-alpha", [_asst("claude-sonnet-5", sidechain=True)])
+    (fake_projects / "sess" / corpus.SUBAGENT_SUBDIR / "agent-gamma-empty.jsonl").touch()
+    args = cli.build_parser().parse_args(["sessions", "--paths", "--include-subagents"])
+
+    args.func(args)
+
+    captured = capsys.readouterr()
+    assert captured.out.splitlines() == [
+        str(fake_projects / relative_path)
+        for relative_path in (
+            "sess.jsonl",
+            "sess/subagents/agent-alpha.jsonl",
+            "sess/subagents/agent-beta.jsonl",
+            "sess/subagents/agent-gamma-empty.jsonl",
+        )
+    ]

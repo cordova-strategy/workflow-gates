@@ -6,6 +6,7 @@ import os
 import subprocess
 
 import pytest
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import cli, scope, skill_invocation
 
 from ._skill_helpers import _skill_inv_args
@@ -14,10 +15,8 @@ from .conftest import (
     _attr_ts,
     _bash_use,
     _skill_use,
-    _stub_git_worktree_listing,
     _table_cols,
     _user_msg,
-    _worktree_porcelain,
     _write_jsonl,
     _write_subagent_jsonl,
 )
@@ -517,7 +516,7 @@ class TestSkillInvocationRepoScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -544,7 +543,7 @@ class TestSkillInvocationRepoScope:
         monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/a/foreign/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/a/foreign/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit):
             skill_invocation.cmd_skill_invocation(argparse.Namespace(projects=None, branches=None, include_subagents=False))
@@ -587,7 +586,7 @@ class TestSkillInvocationRepoScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/r*/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/r*/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/r*/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -621,7 +620,7 @@ class TestSkillInvocationRepoScope:
             if cmd[:3] == ["git", "worktree", "list"]:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    _worktree_porcelain("/repo", "/repo/.claude/worktrees/feat"), "",
+                    worktree_porcelain("/repo", "/repo/.claude/worktrees/feat"), "",
                 )
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/.claude/worktrees/feat\n", "")
@@ -651,7 +650,7 @@ class TestSkillInvocationRepoScope:
         _write_jsonl(fork_dir / "s.jsonl", [
             _asst("claude-sonnet-4-6", branch="fork", content=[_skill_use("f1", "plan-review")]),
         ])
-        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo"), "/repo", "/repo")
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo"), "/repo", "/repo")
 
         skill_invocation.cmd_skill_invocation(argparse.Namespace(projects=None, branches=None, include_subagents=False))
         out = capsys.readouterr().out

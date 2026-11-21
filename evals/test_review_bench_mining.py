@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 import run_review_bench
 from helpers import TASK_NOTIFICATION_TEXT as _TASK_NOTIFICATION_TEXT
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from review_bench import defects, mine_pr_comments, mine_review_rounds, mine_szz
 from review_bench.defects import Candidate, ConfirmedDefect
 from transcript_analysis import corpus, review_rounds, reviewer_yield
@@ -2245,6 +2246,20 @@ class TestResolveScopedSessionsRootGuard:
         with pytest.raises(SystemExit) as exc_info:
             mine_review_rounds.resolve_scoped_sessions(roots=(root_a, root_b))
         assert exc_info.value.code == 2
+
+
+class TestResolveScopedSessionsWorktreeScope:
+    def test_reads_a_removed_worktree_dir_and_not_a_sibling_fork(self, tmp_path, monkeypatch):
+        root = tmp_path / "projects"
+        removed_worktree_dir = root / "-repo-main--claude-worktrees-gone"
+        sibling_fork_dir = root / "-repo-main-fork"
+        _write_jsonl(removed_worktree_dir / "removed.jsonl", [_assistant(branch="gone-branch")])
+        _write_jsonl(sibling_fork_dir / "fork.jsonl", [_assistant(branch="fork-branch")])
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+
+        session_paths = [jsonl for jsonl, _records in mine_review_rounds.resolve_scoped_sessions(roots=(root,))]
+
+        assert session_paths == [removed_worktree_dir / "removed.jsonl"]
 
 
 # --- mine_review_rounds: which round windows become entries -----------------

@@ -94,7 +94,7 @@ Run `/code-review` against that diff, invoking the skill with args "unrouted <pa
 
 ## 4. Skill-procedural-fidelity review (halt on findings)
 
-Check that skills this branch invoked were executed, not silently abbreviated — an independent observer, so a rationalization in the working session can't wave the deviation through. List invocations and the reviewer-spawn timeline:
+Check that skills this branch invoked were executed, not silently abbreviated — an independent observer, so a rationalization in the working session can't wave the deviation through. List invocations and the reviewer-spawn timeline with one foreground Bash call with `timeout: 600000`. If the harness moves the call to the background, start no second copy, and use its exit status and stdout once its completion notification arrives. A harness timeout kill is not an exit status, so re-run a killed call once, and halt and report only if the re-run is killed too or any call exits nonzero:
 
 ```bash
 ~/.claude/scripts/skill-fidelity-report.sh
@@ -110,7 +110,7 @@ Name the pipeline's own skills **out of scope** in the prompt (the agent body al
 
 **Halt on a silent-abbreviation finding.** The escape hatch is stating the deviation with a rationale — a low bar; that fix stays inline, prose only. A finding needing an actual code change follows step 3's `code-writer` route, not a separate dispatch. Fix it in a new commit (staged-diff `/code-review` + marker gate), return to step 2, and do not re-run this step on its own output.
 
-**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`. `<branch>` is the current branch name. Report to the human any row there of the missing reviewer type that reads `round=plan-review`, since the fidelity view dropped it.
+**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`. `<branch>` is the current branch name. Report to the human any row there of the missing reviewer type that reads `round=plan-review`, since the fidelity view dropped it. If the harness moves the rerun to the background, start no second copy, and wait for its completion notification. A killed or failed rerun leaves the finding standing; say so in the report.
 
 ## 5. PR description (unconditional; warn + fix)
 

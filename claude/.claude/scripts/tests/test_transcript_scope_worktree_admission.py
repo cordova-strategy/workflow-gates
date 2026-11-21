@@ -4,9 +4,10 @@ import os
 from collections import Counter
 
 import pytest
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import scope
 
-from .conftest import _asst, _stub_git_worktree_listing, _worktree_porcelain, _write_jsonl
+from .conftest import _asst, _write_jsonl
 
 _MODEL = "claude-sonnet-4-6"
 _WORKTREES_INFIX = "--claude-worktrees-"
@@ -141,9 +142,9 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
         root_b = tmp_path / "acct-b"
         _write_session_dirs(root_a, "-home-user-unrelated")
         _write_session_dirs(root_b, "-repo-main--claude-worktrees-gone")
-        _stub_git_worktree_listing(
+        stub_git_worktree_listing(
             monkeypatch,
-            _worktree_porcelain("/repo/main", "/repo/main/.claude/worktrees/live"),
+            worktree_porcelain("/repo/main", "/repo/main/.claude/worktrees/live"),
             "/repo/main",
             "/repo/main",
         )
@@ -161,7 +162,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
         ("porcelain", "cwd", "toplevel", "dirs_on_root", "expected_read", "expected_label"),
         [
             pytest.param(
-                _worktree_porcelain("/repo/main", "/repo/main/.claude/worktrees/live"),
+                worktree_porcelain("/repo/main", "/repo/main/.claude/worktrees/live"),
                 "/repo/main/.claude/worktrees/live",
                 "/repo/main/.claude/worktrees/live",
                 [
@@ -173,7 +174,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
                 id="linked-cwd",
             ),
             pytest.param(
-                # Hand-written: _worktree_porcelain prints HEAD and branch lines, which a bare entry does not carry.
+                # Hand-written: worktree_porcelain prints HEAD and branch lines, which a bare entry does not carry.
                 "worktree /srv/app.git\nbare\n\nworktree /srv/wt/live\nHEAD 0000\nbranch refs/heads/x\n",
                 "/srv/wt/live",
                 "/srv/wt/live",
@@ -183,7 +184,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
                 id="bare-first",
             ),
             pytest.param(
-                _worktree_porcelain("/repo/main", "/elsewhere/wt"),
+                worktree_porcelain("/repo/main", "/elsewhere/wt"),
                 "/elsewhere/wt",
                 "/elsewhere/wt",
                 ["-elsewhere-wt--claude-worktrees-gone", "-repo-main--claude-worktrees-gone"],
@@ -198,7 +199,7 @@ class TestThisRepoAdmitsUnlistedWorktreeDirs:
     ):
         root = tmp_path / "projects"
         _write_session_dirs(root, *dirs_on_root)
-        _stub_git_worktree_listing(monkeypatch, porcelain, cwd, toplevel)
+        stub_git_worktree_listing(monkeypatch, porcelain, cwd, toplevel)
         args = argparse.Namespace(this_repo=True, projects="*")
 
         sessions, label = scope._resolve_project_scope(args, "buckets", roots=[root])

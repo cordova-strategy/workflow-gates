@@ -1,9 +1,10 @@
 """Tests of conftest's shared fixtures and helpers. This file deliberately loads no transcript-analysis.py shim,
 so a fixture that comes to depend on the shim fails here first."""
 import pytest
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, scope
 
-from .conftest import _stub_git_worktree_listing, _table_cols, _worktree_porcelain
+from .conftest import _table_cols
 
 
 def test_fake_projects_patches_every_config_dir_binding_without_a_shim(fake_projects, tmp_path):
@@ -28,8 +29,8 @@ def test_cost_ledger_fixtures_patch_their_targets_without_a_shim(
 
 class TestStubGitWorktreeListingHelper:
     def test_scope_resolution_sees_the_stubbed_listing_and_working_directory(self, monkeypatch):
-        _stub_git_worktree_listing(
-            monkeypatch, _worktree_porcelain("/repo/main", "/repo/wt"), "/repo/wt/nested", "/repo/wt",
+        stub_git_worktree_listing(
+            monkeypatch, worktree_porcelain("/repo/main", "/repo/wt"), "/repo/wt/nested", "/repo/wt",
         )
 
         assert scope._repo_scoped_project_slugs("buckets") == ["-repo-main", "-repo-wt"]
@@ -40,7 +41,7 @@ class TestStubGitWorktreeListingHelper:
         ids=["other-subcommand", "listing-without-porcelain", "listing-with-extra-flag"],
     )
     def test_a_git_call_other_than_the_two_it_stubs_fails_the_test(self, monkeypatch, unstubbed_git_argv):
-        _stub_git_worktree_listing(monkeypatch, _worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
 
         with pytest.raises(AssertionError):
             scope.subprocess.run(unstubbed_git_argv)
