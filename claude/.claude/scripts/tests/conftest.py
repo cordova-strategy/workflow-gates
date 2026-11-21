@@ -956,11 +956,19 @@ def _read_result(tool_id: str, content, *, is_error: bool = False, tool_use_resu
 
 
 def _read_truncation_notice(tool_id: str) -> dict:
-    """The attachment record the harness writes beside a Read result it truncated at the token cap."""
+    """The attachment record the harness writes beside a Read result it truncated at the token cap.
+
+    The call id sits inside the `attachment` object, not on the record's top level.
+    That shape matches the harness's records as observed in transcripts. The banner value here is synthetic.
+    If a reviewer-reads report's "no read_truncation_notice" count nears its whole token-cap partial count,
+    the harness shape has drifted from this one."""
     return {
         "type": "attachment",
-        "toolUseID": tool_id,
-        "attachment": {"type": "read_truncation_notice"},
+        "attachment": {
+            "type": "read_truncation_notice",
+            "banner": "synthetic truncation banner",
+            "toolUseID": tool_id,
+        },
     }
 
 

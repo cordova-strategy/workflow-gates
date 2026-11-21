@@ -32,6 +32,7 @@ from ._reviewer_reads_helpers import (
 from .conftest import (
     _agent_use,
     _ledger_row,
+    _read_truncation_notice,
     _read_use,
     _user_msg,
     _write_jsonl,
@@ -621,3 +622,31 @@ def test_a_token_cap_flagged_call_reaching_the_last_line_adds_no_coverage_to_the
 
     assert f"covered_after insufficient ({expected_covered_after}/1);" in follow_up_line
     assert follow_up_line.endswith(f"insufficient ({expected_neither}/1)")
+
+
+@pytest.mark.parametrize(
+    ("notice_present", "expected_partial_calls_without_notice"),
+    [
+        pytest.param(True, 0, id="notice_naming_the_call_inside_its_attachment_object_is_paired"),
+        pytest.param(False, 1, id="no_notice_record_leaves_the_partial_token_cap_call_unpaired"),
+    ],
+)
+def test_a_truncated_whole_file_read_is_paired_with_its_notice_through_the_report(
+    notice_present, expected_partial_calls_without_notice,
+    fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
+):
+    # Pins the on-disk path: a real-shaped notice in a subagent transcript file reaches the notice-agreement line.
+    stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+    args, _calls = _reviewer_reads_args(monkeypatch)
+    truncated_call = _read_exchange("m1", "r1", "/repo/src/big.py", num_lines=40, total_lines=100, truncated=True)
+    notice = [_read_truncation_notice("r1")] if notice_present else []
+    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0", [_agent_use("dispatch-agent-main", _TRACKED_REVIEWER)])])
+    _reviewer_window(fake_projects, "agent-main", [*truncated_call, *notice])
+
+    notice_agreement_line = _printed_line(_report_text(args, fake_projects, capsys), "notice agreement:")
+
+    assert notice_agreement_line == (
+        f"notice agreement: partial_token_cap calls with no read_truncation_notice={expected_partial_calls_without_notice};"
+        " notices naming neither a partial_token_cap nor a size_unknown call=0;"
+        " notices naming a size_unknown call=0"
+    )

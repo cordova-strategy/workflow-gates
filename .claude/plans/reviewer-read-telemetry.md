@@ -351,8 +351,8 @@ The engineer settled these choices:
 5. A truncated whole-file Read comes with a `PARTIAL view` notice. `REFERENCES.md` records the notice's text but not which transcript record carries it. `[verified: claude-skills/skills/code-review/REFERENCES.md:196-203]` In the records staff-backend-engineer's round-2 scan read, the notice's record has three properties:
    - it is a separate `attachment` record;
    - its `attachment.type` is `read_truncation_notice`;
-   - its `toolUseID` names the Read call.
-   - `[verified: staff-backend-engineer's round-2 bounded read-only scan of transcript records, shape evidence only]`
+   - its `attachment.toolUseID`, inside the `attachment` object and not on the record's top level, names the Read call.
+   - `[verified: a count-only grep of this clone's own subagent transcripts for records holding a read_truncation_notice attachment: each such record carries one toolUseID, inside the attachment object, none before the attachment key]`
    - Whether the result text also carries the notice is `[unverified]`. The notice-agreement diagnostic tests the pairing on every run.
 6. The `user` record carrying a Read result has three properties:
    - a top-level `toolUseResult.file` with `filePath`, `startLine`, `numLines` and `totalLines`, on paged Reads as on whole-file ones;
@@ -531,7 +531,7 @@ Each dispatch prompt states the directed growth of any file it edits that alread
   - A new `_FailedRead` (`path`, `tool_use_id`, `whole_file`, `offset`, `limit_refusal`, `call_order`) lands in a new `_WindowScan.failed_reads`, defaulting to an empty tuple.
     - `limit_refusal` is `recognised`, `unrecognised` or `none`, under Approach's rules for `refused_over_limit` and `unrecognised_limit_error`. The two patterns are module constants.
     - It is read from the result's `content`, as a string or as its text blocks joined. The text itself is not kept.
-  - A new `_WindowScan.truncation_notice_tool_use_ids` holds the `toolUseID` of each `attachment` record whose `attachment.type` is `read_truncation_notice`. It is collected before the conversation-record filter at :187, which `attachment` records do not pass.
+  - A new `_WindowScan.truncation_notice_tool_use_ids` holds the `attachment.toolUseID` of each `attachment` record whose `attachment.type` is `read_truncation_notice`. It is collected before the conversation-record filter at :187, which `attachment` records do not pass.
   - `_scan_window` takes an optional `seen_failed_tool_use_ids` set (M18). A failed call's id enters it at the first failure, so a replay in the same window or a later one is skipped, and never counts in `repeated_reads`.
   - `call_order` is the record-order position of the first `tool_use` block carrying a Read's id (row 88). A replayed block takes no new number. The pending entry's other fields keep read-cost's existing handling, so read-cost's figures do not change.
   - Structured fields come from the result record's top-level `toolUseResult.file` when all three conditions hold:

@@ -284,12 +284,12 @@ def _limit_refusal(result: object) -> str:
 
 def _truncation_notice_tool_use_id(rec: dict) -> str | None:
     attachment = rec.get("attachment")
-    tool_use_id = rec.get("toolUseID")
-    is_notice = (
-        rec.get("type") == "attachment" and isinstance(attachment, dict)
-        and attachment.get("type") == _TRUNCATION_NOTICE_ATTACHMENT_TYPE
-    )
-    return tool_use_id if is_notice and isinstance(tool_use_id, str) and tool_use_id else None
+    if rec.get("type") != "attachment" or not isinstance(attachment, dict):
+        return None
+    if attachment.get("type") != _TRUNCATION_NOTICE_ATTACHMENT_TYPE:
+        return None
+    tool_use_id = attachment.get("toolUseID")
+    return tool_use_id if isinstance(tool_use_id, str) and tool_use_id else None
 
 
 def _scan_window(

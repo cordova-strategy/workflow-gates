@@ -768,6 +768,12 @@ class TestCallOrder:
         assert {failed.tool_use_id: failed.call_order, kept.tool_use_id: kept.call_order} == expected_order
 
 
+def _notice_with_attachment_tool_use_id(tool_use_id) -> dict:
+    notice = _read_truncation_notice("placeholder")
+    notice["attachment"]["toolUseID"] = tool_use_id
+    return notice
+
+
 class TestTruncationNoticeIds:
     def test_notice_ahead_of_every_conversation_record_is_collected(self):
         scan = _scan([_read_truncation_notice("r-early"), *_read_exchange("m1", "r1", "/a.py")])
@@ -775,9 +781,11 @@ class TestTruncationNoticeIds:
         assert scan.truncation_notice_tool_use_ids == {"r-early"}
 
     def test_only_a_read_truncation_notice_with_a_string_id_is_collected(self):
-        other_attachment = {"type": "attachment", "toolUseID": "r-other", "attachment": {"type": "hook_success"}}
+        other_attachment = {
+            "type": "attachment", "attachment": {"type": "hook_success", "toolUseID": "r-other"},
+        }
         idless_notice = {"type": "attachment", "attachment": {"type": "read_truncation_notice"}}
-        non_string_id_notice = {**_read_truncation_notice("x"), "toolUseID": 7}
+        non_string_id_notice = _notice_with_attachment_tool_use_id(7)
         non_attachment = {**_read_truncation_notice("r-wrong-type"), "type": "user"}
 
         scan = _scan([
@@ -788,15 +796,31 @@ class TestTruncationNoticeIds:
         assert scan.truncation_notice_tool_use_ids == {"r1"}
 
     def test_attachment_whose_type_is_not_a_read_truncation_notice_is_not_collected(self):
-        other_attachment = {**_read_truncation_notice("r1"), "attachment": {"type": "hook_success"}}
+        other_attachment = {
+            **_read_truncation_notice("r1"),
+            "attachment": {"type": "hook_success", "toolUseID": "r1"},
+        }
 
         assert _scan([other_attachment]).truncation_notice_tool_use_ids == frozenset()
 
     @pytest.mark.parametrize("tool_use_id", [7, None, ["r1"], ""])
     def test_notice_with_a_non_string_or_empty_tool_use_id_is_not_collected(self, tool_use_id):
-        notice = {**_read_truncation_notice("r1"), "toolUseID": tool_use_id}
+        notice = _notice_with_attachment_tool_use_id(tool_use_id)
 
         assert _scan([notice]).truncation_notice_tool_use_ids == frozenset()
+
+    def test_notice_whose_id_sits_only_on_the_record_top_level_is_not_collected(self):
+        # The harness writes the id inside the attachment object; a top-level id is not the notice shape.
+        top_level_only_notice = {
+            "type": "attachment", "toolUseID": "r1", "attachment": {"type": "read_truncation_notice"},
+        }
+
+        assert _scan([top_level_only_notice]).truncation_notice_tool_use_ids == frozenset()
+
+    def test_notice_id_is_taken_from_inside_the_attachment_not_the_record_top_level(self):
+        notice = {**_read_truncation_notice("r-inside"), "toolUseID": "r-top-level"}
+
+        assert _scan([notice]).truncation_notice_tool_use_ids == {"r-inside"}
 
     @pytest.mark.parametrize("non_dict_attachment", ["read_truncation_notice", ["read_truncation_notice"], None])
     def test_notice_whose_attachment_is_not_a_dict_is_not_collected_and_raises_nothing(self, non_dict_attachment):
