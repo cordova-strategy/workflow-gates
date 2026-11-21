@@ -398,6 +398,29 @@ takes no transcript gap counter, so an unreadable ledger directory shows only as
 `author_outcome._read_ledger_rows_from_file`, its disposition and `carry` constants, `_SESSION_ID_PATTERN` and
 `_REVIEW_LEDGER_DIRNAME`, `corpus._parse_ts`, and `publication_scope._this_repo_ledger_files` and `_GAP_LEDGER_DIR`.
 
+### `reviewer_reads.py`
+
+The reviewer-reads command: `cmd_reviewer_reads`, its `_add_reviewer_reads_subparser` registration, the per-window
+accumulation of each Read's outcome, and the report. It scans the main thread and each reviewer subagent window through
+`read_cost._scan_window`, which pairs the calls, and classifies each whole-file call from the structured fields that scan
+carries, in one precedence order. The follow-up and coverage figures are decided per window over line intervals, in one pass over each path's reads. A
+`_usable_record` pass reduces the record fields that the scan, the request-id deduplication, round detection and their text
+join would hash, convert, iterate or join (a non-object record, a non-string `type`, `message.id`, `requestId` or block
+`name`, a non-object or overflowing usage, non-list content, a non-string text) before they read them; other fields are not checked. It calls
+`scope._repo_worktree_paths` once and seeds `args._this_repo_slugs` from the result, so the transcript scope and the ledger
+scope use the same worktree paths. A second, subagent-inclusive iterator over the same root feeds
+`reviewer_yield.compute_reviewer_yield_data`, and an `AttributeError`, `TypeError` or `ValueError` from that pass ends it with a fixed notice, because
+`reviewer_yield` and `corpus` read some fields unguarded. The untracked-agent-type fold is its own, because
+`read_cost._fold_untracked_agent_types` merges read-cost's row type. Imports `author_outcome`, `corpus`,
+`ledger_dispositions`, `pricing`, `publication_scope`, `read_cost`, `redaction`, `render`, `review_rounds`,
+`reviewer_yield`, `scope` and `subagent_mix` all by module (attribute access). `cli.py` reads
+`_add_reviewer_reads_subparser` bare. Cross-module private reads include `read_cost`'s scanner, event and weight helpers,
+`_file_kind`, `_SeenIds`, `_skipped_input_line` and `_print_unit_caption`;
+`reviewer_yield._is_reviewer_subagent_type`, `_REVIEWER_YIELD_INSUFFICIENT` and its verdict constants;
+`redaction._repo_tracked_agent_type_names`; `subagent_mix._WITHHELD_AGENT_TYPE_LABEL`; `pricing._model_rates`,
+`_cache_read_equivalent_weights` and `_warn_if_subagent_format_drift`; and the single-account root, scope refusal and
+scope header from `publication_scope`, called with the `reviewer-reads` label.
+
 ### `ledger_common.py`
 
 Recording primitives shared by the cost-ledger and pr-cost ledgers: the generated per-config-dir

@@ -711,6 +711,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Added
 
+- **`transcript-analysis.py reviewer-reads --this-repo --since DATE --until DATE` measures how reviewer subagents' whole-file Reads came back.**
+  - It reports each whole-file call as complete, partial or refused, whether the reviewer read on afterwards, the Read share of reviewer spend, the review ledger's terminal ADDRESS, DEFER and SETTLED rows, and the harness versions and models behind the reviewer windows. See `docs/transcript-analysis.md` § "reviewer-reads".
+  - It reads this repository's live worktrees on the active account only and refuses a wider scope, as `read-cost` does. Its ledger section opens only the files named for this checkout's worktree paths.
+  - It needs both dates and exits 2 without them. There is no relative `--since Nd` form.
+  - The change is live on `git pull`.
 - **A new `agent_branch_records` config key makes both cleanup scripts snapshot a worktree's `agent-reviews/` before they remove it.**
   - **Behavior:** with the key on, `cleanup-merged-branches.sh` and `cleanup-idle-open-pr-worktrees.sh` copy and verify the directory under `~/.local/state/agent-branch-records/` before every `git worktree remove`. The key is per-account and defaults to `false`.
   - **Refusals:** a worktree whose copy fails is kept, and `cleanup-merged-branches.sh` also keeps its local and remote branch. The script then exits 1. A real run exits 1 before removing anything in the repo it is processing when the archive is unavailable. With the archive unavailable, `--list-removable` prints no list and exits 1. A key that reads as off but whose `claude-config.toml` cannot be read as on or off also refuses, even for an account that never enabled the key. A config directory or schema that cannot be resolved refuses regardless of the key. `docs/agent-branch-records.md` lists the causes.
