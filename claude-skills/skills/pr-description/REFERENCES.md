@@ -180,7 +180,7 @@ least one source):
 - AI-assistance disclosure (1 of 21, Kubernetes only): this repo's commit and
   PR attribution lines already disclose it.
 - Issue/ticket linkage (12 of 21) is not a heading either: the
-  closing-keyword bullet in `SKILL.md` already owns it.
+  ticket-reference bullet in `SKILL.md` already owns it.
 
 **Deferred: reviewer-feedback-type.** The arXiv paper's strongest
 empirical finding, but only 3 of 21 sources mention the element. A mandated
@@ -232,6 +232,14 @@ request's description," immediately followed by the reference (`Fixes
 `fixed`, `resolve`, `resolves`, `resolved`. A bare mention of the same
 issue elsewhere in the body (e.g. a citation like `(GH-754)`) does not
 create that relationship and does not auto-close the issue on merge.
+A PR that a later PR will finish gives the linked-issue relationship up on
+purpose, because the keyword that creates it also closes the issue on merge.
+GitHub does not list such a PR among the issue's linked pull requests.
+`Fixes` stays the default for single-PR tickets, so a phase PR needs a stated
+later PR to avoid it. A phase PR without one still closes its ticket. A kept
+`Part of` flips to `Fixes` only on a stated finish, because a wrongly closed
+ticket hides its remaining work while a wrongly open one stays visible in the
+tracker.
 
 **`--body-file` exists on both subcommands.** `gh pr create --help` and
 `gh pr edit --help` (gh 2.93.0) both list `-F, --body-file file`, and both

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from pathlib import Path
 
 import pytest
 from _skill_md_helpers import (
@@ -17,7 +18,7 @@ from _skill_md_helpers import (
 
 # pyproject.toml's pythonpath also puts claude/.claude/tests on the import
 # path, where these shared test helpers live.
-from helpers import SCRIPTS_DIR
+from helpers import SCRIPTS_DIR, SKILLS_DIR
 
 
 class TestPrDescriptionTwoModeDispatch:
@@ -316,6 +317,74 @@ def _missing_bullet_lead_ins(names: Iterable[str], section_text: str) -> list[st
     """
     lead_in_names = {name for line in section_text.splitlines() if (name := _bullet_lead_in(line)) is not None}
     return [name for name in names if name not in lead_in_names]
+
+
+class TestPrDescriptionTicketReference:
+    """Pin the clauses of pr-description's ticket-reference bullet (GH-1528).
+
+    Pins 1 to 4 are plain `in` checks on one clause each, because the bullet is
+    one line and `_assert_pinned_clause_right_bounded` passes only at a line or
+    bullet boundary. Each fails only when its own clause is deleted or reworded.
+    A contradicting clause inserted after a pinned clause does not fail it, and
+    no pin catches one inserted mid-bullet, so the diff review is that check.
+    The last pin runs to the bullet's end and is right-bounded, so a sentence
+    appended at the end fails it.
+    """
+
+    _LEAD_IN = "A ticket reference, when a `<TICKET-ID>` was passed in"
+
+    def _section(self):
+        return _raw_heading_section_text(_skill_file("pr-description"), "## What the body must carry")
+
+    def _bullet(self):
+        return _bullet_text(self._section(), self._LEAD_IN)
+
+    def test_ticket_reference_defaults_to_fixes_unless_a_named_source_states_a_later_pr(self):
+        """Dropping this clause leaves a phase PR with no stated way to avoid a
+        closing keyword that closes its ticket on the first merge, or drops
+        one of the three sources that may state it."""
+        assert (
+            "Include `Fixes <TICKET-ID>` in the body alongside any existing citation of it "
+            "(see REFERENCES.md for why), unless the caller, the engineer or the plan this work "
+            "implements says a later PR will finish the ticket"
+        ) in self._bullet()
+
+    def test_ticket_reference_keeps_part_of_unless_a_source_says_this_pr_finishes_it(self):
+        """Dropping this clause lets a sync upgrade a kept `Part of` citation to
+        `Fixes` with no stated finish, closing a ticket with work outstanding."""
+        assert (
+            "or the body already cites it as `Part of <TICKET-ID>` and none of them says this PR finishes it"
+        ) in self._bullet()
+
+    def test_ticket_reference_cites_part_of_with_no_closing_keyword_anywhere_in_the_body(self):
+        """Dropping the `Part of` instruction leaves a later-PR body with no stated
+        non-closing form, and dropping the bar lets a body cite `Part of` in one
+        place and carry a closing keyword before the same ID in another, which
+        closes the ticket."""
+        assert (
+            "Then cite it as `Part of <TICKET-ID>`, with no closing keyword before the ID anywhere in the body"
+        ) in self._bullet()
+
+    def test_ticket_reference_names_what_the_later_pr_covers(self):
+        """Dropping this clause leaves a reader of a `Part of` body with no
+        statement of what remains for the later PR."""
+        assert "and name what the later PR covers" in self._bullet()
+
+    def test_ticket_reference_ends_with_the_exclusion_and_unclear_means_fixes_sentences(self):
+        """Dropping the exclusion sentence lets follow-up work outside the ticket
+        or the body's own scope description pass as a later PR, and dropping the
+        last sentence leaves an unclear case with no default. Appending a clause
+        at the bullet's end fails the right bound."""
+        pinned_tail = (
+            "Follow-up work outside the ticket, and the body's own description of its scope, "
+            "are not such a statement. When it is unclear whether a later PR will finish the "
+            "ticket, and the body cites no `Part of <TICKET-ID>`, write `Fixes <TICKET-ID>`."
+        )
+        _assert_pinned_clause_right_bounded(
+            pinned_tail,
+            self._section(),
+            context="pr-description/SKILL.md: the ticket-reference bullet's closing sentences have drifted",
+        )
 
 
 class TestPrDescriptionDefaultTemplateWiring:
@@ -796,4 +865,61 @@ def test_git_feature_branch_sync_sends_a_stacked_branch_to_the_recipes_base() ->
     )
     assert _REMOVED_SYNC_UNIFORM_PRIMITIVE_SENTENCE not in skill_md_path.read_text(), (
         f"{skill_md_path}: the sentence calling the hook and the recipe one uniform detection primitive is back"
+    )
+
+
+def _layer_loading_parents() -> list[str]:
+    """Names of skills whose own text globs `.claude/skills/<name>-*/SKILL.md` for a project layer."""
+    return sorted(
+        skill_dir.name
+        for skill_dir in SKILLS_DIR.iterdir()
+        if (skill_dir / "SKILL.md").exists()
+        and f"`.claude/skills/{skill_dir.name}-*/SKILL.md`" in (skill_dir / "SKILL.md").read_text()
+    )
+
+
+def test_layer_parents_are_derived_from_every_layer_loading_skill() -> None:
+    """Control for `test_no_project_layer_under_stowed_skills_dir`: a parent whose glob literal is
+    reworded would otherwise drop out of that test's parameters without failing anything, and an
+    empty parameter list is collected as a skip."""
+    parents = _layer_loading_parents()
+    assert parents, "no skill carries a project-layer glob literal"
+    headed_as_layer_loaders = sorted(
+        skill_dir.name
+        for skill_dir in SKILLS_DIR.iterdir()
+        if (skill_dir / "SKILL.md").exists()
+        and any(
+            line.startswith("#") and "project-specific layer" in line.lower()
+            for line in (skill_dir / "SKILL.md").read_text().splitlines()
+        )
+    )
+    assert set(headed_as_layer_loaders) <= set(parents), (
+        f"skills with a project-layer heading but no glob literal: {sorted(set(headed_as_layer_loaders) - set(parents))}"
+    )
+
+
+def _stray_layer_skill_files(skills_root: Path, parent: str) -> list[Path]:
+    return sorted(skills_root.glob(f"{parent}-*/SKILL.md"))
+
+
+def test_stray_layer_detector_reports_a_seeded_layer_and_nothing_for_a_clean_root(tmp_path: Path) -> None:
+    """Control for `test_no_project_layer_under_stowed_skills_dir`: the detector must still find a
+    `<parent>-x/SKILL.md`, or that guard passes vacuously."""
+    assert _stray_layer_skill_files(tmp_path, "plan-it") == []
+    seeded_layer = tmp_path / "plan-it-x" / "SKILL.md"
+    seeded_layer.parent.mkdir()
+    seeded_layer.write_text("")
+    assert _stray_layer_skill_files(tmp_path, "plan-it") == [seeded_layer]
+
+
+@pytest.mark.parametrize("parent", _layer_loading_parents())
+def test_no_project_layer_under_stowed_skills_dir(parent: str) -> None:
+    """A parent skill reads its layer from `.claude/skills/` at the repo root, so a `<parent>-*` skill
+    under `claude-skills/skills/` never loads as a layer and installs on every stow consumer.
+    Scans `claude-skills/skills/` only."""
+    stray_layers = [path.relative_to(SKILLS_DIR.parents[1]) for path in _stray_layer_skill_files(SKILLS_DIR, parent)]
+    assert not stray_layers, (
+        f"{parent}'s project-layer glob reads `.claude/skills/` from the repo root, so a layer under "
+        f"`claude-skills/skills/` never loads and installs on every stow consumer: "
+        f"{[str(path) for path in stray_layers]}"
     )
