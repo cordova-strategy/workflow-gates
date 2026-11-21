@@ -64,6 +64,9 @@ class ReplayRunRecord:
     # process started its blocks. None when unreadable, and in a record written before these fields existed.
     runner_commit: str | None = None
     runner_dirty: bool | None = None
+    # `checks.denied_tool_calls` of the final attempt's transcript. A stored record that lacks the key reads as
+    # empty, so an empty list beside a nonzero `permission_denials` means the calls were not recorded.
+    denied_tool_calls: list[dict] = field(default_factory=list)
 
     @property
     def is_ok(self) -> bool:

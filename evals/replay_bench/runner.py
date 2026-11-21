@@ -14,7 +14,7 @@ import run_skill_evals
 from review_bench import runner as review_runner
 from review_bench.runner import EnvironmentMismatchError, EnvironmentReference, HarnessInvalidatedError
 
-from replay_bench import tasks
+from replay_bench import checks, tasks
 from replay_bench.account import Account
 from replay_bench.arms import ARMS
 from replay_bench.attempt import NO_RETRY_REASONS, AttemptResult, BlockContext, RunSettings, run_attempt
@@ -72,6 +72,7 @@ def _build_record(
         ignored_paths=list(final.capture.ignored_paths) if final.capture is not None else [],
         empty_final_text=final.empty_final_text, runner_commit=settings.runner.commit,
         runner_dirty=settings.runner.has_uncommitted_changes,
+        denied_tool_calls=checks.denied_tool_calls(final.transcript) if final.transcript is not None else [],
     )
 
 

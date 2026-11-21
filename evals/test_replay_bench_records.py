@@ -36,17 +36,19 @@ class TestWriteRun:
 
 
 class TestReadingARecordWrittenBeforeNewFieldsExisted:
-    def test_a_record_without_the_runner_and_empty_text_fields_reads_with_their_defaults(self, tmp_path):
+    def test_a_record_without_any_later_added_field_reads_with_their_defaults(self, tmp_path):
         records.write_run(tmp_path, record("t1", "toolkit"), None)
         path = records.record_path(tmp_path, "t1", "toolkit", 0)
         stored = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("runner_commit", "runner_dirty", "empty_final_text"):
+        for key in ("runner_commit", "runner_dirty", "empty_final_text", "denied_tool_calls"):
             del stored[key]
         path.write_text(json.dumps(stored), encoding="utf-8")
 
         (read_back,) = records.read_block_records(tmp_path, "t1")
 
-        assert (read_back.runner_commit, read_back.runner_dirty, read_back.empty_final_text) == (None, None, False)
+        assert (read_back.runner_commit, read_back.runner_dirty) == (None, None)
+        assert read_back.empty_final_text is False
+        assert read_back.denied_tool_calls == []
 
 
 class TestReadingARecordWithInvalidRunnerProvenance:
@@ -70,8 +72,27 @@ class TestReadingARecordWithInvalidRunnerProvenance:
         with pytest.raises(HarnessInvalidatedError, match="cannot read the run record"):
             records.read_block_records(tmp_path, "t1")
 
-    def test_a_full_object_name_and_a_bool_are_read_back(self, tmp_path):
-        stored = record("t1", "toolkit", runner_commit="a" * 40, runner_dirty=True)
+    def test_a_full_object_name_and_a_bool_are_read_back_beside_the_other_later_added_fields(self, tmp_path):
+        stored = record("t1", "toolkit", runner_commit="a" * 40, runner_dirty=True, empty_final_text=True)
+        stored.denied_tool_calls = [{"tool": "Bash", "command": "pytest -q"}, {"tool": "Edit", "command": None}]
         records.write_run(tmp_path, stored, None)
 
         assert records.read_block_records(tmp_path, "t1") == [stored]
+
+
+class TestReadBlockRecords:
+    def test_denied_tool_calls_survive_a_write_and_read(self, tmp_path):
+        written = record("t1", "toolkit")
+        written.denied_tool_calls = [{"tool": "Bash", "command": "pytest -q"}, {"tool": "Edit", "command": None}]
+        records.write_run(tmp_path, written, None)
+
+        assert records.read_block_records(tmp_path, "t1") == [written]
+
+    def test_a_record_stored_without_denied_tool_calls_reads_as_an_empty_list(self, tmp_path):
+        records.write_run(tmp_path, record("t1", "toolkit"), None)
+        path = records.record_path(tmp_path, "t1", "toolkit", 0)
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        del stored["denied_tool_calls"]
+        path.write_text(json.dumps(stored), encoding="utf-8")
+
+        assert records.read_block_records(tmp_path, "t1")[0].denied_tool_calls == []

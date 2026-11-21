@@ -462,6 +462,10 @@ live run requires `--repo-dir` naming a clean checkout whose `HEAD` starts
 with the fixture's `pinned_commit` (an abbreviated SHA), validated at
 startup.
 
+A re-pin to a commit that carries the repo-root `.rgignore` must drop the
+`.claude/plans/` paths from the fixture's keys, or expect lower recall,
+because a Grep rooted above that directory does not return them.
+
 ```bash
 # Build every dispatch command and prompt without launching anything:
 scripts/venv-run.sh python3 evals/measure_explore_recall.py --fixtures evals/fixtures/explore-recall-cases.json --dry-run
@@ -1814,9 +1818,9 @@ first block. `summarize` prints the same clause on its
 - A stored commit that is not a full hex object name, or a stored flag that is
   not a boolean, reads as unreadable in the manifest. A run record holding
   either is refused as unreadable.
-- A checkout that lacks `runner_commit`, `runner_dirty` and `empty_final_text`
-  refuses a record that carries them, because it refuses a record with an
-  unknown key.
+- A checkout that lacks `runner_commit`, `runner_dirty`, `empty_final_text` or
+  `denied_tool_calls` refuses a record that carries it, because it refuses a
+  record with an unknown key.
 - The flag sees only `evals/`, so an edit elsewhere in the checkout does not set
   it. It also misses ignored files and entries marked `skip-worktree` or
   `assume-unchanged`, and it holds no digest of an uncommitted diff.
