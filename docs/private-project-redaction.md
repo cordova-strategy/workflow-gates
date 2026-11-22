@@ -145,6 +145,27 @@ re-run and check.
   consulting `~/.claude/transcript-config-dirs`. It prints aggregates
   only. A new figure from it still takes the check under "New figures
   against the grandfathered set" below.
+- `transcript-analysis.py reviewer-reads --this-repo`, run from this
+  repository's checkout with an explicit `--since` and `--until`,
+  refuses `--projects` and a top-level `--config-dir` and reads the
+  active config directory alone, without consulting
+  `~/.claude/transcript-config-dirs`. It prints aggregates only.
+  - Its ledger section opens only regular files in
+    `<config-dir>/review-narrative-ledger/` named for one of this
+    checkout's worktree paths, by a point-in-time `lstat` that refuses
+    a symlink or named pipe unopened but detects neither a hard link
+    nor a swap between the check and the open.
+  - Both halves of its scope rest on path identity, not repository
+    identity. It does not exclude a live worktree path of this
+    checkout that another repository's checkout occupied earlier (that
+    checkout's sessions and ledger files then match as this
+    repository's), ledger rows appended from this checkout about work
+    elsewhere, a checkout of any
+    repository whose path maps to the same project-directory slug as one
+    of this checkout's worktrees, or a subagent file under an in-scope
+    session, whatever repository the subagent worked in.
+  - A new figure from it still takes the check under "New figures
+    against the grandfathered set" below.
 - A subcommand with no scope refusal of its own is not a publication
   instrument. Route it through the next section instead.
 
