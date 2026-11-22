@@ -23,6 +23,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Pre-flight item 1 ran `git log` with no range, so it also walked the base branch's history and reported almost any branch in a multi-contributor repo as shared. It now runs `git fetch origin`, then `git log --format='%ae %ce' origin/main..origin/<branch>`.
   - **Migration:** pre-flight item 1 can establish a branch as solo-contributor from that log, so the engineer no longer needs to say so.
   - The skill's word "personal" becomes "solo-contributor" throughout. The change is live on `git pull`.
+- **`select-tests.py` now runs `timing`-marked tests in a second, serial pytest pass that collects the selection and filters it with `-m`, as CI's split does, when the selection contains them and the run starts two or more workers (README's Tests section lists the other cases that run one pass).**
+  - A split run never runs the one `timing` test that starts a busy process per core, which now carries the `saturates_cpu` marker, and the README's Tests section states the rest of the split-run contract and how to run that test locally.
+  - **Migration:** a split run prints two pytest summaries and a closing stderr line.
+  - **Migration:** each pass writes report files such as `--junitxml`, so the serial pass's report file replaces the parallel pass's.
+  - **Migration:** the interpreter that runs `select-tests.py` must be able to import pytest.
 - **`transcript-analysis.py review-cost-by-size` now reads the pr-cost ledger's `review_rounds` cells instead of transcripts, so a PR's round series outlives transcript retention.**
   - It keeps each PR's one current ledger row for this checkout's origin repository, re-prices each round's stored token splits at this checkout's rate table, and excludes and counts the PRs it cannot trust. See `docs/transcript-analysis.md` § "review-cost-by-size".
   - **Migration:** `gh` is no longer required, and transcripts are no longer read.
