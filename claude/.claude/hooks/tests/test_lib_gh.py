@@ -150,8 +150,8 @@ class TestLibOriginNamesClaudeConfig:
         return _run_lib_call(f'_lib_origin_names_claude_config "{repo}"', env=env).returncode
 
     @staticmethod
-    def _repo_with_remote(tmp_path: Path, remote_name: str, url: str) -> Path:
-        repo = init_git_repo(tmp_path / "repo")
+    def _repo_with_remote(tmp_path: Path, remote_name: str, url: str, repo_dir_name: str = "repo") -> Path:
+        repo = init_git_repo(tmp_path / repo_dir_name)
         subprocess.run(["git", "remote", "add", remote_name, url], cwd=repo, check=True)
         return repo
 
@@ -161,9 +161,12 @@ class TestLibOriginNamesClaudeConfig:
             "https://github.com/someone/claude-config.git",
             "https://github.com/someone/claude-config/",
             "git@github.com:someone/workflow-gates.git",
+            "https://github.com/cordova-strategy/workflow-gates",
+            "https://github.com/cordova-strategy/workflow-gates/",
             "https://github.com/Someone/Workflow-Gates.git",
             "git@github.com:SOMEONE/CLAUDE-CONFIG.git",
             "git@github.com:someone/claude-config-notes.git",
+            "git@github.com:someone/workflow-gates-service.git",
             "https://github.com/claude-config-fans/other.git",
             "../claude-config",
         ],
@@ -171,15 +174,28 @@ class TestLibOriginNamesClaudeConfig:
             "claude_config",
             "trailing_slash_that_owner_repo_rejects",
             "workflow_gates",
+            "workflow_gates_without_dot_git_suffix",
+            "workflow_gates_with_trailing_slash",
             "mixed_case_workflow_gates",
             "upper_case_claude_config",
             "superstring_of_claude_config",
+            "superstring_of_workflow_gates",
             "owner_segment_containing_claude_config",
             "relative_path_origin",
         ],
     )
     def test_returns_zero_when_the_origin_url_contains_either_name(self, tmp_path: Path, origin_url: str) -> None:
+        """The `workflow_gates_without_dot_git_suffix` and `workflow_gates_with_trailing_slash` rows fail a helper
+        narrowed to `*workflow-gates.git*`."""
         repo = self._repo_with_remote(tmp_path, "origin", origin_url)
+        assert self._names_claude_config(repo, tmp_path) == 0
+
+    def test_returns_zero_for_a_repo_path_containing_a_space(self, tmp_path: Path) -> None:
+        """Fails a helper that drops the quotes around `$repo_root` in `git -C "$repo_root"`: the path splits into
+        several words, git finds no repository, and the helper returns 1."""
+        repo = self._repo_with_remote(
+            tmp_path, "origin", "https://github.com/someone/claude-config.git", repo_dir_name="repo with space"
+        )
         assert self._names_claude_config(repo, tmp_path) == 0
 
     @pytest.mark.parametrize(
