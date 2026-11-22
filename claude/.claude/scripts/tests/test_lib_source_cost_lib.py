@@ -580,6 +580,48 @@ def test_tail_cut_spans_moves_the_ranges_in_file_order_behind_a_bare_return(tmp_
     assert dest_file.read_text() == "l1\nl4\nl5\nl6\nl9\nl10\nreturn 0\nl2\nl3\nl7\nl8\n"
 
 
+# Lines a `while read` or `echo` rewrite would alter: backslashes, printf directives, padding, expansions and tabs.
+# A bare `-n`, `-e` or `-E` line vanishes under `echo "$line"`, because echo takes it as an option.
+_HOSTILE_LINES = [
+    r"-n \back\slash\n",
+    r"-e %s %d 100%",
+    "-n",
+    "-e",
+    "-E",
+    "   padded with spaces   ",
+    "$HOME ${USER} $(date) `id`",
+    "tab\there",
+    r"\\ double \\",
+]
+
+
+def _hostile_file(path: Path) -> Path:
+    path.write_bytes("".join(f"{line}\n" for line in _HOSTILE_LINES).encode())
+    return path
+
+
+def test_delete_spans_keeps_the_lines_it_leaves_byte_for_byte(tmp_path):
+    source_file = _hostile_file(tmp_path / "source.sh")
+    dest_file = tmp_path / "dest.sh"
+
+    result = _run_bash(f"lsc_delete_spans {shlex.quote(str(source_file))} {shlex.quote(str(dest_file))} 8-9")
+
+    assert result.returncode == 0, result.stderr
+    assert dest_file.read_bytes() == "".join(f"{line}\n" for line in _HOSTILE_LINES[:7]).encode()
+
+
+def test_tail_cut_spans_keeps_and_moves_lines_byte_for_byte(tmp_path):
+    source_file = _hostile_file(tmp_path / "source.sh")
+    dest_file = tmp_path / "dest.sh"
+
+    result = _run_bash(f"lsc_tail_cut_spans {shlex.quote(str(source_file))} {shlex.quote(str(dest_file))} 3-4")
+
+    assert result.returncode == 0, result.stderr
+    kept = [*_HOSTILE_LINES[:2], *_HOSTILE_LINES[4:]]
+    moved = _HOSTILE_LINES[2:4]
+    assert dest_file.read_bytes() == "".join(f"{line}\n" for line in [*kept, "return 0", *moved]).encode()
+
+
 def test_write_light_arm_writes_the_exact_one_line_dirname_files(tmp_path):
     results = {
         label: _run_bash(f"lsc_write_light_arm {label} {shlex.quote(str(tmp_path / label))}")

@@ -38,12 +38,13 @@ _GUARD_THAT_FAILS_ON_THE_SECOND_SOURCE = (
 
 
 def _run_script(
-    checkout: Path, *args: str, env: dict[str, str] | None = None
+    checkout: Path, *args: str, env: dict[str, str] | None = None, stdin_text: str | None = None
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(_SCRIPT), *args],
         cwd=checkout,
         env=_clean_env() if env is None else env,
+        input=stdin_text,
         capture_output=True,
         text=True,
         check=False,
@@ -180,11 +181,15 @@ def test_progress_line_marks_the_start_of_each_repetition_once(tmp_path):
     ]
 
 
-def test_header_names_the_toolchain_and_reports_none_for_a_checkout_with_no_commit(tmp_path):
+def test_header_names_the_toolchain_and_dirname_and_reports_none_for_a_checkout_with_no_commit(tmp_path):
     checkout = _make_plain_fixture(tmp_path / "checkout")
-    expected_bash_version = subprocess.run(
-        ["bash", "-c", 'printf %s "$BASH_VERSION"'], env=_clean_env(), capture_output=True, text=True, check=True
-    ).stdout
+    expected_bash_version, expected_dirname = subprocess.run(
+        ["bash", "-c", 'printf "%s\\n%s" "$BASH_VERSION" "$(command -v dirname)"'],
+        env=_clean_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\n")
 
     result = _run_script(checkout, "--iterations", "1", "--repetitions", "2")
 
@@ -193,6 +198,7 @@ def test_header_names_the_toolchain_and_reports_none_for_a_checkout_with_no_comm
     assert header["bash"] == expected_bash_version
     assert header["system"] == os.uname().sysname
     assert header["machine"] == os.uname().machine
+    assert header["dirname"] == expected_dirname
     assert header["commit"] == "none"
 
 
@@ -384,7 +390,9 @@ def test_source_failure_stops_the_pre_flight_naming_the_arm_and_printing_its_out
     scratch_parent.mkdir()
     checkout = _make_plain_fixture(tmp_path / "checkout", [failing_line])
 
-    result = _run_script(checkout, env=_clean_env(TMPDIR=str(scratch_parent)))
+    result = _run_script(
+        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+    )
 
     assert result.returncode == 1
     assert result.stdout == ""
@@ -401,7 +409,9 @@ def test_source_that_fails_only_on_a_later_pass_stops_the_first_timed_round(tmp_
     scratch_parent.mkdir()
     checkout = _make_plain_fixture(tmp_path / "checkout", [_GUARD_THAT_FAILS_ON_THE_SECOND_SOURCE])
 
-    result = _run_script(checkout, env=_clean_env(TMPDIR=str(scratch_parent)))
+    result = _run_script(
+        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+    )
 
     assert result.returncode == 1
     assert result.stdout == ""
@@ -410,6 +420,49 @@ def test_source_that_fails_only_on_a_later_pass_stops_the_first_timed_round(tmp_
     assert len(stop_lines) == 1
     assert stop_lines[0].startswith("lib-source-cost: timed: arm full, repetition 1, round 0:")
     assert list(scratch_parent.iterdir()) == []
+
+
+def test_pre_flight_stops_on_the_first_arm_that_prints_an_error_though_its_source_exits_zero(tmp_path):
+    """A kept line calling a deleted function prints `command not found`, and the harmless line after it keeps the status 0."""
+    scratch_parent = tmp_path / "scratch-parent"
+    scratch_parent.mkdir()
+    checkout = _make_plain_fixture(tmp_path / "checkout", ["plain_one", ":"])
+
+    result = _run_script(
+        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+    )
+
+    assert result.returncode == 1
+    assert result.stdout == ""
+    stop_lines = _stop_lines(result.stderr, "pre-flight")
+    assert stop_lines == ["lib-source-cost: pre-flight: arm minus-solo: exit status 0, output below"]
+    assert "arm full" not in result.stderr
+    assert _stop_lines(result.stderr, "timed") == []
+    assert list(scratch_parent.iterdir()) == []
+
+
+def test_every_child_bash_reads_stdin_from_dev_null(tmp_path):
+    """Each source records any line it reads from stdin, and the script's own stdin carries one line."""
+    stdin_log = tmp_path / "stdin.log"
+    read_stdin_line = (
+        "IFS= read -r -t 1 _stdin_line || true; "
+        f'[[ -z ${{_stdin_line-}} ]] || echo "$0" >> {shlex.quote(str(stdin_log))}'
+    )
+    checkout = _make_plain_fixture(tmp_path / "checkout", [read_stdin_line])
+
+    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2", stdin_text="leaked line\n")
+
+    assert result.returncode == 0, result.stderr
+    assert not stdin_log.exists()
+
+
+def test_checkout_under_a_directory_name_with_a_space_runs_to_a_report(tmp_path):
+    checkout = _make_plain_fixture(tmp_path / "check out")
+
+    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2")
+
+    assert result.returncode == 0, result.stderr
+    assert _lines_of_kind(_parse_report(result.stdout), "arm")[0]["label"] == "full"
 
 
 def test_floor_gate_stops_on_a_failed_source_of_the_checkouts_hook_config(tmp_path):

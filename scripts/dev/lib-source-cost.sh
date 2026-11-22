@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # lib-source-cost.sh — prices sourcing the shared hook shell library, per cluster and for a tail cut.
 #
-# Usage: lib-source-cost.sh [--iterations N] [--repetitions N]
-# --iterations defaults to 200 and --repetitions to 3, and repetitions must be at least 2.
-# Run time is about arms x iterations x repetitions x the cost of one child bash, plus one untimed pass.
+# The usage text and the flag defaults are in print_usage_and_exit below.
 # It measures the checkout it runs in, including that checkout's scripts/dev/lib-source-cost-clusters.psv.
+# lsc_arm_labels, lsc_arm_reference and lsc_applied_floor define the arms, each arm's reference and the floor.
+# figure_ms is the smallest of an arm's per-repetition minimums.
+# cost_ms is an arm's figure_ms minus its reference's, and saving_ms is the reference's minus the arm's.
+# floor_ms is the applied floor, and verdict is above when the delta's absolute value reaches it.
 #
 # Reading a before/after pair taken from two runs that no loop interleaves:
 #   Compare full's cost_ms across the two runs, never its figure_ms.
@@ -59,6 +61,7 @@ hooks_dir="$checkout_root/claude/.claude/hooks"
 cluster_file="$checkout_root/scripts/dev/lib-source-cost-clusters.psv"
 # shellcheck disable=SC2016  # Each child bash expands "$1", not this shell, and double quotes would expand it here.
 child_command='. "$1"'
+# Each child reads stdin from /dev/null, so a source that reads it ends instead of waiting on a terminal.
 
 for measured_file in _lib.sh config-keys.psv; do
   if [[ ! -r $hooks_dir/$measured_file ]]; then
@@ -76,6 +79,9 @@ snapshot_dir="$scratch_root/lookup"
 lsc_copy_measured_files "$hooks_dir" "$snapshot_dir" || exit 1
 # commit= describes the live tree when git describe runs, not the snapshot. The blob ids identify the measured bytes.
 commit=$(git describe --always --dirty 2>/dev/null) || commit=none
+# The dirname-fork arm prices whichever dirname the PATH resolves, so the header names it.
+# A PATH entry containing whitespace splits the header's dirname= token, which the report format does not handle.
+dirname_path=$(command -v dirname) || dirname_path=none
 lib_blob=$(git hash-object -- "$snapshot_dir/_lib.sh")
 config_blob=$(git hash-object -- "$snapshot_dir/_config.sh")
 spans=$(lsc_resolve_spans "$snapshot_dir" "$rows") || exit 1
@@ -96,7 +102,7 @@ preflight_stderr="$scratch_root/preflight.stderr"
 for index in "${!arm_labels[@]}"; do
   child_status=0
   "$BASH" -c "$child_command" "${arm_labels[index]}" "${arm_entry_paths[index]}" \
-    >"$preflight_stdout" 2>"$preflight_stderr" || child_status=$?
+    </dev/null >"$preflight_stdout" 2>"$preflight_stderr" || child_status=$?
   if (( child_status != 0 )) || [[ -s $preflight_stdout || -s $preflight_stderr ]]; then
     lsc_stop pre-flight "arm ${arm_labels[index]}: exit status $child_status, output below" || true
     printf 'child stdout:\n' >&2
@@ -120,8 +126,10 @@ for (( round = 0; round < total_rounds; round++ )); do
   for index in "${round_order[@]}"; do
     child_status=0
     started_micros=${EPOCHREALTIME//[!0-9]/}
-    "$BASH" -c "$child_command" "${arm_labels[index]}" "${arm_entry_paths[index]}" >/dev/null 2>&1 || child_status=$?
+    "$BASH" -c "$child_command" "${arm_labels[index]}" "${arm_entry_paths[index]}" </dev/null >/dev/null 2>&1 || child_status=$?
     finished_micros=${EPOCHREALTIME//[!0-9]/}
+    # A failure here follows a clean pre-flight, so it is environmental, such as fork exhaustion.
+    # It prints only the stop line, and no samples are kept.
     if (( child_status != 0 )); then
       lsc_stop timed "arm ${arm_labels[index]}, repetition $repetition, round $round: exit status $child_status" || exit 1
     fi
@@ -137,8 +145,8 @@ done <<<"$spans"
 report_arm_lines=$(lsc_report_arm_lines sample_minimums "$repetitions" "${arm_labels[@]}") || exit 1
 noise_micros=$(lsc_noise_floor_micros sample_minimums "$repetitions" "${arm_labels[@]}") || exit 1
 
-printf 'header bash=%s system=%s machine=%s commit=%s lib_blob=%s config_blob=%s iterations=%d repetitions=%d\n' \
-  "$BASH_VERSION" "$(uname -s)" "$(uname -m)" "$commit" "$lib_blob" "$config_blob" "$iterations" "$repetitions"
+printf 'header bash=%s system=%s machine=%s dirname=%s commit=%s lib_blob=%s config_blob=%s iterations=%d repetitions=%d\n' \
+  "$BASH_VERSION" "$(uname -s)" "$(uname -m)" "$dirname_path" "$commit" "$lib_blob" "$config_blob" "$iterations" "$repetitions"
 printf '%s' "$span_lines"
 printf '%s\n' "$report_arm_lines"
 printf 'noise-floor ms=%s\n' "$(lsc_format_ms "$noise_micros" unsigned)"

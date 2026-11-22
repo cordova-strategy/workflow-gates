@@ -12,51 +12,16 @@
 # Stops print `lib-source-cost: <stage>: <message>` to stderr and return 1.
 # A function that prints data prints nothing on a stop.
 #
-# Provides:
-#   lsc_stop                  — print a stop line, return 1
-#   lsc_flag_value_ok         — positive decimal integer with no leading zero, at least a minimum
-#   lsc_parse_clusters        — validate the cluster file, print its rows
-#   lsc_check_syntax          — bash -n on both measured files of a directory
-#   lsc_lookup_starts         — bash's start line and file for every anchor
-#   lsc_index_definitions     — every definition line of a file, by name and in order
-#   lsc_resolve_span          — one row's start, end, line count and function count
-#   lsc_check_span_overlap    — stop when two spans in one file share a line
-#   lsc_resolve_spans         — syntax check, lookup and span resolution for every row
-#   lsc_arm_labels            — the arm list, in loop order
-#   lsc_arm_entry             — the file an arm's child sources
-#   lsc_arm_reference         — the arm a row is compared against
-#   lsc_arm_kind              — cost, saving or none
-#   lsc_arm_ranges            — the ranges an arm removes from one file
-#   lsc_copy_measured_files   — copy the three measured files into a directory
-#   lsc_write_lines           — write one line per argument, an empty file for none
-#   lsc_partition_lines       — split a file's lines into those outside and inside ranges
-#   lsc_delete_spans          — write a file with ranges deleted
-#   lsc_tail_cut_spans        — write a file with ranges moved behind a bare `return 0`
-#   lsc_write_light_arm       — write the entry file of baseline, dirname-fork or param-expansion
-#   lsc_build_arm             — build one arm's directory
-#   lsc_rotated_indexes       — the arm indexes a round times, in order
-#   lsc_round_repetition      — the repetition a round belongs to
-#   lsc_fold_sample           — fold a timed sample into its arm's per-repetition minimum
-#   lsc_arm_minimums          — an arm's per-repetition minimums
-#   lsc_figure / lsc_spread   — smallest value, and largest minus smallest
-#   lsc_delta_micros          — a cost or a saving
-#   lsc_applied_floor         — the floor a compared row is judged against, and its source
-#   lsc_verdict               — above or below the floor
-#   lsc_format_ms             — microseconds as milliseconds with three decimals
-#   lsc_format_span_line / lsc_format_arm_line — report lines
-#   lsc_label_index           — an arm label's position in a label list
-#   lsc_noise_floor_micros    — baseline's spread
-#   lsc_report_arm_lines      — every arm line, from the folded minimums
-#
 # lsc_index_definitions, lsc_resolve_span, lsc_partition_lines, lsc_fold_sample
 # and lsc_arm_minimums take a caller's array by name through a nameref.
 # lsc_noise_floor_micros and lsc_report_arm_lines pass a name on to
 # lsc_arm_minimums. A caller's array must not share a name with any local or
 # nameref of the functions its name reaches. The nameref would read that local
 # instead, and bash warns of a circular name reference when it is the nameref
-# itself. The names sample_minimums, lib_lines, config_lines, lib_definitions,
-# config_definitions, lib_definition_lines and config_definition_lines are safe:
-# only lsc_resolve_spans declares them, and it takes no array by name.
+# itself. No lsc_ function declares sample_minimums. Only lsc_resolve_spans
+# declares lib_lines, config_lines, lib_definitions, config_definitions,
+# lib_definition_lines and config_definition_lines, and it takes no array by name.
+# A caller's array may therefore use any of those seven names.
 
 lsc_stop() {
   printf 'lib-source-cost: %s: %s\n' "$1" "$2" >&2
@@ -131,7 +96,7 @@ lsc_parse_clusters() {
 lsc_check_syntax() {
   local source_dir=$1 file message
   for file in _lib.sh _config.sh; do
-    if ! message=$("$BASH" -n "$source_dir/$file" 2>&1); then
+    if ! message=$("$BASH" -n "$source_dir/$file" 2>&1 </dev/null); then
       lsc_stop syntax "$file: $message"
       return 1
     fi
@@ -141,7 +106,7 @@ lsc_check_syntax() {
 # lsc_lookup_starts <dir> <rows> — prints `<name> <start-line> <file>` once per
 # distinct anchor, in first-appearance order. dir holds _lib.sh, which sources
 # _config.sh beside it, so one child reports both files' anchors.
-# The child's `$0` is `lookup`, and it ignores the source's exit status and output.
+# The child's `$0` is `lookup`, its stdin is /dev/null, and it ignores the source's exit status and output.
 lsc_lookup_starts() {
   local source_dir=$1 rows=$2
   local line_number file first last name start path reported lookup_script
@@ -163,7 +128,7 @@ shift
 for name; do declare -F "$name" || true; done
 LOOKUP_EOF
   )
-  reported=$("$BASH" -c "$lookup_script" lookup "$source_dir/_lib.sh" "${anchors[@]}") || true
+  reported=$("$BASH" -c "$lookup_script" lookup "$source_dir/_lib.sh" "${anchors[@]}" </dev/null) || true
   while read -r name start path; do
     if [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ && -n ${is_anchor[$name]+set} && $start =~ ^[0-9]+$ ]]; then
       start_of[$name]=$start
@@ -381,7 +346,7 @@ lsc_arm_entry() {
   esac
 }
 
-# lsc_arm_reference <label> — prints nothing for baseline, which has no reference.
+# lsc_arm_reference <label> — prints an empty line for baseline, which has no reference.
 lsc_arm_reference() {
   case $1 in
     baseline) printf '\n' ;;
@@ -395,7 +360,6 @@ lsc_arm_reference() {
   esac
 }
 
-# lsc_arm_kind <label> — cost for full and dirname-fork, none for baseline, saving otherwise.
 lsc_arm_kind() {
   case $1 in
     baseline) printf '%s\n' none ;;
@@ -421,9 +385,8 @@ lsc_arm_ranges() {
   done <<<"$spans"
 }
 
-# lsc_copy_measured_files <source-dir> <dest-dir> — returns 1 on the first failed
-# mkdir or cp. A caller that runs this under `|| exit` has -e off in here, so
-# the returns are explicit.
+# lsc_copy_measured_files <source-dir> <dest-dir>
+# A caller that runs this under `|| exit` has -e off in here, so the returns are explicit.
 lsc_copy_measured_files() {
   local source_dir=$1 dest_dir=$2 file
   mkdir -p -- "$dest_dir" || return 1
@@ -631,7 +594,6 @@ lsc_arm_minimums() {
 # Arithmetic and formatting
 # ---------------------------------------------------------------------------
 
-# lsc_figure <micros>... — the smallest value.
 lsc_figure() {
   local smallest=$1 value
   for value in "$@"; do
@@ -642,7 +604,6 @@ lsc_figure() {
   printf '%s\n' "$smallest"
 }
 
-# lsc_spread <micros>... — the largest value minus the smallest.
 lsc_spread() {
   local smallest=$1 largest=$1 value
   for value in "$@"; do
@@ -714,7 +675,6 @@ lsc_format_ms() {
   printf '%s%d.%03d\n' "$sign" "$((micros / 1000))" "$((micros % 1000))"
 }
 
-# lsc_format_span_line <span> — one span, as `span` line.
 lsc_format_span_line() {
   local cluster file start end line_count functions
   IFS='|' read -r _ cluster file start end line_count functions <<<"$1"
@@ -745,7 +705,6 @@ lsc_format_arm_line() {
   printf '\n'
 }
 
-# lsc_label_index <label> <label>... — prints the label's 0-based position in the list.
 lsc_label_index() {
   local wanted=$1 index
   shift
