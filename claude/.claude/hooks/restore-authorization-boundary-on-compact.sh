@@ -27,10 +27,6 @@
 # The statement depends only on the root guard, so a relative CLAUDE_CONFIG_DIR
 # skips the boundary text and keeps the statement.
 #
-# With timeout or gtimeout on PATH, a 2-second time cap bounds the stdin read, so a pipe the harness never closes
-# cannot stall the hook.
-# Without either, the read is uncapped and the settings timeout is the only bound.
-#
 # Exit 0 always — a SessionStart hook has no deny path, so erroring here would
 # only block session startup, strictly worse than silently skipping the text.
 
@@ -44,7 +40,7 @@ if ! . "${0%/*}/_lib.sh" 2>/dev/null; then
   exit 0
 fi
 
-INPUT=$(_lib_capped_for 2 cat 2>/dev/null)
+INPUT=$(cat 2>/dev/null)
 SOURCE=$(printf '%s' "$INPUT" | _lib_jq -r 'if (.source | type) == "string" then .source else empty end' 2>/dev/null)
 [ "$SOURCE" = "compact" ] || exit 0
 

@@ -28,7 +28,6 @@ from helpers import (
     fake_bin_dir,
     fake_python3,
     run_additional_context_session_start_hook,
-    run_hook_on_held_open_stdin,
     scaled_shim_sleep,
     session_start_additional_context,
     session_start_matchers_registering,
@@ -47,18 +46,16 @@ from scripts.tests._compaction_context_helpers import (
     write_transcript,
 )
 
-from .conftest import requires_jq, requires_timeout
+from .conftest import requires_jq
 from .test_lib_path_char_allowlist import _run_sweep
 
 RESTORE_STATE_HOOK = HOOKS_DIR / "restore-session-state-on-compact.sh"
 RESTORE_BOUNDARY_HOOK = HOOKS_DIR / "restore-authorization-boundary-on-compact.sh"
 COMPACTION_CONTEXT_SCRIPT = SCRIPTS_DIR / "compaction-context.py"
 
-# The script's and the stdin read's time caps, whose sum plus the reserve the settings timeout has to cover.
+# The script's time cap and _lib_capped_for's SIGKILL grace, which the settings timeout has to exceed.
 SCRIPT_CAP_SECONDS = 6
-STDIN_CAP_SECONDS = 2
-# The seconds the hook header leaves the settings timeout for the bootstrap and the jq calls beyond the two caps.
-BOOTSTRAP_AND_JQ_RESERVE_SECONDS = 2
+KILL_GRACE_SECONDS = 2
 # A production-scale stall far past the cap, so a hook that waited it out is told apart from one the cap killed.
 STALL_PAST_CAP_SECONDS = 60
 
@@ -100,6 +97,12 @@ def _relocated_hook(tmp_path: Path, *, with_lib: bool = True, with_script: bool 
     if with_script:
         (hooks_dir.parent / "scripts").symlink_to(SCRIPTS_DIR)
     return hooks_dir / RESTORE_STATE_HOOK.name
+
+
+requires_timeout = pytest.mark.skipif(
+    shutil.which("timeout") is None and shutil.which("gtimeout") is None,
+    reason="neither timeout(1) nor gtimeout(1) available -- BSD/macOS without coreutils",
+)
 
 
 @requires_jq
@@ -278,10 +281,7 @@ class TestFailOpen:
         _assert_silent(silent)
         _assert_emits_state_block(_run_hook(RESTORE_STATE_HOOK, _payload(transcript), isolated_home))
 
-    # Both timing tests that scale caps stub python3.
-    # Every run of the real script with timeout or gtimeout on PATH therefore uses the unscaled production caps:
-    # 6 s for python3, 5 s per jq call and 2 s for the stdin read.
-    # The uncapped-fallback test, with neither command on PATH, is the one run with no cap.
+    # Every other run in this file uses the unscaled production caps (6 s for python3, 5 s per jq call).
     # On a one-line transcript the script alone takes about 0.25 to 0.7 s warm and about 1 s or more with no cached
     # bytecode, and the whole hook adds a few hundred milliseconds. The 6 s cap bounds only the script call.
     # A cap kill under extreme load would surface as a JSON decode error on empty stdout.
@@ -303,24 +303,6 @@ class TestFailOpen:
         _assert_silent(silent)
         assert time.monotonic() - started < stall_seconds / 2
         _assert_emits_state_block(_run_hook(RESTORE_STATE_HOOK, _payload(transcript), isolated_home))
-
-    # The shim scales every cap in the hook, so python3 is stubbed: the real script under a scaled 6 s cap would make
-    # a slow cold start look like a stdin-cap failure.
-    @pytest.mark.timing
-    @requires_timeout
-    def test_stdin_held_open_after_a_complete_payload_emits_the_block_once_the_cap_kills_the_read(
-        self, isolated_home, tmp_path, transcript
-    ):
-        fake_bin = fake_bin_dir(tmp_path, "stdin-held-open")
-        write_scaled_timeout_shim(fake_bin)
-        path_echoing_transcript = fake_python3(fake_bin, '#!/bin/bash\necho "STATE-BLOCK $*"\n')
-
-        with assert_cap_engaged(fake_bin, production_cap=STDIN_CAP_SECONDS, command="cat"):
-            result = run_hook_on_held_open_stdin(
-                RESTORE_STATE_HOOK, _payload(transcript), isolated_home, path_echoing_transcript
-            )
-
-        _assert_emits_state_block(result, str(transcript))
 
 
 @requires_jq
@@ -426,11 +408,11 @@ class TestRegistration:
         assert len(groups) == 1
         assert len(groups[0]["hooks"]) == 1
 
-    def test_timeout_covers_the_stdin_and_script_caps_plus_the_bootstrap_reserve(self):
+    def test_timeout_exceeds_the_script_cap_plus_the_kill_grace(self):
         timeouts = session_start_registered_timeouts(RESTORE_STATE_HOOK.name)
 
         assert len(timeouts) == 1
-        assert timeouts[0] >= STDIN_CAP_SECONDS + SCRIPT_CAP_SECONDS + BOOTSTRAP_AND_JQ_RESERVE_SECONDS
+        assert timeouts[0] > SCRIPT_CAP_SECONDS + KILL_GRACE_SECONDS
 
     def test_command_uses_the_same_form_as_the_sibling_compact_hook(self):
         registrations = session_start_registrations()

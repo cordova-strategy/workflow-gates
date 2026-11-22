@@ -9,11 +9,9 @@
 # The "compact" matcher in settings.json and the .source == "compact" self-filter below must stay paired.
 #
 # Fail-open: every failure path (missing python3, jq, script, transcript, or a script error) exits 0 with no output.
-# With timeout or gtimeout on PATH, a 2-second time cap bounds the stdin read, so a pipe the harness never closes cannot stall the hook.
 # A 6-second time cap, not a byte cap, bounds the transcript read.
-# The two caps total 8 seconds of the 10-second settings timeout, leaving 2 seconds for the bootstrap and the jq calls.
-# The 2-second kill grace on each cap applies only if the capped child ignores SIGTERM.
-# Without timeout or gtimeout on PATH the stdin read and the script call run uncapped, and the settings timeout bounds the hook's wall time only.
+# The cap plus 2 seconds of kill grace leaves 2 seconds of the 10-second settings timeout for the bootstrap and the jq calls.
+# Without timeout or gtimeout on PATH the script call runs uncapped, and the settings timeout bounds the hook's wall time only.
 # The harness's kill scope for a timed-out hook is unverified.
 # A fire costs about half a second to a second because it starts python3.
 # That exceeds the usual per-fire hook budget, which is acceptable because the hook fires only after a compaction.
@@ -33,7 +31,7 @@ if ! . "${0%/*}/_lib.sh" 2>/dev/null; then
   exit 0
 fi
 
-INPUT=$(_lib_capped_for 2 cat 2>/dev/null)
+INPUT=$(cat 2>/dev/null)
 SOURCE=$(printf '%s' "$INPUT" | _lib_jq -r 'if (.source | type) == "string" then .source else empty end' 2>/dev/null)
 [ "$SOURCE" = "compact" ] || exit 0
 

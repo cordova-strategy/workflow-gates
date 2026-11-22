@@ -21,24 +21,17 @@ import subprocess
 import time
 from pathlib import Path
 
-import pytest
 from helpers import (
     CANARY_CONTENT,
     HOOKS_DIR,
     TRAVERSAL_SESSION_ID,
-    assert_cap_engaged,
-    fake_bin_dir,
     plant_traversal_canary,
-    run_hook_on_held_open_stdin,
     session_start_registered_timeouts,
-    write_scaled_timeout_shim,
 )
 
-from .conftest import _review_ledger_path, requires_timeout
+from .conftest import _review_ledger_path
 
 SESSION_MARKER_DASHBOARD_HOOK = HOOKS_DIR / "session-marker-dashboard.sh"
-# The hook's stdin time cap, pinned to the hook's literal by assert_cap_engaged.
-STDIN_CAP_SECONDS = 2
 
 # What the ledger summary tells the agent to run next.
 _LEDGER_SUMMARY_POINTER = (
@@ -914,32 +907,9 @@ class TestSessionMarkerDashboardLedgerSummary:
         assert "findings recorded" not in ctx
 
 
-class TestStdinHeldOpen:
-    @pytest.mark.timing
-    @requires_timeout
-    def test_stdin_held_open_after_a_complete_payload_emits_the_marker_status_once_the_cap_kills_the_read(
-        self, isolated_home, tmp_path
-    ):
-        sid = "sess-stdin-held-open"
-        marker_dir = isolated_home / ".claude" / ".plan-review-active.d"
-        marker_dir.mkdir(parents=True)
-        (marker_dir / sid).touch()
-        fake_bin = fake_bin_dir(tmp_path, "stdin-held-open")
-        write_scaled_timeout_shim(fake_bin)
-        path_with_scaled_timeout = f"{fake_bin}{os.pathsep}{os.environ['PATH']}"
-
-        with assert_cap_engaged(fake_bin, production_cap=STDIN_CAP_SECONDS, command="cat"):
-            result = run_hook_on_held_open_stdin(
-                SESSION_MARKER_DASHBOARD_HOOK, {"session_id": sid}, isolated_home, path_with_scaled_timeout
-            )
-
-        assert result.returncode == 0
-        assert "plan-review-active" in _additional_context(result)
-
-
 class TestSessionMarkerDashboardRegistration:
     def test_registered_with_a_ten_second_timeout(self):
-        """The registered timeout is the outer bound on the hook.
+        """The hook reads stdin without a cap, so the registered timeout is the only bound on that read.
 
         The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery").
         10 s is a chosen ceiling matching the sibling compact hooks' registered timeout.
