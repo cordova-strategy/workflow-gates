@@ -68,7 +68,7 @@ jq -n -r 'input as $key | [inputs] | map(select(all(.a, .b, .c, .d, .e; .pass)))
   - P17c1: unconfirmed. The clause survives in `P17-project_family/run3.md` only, and runs 1 and 2 drop it.
   - Other flips, not gated (`stage1-results.md` line 39): P08c1 and P08c2 are unconfirmed, because all three `P08-declared_config_dirs` runs drop them. P08c3 is kept in a rewritten pointer form in runs 2 and 3.
 - **Condition c.** Control R1 had a clause deleted in 3 of 3 runs (`stage1-results.md` line 44), so the condition fails.
-  - R1's clause is "a lockout stalls every job sharing that key". Each run calls it an unsourced cause-and-effect claim, not a restatement, and its proposed replacement omits it (`R1-schedule_retry/run1.md` lines 26 to 36, `run2.md` lines 21 to 36, `run3.md` lines 5 to 15). Runs 2 and 3 offer sourcing it as an alternative to deleting it.
+  - R1's clause is "a lockout stalls every job sharing that key". Each run calls it an unsourced cause-and-effect claim, not a restatement, and its proposed replacement omits it (`R1-schedule_retry/run1.md` lines 26 to 36, `run2.md` lines 21 to 36, `run3.md` lines 5 to 15). All three runs offer sourcing it as an alternative to deleting it.
   - K1's one edit is in `K1-fetch_report/run3.md`. It asks for a version and a locatable source and changes no reason or trigger, in 1 of 3 runs.
 - **Condition d: candidates 1, confirmed 1.** Condition d is met as a NO-GO trigger in its own right, alongside conditions a and c.
   - P27c1 is deleted in `P27-print_resolved_scope/run2.md` (lines 5 to 25) and `run3.md` (lines 7 to 13). Run 1 keeps it with a pointer (line 37).
