@@ -215,6 +215,31 @@ class TestScanTimingMarks:
             ),
             pytest.param(
                 {"sub/test_a.py": MARKED_TEST_TEXT},
+                [], ["-m", "sub"], (),
+                id="marker-value-naming-a-directory-is-not-a-path",
+            ),
+            pytest.param(
+                {"sub/test_a.py": MARKED_TEST_TEXT},
+                [], ["-n", "sub"], (),
+                id="workers-value-naming-a-directory-is-not-a-path",
+            ),
+            pytest.param(
+                {"sub/test_a.py": MARKED_TEST_TEXT},
+                [], ["--numprocesses", "sub"], (),
+                id="numprocesses-value-naming-a-directory-is-not-a-path",
+            ),
+            pytest.param(
+                {"sub/test_a.py": MARKED_TEST_TEXT},
+                [], [""], ("sub/test_a.py",),
+                id="empty-caller-argument-is-the-repo-root-as-pytest-reads-it",
+            ),
+            pytest.param(
+                {"sub/test_a.py": MARKED_TEST_TEXT},
+                [], ["::x"], (),
+                id="node-id-fragment-without-a-path-is-not-a-path",
+            ),
+            pytest.param(
+                {"sub/test_a.py": MARKED_TEST_TEXT},
                 [], ["sub"], ("sub/test_a.py",),
                 id="bare-caller-argument-naming-a-directory-is-a-path",
             ),
@@ -477,7 +502,7 @@ markers =
 # Names the ids file of a run that is not an xdist worker.
 NO_WORKER_IDS_FILE_STEM = "no-xdist-worker"
 
-# Writes each selected node ID, post-deselection, to a per-worker file under the directory the environment names.
+# Writes each selected node ID to a per-worker file under the directory the environment names.
 # The hook runs after -m deselection (so the IDs are the selected tests in one format under any verbosity). Each xdist
 # worker writes its own file, so the file count is the worker count, and a run without workers writes one file.
 CONFTEST = f"""\
@@ -742,6 +767,16 @@ class TestPlannedPassesAgainstRealPytest:
         )
         assert unsplit_run.exit_code == ExitCode.OK, unsplit_run.output
         assert split_shape_run.exit_code == ExitCode.USAGE_ERROR, split_shape_run.output
+
+    def test_an_empty_argument_collects_the_invocation_directory_while_a_node_id_fragment_alone_is_a_usage_error(
+        self, project,
+    ):
+        empty_argument_run = self._run_pytest(project, ["--collect-only", ""])
+        fragment_run = self._run_pytest(project, ["--collect-only", "::x"])
+
+        assert empty_argument_run.exit_code == ExitCode.OK, empty_argument_run.output
+        assert f"{MARKED}test_timing_serial" in empty_argument_run.node_ids
+        assert fragment_run.exit_code == ExitCode.USAGE_ERROR, fragment_run.output
 
     @pytest.mark.parametrize(
         "caller_args",

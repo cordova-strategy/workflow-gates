@@ -146,7 +146,8 @@ def _caller_paths(caller_args: Sequence[str], repo_root: Path) -> list[str]:
     paths = []
     for index, arg in enumerate(caller_args):
         path_part = arg.split(_NODE_ID_SEPARATOR, 1)[0]
-        if index in option_value_indexes or arg.startswith("-") or not path_part:
+        # Pytest reads an empty argument as the invocation directory, and an argument starting with `::` as a usage error.
+        if index in option_value_indexes or arg.startswith("-") or arg.startswith(_NODE_ID_SEPARATOR):
             continue
         candidate = os.path.normpath(os.path.join(repo_root, path_part))
         if Path(candidate).is_relative_to(root) and os.path.exists(candidate):
