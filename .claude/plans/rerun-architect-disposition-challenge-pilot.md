@@ -17,7 +17,7 @@ Intended outcome: a window that opens only after the thresholds sit in a private
 
 ## Approach
 
-Fix the second window's five values in a private dated file and push them in a PR that adds a note to the existing pilot record, and only then read the first-window copy once more, for its safety read. The note says the first window ended not evaluated, publishes the five values, and fixes the second window's routing arm and per-session analysis set, citing the record's own enable, window and close bookkeeping rather than restating it.
+Fix the second window's six values in a private dated file and push them in a PR that adds a note to the existing pilot record, and only then read the first-window copy once more, for its safety read. The note says the first window ended not evaluated, publishes the six values, and fixes the second window's routing arm and per-session analysis set, citing the record's own enable, window and close bookkeeping rather than restating it.
 
 **Sequence.**
 
@@ -25,14 +25,14 @@ Fix the second window's five values in a private dated file and push them in a P
    - Confirm its directory lies outside every git working tree (`git -C <dir> rev-parse --is-inside-work-tree` does not print `true`) and, by `realpath`, outside the checkout and the config dir. Confirm the directory is mode `0700` and each file `0600`. On any failure, move the copy whole into a new directory made with `mkdir -m 0700` that passes.
    - Record privately the copy's modification-date cutoff, and the first window's enable and disable times with each time's source (rows 20, 24).
    - Run the record's "Path set" selection over the copy's file names alone, taking the PRs open at any point since the cutoff, a span that needs no row read to cover the key-on interval. Move the files it leaves out into their own private directory under M1.
-2. **The values, then the PR (M2-M4).** The engineer writes the five values the record's "Withheld values" bullet names into a dated file in `<private-dir>`. One `code-writer` dispatch adds the note, with the values the engineer hands the session from that file. The commit carrying them is pushed and the PR opens. No further row of the first-window copy is read before that push (row 23).
+2. **The values, then the PR (M2-M4).** The engineer writes the five values the record's "Withheld values" bullet names, and the minimum dispute count (row 31), into a dated file in `<private-dir>`, with the earlier proposal's values and date beside them so the note can say in words which value moved after the engineer saw the counts (rows 33, 34). One `code-writer` dispatch adds the note, with the values the engineer hands the session from that file. The commit carrying them is pushed and the PR opens. No further row of the first-window copy is read before that push (row 23).
 3. **The first window's safety read (M7).** Run the record's "Safety guardrail" read over the rows of the files step 1 selected, in the first window's key-on interval. A failure means not adopted: the record's "Action for not adopted" bullet applies, and this plan goes to step 6.
 4. **Arm, dry run, enable (M5, M6).**
    - Once the routing default is decided, set the arm M5 names, as `docs/config-file.md` § "Writing a value" describes.
    - Run M6's dry run.
    - Meet afresh every precondition the record's § "Enabling, checking, disabling" lists, carrying none from the first window, plus four more: the routing default decided, the note's PR merged, the dry run passed, and step 3 passed. Enable and record the time as that section says.
    - Start each window session after the enable, or `/compact` a running one, so its config-keys row shows the key on. Change no routing value during the window.
-5. **Close and evaluate (M1, M4, M6).** Take the copy the record's "Input" bullet describes into a new directory under M1. Run M6's selection that same day (G1), and record each session's inclusion and its reason privately. Compare the note's five values at its merge commit with the private values file, and disclose any later commit that touched them. Tally and evaluate as the record's § "Pre-registration, fixed before enabling" and § "Reader contract" say, with the note's narrowing, and publish under M4.
+5. **Close and evaluate (M1, M4, M6).** Take the copy the record's "Input" bullet describes into a new directory under M1. Run M6's selection that same day (G1), and record each session's inclusion and its reason privately. Compare the note's six values at its merge commit with the private values file, and disclose any later commit that touched them. Tally and evaluate as the record's § "Pre-registration, fixed before enabling" and § "Reader contract" say, with the note's narrowing, and publish under M4.
 6. **Dispose (M1)** of both copies, the split-off files included, once the outcome record lands, or when the re-run is abandoned, with the dated reminder M1 sets.
 
 **Alternatives set aside.**
@@ -49,7 +49,7 @@ Fix the second window's five values in a private dated file and push them in a P
 
 **Root problem:** The first window cannot be evaluated: no values file was found to show a value fixed before its rows, and no session of this repository in it is a clean arm under the engineer's exclusions (rows 21, 22). The re-run must:
 
-- fix and publish the five values before any further first-window row read;
+- fix and publish the six values before any further first-window row read;
 - say on the record why that window was not evaluated;
 - open a second window once the routing default is decided, under either default, with its analysis set chosen per session from recorded key state and model use.
 
@@ -70,25 +70,27 @@ Every copy stays private until it is disposed of.
   - Every read a session makes of a copy, a ledger file or a transcript, step 5's tally and cost reads included, returns fixed fields only: ids, the `model` field of assistant records and Agent dispatches, timestamps, tag values and dispositions, and counts, costs and durations computed from them. It never returns finding text or transcript text into the session. Where a judgement needs row or transcript text, the session hands the engineer only the ids it needs, and the engineer reads the text in their own terminal, outside the session.
   - Step 6 deletes both copies and the split-off files, and nothing is deleted before it (rows 8, 28, 29). The records kept after it, the tally and the selection and safety-read records, hold row identifiers, tags, verdicts and the tally's figures, never finding summaries or quotes. They stay private, as the study's numbers (row 6). At the second window's close, or when the engineer, and nobody else, declares the re-run abandoned, a dated reminder fixes the date after which the re-run counts as abandoned and step 6 falls due.
   - `anchors: row6, row8, row19, row28, row29`.
-- **M2 — The five values are fixed in a private dated file, then pushed, before any further first-window row read.**
+- **M2 — The six values are fixed in a private dated file, then pushed, before any further first-window row read.**
   - No further first-window row read precedes them, so the disclosure below stays complete.
-  - The note is the published copy (row 9), and the private file the dated one. Five numbers in two places fall under the small-duplicated-value exception that `claude/.claude/CLAUDE.md` § "Engineering Judgment" names under its single-source rule.
-  - The first window's values-before-reading order is not established, because no values file was found (row 22). The five values follow first-window tag counts the engineer was shown, so they may be informed by them (row 23). The note says both in words.
+  - The note is the published copy (row 9), and the private file the dated one. Six numbers in two places fall under the small-duplicated-value exception that `claude/.claude/CLAUDE.md` § "Engineering Judgment" names under its single-source rule.
+  - The first window's values-before-reading order is not established, because no values file was found (row 22). The six values follow first-window tag counts the engineer was shown, so they may be informed by them (row 23). The floor values (the sample floor, the correction floor and the minimum dispute count) were also chosen with a pre-window volume summary in view, whose file scope is unknown and which may include first-window rows (row 33). The note says the order and the tag-count disclosures in words beside the values, and the floor-values disclosure once, as the floor-values rule Critical files lists.
   - The second window starts fresh only in that no second-window row is read before the values are fixed, because step 4's enable follows the note's merge.
-  - `anchors: row6, row9, row22, row23`.
-- **M3 — The note is a status block plus one added section, and existing text stays unchanged.**
+  - `anchors: row6, row9, row22, row23, row31, row33, row38`.
+- **M3 — The note is a status block plus one added section, and existing text stays unchanged beyond the Known gaps edit.**
   - The engineer chose the existing record (row 5). The status block takes `.claude/rules/design-decisions.md`'s supersession shape immediately under the provenance line, because the section changes bullets of the record's own pre-registration and reader contract.
+  - The Known gaps edit is the one added sentence plus the one per-round wording change that the status block names, and no other existing line changes.
   - The section says, in words and with no count, why the first window was not evaluated (rows 21, 22). It says no values file was found, not that no value was fixed, and records D2 (row 10). The next enable opens a fresh first window with its own extension right, as the record's "Changes after enabling" step 4 gives a re-enable after a recorded disable.
   - Editing the record is no recorded disable, because the record is not among the four spans that bullet lists.
   - `anchors: row5, row10, row21, row22`.
-- **M4 — The five values publish, and a verdict that compares a figure with one publishes only on a per-verdict yes.**
-  - The note publishes the five values, superseding the "Withheld values" bullet's "never published" for those values only (row 9).
+- **M4 — The six values publish, and a verdict that compares a figure with one publishes only on a per-verdict yes.**
+  - The note publishes the six values, superseding the "Withheld values" bullet's "never published" for those values only (rows 9, 38).
   - Each verdict that compares a figure with a value publishes only with the engineer's yes at evaluation, proposed and cited as `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case" asks (rows 16, 17). The record withheld the values because a value paired with its verdict bounds the figure.
   - The adoption outcome also needs a yes at evaluation (row 18).
   - The safety-guardrail verdict compares with no value (the record's "Safety guardrail" bullet), so it publishes without an ask (row 17).
-  - Each published verdict reads "passed" or "did not pass" against its stated value or rule, in those words.
+  - A stratum reported as not evaluated, an agreement check not evaluated below the minimum dispute count, and a window called conclusive, inconclusive or extended are verdicts of the same kind, so each publishes only on a per-verdict yes (row 39).
+  - Each published pass-or-fail verdict reads "passed" or "did not pass" against its stated value or rule, in those words.
   - Every count, rate or share from either window stays under the record's Publication bullet. A later release of one takes `docs/private-project-redaction.md` § "This repository, one account"'s scope bar, or § "The owner can authorize one figure, case by case", when it is proposed (row 8).
-  - `anchors: row8, row9, row16, row17, row18`.
+  - `anchors: row8, row9, row16, row17, row18, row38, row39`.
 - **M5 — One arm value, set on the enabling account once the routing default is decided, and held through the window.**
   - The enable waits for that decision, which the engineer expects to make first (row 2).
   - `review_orchestrator_routing` is `true` if routing ended default-on (row 11), and `false` if it ended default-off, because row 3 leaves out every session with routing on and row 11 lifts that for default-on only.
@@ -126,7 +128,7 @@ Every copy stays private until it is disposed of.
 | 3 | The analysis set leaves out runs where the routing pilot ran, Fable was invoked, or Opus or Fable ran the main session | `[engineer-verified: "We should only include runs where review-orchestrator pilot wasn't running at the same time and we should exclude runs where Fable was invoked and where Opus or Fable were running the main session."]` |
 | 4 | A run is a whole session, so an exclusion drops the whole session | `[engineer-verified: "Run = whole session (Recommended)"]` |
 | 5 | The note goes on the existing record | `[engineer-verified: "I think there should be a design-record note, and I'd put it on the existing design decision record"]` |
-| 6 | Losing the study's numbers, as last time, is the worse outcome | `[engineer-verified: "Worse is if we don't commit like last time and lose the numbers for the study"]` — which numbers it means is the session's reading: the five values the note commits, and the tally M1 keeps private |
+| 6 | Losing the study's numbers, as last time, is the worse outcome | `[engineer-verified: "Worse is if we don't commit like last time and lose the numbers for the study"]` — which numbers it means is the session's reading: the six values the note commits, and the tally M1 keeps private |
 | 7 | The plan is cut back rather than taken to review round 2 | `[engineer-verified: "Cut it back (Recommended)"]` — it covers the cut-back, not which items stay |
 | 8 | The cut-back keeps six items: the existing copy with a disposal point; the five values in a private dated file before the enable; the note on the first window; the selection rule; the arm rule; and the enable once the routing default is decided. It also cites the redaction doc's per-figure route for any later figure | `[unverified]` — the session's description of row 7's option, not its label |
 | 9 | D1: the note licenses only the five values | `[engineer-verified: "License only the five values now (Recommended)"]` — read against D1's question, it covers what the note licenses now, not how a later figure publishes |
@@ -143,7 +145,7 @@ Every copy stays private until it is disposed of.
 | 20 | The copy holds every file with a first-window row | `[unverified]` — it rests on two conditions. The copy's cutoff falls at or before the first window's enable, and step 1 records the cutoff. The sweep deletes a file only once its last write is more than 30 days old: the floor is `claude/.claude/hooks/_lib.sh:5694`, the append path passes it at `claude/.claude/scripts/review-ledger.sh:696`, and `clear-stale` never goes below it (`_lib.sh:5738`). Verification checks the record's merge date against the cutoff |
 | 21 | No session of this repository in the first window passes the arm test: each ran with `review_orchestrator_routing` on or has no config-keys row, so its routing state is unknown | `[unverified]` — the dispatching session's finding, not re-read here |
 | 22 | No first-window values file was found | `[unverified]` — the dispatching session found none in any transcript or on disk, which does not rule out one written and lost |
-| 23 | Tag values of first-window rows were counted and shown to the engineer in the planning session, which precedes the five values. Which of the copy's files those counts covered, this repository's alone or other repositories' too, is unknown. Nothing records a read of a copied file | `[unverified]` — the dispatching session's and a reviewer's report. File access times are not relied on |
+| 23 | Tag values of first-window rows were counted and shown to the engineer in the planning session, which precedes the six values. Which of the copy's files those counts covered, this repository's alone or other repositories' too, is unknown. Nothing records a read of a copied file | `[unverified]` — the dispatching session's and a reviewer's report. File access times are not relied on |
 | 24 | The pilot key is off on the enabling account, so the first window has ended | `[verified: the enabling account's claude-config.toml, read in an earlier draft of this plan]` — not re-read in this revision |
 | 25 | A routing default flip cannot tell a scaffolded `false` row from a deliberate one, so the enabling account's value can differ from the new default | `[verified: docs/design-decisions/review-orchestrator-routing-gate.md:66]` |
 | 26 | A transcript shows the main session's model on its assistant records, and the model of any Fable subagent or Agent dispatch | `[unverified]` — the dispatching session's evidence. M6's dry run is the first check |
@@ -151,34 +153,54 @@ Every copy stays private until it is disposed of.
 | 28 | The first-window copy's files from other repositories stay in it for now | `[engineer-verified: "Keep for now (Recommended)"]` |
 | 29 | Those files stay whole in the copy's private directory until the path-set selection runs, then move to their own private directory, and none is deleted before step 6 | `[unverified]` — the session's description of row 28's option, not its label |
 | 30 | Some first-window rows carry `challenge:` tag values outside the region's closed set of outcome and scope values | `[unverified]` — the dispatching session's and a reviewer's report. The closed set is `[verified: claude-skills/skills/code-review/SKILL.md:437-445]` |
+| 31 | The note adds a sixth value, a minimum count of `escalated-*` rows below which the agreement check is not evaluated, because one answer at one stop could otherwise decide adoption. The engineer accepted the session's proposed minimum with the other five (row 33) | `[engineer-verified: "Yes, add it (Recommended)"]` — it covers adding the sixth value. Row 9's text records what was licensed earlier and stays unchanged. The `plan-architect` consult's reason is the session's relay, not the engineer's |
+| 32 | The sample floor applies to each stratum on its own: the window is conclusive once at least one stratum reaches it, and a stratum below it is reported as not evaluated and keeps running | `[engineer-verified: "Yes, rule (a) (Recommended)"]` — the reasons the note states are the consult's, not data |
+| 33 | The six values are accepted as proposed in the session, with the floor values chosen after the engineer saw first-window tag counts and a pre-window volume summary. Which files that summary covered, this repository's alone or other repositories' too, is unknown | `[engineer-verified: "I think that looks good."]` — it covers the proposed set, not the summary's scope. The values are in the private file only until the note publishes them |
+| 34 | An earlier proposal of the six values existed, from before the engineer saw the first-window tag counts, and the set row 33 accepts may differ from it in one or more values | `[unverified]` — the session's account of the planning session, not the engineer's statement |
+| 35 | The tag-coverage guardrail's `/review-pr` test applies per round, not per session | `[unverified]` — the session's reading of the record's text, not an engineer statement |
+| 36 | The extension choice is made from per-stratum row counts alone, before any rate is computed | `[unverified]` — the session's reading of the record's text, not an engineer statement |
+| 37 | Rows in one round are correlated, so a stratum's row count overstates its independent observations, and Known gaps gains a sentence saying so | `[unverified]` — the session's reading of the record's text, not an engineer statement |
+| 38 | The sixth value, the minimum dispute count, publishes with the other five | `[engineer-verified: "Yes, the sixth value, whatever it is, that gets published. Sure."]` — it covers publishing the sixth value. Row 9's text records what was licensed earlier and stays unchanged |
+| 39 | The not-evaluated, inconclusive and extended outcomes are verdicts under M4's per-verdict yes | `[engineer-verified: "So in your words, extend M forward to cover those outcomes. Yes"]` — the engineer's "M" is read as M4, and the wording of the extension is the session's. The engineer also said "It's completely fine to reveal row counts. Don't go crazy. Don't get paranoid." That remark names no figure or command, so it is no per-figure authorization and does not relax M4's last bullet |
 
 ## Critical files
 
 - `docs/design-decisions/architect-disposition-challenge-pilot.md` — modify, in one `code-writer` dispatch at step 2:
-  - A status block immediately under the provenance line, above the existing partial-supersession block and in its shape: a lead line, one bullet per changed site, then "Everything else here stands." The lead says the first window ended not evaluated and points to the new section. The bullets name the "Unit", "Primary metric", "Tag-coverage guardrail", "Window and sample floor", "Withheld values" and "Publication" bullets, the Reader contract's "Input" and "Tally" bullets, and the preconditions of § "Enabling, checking, disabling".
+  - A status block immediately under the provenance line, above the existing partial-supersession block and in its shape: a lead line, one bullet per changed site (13 bullets), then "Everything else here stands." The lead says the first window ended not evaluated and points to the new section. The 13 bullets name the "Unit", "Primary metric", "Tag-coverage guardrail", "Window and sample floor", "Agreement check", "Decision rule", "Withheld values" and "Publication" bullets, the Reader contract's "Input" and "Tally" bullets, the preconditions of § "Enabling, checking, disabling", and, in § "Known gaps", the bullet on whether a `/review-pr` pass appends ledger rows, whose per-session wording becomes per round, and the added sentence on correlated rows. The "Window and sample floor" bullet's sentence that the value is chosen, not sourced from any data, is marked superseded for the second window's sample floor and correction floor by the new section's floor-values disclosure, in words with no count.
   - A new section, `## Second window, fixed before re-enabling`, between `## Pre-registration, fixed before enabling` and `## Ad-hoc key-on/key-off note, outside the pre-registration`, one bullet per line, holding:
     - Why the first window was not evaluated, in words and with no count, and that the next enable opens a fresh first window with its own extension right (M3).
     - M1's rules on the first-window copy, and that its one further read is the safety read, whose pass gates the next enable (M7).
-    - The five values, one sub-bullet each, then M2's sentences on the first window's order and on what may inform the values.
+    - The six values, one sub-bullet each, then M2's sentences on the first window's order and on the tag counts that may inform the values, and in words which value moved after the engineer saw the counts, with no digit (row 34).
+    - Rules the record leaves open, stated before the values publish (rows 31, 32, 33, 35, 36, 37). They fall under M2's "may be informed by" sentence with the values, and no rule's text states or cites a count:
+      - The sample floor applies per stratum, as row 32 says. The Decision rule bullet's "every stratum" then reads "every evaluated stratum". A stratum below the floor continues only as the record's one extension, and that extension is the only continuation.
+      - The agreement check is not evaluated below the minimum dispute count.
+      - The tag-coverage guardrail's `/review-pr` exclusion applies per round, not per session.
+      - The extension choice is made from per-stratum row counts alone, before any rate is computed.
+      - The second window's floor values (the sample floor, the correction floor and the minimum dispute count) were chosen with pre-window aggregate volume in view, and no count is published. The note defines "pre-window" in words, as the span before the second window opens, and states no claim, by wording or implication, that the read covered this repository alone (row 33).
+      - Rows in one round are correlated, so a stratum's row count overstates its independent observations, a sentence in Known gaps beside the rate-with-no-interval gap.
     - M4's publication rules, one sub-bullet each.
     - M5's arm rule, and that a routing change during a window is a recorded disable.
     - M6's selection rule, with the figures it narrows and one sub-bullet per test, and its rule for a `challenge:` tag outside the closed set.
     - M1's private-directory, row-text and disposal rules, citing the "Input" bullet's modes rather than restating them.
     - The added enable preconditions: the routing default's decision, the note's merge, M6's dry run, and the first window's passed safety read.
   - The Sources line gains `docs/session-config-keys-log.md` and `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case".
-  - The added lines carry no digit outside the five values, a date and a section reference.
+  - The added lines carry no digit outside the six values, a date and a section reference.
 - No other repository file. The private artifacts stay outside the diff, under `<private-dir>`: the first-window copy and its split-off files, the values file, the safety-read record, the dry-run result, and the second window's copy, selection record and tally.
 - **Reuse:** the record's path set, copy modes, fixture set, key-off check and enable check, unchanged; the state and join rules in `docs/session-config-keys-log.md`; and `docs/config-file.md` § "Writing a value" and § "Querying a value". No script is added or changed.
 
-Projected diff: about 44 lines (about 43 additions and 1 deletion), all in the record: about 12 for the status block, about 30 for the new section, and the Sources line.
+Projected diff: 57 to 61 lines (55 to 59 additions and 2 deletions), all in the record. The unit is a line of the record, blank lines included, and a replaced line counts as one deletion plus one addition.
+- 17 for the status block: the lead line, its 13 bullets, the closing line and two blank lines.
+- 35 to 39 for the new section. 35 is its heading, the bullets and sub-bullets listed above and its blank lines. Up to 4 more apply if M2's two sentences, the which-value-moved sentence and the closed-set rule each take a line of their own.
+- 3 for the Known gaps sentence as a new bullet and the per-round wording change as a replaced line.
+- 2 for the Sources line, replaced.
 
 ## Verification
 
-- `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes on the branch. `claude-skills/skills/tests/test_code_review_challenge_and_round_cap.py` reads this record for the region's tag tokens, and an additive note keeps every one.
-- `git diff origin/main -- docs/design-decisions/architect-disposition-challenge-pilot.md` shows only the status block, the new section in its named place, and the Sources line. Every other line of the record is unchanged.
+- `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes on the branch. `claude-skills/skills/tests/test_code_review_challenge_and_round_cap.py` reads this record for the region's tag tokens, and the note keeps every one, its Known gaps wording change included.
+- `git diff origin/main -- docs/design-decisions/architect-disposition-challenge-pilot.md` shows only the status block, the new section in its named place, the Known gaps sentence and per-round wording change, and the Sources line. Every other line of the record is unchanged.
 - Each `§ "..."` citation the new text adds matches a heading in its target file, checked with `Grep` for the heading literal.
-- `git diff -U0 origin/main -- docs/design-decisions/architect-disposition-challenge-pilot.md | grep -E '^\+[^+]' | grep -oE '[0-9]+'` prints every digit run in the added lines, and each one is part of one of the five values, a date, or a section reference.
-- A read-back of the new text finds no private path, session id, or enable or disable time, and no count from the config-keys log, a transcript or a copy. It finds the five values matching the private file, and each existing rule the note relies on cited by section, not restated.
+- `git diff -U0 origin/main -- docs/design-decisions/architect-disposition-challenge-pilot.md | grep -E '^\+[^+]' | grep -oE '[0-9]+'` prints every digit run in the added lines, and each one is part of one of the six values, a date, or a section reference.
+- A read-back of the new text finds no private path, session id, or enable or disable time, and no count from the config-keys log, a transcript or a copy. It finds the six values matching the private file, and each existing rule the note relies on cited by section, not restated. The read-back also checks the added prose for spelled-out quantities that the digit check cannot see, and for reasons phrased as observations about the window's data rather than as design rationale, row 31's reason included.
 - Before push, the digit check and read-back above also run on the commit message, the PR body and the plan file, where no digit run may be a count from the config-keys log, a transcript or a copy.
 - `/code-review` on the staged diff.
 - Private steps, checked outside the repository and recorded privately:
@@ -192,7 +214,9 @@ Projected diff: about 44 lines (about 43 additions and 1 deletion), all in the r
     - Step 1 checks row 19's location and modes.
     - The merge-date check above settles row 20.
     - The dry run is the first observation of rows 26 and 27.
-  - Rows 8, 12, 13, 17 and 29, which record the session's readings and design, not checked facts.
+  - Rows 8, 12, 13, 17, 29, 35, 36 and 37, which record the session's readings and design, not checked facts.
+  - Row 34, the session's account of the planning session, which this plan cannot check.
+  - The scope of row 33's volume summary, which is unknown.
   - Row 24, read in an earlier draft and not re-read here.
 
 ## Out of scope
