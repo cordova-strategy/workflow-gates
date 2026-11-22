@@ -77,6 +77,14 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - `--repair` now exits 1 before it stows `claude` when moving a dangling link into the backup dir fails, including a link the `claude` package does not link, such as a `projects` link to an unmounted disk. `~/.claude/hooks` then stays unlinked until the backup dir is fixed.
   - Other accounts' config dirs and linked worktrees stay manual (README "Repo relocation").
   - **Migration:** if `~/.claude/skills` is a dangling symlink after a past relocation, run `relocate-claude-config --repair <new-path>` and then `./install.sh` from the checkout. Otherwise run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
+- **`relocate-claude-config` now re-points, in both modes, links in each config dir listed in `~/.claude/transcript-config-dirs` other than `~/.claude`, keeping a copy of each old link in `~/.claude-config-relocate-backup`.**
+  - Listing a dir there now gives this command write access to its links, whether or not the transcript tools scan it, and deleting the dir's line keeps the command away from it and also drops it from the transcript tools' scan.
+  - `--repair <new-path>` reaches every listed account, so its destination is trusted for each of them.
+  - A dangling link at one of this repo's package paths is re-pointed when its text ends in that path, whichever checkout its text named.
+  - A run that exited 0 before can exit 3 now, when a dir under a listed dir, or the listed dir itself, cannot be searched. It can also exit 3 when a link needs re-pointing and its listed dir, a dir under it, or the backup dir is unwritable (a dir with nothing to re-point is not written), or when a link cannot be re-pointed for another reason. The retry is `--repair`.
+  - Backups now get a unique `<name>.<suffix>` name, with or without the file, so two same-named links in one run no longer replace each other's backup.
+  - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
+  - **Migration:** after a relocation that left a listed account's links pointing at the old location, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.
 - **Eval instruments that launch `claude -p` no longer score a prompt a hook blocked as a model miss, except a plain-text block from a hook that prints no `main-session-rules: prompt blocked` line.**
   - `run_skill_evals.py`, the subagent model resolution experiment and the explore recall gate raise `BlockedPromptError`, and review bench records the run missing with reason `blocked-prompt`.
   - `run_skill_evals.py`'s plain-text calls recognize only stdout carrying `main-session-rules: prompt blocked`.

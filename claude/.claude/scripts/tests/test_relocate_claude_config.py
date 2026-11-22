@@ -712,7 +712,7 @@ class TestClaudeCliMissing:
         old_repo = _make_repo(tmp_path, "old-repo")
         _stow(old_repo, home)
 
-        # A PATH containing every external tool the script calls (readlink,
+        # A PATH containing every external tool this run reaches (readlink,
         # dirname, basename, mv, mkdir, stow, install, cat, head, tr) and bash for
         # its shebang, but no claude -- so `command -v claude` fails. Mirrors
         # test_cleanup_merged_branches.py's TestGhMissing technique.
@@ -913,10 +913,10 @@ class TestRelinkPackagesBatch:
             source "$1"
             RELINK_PACKAGES=("$3" "$4")
             relink_packages "$2"
-            printf 'failed-after-batch=%s\\n' "${RELINK_FAILED_PACKAGES[*]}"
+            printf 'failed-after-batch=%s\\n' "${RELINK_FAILURES[*]}"
             RELINK_PACKAGES=("$4")
             relink_packages "$2"
-            printf 'failed-after-rerun=%s\\n' "${RELINK_FAILED_PACKAGES[*]}"
+            printf 'failed-after-rerun=%s\\n' "${RELINK_FAILURES[*]}"
         """)
 
         result = subprocess.run(
@@ -944,7 +944,7 @@ class TestRelinkPackagesBatch:
         (home / ".claude").symlink_to(own_claude_dir)
         checkout = _make_repo(tmp_path, "checkout")
 
-        script = 'source "$1"; relink_packages "$2"; echo "${RELINK_FAILED_PACKAGES[*]}"'
+        script = 'source "$1"; relink_packages "$2"; echo "${RELINK_FAILURES[*]}"'
 
         result = subprocess.run(
             ["bash", "-c", script, "_", str(_SCRIPT), str(checkout)],
