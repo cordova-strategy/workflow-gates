@@ -77,7 +77,7 @@ How the lookup child runs:
 - It sets `shopt -s extdebug`, sources its copy, and runs `declare -F` on every anchor, which prints each one's start line and source file.
 - It is `"$BASH"`, the interpreter that already passed the floor gate, so the copied `_config.sh` clears its own floor check.
 - It sources only the copy of `_lib.sh`, which sources the copy of `_config.sh` beside it, so one child reports both files' anchors (row 6).
-- It sources a dedicated `lookup` copy that no arm times, so a source-time side effect cannot reach an arm's directory.
+- It sources a dedicated `lookup` copy that no arm times, so a stray file the source writes cannot reach an arm's directory.
 - Its `$0` is `lookup`.
 - It ignores the source's exit status and output. The pre-flight judges source health once per arm, naming the arm.
 - It runs only after `bash -n` passes on both copies, because a source with a syntax error defines only the functions above the error and shows no cause (row 42).
@@ -153,7 +153,6 @@ The four kinds of line:
   - `bash=` is `$BASH_VERSION`.
   - `system=` and `machine=` are `uname -s` and `uname -m`.
   - `dirname=` is the `dirname` the PATH resolves, the one the `dirname-fork` arm priced.
-    - The value is `none` when the PATH has none.
   - `commit=` is `git describe --always --dirty`, or `none` when that fails.
   - `lib_blob=` and `config_blob=`, then `iterations=` and `repetitions=`.
   - The line carries no hostname or load average. The `dirname=` path is its one machine-specific value.
@@ -306,7 +305,7 @@ Every run shares one timeout, a module constant of 120 s, whose comment calls it
 - The planted-cost run starts 43 child bashes: one lookup, two `bash -n`, 8 pre-flight and 32 timed. That is about 3 s at the same per-source minimum. It also sleeps 1.1 s, which is 0.1 s in each of 11 sources that keep the span: the lookup, 2 pre-flight sources and 8 timed ones, from `full` and `control` over four rounds. It is the slowest case, at about 4.1 s.
 - The margin of at least 29-fold over the 120 s timeout covers a loaded `-n auto` full-suite run.
 
-**Posting.** After the branch passes review, the session runs the script with defaults from the worktree root as a background Bash call. A foreground call's timeout can kill a run of several minutes, and a killed run skips the `EXIT` trap. The session checks Verification step 6's relations, then shows the engineer the output. Only on the engineer's yes does it post a #1117 comment (rows 3, 4). The comment gives:
+**Posting.** After the branch passes review, the session runs the script with defaults from the worktree root as a background Bash call. A foreground call's timeout can kill a run of several minutes. The session checks Verification step 6's relations, then shows the engineer the output. Only on the engineer's yes does it post a #1117 comment (rows 3, 4). The comment gives:
 
 - each cluster's saving with its `floor_ms`, `floor_from` and verdict;
 - the total, the tail-cut saving and the `dirname` comparison, each with the same three fields;

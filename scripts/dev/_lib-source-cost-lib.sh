@@ -442,7 +442,7 @@ lsc_partition_lines() {
 
 # lsc_delete_spans <source-file> <dest-file> <range>...
 # Rewrites the file through a line array, with no sed -i, head or tail form:
-# their flags differ between GNU and BSD. The output ends in a newline.
+# their flags differ between GNU and BSD.
 lsc_delete_spans() {
   local source_file=$1 dest_file=$2
   shift 2
@@ -536,8 +536,8 @@ lsc_build_arm() {
 # Rounds and the per-repetition minimum
 # ---------------------------------------------------------------------------
 
-# lsc_rotated_indexes <round> <arm-count> — prints the arm indexes round k times,
-# space-separated, starting at index k mod arm-count and wrapping.
+# lsc_rotated_indexes <round> <arm-count> — prints the order the arms run in <round>,
+# space-separated, starting at index <round> mod <arm-count> and wrapping.
 lsc_rotated_indexes() {
   local round=$1 arm_count=$2 offset index
   local -a order=()

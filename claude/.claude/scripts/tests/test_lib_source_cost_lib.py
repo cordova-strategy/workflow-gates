@@ -41,7 +41,7 @@ def _stdout_lines(result: subprocess.CompletedProcess) -> list[str]:
 
 
 def _assert_stop(result: subprocess.CompletedProcess, stage: str, *fragments: str) -> None:
-    """A stop exits 1, prints nothing on stdout and one `lib-source-cost: <stage>:` line on stderr."""
+    """A stop exits 1, prints nothing on stdout and at least one `lib-source-cost: <stage>:` line on stderr."""
     assert result.returncode == 1, result.stderr
     assert result.stdout == ""
     stop_lines = [line for line in result.stderr.splitlines() if line.startswith(f"lib-source-cost: {stage}:")]
@@ -489,19 +489,37 @@ def test_check_span_overlap_accepts_adjacent_spans_and_spans_in_different_files(
     assert result.returncode == 0, result.stderr
 
 
+def test_check_span_overlap_accepts_disjoint_spans_when_the_later_row_is_at_lower_lines():
+    result = _run_bash("lsc_check_span_overlap '1|b|_lib.sh|10|12|3|1\n2|a|_lib.sh|3|9|7|2'")
+
+    assert result.returncode == 0, result.stderr
+
+
 @pytest.mark.parametrize(
-    "overlapping_spans",
+    ("overlapping_spans", "named_lines"),
     [
-        "1|a|_lib.sh|3|9|7|2\n2|b|_lib.sh|9|12|4|1",
-        "1|a|_lib.sh|3|20|18|4\n2|b|_lib.sh|5|8|4|1",
-        "1|a|_lib.sh|3|9|7|2\n2|b|_lib.sh|3|9|7|2",
+        ("1|a|_lib.sh|3|9|7|2\n2|b|_lib.sh|9|12|4|1", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|3|20|18|4\n2|b|_lib.sh|5|8|4|1", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|3|9|7|2\n2|b|_lib.sh|3|9|7|2", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|9|12|4|1\n2|b|_lib.sh|3|10|8|2", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|9|12|4|1\n2|b|_lib.sh|3|9|7|2", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|5|8|4|1\n2|b|_lib.sh|3|20|18|4", "PSV lines 1 and 2"),
+        ("1|a|_lib.sh|3|9|7|2\n2|b|_lib.sh|20|25|6|1\n3|c|_lib.sh|9|12|4|1", "PSV lines 1 and 3"),
     ],
-    ids=["shared-last-line", "nested", "repeated-row"],
+    ids=[
+        "shared-last-line",
+        "nested",
+        "repeated-row",
+        "later-row-starts-before-and-ends-inside",
+        "later-row-ends-on-the-earlier-rows-first-line",
+        "later-row-strictly-contains-the-earlier",
+        "non-adjacent-rows-overlap-across-a-disjoint-row",
+    ],
 )
-def test_check_span_overlap_stops_naming_both_psv_lines(overlapping_spans):
+def test_check_span_overlap_stops_naming_both_psv_lines(overlapping_spans, named_lines):
     result = _run_bash(f"lsc_check_span_overlap {shlex.quote(overlapping_spans)}")
 
-    _assert_stop(result, "span", "PSV lines 1 and 2", "_lib.sh")
+    _assert_stop(result, "span", named_lines, "_lib.sh")
 
 
 def test_resolve_spans_prints_one_span_per_row_in_row_order(tmp_path):
@@ -963,10 +981,19 @@ def test_arm_minimums_stop_when_a_repetition_has_no_sample():
     _assert_stop(result, "fold", "arm 0 has no sample in repetition 2")
 
 
-def test_figure_and_spread_of_a_single_value():
-    result = _run_bash("lsc_figure 42\nlsc_spread 42")
+@pytest.mark.parametrize(
+    ("values", "figure", "spread"),
+    [
+        ("42", "42", "0"),
+        ("62000 60500 61000", "60500", "1500"),
+        ("61000 62000 60500", "60500", "1500"),
+    ],
+    ids=["single-value", "minimum-in-the-middle", "minimum-last"],
+)
+def test_figure_and_spread_of_the_values(values, figure, spread):
+    result = _run_bash(f"lsc_figure {values}\nlsc_spread {values}")
 
-    assert _stdout_lines(result) == ["42", "0"]
+    assert _stdout_lines(result) == [figure, spread]
 
 
 # ---------------------------------------------------------------------------

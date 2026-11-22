@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib-source-cost.sh — prices sourcing the shared hook shell library, per cluster and for a tail cut.
 #
-# The usage text and the flag defaults are in print_usage_and_exit below.
+# print_usage_and_exit below prints the usage text and the flag defaults.
 # It measures the checkout it runs in, including that checkout's scripts/dev/lib-source-cost-clusters.psv.
 # lsc_arm_labels, lsc_arm_reference and lsc_applied_floor define the arms, each arm's reference and the floor.
 # figure_ms is the smallest of an arm's per-repetition minimums.
@@ -13,16 +13,15 @@
 #   Compare full's cost_ms across the two runs, never its figure_ms.
 #   Count the change as a saving only when it exceeds the larger of the two full rows' floor_ms.
 #   The before run's minus-<cluster> or param-expansion row is the interleaved estimate of the same change, so cite it when the cross-run change misses it by more than that floor.
-#   The param-expansion saving is the price at a small parent shell, and a lower bound for call sites that run after the lib loads.
+#   The param-expansion saving is the price at a small parent shell. A fork from a hook that has loaded the lib is expected, not measured, to cost more.
 set -euo pipefail
 checkout_root=$(git rev-parse --show-toplevel) || exit 1
 # Sourcing the checkout's _config.sh is the bash floor gate: a below-floor bash stops here with its fix text.
 # shellcheck source=../../claude/.claude/hooks/_config.sh
 . "$checkout_root/claude/.claude/hooks/_config.sh" || exit 1
 
-script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=_lib-source-cost-lib.sh
-. "$script_dir/_lib-source-cost-lib.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/_lib-source-cost-lib.sh"
 cd "$checkout_root"
 # A contributor's BASH_ENV would otherwise be sourced into every child.
 unset BASH_ENV
@@ -82,10 +81,11 @@ lsc_copy_measured_files "$hooks_dir" "$snapshot_dir" || exit 1
 commit=$(git describe --always --dirty 2>/dev/null) || commit=none
 # The dirname-fork arm prices whichever dirname the PATH resolves, so the header names it.
 # A PATH entry containing whitespace splits the header's dirname= token, which the report format does not handle.
-dirname_path=$(command -v dirname) || dirname_path=none
+# A relative PATH entry that the cd above changes the meaning of can make this lookup fail, which ends the run with no message.
+dirname_path=$(command -v dirname)
+spans=$(lsc_resolve_spans "$snapshot_dir" "$rows") || exit 1
 lib_blob=$(git hash-object -- "$snapshot_dir/_lib.sh")
 config_blob=$(git hash-object -- "$snapshot_dir/_config.sh")
-spans=$(lsc_resolve_spans "$snapshot_dir" "$rows") || exit 1
 
 mapfile -t arm_labels < <(lsc_arm_labels "$spans")
 arm_count=${#arm_labels[@]}
