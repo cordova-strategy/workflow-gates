@@ -1,5 +1,4 @@
-"""Unit tests for _lib.sh's _lib_gh, _lib_origin_owner_repo, _lib_origin_names_claude_config and
-_lib_case_insensitive_ne."""
+"""Unit tests for _lib.sh helpers."""
 from __future__ import annotations
 
 import json

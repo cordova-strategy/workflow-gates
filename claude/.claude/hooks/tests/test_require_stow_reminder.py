@@ -212,7 +212,6 @@ class TestRequireStowReminder:
         assert run_hook(STOW_REMINDER_HOOK, bash_input("git status"), cwd=stow_repo) == "allow"
 
     def test_origin_naming_claude_config_still_gates(self, stow_repo):
-        """An origin URL containing `claude-config` scopes in."""
         subprocess.run(
             ["git", "remote", "set-url", "origin", "git@github.com:someone/claude-config.git"],
             cwd=stow_repo,
@@ -221,7 +220,6 @@ class TestRequireStowReminder:
         assert_live_deny_control(stow_repo)
 
     def test_origin_naming_workflow_gates_still_gates(self, stow_repo):
-        """An origin URL containing `workflow-gates` scopes in."""
         subprocess.run(
             ["git", "remote", "set-url", "origin", "git@github.com:someone/workflow-gates.git"],
             cwd=stow_repo,

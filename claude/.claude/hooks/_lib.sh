@@ -827,7 +827,8 @@ _lib_case_insensitive_ne() {
 }
 
 # _lib_origin_names_claude_config REPO_ROOT
-# Returns 0 when any `remote.origin.url` value of the repository at REPO_ROOT
+# Returns 0 when any `remote.origin.url` value, read across every git config scope
+# (system, global, local, worktree and command-line) for the repository at REPO_ROOT,
 # contains `claude-config` or `workflow-gates`, in any letter case.
 # The match is a substring over the whole URL, so it accepts a fork and also an
 # unrelated repository whose name merely contains either string.
