@@ -759,6 +759,9 @@ scripts/venv-run.sh python3 evals/run_review_bench.py freeze --k 10 --campaign-s
 # Compute a campaign's verdicts:
 scripts/venv-run.sh python3 evals/run_review_bench.py analyze \
   --reviewer-records-path <reviewer.jsonl> --judge-records-path <judge.jsonl> --k 10
+
+# Simulate the decision statistics' false-adopt and power rates on synthetic data (no model, no spend):
+scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --replicates 200
 ```
 
 `mine-pr-comments` needs an authenticated `gh` for github.com. The ambient
