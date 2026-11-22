@@ -462,6 +462,10 @@ live run requires `--repo-dir` naming a clean checkout whose `HEAD` starts
 with the fixture's `pinned_commit` (an abbreviated SHA), validated at
 startup.
 
+A re-pin to a commit that carries the repo-root `.rgignore` must drop the
+`.claude/plans/` paths from the fixture's keys, or expect lower recall,
+because a Grep rooted above that directory does not return them.
+
 ```bash
 # Build every dispatch command and prompt without launching anything:
 scripts/venv-run.sh python3 evals/measure_explore_recall.py --fixtures evals/fixtures/explore-recall-cases.json --dry-run
@@ -1501,6 +1505,9 @@ Reading `summarize`'s primary outcome:
 - The run-to-run spread is the standard deviation of one run's ratio within a
   task, pooled over the paired tasks, per arm. It shows how far one run's ratio
   moves with no change of arm. It needs `--k 2` or more.
+
+A paired difference is meaningful when the `toolkit` arm's figure is at least
+20% above or below the `bare` arm's.
 
 This file's "Why local only — never CI" section applies: every run is a paid
 `claude -p` session. The bench needs the Python floor stated in the

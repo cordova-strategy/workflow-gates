@@ -344,7 +344,7 @@ To opt out, delete `.claude/worktree-required`.
 If you work across many repos and want enforcement everywhere without adding a marker to each, set the `worktree_required` config key:
 
 ```bash
-printf 'worktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\nworktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 See [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract. This activates enforcement for every git repo on your machine. Any repo that already has a committed `.claude/worktree-required` is unaffected (it was already enforcing). To exempt a specific repo from machine-level enforcement:
@@ -381,7 +381,7 @@ If the agent ends its turn asking whether you want to review the diff before it 
 `pr-description` can embed the PR body's cost block — branch-scoped session count, token volume, and list-price dollars from `transcript-analysis.py cost --summary`. Off by default; gated by the `pr_cost_disclosure` config key, scoped to the Claude account, not to the repo.
 
 ```bash
-printf 'pr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\npr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 The key resolves to exactly one config dir (`$CLAUDE_CONFIG_DIR` if set and absolute, else `$HOME/.claude`) and its value (`dollars` vs. anything else) toggles the mode account-wide, so one account's opt-in never activates disclosure under another — see [`docs/config-file.md`](docs/config-file.md) for the file format and resolution precedence.
@@ -444,7 +444,34 @@ Moving or renaming this checkout (`mv ~/current-location/claude-config ~/somewhe
    relocate-claude-config --repair <new-path> # repo already moved outside a Claude Code session
    ```
 
-   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation) — it quarantines (never deletes) any `~/.claude` or `~/.local/bin` entry left as a dangling symlink into the old location, then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
+   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation). It quarantines every dangling symlink directly under `~/.claude` or `~/.local/bin`, plus a dangling tree-folded `~/.claude`. It never deletes a file or directory. Names that start with a dot are skipped. Same-named links from the two directories share one backup name, so the later move replaces the earlier backup. It then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
+
+   - Run `./install.sh` after pulling and before relocating, because the installed copy is the one that runs.
+   - Both modes also re-link the `claude-skills` package at `~/.claude/skills`, with a stow that passes no `--adopt`. A link at one of its top-level paths that no longer resolves moves to `~/.claude-config-relocate-backup/<name>.<pid>` first, and the output names each move. A real directory at `~/.claude/skills` is left alone and reported, as `install.sh` does.
+   - Exit 3 means the checkout has already moved, or `--repair` already linked the `claude` package, and re-linking a package named on stderr failed.
+     - The common causes are:
+       - Something in the way at `~/.claude/skills`, such as a real file or directory, or a live symlink that is not this checkout's `claude-skills` link. Move it aside.
+       - A checkout with no `claude-skills/` directory. Update the checkout to a commit that has it, then run `./install.sh` from it. The failed run already replaced the installed script with the checkout's own, so a retry before then links nothing.
+       - `--repair` run while `~/.claude` is a live symlink into the checkout. Replace the symlink as the output describes.
+     - The output names the cause and, for the symlinked `~/.claude`, the fix.
+     - Fix the cause, then run the `--repair` command the output ends with. That run moves every dangling entry `--repair` finds, as described above, not only those the move broke. The primary form must not be re-run.
+   - Exit 1 from the primary form depends on the last of the `unstowing <old>`, `moving <old> -> <new>` and `mv failed` lines it printed, since an error line or Stow's own output always follows one:
+     - With none of them, a precondition failed and nothing changed.
+     - With `unstowing <old>` and no `moving <old> -> <new>`, the unstow itself failed, so some `claude` links may be absent. The exit status is Stow's own, which can be 2. Fix the error and re-run the primary form.
+     - With `mv failed`, nothing moved. Fix the cause and re-run the primary form. The restore stow after that line can itself fail. It then exits with Stow's own status, which need not be 1, and the `claude` links may be absent. Re-running the primary form still recovers.
+     - With `moving <old> -> <new>` and no `mv failed` line, the checkout moved. That covers a failed `mkdir` before `re-stowing at <new-path>` and any failure after it, with the exit status the failing command's own, as the status bullet below says. Fix the error, then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when the primary run passed it.
+   - After an exit 1 from `--repair`, fix the error and re-run the same command. When the cause is a failed move of a dangling link into `~/.claude-config-relocate-backup` (`could not move ... into ...`), entries moved before the failure stay in that directory, and the output names each.
+   - After a failed `claude` stow, or a failed manifest or installed-copy write, whatever the exit status, read the last `re-stowing at` or `stowing at` line the run printed.
+     - After `re-stowing at`, the checkout moved and the arguments were not bad, so the retry is the `--repair` command above.
+     - After `--repair`'s `stowing at`, the retry is re-running the same command, since only the primary form prints `re-stowing at`.
+     - The exit status is the failing command's own, so it can be 1 or 2, or any other the command returns, 3 included. It does not identify the cause, and the output lines are the contract.
+     - Stow 2.4.1 was observed to return 1 for a conflict and 2 for a missing package directory.
+     - Neither code is defined by this script or documented by Stow, whose error is a bare die.
+   - Both modes exit 1 before changing anything when `~/.claude-config-relocate-backup` exists and is a symlink or is not a directory, a symlink made on purpose to another volume included.
+   - The script does not do the following, which stay manual:
+     - Other accounts' config dirs, including any listed in `~/.claude/transcript-config-dirs`, keep their links into the old location. Until one is re-linked, a session under that account loads none of this repo's settings, hooks or skills. `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points its marketplace registration. `register-marketplace` takes effect only once that account's `settings.json` resolves, and exits 0 with "nothing to register" otherwise.
+     - Every linked worktree, wherever it lives, still records the old location. Run `git worktree repair <path>…` in the moved checkout, naming each linked worktree's current path. One that lived under the checkout is now at the same relative path under `<new-path>`, usually `<new-path>/.claude/worktrees/<name>`, which is where this repo's worktree convention puts it.
+     - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
 
    A one-line manifest, `~/.claude-config-source`, records the checkout's current absolute path — `install.sh` writes it, and `relocate-claude-config` reads and rewrites it — so the command can find the checkout even when the `~/.claude` symlinks it depends on for everything else are the very thing it's asked to fix. `relocate-claude-config` is installed as a **real file copy** (`install -m 755`), not a stow symlink, since a stow-managed wrapper would inherit the exact failure it exists to repair.
 
