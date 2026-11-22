@@ -314,6 +314,31 @@ class TestTheRunnerProbeOfACampaignStart:
         campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
         assert RUNNER.commit in campaign_line and EDITED_RUNNER.commit not in campaign_line
 
+    def test_a_resume_at_another_reading_prints_the_pinned_and_the_current_reading_in_its_campaign_line(
+        self, env, monkeypatch, capsys,
+    ):
+        """Kills: a resume's campaign line that names only the resuming checkout's reading."""
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        capsys.readouterr()
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: EDITED_RUNNER)
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
+        assert (
+            f"runner commit {RUNNER.commit} at the first start; this resume runs runner commit {EDITED_RUNNER.commit}"
+        ) in campaign_line
+
+    def test_a_resume_at_the_pinned_reading_prints_it_once_in_its_campaign_line(self, env, capsys):
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        capsys.readouterr()
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
+        assert campaign_line.count(RUNNER.commit) == 1
+        assert "at the first start" not in campaign_line
+
 
 class TestTheRunnerClauseOfTheCampaignLine:
     def test_a_campaign_with_no_manifest_describes_the_current_reading(self, tmp_path):

@@ -90,11 +90,7 @@ def _manifest_for(
 
 
 def runner_clause_for(campaign_dir: Path, current_reading: RunnerProvenance) -> str:
-    """What the `campaign <id>` line says of the runner, by case:
-    - No manifest yet: `current_reading`.
-    - A resume: the manifest's reading, plus `current_reading` when it differs.
-    - A valid manifest that lacks the runner fields: `current_reading` alone.
-    - An unreadable manifest: no reading."""
+    """An unreadable manifest is worded as `describe(None)`, "not recorded"."""
     manifest_path = campaign_dir / MANIFEST_NAME
     if not manifest_path.exists():
         return describe(current_reading)

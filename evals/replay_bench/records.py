@@ -57,7 +57,8 @@ class ReplayRunRecord:
     out_of_session_paths: list[str] = field(default_factory=list)
     ignored_paths_count: int = 0
     ignored_paths: list[str] = field(default_factory=list)
-    # True when the transcript's last text block is blank or absent.
+    # True when the run passed the validity checks and the transcript's last text block is blank or absent.
+    # A run that failed a validity check records False whatever its text.
     # A text-less final turn after earlier narration leaves it False, because the last text block is then the narration.
     empty_final_text: bool = False
     # The runner checkout's HEAD (a full hex object name) and whether `evals/` had uncommitted changes when the

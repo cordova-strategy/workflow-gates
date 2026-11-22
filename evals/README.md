@@ -1600,10 +1600,10 @@ once the set changes.
   limit below 1 is refused.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
-- The fixture rule below sets each task's changed paths and reference metrics
-  at mining time. Neither the task-set hash nor the manifest records the rule,
-  so a resume does not refuse a task set mined under a different rule. Re-mine
-  a task set after any change to the rule.
+- Re-mine a task set after any change to the fixture rule below. The rule fixes
+  each task's changed paths and reference metrics at mining time, and neither
+  the task-set hash nor the manifest records it, so a resume does not refuse a
+  set mined under another rule.
 - A task's fixture drops every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`,
   the root `.claude` directory and the root `.mcp.json`, each matched
   case-insensitively. A `.claude` directory below the root keeps its `scripts`
@@ -1793,16 +1793,18 @@ The `campaign <id>` line, the uncharged-attempts line, a resume's spend line,
 the ceiling line and each progress line are flushed as they print, so a
 detached run's redirected output shows them as they happen.
 
-The `campaign <id>` line ends with the runner commit, which is the `HEAD` of the
-checkout the bench's code runs from, not the config checkout. It adds
+The `campaign <id>` line ends with the runner commit: the `HEAD` of the checkout
+the bench's code runs from, which need not be the config checkout that
+`read_environment_record` probes. It adds
 `with uncommitted changes under evals/` when `git status` lists a change or an
 untracked file there that the repository's own ignore rules do not ignore,
 namely its tracked `.gitignore` files and `.git/info/exclude`. No
 global ignore file applies, including the default `~/.config/git/ignore`, so a
 file that only a global ignore file ignores counts as untracked. The process
-reads both once, at the start of `run`'s campaign, before it reads each account's
-environment and before its first block. `summarize` prints the same clause on its
-`campaign '<id>'` line. The runner commit is recorded and never compared:
+reads the commit and the flag once, at the start of `run`'s campaign, before it
+reads each account's environment and before its first block. `summarize`
+prints the same clause on its `campaign '<id>'` line. The runner commit is
+recorded and never compared:
 
 - The manifest holds it as `runner_commit` and `runner_dirty` from the first
   start, and each run record holds the reading of the process that ran its
@@ -1812,17 +1814,17 @@ environment and before its first block. `summarize` prints the same clause on it
   A branch switch, pull or `evals/` edit made while the process runs changes
   the checkout and leaves the reading as it was.
 - A new campaign prints this checkout's reading. A resume prints the manifest's
-  and adds this checkout's reading when it differs, except that a manifest
-  lacking either runner field prints this checkout's reading alone.
+  and adds this checkout's reading when it differs. A manifest lacking either
+  runner field pins no reading, so its resume prints this checkout's reading
+  alone, because the later blocks run under it.
 - `summarize` names every distinct reading across the manifest and the run
   records, with the number of records at each, when they disagree. Records
   with no reading are listed as `no runner reading` once any other reading
-  exists, so a campaign that mixes the two never prints one lone commit.
+  exists, so a campaign that mixes the two never prints one lone commit. A
+  manifest lacking either runner field prints `runner commit not recorded`
+  when no run record holds a reading either.
 - An edit to `evals/` between a start and a resume halts nothing.
-- A manifest that lacks `runner_commit` or `runner_dirty` resumes. The resume
-  line names this checkout's reading, because the later blocks run under it.
-  `summarize` prints `runner commit not recorded` for such a manifest when no
-  run record holds a reading either, and otherwise names the records' readings.
+- A manifest that lacks `runner_commit` or `runner_dirty` still resumes.
 - A reading that git could not produce is null in the manifest and record, and
   prints as unreadable.
 - A stored commit that is not a full hex object name, or a stored flag that is
@@ -1831,9 +1833,13 @@ environment and before its first block. `summarize` prints the same clause on it
 - A checkout that lacks `runner_commit`, `runner_dirty`, `empty_final_text` or
   `denied_tool_calls` refuses a record that carries it, because it refuses a
   record with an unknown key.
-- The flag sees only `evals/`, so an edit elsewhere in the checkout does not set
-  it. It also misses ignored files and entries marked `skip-worktree` or
-  `assume-unchanged`, and it holds no digest of an uncommitted diff.
+- The flag has these limits:
+  - An edit outside `evals/` does not set it.
+  - The bench imports a config-dir helper from `claude/.claude/scripts/`, so an
+    uncommitted edit there does not set it.
+  - A file the ignore rules above hide does not set it.
+  - An entry marked `skip-worktree` or `assume-unchanged` does not set it.
+  - It holds no digest of the uncommitted diff.
 
 After each block `run` prints one progress line: the task, each arm's `ok` and
 `missing` counts, the arms with no valid run and their reasons, the runs with
@@ -1932,7 +1938,6 @@ missing with its reason.
       captured change, meaning an empty final text and no changed path.
     - The `smoke` printout, as a `no deliverable` line before the verdict.
     - In `summarize`, the diagnostics count of runs with no non-test code line.
-    - In `summarize`, the diagnostics count of runs with an empty final text.
     - In `summarize`, the paired outcome's exclusion for no non-test code line
       in an arm.
   - Every other check still applies, including `api-error-final-record`, whose

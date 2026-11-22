@@ -104,8 +104,7 @@ def describe_campaign(manifest_reading: RunnerProvenance | None, record_readings
 
 
 def describe_resume(manifest_reading: RunnerProvenance | None, current_reading: RunnerProvenance) -> str:
-    """The clause for a resume's `campaign <id>` line: the pinned reading, and this checkout's when it differs.
-    A manifest that lacks the runner fields pins no reading, so the clause names this checkout's alone."""
+    """The clause for a resume's `campaign <id>` line: the pinned reading, and this checkout's when it differs."""
     if manifest_reading is None:
         return describe(current_reading)
     if manifest_reading == current_reading:
@@ -115,7 +114,7 @@ def describe_resume(manifest_reading: RunnerProvenance | None, current_reading: 
 
 def read_runner_provenance(repo_root: Path | None = None) -> RunnerProvenance:
     """`repo_root` defaults to the review runner's own `REPO_ROOT`, the checkout this code was imported from, which
-    is not the config checkout that `read_environment_record` probes."""
+    need not be the config checkout that `read_environment_record` probes."""
     root = review_runner.REPO_ROOT if repo_root is None else repo_root
     # A `GIT_DIR` or `GIT_WORK_TREE` in the caller's environment would point git at another repository.
     git_environment = isolated_git_environment()
