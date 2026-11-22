@@ -6,7 +6,7 @@ The figures come from transcripts and ledger files selected by this checkout's p
 
 ## Headline answers
 
-- **Partial or refused:** all 65 whole-file calls in the denominator came back partial (`partial_token_cap`), none was refused, and all 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in the denominator. That is 100.0% (65/65).
+- **Partial or refused:** 100.0% (65/65) of the denominator's whole-file calls came back partial (`partial_token_cap`). None was refused. All 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in the denominator.
   - The denominator is whole-file calls on reviewed files that were partial, refused, complete on a file over 2,000 lines, or flagged `allow_large` at an estimated 25,000 tokens or more.
 - **Read share:** 12.7% of modeled billed weight in reviewer windows goes to Reads. This is a share of modeled billed weight, not of tokens or dollars. Of the Read weight:
   - 18.0% is files over 1,000 lines.
@@ -174,7 +174,14 @@ Rerun this the same way after #1115 and compare like with like.
 - **Harness versions and models:** reviewer windows ran on three harness versions (2.1.328 for 14 windows, 2.1.329 for 389, 2.1.330 for 15) and one model label (`claude-sonnet-5-5`, 418 windows).
 - **Model labels:** they follow `pricing._MODEL_BASE_INPUT_RATES` at instrument commit `e5e1f34f573a`. A model priced after that commit prints `other` here and by name in a later run, so that move alone is not a model shift. `other` can also stand for a window whose first assistant record is the harness's `<synthetic>` error record, in which case no rate moves.
 - **Re-run recipe:** the window length, account and checkout follow `docs/transcript-analysis.md` § "reviewer-reads". Run it from a worktree cut from the default branch, and before any worktree cleanup.
-- **Edits that void a comparison:** later edits to `read_cost`'s scanner and weights, to `reviewer_reads`, `ledger_dispositions`, `publication_scope`, `reviewer_yield._is_reviewer_subagent_type`, or to the ledger reader in `author_outcome` (`_read_ledger_rows_from_file` and `_SESSION_ID_PATTERN`). A run after such an edit measures a different instrument.
+- **Edits that void a comparison:** an edit to any of these makes a later run measure a different instrument:
+  - `read_cost`'s scanner and weights
+  - `reviewer_reads`
+  - `ledger_dispositions`
+  - `publication_scope`
+  - `reviewer_yield._is_reviewer_subagent_type`
+  - `author_outcome._read_ledger_rows_from_file`
+  - `author_outcome._SESSION_ID_PATTERN`
 - **Review-skill mix behind the figures:** main-thread round windows in the window were 74 for `code-review`, 24 for `plan-review` and 36 for `ready-for-review`. This is the only indicator of that mix on this page.
 
 What a rise or fall after #1115 can and cannot show, read against #1115's body:
@@ -256,5 +263,5 @@ d246e014 prose granularity rule (#1354)
 
 ## What this page does not cover
 
-- It records no late-findings before-value. That measure moved to its own issue, #1556.
-- Ticking #1113's "A-field baseline captured" box records the date and this page's path. It does not cover #1115's late-findings watch.
+- It records no late-findings before-value. #1556 tracks that measure. A late finding is an issue raised in a later review round on code an earlier round had in scope, as #1115's post-merge watch defines it.
+- It covers the read before-state only. It says nothing about #1115's late-findings watch.
