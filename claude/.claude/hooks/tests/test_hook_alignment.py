@@ -838,14 +838,20 @@ def test_syncclaudeaiskills_stays_disabled_in_stow_source_settings() -> None:
 
 
 def test_output_style_stays_concise_in_stow_source_settings() -> None:
-    """Pins the declared `outputStyle` value in the stow-source settings.
+    """Pins the declared `outputStyle`; see docs/design-decisions/concise-output-style-stow-default.md."""
 
-    Per the output-styles page, the value is case-sensitive, and a value that
-    matches no style falls back to Default.
-    The pin does not show that Claude Code applies the value.
-    See docs/design-decisions/concise-output-style-stow-default.md.
-    """
-    settings = json.loads(_SETTINGS_PATH.read_text())
+    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+        keys = [key for key, _ in pairs]
+        duplicates = sorted({key for key in keys if keys.count(key) > 1})
+        assert not duplicates, (
+            f"{_SETTINGS_PATH.relative_to(_REPO_ROOT)} declares {duplicates} "
+            f"more than once at one object level"
+        )
+        return dict(pairs)
+
+    settings = json.loads(
+        _SETTINGS_PATH.read_text(), object_pairs_hook=reject_duplicate_keys
+    )
     assert settings.get("outputStyle") == "Concise", (
         f"outputStyle is not `Concise` in "
         f"{_SETTINGS_PATH.relative_to(_REPO_ROOT)} — stow consumers no "

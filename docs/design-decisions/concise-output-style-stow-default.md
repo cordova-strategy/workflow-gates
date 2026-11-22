@@ -12,7 +12,11 @@ The local-settings route in `claude/.claude/rules/settings-json-conventions.md` 
 
 ## No per-user override ships
 
-The maintainer's position is that output style is a user preference, not a repository preference. Per-user settings overrides belong to separate base/overlay settings work, which was open as PR #744 when the plan was drafted. That status was read with `gh pr view` in the session that drafted the plan, before 2026-11-20, and was not re-read. A user-wide per-user override of `outputStyle` exists only if that work admits the key. As of commit `acfbd96d` on the PR's branch, `settings-base-render`, read from the script's source on 2026-11-20 and not run, the overlay allows only `autoMode`, `env`, `skillListingBudgetFraction` and `permissions.defaultMode` as keys, and `outputStyle` is none of them. That is that branch's behavior, not this tree's. Whichever of the two changes lands second rebases and decides where `outputStyle` sits. Asking that work to admit the key is a separate decision.
+The maintainer's position is that output style is a user preference, not a repository preference. Per-user settings overrides belong to separate base/overlay settings work, PR #744. Its open status was read with `gh pr view` before 2026-11-20 and was not re-read.
+
+No supported user-wide override of `outputStyle` ships. An uncommitted edit of the tracked line works on one machine and dirties the checkout. A per-project style also works, because a project's settings take precedence over the user-wide value. A supported user-wide override exists only if the base/overlay work admits the key.
+
+Commit `acfbd96d` is on the PR's branch, `settings-base-render`. Its overlay allows only `autoMode`, `env`, `skillListingBudgetFraction` and `permissions.defaultMode` as keys, and `outputStyle` is none of them. That is from the script's source, read on 2026-11-20 and not run. It is that branch's behavior, not this tree's. Whichever of the two changes lands second rebases and decides where `outputStyle` sits. Asking that work to admit the key is a separate decision.
 
 ## Reach
 
@@ -34,7 +38,7 @@ A scripted probe confirmed the `/output-style` half: the stowed file's hash was 
 
 Whether Claude Code writes `outputStyle` into the stowed file is the criterion that decides, not whether the setting is a personal preference. If `/config` does, the key falls inside the guard's class and a guard entry becomes mandatory. A guard entry added after this change lands has no bootstrap problem, because the guard compares staged settings with the default branch, which then already holds the staged value.
 
-`test_output_style_stays_concise_in_stow_source_settings` in `claude/.claude/hooks/tests/test_hook_alignment.py` pins the declared value. It fails on a removal or on any change, including a case change, which the output-styles page treats as a non-matching value that falls back to Default. A hand edit of the tracked file, which the page documents as the user-wide route, fails this pin test when the suite runs, and the guard does not cover the key. A commit that changes the line and the test together passes every mechanical check. It shows only as two deliberate hunks in review.
+`test_output_style_stays_concise_in_stow_source_settings` in `claude/.claude/hooks/tests/test_hook_alignment.py` pins the declared value. It fails on a removal, on a duplicated `outputStyle` key, which a merge can leave in the file, and on any change, including a case change, which the output-styles page treats as a non-matching value that falls back to Default. A hand edit of the tracked file, which the page documents as the user-wide route, fails this pin test when the suite runs, and the guard does not cover the key. A commit that changes the line and the test together passes every mechanical check. It shows only as two deliberate hunks in review.
 
 The line sits directly after `tui`, a guarded key Claude Code writes, beside the other shipped UI defaults. A local edit to `tui` next to the pulled insertion can make a pull conflict: `git merge-file -p` on three small scratch files left conflict markers in the merged file. How Claude Code treats a settings file holding conflict markers is unverified.
 
@@ -73,7 +77,7 @@ The edit and rename prompts ran one sample each and support no conclusion: 65 wo
 
 ### Readability
 
-The readability measures are proxies for jargon and telegraphic prose. They moved by small amounts in both directions and show neither a clear regression nor a gain. Shorthand words per 100 words rose on both models, from 0.40 to 0.66 on Sonnet and from 0.04 to 0.26 on Opus. Acronyms per 100 prose words and words per sentence rose on Opus.
+The readability measures are proxies for jargon and telegraphic prose. They moved by small amounts in both directions and show neither a clear regression nor a gain. Shorthand words per 100 words rose on both models, from 0.40 to 0.66 on Sonnet and from 0.04 to 0.26 on Opus. Acronyms per 100 prose words and words per sentence rose on Opus. The Sonnet article rate fell from 9.1 to 8.0 articles per 100 words, which can signal telegraphic prose.
 
 ### What Concise dropped
 
@@ -116,13 +120,14 @@ The scripted runs could not observe the approach walk-through. `claude -p` under
 - Skill-driven relays, such as the main session relaying review findings, and the questions the main session asks the maintainer. The relay reported in "What Concise dropped" came from a plain prompt asking the session to delegate a review to a subagent and relay what it finds, with no skill driving the relay, at three samples per style.
 - Whether Concise still runs its own edit to check it. In the one completed refactor pair, Default tried to run the code after its edit and Concise did not. That is one sample.
 - Destructive-action confirmation and risk-disclosure text. The output-styles page says Concise keeps full length for destructive-action confirmations. No probe observed it.
-- Whether Concise keeps Claude Code's built-in coding and security instructions. No probe asked for code that handles untrusted input, and this record cites no source for what a built-in style retains, so the question is unverified.
+- Whether Concise keeps Claude Code's built-in software-engineering instructions. The [output styles page](https://code.claude.com/docs/en/output-styles) says "Each of the four other built-in styles keeps those instructions and adds its own", and its four non-Default styles include Concise. No probe observed it. In the one completed refactor pair, Concise did not run the code after its edit, and that is one sample.
+- Whether replies stay accurate. Reply accuracy was not assessed, so "What Concise kept" covers content, not the correctness of computed values.
 - Delivery through user scope, the path this change ships.
 
 ## Surfaces calibrated on Default output
 
 - The commit-stall hook, `advance-past-commit-stall.sh`, fires only when the final sentence matches a fixed permission-verb phrase followed by a commit, push or PR object. Its only rewording signal is the `phrasing-drift` log line, which needs the verb half to match. Whether Concise rewords the commit offer is unmeasured.
-- Headless `claude -p` harnesses run under a user-scope Concise unless they set a style of their own. Those are at least the skill evals in `evals/run_skill_evals.py`, the review bench in `evals/review_bench/runner.py` and the subagent-model-resolution measurement in `evals/measure_subagent_model_resolution.py`. Figures those harnesses recorded before this change come from sessions without the shipped style.
+- Headless `claude -p` harnesses probably run under a user-scope Concise unless they set a style of their own. That reach is unverified, because delivery through user scope is untested. The harnesses are at least the skill evals in `evals/run_skill_evals.py`, the review bench in `evals/review_bench/runner.py` and the subagent-model-resolution measurement in `evals/measure_subagent_model_resolution.py`. Figures those harnesses recorded before this change come from sessions without the shipped style.
   - The skill evals write a project `settings.json` holding only `{"hooks": {}}`, so nothing at project scope overrides a user-scope `outputStyle` there.
   - The launch commands of the review bench and the subagent-model-resolution measurement were checked for a style override and none was found. Neither `evals/review_bench/runner.py` nor `evals/measure_subagent_model_resolution.py` mentions `outputStyle`, and neither passes `--settings`, `--setting-sources` or `--bare`.
   - The skill-eval disposition gate has a headless main session write a review that a judge then classifies. Concise shifted review text in the probes, with numbered findings and the closing priority line dropped. The number that can move is the treatment block rate, which the gate compares with the fixed 0.8 threshold in `evals/run_skill_evals.py` and `evals/README.md`. No `disposition-cases.json` ships in this tree, so any discrimination figure kept in a case's `note` field is the operator's own and was taken under Default if recorded before this change.
@@ -138,12 +143,11 @@ Under the symlinked layout, a commit that deletes the line from the stowed file 
 - the CHANGELOG, with a bullet announcing the rollback, or the removal of this change's bullet while it is still under `[Unreleased]`;
 - a supersession note in this record, the one in-place edit a decision file allows.
 
-Under the base/overlay layout, the deletion may not reach a machine that already rendered the key. As of commit `acfbd96d` on the `settings-base-render` branch, read from the script's source on 2026-11-20 and not run, `render-settings.sh`, which this tree does not contain, carries forward every top-level key that base and overlay leave out and that is not base-owned or overlay-allowed. `outputStyle` is neither base-owned nor overlay-allowed there. That is that branch's behavior, not this tree's. The pin test checks only the tracked source, so it cannot see that. The deletion route then depends on how that work places the key. One route is making it a base-owned key, which a render deletes once base no longer defines it. That deletion behavior is unverified.
+Under the base/overlay layout, the deletion may not reach a machine that already rendered the key. Commit `acfbd96d` on the `settings-base-render` branch holds `render-settings.sh`, which this tree does not contain. That script carries forward every top-level key that base and overlay leave out and that is not base-owned or overlay-allowed. `outputStyle` is neither base-owned nor overlay-allowed there. That is from the script's source, read on 2026-11-20 and not run, and it is that branch's behavior, not this tree's. The pin test checks only the tracked source, so it cannot see that. The deletion route then depends on how that work places the key. One route is making it a base-owned key, which a render deletes once base no longer defines it. That deletion behavior is unverified.
 
 ## Sources
 
 - [Claude Code output styles](https://code.claude.com/docs/en/output-styles) — Concise as a built-in style from 2.1.237, the case-sensitive `outputStyle` key, the user-wide default in `~/.claude/settings.json`, the main-conversation and fork reach, and the `/output-style` and `/config` write location.
 - [Claude Code settings](https://code.claude.com/docs/en/settings) — settings scopes and precedence.
-- PR #744, "Split settings.json into base and overlay files" — its open status was read with `gh pr view` in the session that drafted the plan, before 2026-11-20, and was not re-read.
+- PR #744, "Split settings.json into base and overlay files" — its open status was read with `gh pr view` before 2026-11-20 and was not re-read.
 - The `settings-base-render` branch at commit `acfbd96d` — `claude/.claude/scripts/render-settings.sh`, read from source on 2026-11-20 and not run.
-- `.claude/plans/concise-output-style.md` — full assumption ledger, per-mechanism reasoning, and verification steps this record summarizes. Where the shipped text of this record, the CHANGELOG bullet or the README differs from the plan's text, the shipped text governs.

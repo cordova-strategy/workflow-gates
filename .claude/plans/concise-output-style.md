@@ -79,7 +79,7 @@ No mechanism below is heavier than the task: each is a one-key settings edit, on
 17. Shipped defaults outside the guard's class ship unguarded. `agentPushNotifEnabled`, `disableArtifact` and `disableWorkflows` sit in `settings.json` at lines 86-88 and are absent from `GUARDED_KEYS_JSON`. `[verified: settings.json lines 86-88; guard lines 110-119]` A CI pin backs two of them: `claude/.claude/scripts/tests/test_claude_enable_tool.py` lines 194-201 assert both disable keys are `true`. No Python file names `agentPushNotifEnabled`. `[verified: Read of test_claude_enable_tool.py; Grep of the worktree's .py files]`
 18. Accepted residual: a commit that changes the `outputStyle` line and edits M8 together passes every mechanical check. It shows only as two deliberate hunks in `/code-review` and PR review. Supporting facts:
     - A commit that removes or changes the line alone fails M8 in CI, which runs the full suite on every push. `[verified: repo CLAUDE.md, Commands]`
-    - It also fails under `select-tests.py`, which selects the hooks tests for any `settings.json` change. `[verified: select-tests.py line 1048]`
+    - It also fails under `select-tests.py`, which selects the hooks tests for any `settings.json` change. `[verified: select-tests.py, the `p == CLAUDE_SETTINGS_JSON` rule]`
     - The guard does not catch it at commit time. Its tier is `cooperative`, and `docs/hooks.md` calls such a commit "revertible before merge". `[verified: docs/hooks.md line 81]`
     - No README text tells a user to delete the line (rows 11-12). An uncommitted local deletion reaches only that machine's accounts.
     - The output-styles page that M4 links tells a reader to set a user-wide default in `~/.claude/settings.json` (row 2), which under stow is the tracked file (G1). M4 adds nothing about that, because the engineer chose a minimal subsection with no pointer (row 67).
@@ -128,13 +128,17 @@ No mechanism below is heavier than the task: each is a one-key settings edit, on
 41. README § "Updating after git pull" (lines 95-105) states the mechanics every pull follows and names no single change. `[verified: README.md lines 95-105]` A pointer there to one change's subsection would restate the CHANGELOG's announcement and go stale with the next change. The TOC entry (M4) and the CHANGELOG bullet (M6) are therefore the only announcement surfaces.
 42. A stow user who already sets `outputStyle` in their checkout's `settings.json` may meet a refused pull, a merge conflict or, after a clean merge, a duplicate key. Which of two duplicate keys Claude Code honors is `[unverified]`, so M6 tells that user to keep one line, their own. Any uncommitted change to that tracked file may also make git refuse a pull that updates it, such as a `model` or `effortLevel` value that `/config` writes there (row 16). `[unverified]` Nobody reproduced git's refusal for this plan.
 43. `select-tests.py` selects these targets for this diff, by changed path:
-    - `claude/.claude/settings.json`: the hooks, skills and scripts test directories (line 1048);
-    - `docs/`: hooks and skills (line 1043);
-    - `README.md`: hooks, skills and `test_transcript_routing_guard_capture.py` under the scripts tests (line 1044);
-    - `CHANGELOG.md` and `.claude/plans/`: nothing (lines 742-743);
-    - a `.py` edit under `claude/.claude/hooks/tests/`, which M8 makes: the hooks tests (line 735), `claude/.claude/tests` (line 1057) and `test_select_tests.py` under the scripts tests (line 1058).
+    - `claude/.claude/settings.json`: the hooks, skills and scripts test directories (the `p == CLAUDE_SETTINGS_JSON` rule);
+    - `docs/`: hooks and skills (the `_is_under(p, DOCS_DIR)` rule);
+    - `README.md`: hooks, skills and `test_transcript_routing_guard_capture.py` under the scripts tests (the `p == README_MD` rule, with `ROUTING_GUARD_CAPTURE_TEST_PATH`);
+    - `CHANGELOG.md` and `.claude/plans/`: nothing (the `p == CHANGELOG_MD` and `_is_under(p, PLANS_DIR)` rules, which map to an empty target tuple);
+    - a `.py` edit under `claude/.claude/hooks/tests/`, which M8 makes, matches four rules:
+      - `_is_under(p, HOOKS_DIR)` selects the hooks tests;
+      - `_is_py_source_under_claude_or_plugins` adds `test_ticket_reference_discipline.py`, which sits under the hooks tests directory and so folds into it;
+      - `_is_test_tree_packaging_change` selects `claude/.claude/tests`;
+      - `_is_test_source_change` selects `test_select_tests.py` under the scripts tests.
 
-    `resolve_target_paths` folds a target inside a selected directory into that directory, and the run prints `select-tests: running <targets>` (line 1410). The scripts tests directory is selected whole only because `settings.json` is in the diff. Without M1 the line names the two scripts test files instead. `[verified: Read and Grep of select-tests.py in a prior revision; the round-3 platform and SDET reviewers traced the same lines]` `select-tests.py` itself was not run. `[unverified]`
+    `resolve_target_paths` folds a target inside a selected directory into that directory, and the run prints `select-tests: running <targets>` (the `print` call in `main`, near the end of `select-tests.py`). The scripts tests directory is selected whole only because `settings.json` is in the diff. Without M1 the line names the two scripts test files instead. `[verified: Read and Grep of select-tests.py in a prior revision; the round-3 platform and SDET reviewers traced the same lines]` `select-tests.py` itself was not run. `[unverified]`
 44. M5, the edit to README § "Machine-specific overrides", is dropped. `[engineer-verified: "Drop M5 (Recommended)"]` This plan takes from the label only that M5 is dropped. The reasons in row 26 are this plan's.
 45. This change lands on today's `claude/.claude/settings.json` without waiting for PR #744. `[engineer-verified: "Ship first (Recommended)"]` This plan takes from the label only the ordering. Where `outputStyle` sits once #744 lands is left to whichever PR lands second, per M1 and M8.
 46. The README subsection (M4), reshaped to carry no opt-out recipe, stays in scope. `[engineer-verified: "Keep descriptive subsection (Recommended)"]` This plan takes from the label only that the descriptive subsection stays. Row 67 sets its shape. This row clarifies row 30.
@@ -226,6 +230,7 @@ No mechanism below is heavier than the task: each is a one-key settings edit, on
 71. Transcripts live under `<config-dir>/projects/<project-dir>/`, one project directory per startup directory, so each worktree has its own. A bare prefix match on the project directory's name also catches a sibling clone. `[verified: docs/transcript-analysis.md lines 3 and 66-67]`
 72. The replay passes neither `--setting-sources` nor `--bare`, so the child loads the engineer's user-scope settings, hooks and plugins. This is a choice for fidelity to the engineer's real session. `claude --help` on 2.1.329 says `--bare` skips hooks defined in settings and by installed plugins. `[verified: claude --help, run in this revision]` An independent reviewer quotes the same help text as saying `--bare` also skips "CLAUDE.md auto-discovery", which would drop the concision rules the Default baseline carries (row 51). The same reviewer quotes its auth as "strictly ANTHROPIC_API_KEY or apiKeyHelper via --settings". `[unverified: the reviewer's quotes, not re-run in this revision]` The stowed `settings.json` declares a `UserPromptSubmit` hook. `[verified: grep of claude/.claude/settings.json, run in this revision]` That such a hook injects context into a replayed first prompt is `[unverified: the security reviewer's reading]`. The cost is that user-scope hooks run with the child environment, which Verification step 6 limits to a closed allowlist carrying no env-borne token.
 73. Whether Concise keeps destructive-action confirmations and risk disclosures at full length rests on the output-styles page alone, as row 22 records. No probe and no replay observes it, because both are read-only first turns. `[unverified]` Verification step 9f watches it.
+74. The output-styles page documents that Concise keeps Claude Code's built-in software-engineering instructions. Its "Built-in output styles" section says "Each of the four other built-in styles keeps those instructions and adds its own". The four other styles are Proactive, Concise, Explanatory and Learning, because Default is the fifth. The page also says Concise "does the engineering work as thoroughly as in the Default style". `[verified: output-styles page, fetched twice on 2026-11-22]` No probe observed it, so it has the same standing as row 73: documented, not observed. The one completed refactor pair, where Concise did not run the code after its edit (row 59), is one sample, and step 9e watches it. Its cause is open. No separate step watches the instructions. Rewriting row 74 and dropping the post-merge check that an earlier draft carried is `[engineer-verified: "Rewrite row 74, drop 9g (Recommended)"]`. This plan takes from the label only that the row is rewritten and the check is dropped.
 
 **Mechanisms** (each anchored):
 
@@ -276,10 +281,10 @@ No mechanism below is heavier than the task: each is a one-key settings edit, on
   `anchors: row28`
 - **M7 — No edit to `claude/.claude/CLAUDE.md`.** `anchors: row21`
 - **M8 — Add `test_output_style_stays_concise_in_stow_source_settings` to `claude/.claude/hooks/tests/test_hook_alignment.py`, directly after `test_syncclaudeaiskills_stays_disabled_in_stow_source_settings` (ends line 837), its closest sibling (row 35).**
-  - Load: `settings = json.loads(_SETTINGS_PATH.read_text())`, as the module's other settings tests do.
+  - Load: the test loads through `json.loads` with an `object_pairs_hook` that rejects a key repeated at one object level. A merge can leave a duplicated `outputStyle` line in a consumer's checkout (row 42), and Python's `json.loads` keeps the last of two repeated keys. `[verified: ran json.loads read-only on one key written twice, which returned the second value]` Which one Claude Code honors is `[unverified]` (row 42). Without the hook, row 18's first bullet would hold only for a removal or a change, not for a duplicate.
   - Assertion: `settings.get("outputStyle") == "Concise"`. Exact equality also catches a case change (row 27).
   - Failure message: it names `_SETTINGS_PATH.relative_to(_REPO_ROOT)` and says stow consumers no longer get the Concise output style by default.
-  - Docstring: one line saying the test pins the declared value, not that Claude Code applies it, and citing the M3 record by path.
+  - Docstring: one line saying the test pins the declared `outputStyle` and citing the M3 record by path.
   - If PR #744 lands first: the test text is unchanged, because `_SETTINGS_PATH` then names `settings.base.json` (row 14).
   - If this PR lands first: #744's rebase repoints `_SETTINGS_PATH`, and the pin fails there unless `outputStyle` stays in base, so its placement becomes an explicit edit. The pin cannot see the key's deletion route, which that rebase decides (row 39).
 
@@ -293,7 +298,7 @@ All paths are repo-relative.
 - `docs/design-decisions/concise-output-style-stow-default.md`: create (M3). Model its shape on `docs/design-decisions/claude-ai-skill-sync-disabled-by-default.md`, and link `docs/design-decisions/ui-notification-defaults-in-stow-source.md` rather than restating it.
 - `README.md`: modify the TOC and add the new minimal subsection (M4). The Machine-specific overrides sentence stays as it is (M5 dropped, row 44).
 - `CHANGELOG.md`: modify, one `[Unreleased]` bullet (M6).
-- `claude/.claude/hooks/tests/test_hook_alignment.py`: add one test after `test_syncclaudeaiskills_stays_disabled_in_stow_source_settings` (M8). Reuse `_SETTINGS_PATH` (line 227), `_REPO_ROOT` (line 97) and the `json.loads(_SETTINGS_PATH.read_text())` load the file's other settings tests use, rather than a new path constant or loader.
+- `claude/.claude/hooks/tests/test_hook_alignment.py`: add one test after `test_syncclaudeaiskills_stays_disabled_in_stow_source_settings` (M8). Reuse `_SETTINGS_PATH` (line 227) and `_REPO_ROOT` (line 97) rather than a new path constant. Load through `json.loads` with a duplicate-rejecting `object_pairs_hook` defined inside the test.
 
 Deliberately untouched: `claude/.claude/hooks/guard-settings-session-keys.sh`, `claude/.claude/hooks/tests/test_guard_settings_session_keys.py`, `docs/hooks.md`, `claude/.claude/CLAUDE.md`, `claude/.claude/scripts/tests/test_claude_enable_tool.py` and `install.sh`. The replay script (Verification step 6) lives outside the repository and is not part of the diff.
 
@@ -399,7 +404,8 @@ Steps 1-4 run after implementation. Step 5 is done. Step 6 and the step 7 decisi
   - multi-turn sessions, and any turn after the first in the step 6 replay;
   - skill-driven relays, such as the main session relaying review findings, and the questions the main session asks the engineer. Step 9d watches both;
   - whether Concise still runs its own edit to check it, seen in one refactor pair only (row 59). Step 9e watches it;
-  - destructive-action confirmation and risk-disclosure text, which row 22 takes from the vendor page and no probe observed (row 73). Step 9f watches it.
+  - destructive-action confirmation and risk-disclosure text, which row 22 takes from the vendor page and no probe observed (row 73). Step 9f watches it;
+  - whether Concise keeps Claude Code's built-in software-engineering instructions, which the vendor page documents and no probe observed (row 74). Step 9e watches the one observed divergence.
 
   The M3 record lists these as not measured and claims only what rows 51-60 measured.
 - **A CLAUDE.md rule restoring the closing synthesis Concise drops.** It becomes work only if the engineer's step 7 decision calls for it.
