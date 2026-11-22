@@ -615,8 +615,7 @@ This is the required local command for agents, including in `/ready-for-review`.
   - A plain `-n 0` run of a selection that includes `claude/.claude/scripts/tests` runs that test.
 - The serial pass collects the whole selection and filters it with `-m`.
 - Whether a selection holds `timing` tests is read from file text, so the mark must sit in the file pytest collects the test from. `test_pytest_collection_config.py` fails CI when it does not.
-- To get one complete listing, add `-n 0`; a split run prints each pass separately:
-  - `--collect-only`/`--co` prints each pass's share, and the two shares together omit `saturates_cpu` tests.
+- With `--collect-only`/`--co`, a split run prints each pass's share, and the two shares together omit `saturates_cpu` tests. Add `-n 0` for one complete listing.
 - A split run adds one more collection of the whole selection plus the serial pass's wall time.
 - It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
 - It runs one unsplit pass instead when:

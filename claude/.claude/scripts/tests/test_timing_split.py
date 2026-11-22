@@ -193,6 +193,11 @@ class TestScanTimingMarks:
                 id="files-named-directly-are-marked-only-when-they-hold-the-mark",
             ),
             pytest.param(
+                {"t/x_test.py": MARKED_TEST_TEXT},
+                ["t"], [], ("t/x_test.py",),
+                id="directory-walk-finds-a-marked-file-named-with-the-test-suffix",
+            ),
+            pytest.param(
                 {"t/helper.py": MARKED_TEST_TEXT, "t/notes.txt": MARKED_TEST_TEXT, "t/test_a.py": UNMARKED_TEST_TEXT},
                 ["t"], [], (),
                 id="walked-files-outside-the-test-patterns-do-not-count",
@@ -298,6 +303,22 @@ class TestScanTimingMarks:
         _write_files(tmp_path, {"outside/test_o.py": MARKED_TEST_TEXT})
 
         scan = scan_timing_marks([], [str(tmp_path / "outside" / "test_o.py")], repo_root=repo_root)
+
+        assert scan == TimingMarkScan(())
+
+    def test_absolute_caller_path_inside_the_repo_root_contributes_its_marked_file(self, tmp_path):
+        _write_files(tmp_path, {"sub/test_a.py": MARKED_TEST_TEXT})
+
+        scan = scan_timing_marks([], [str(tmp_path / "sub" / "test_a.py")], repo_root=tmp_path)
+
+        assert scan == TimingMarkScan(("sub/test_a.py",))
+
+    def test_caller_path_leaving_the_repo_root_through_dot_dot_contributes_nothing(self, tmp_path):
+        repo_root = tmp_path / "repo"
+        (repo_root / "sub").mkdir(parents=True)
+        _write_files(tmp_path, {"x/test_o.py": MARKED_TEST_TEXT})
+
+        scan = scan_timing_marks([], ["sub/../../x"], repo_root=repo_root)
 
         assert scan == TimingMarkScan(())
 
@@ -504,7 +525,7 @@ NO_WORKER_IDS_FILE_STEM = "no-xdist-worker"
 
 # Writes each selected node ID to a per-worker file under the directory the environment names.
 # The hook runs after -m deselection (so the IDs are the selected tests in one format under any verbosity). Each xdist
-# worker writes its own file, so the file count is the worker count, and a run without workers writes one file.
+# worker writes its own file, so the file count is the worker count. A run without workers writes one file.
 CONFTEST = f"""\
 import os
 
@@ -549,15 +570,14 @@ def test_saturates_cpu():
     pytest.fail("a split run must never start the CPU-saturating test")
 """
 
-PROJECT_FAILING_TEST = """\
+# Both variants share one test name so a fix keeps its node ID. A single template keeps the declaration line in the file
+# text once, since the repo's duplicate-top-level-test-name guard reads file text line by line.
+PROJECT_PLAIN_TEST_TEMPLATE = """\
 def test_plain_fails():
-    assert False
+    {body}
 """
-
-PROJECT_FIXED_TEST = """\
-def test_plain_fails():
-    pass
-"""
+PROJECT_FAILING_TEST = PROJECT_PLAIN_TEST_TEMPLATE.format(body="assert False")
+PROJECT_FIXED_TEST = PROJECT_PLAIN_TEST_TEMPLATE.format(body="pass")
 
 # Replaces the ini's addopts, which carries -p no:cacheprovider, so --lf has a cache to read.
 CACHE_ENABLED_OPTIONS = ["-o", "addopts=-n auto"]
