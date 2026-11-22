@@ -435,8 +435,8 @@ def _fake_pr_cost_subprocess_run(
     whose argv doesn't carry `--repo <enforce_repo_pin>` contiguously;
     git_tracked, when True, makes the git-tracked-ledger check answer as if
     the ledger path sits inside a tracked git working tree; withheld_fields
-    drops those fields from every PR `gh pr list` returns, as an older gh
-    would for a field it does not know.
+    drops those fields from every PR `gh pr list` returns, which models a
+    payload lacking them, whatever the cause.
     """
     merged_prs = merged_prs if merged_prs is not None else []
     enrichment_by_pr = enrichment_by_pr or {}

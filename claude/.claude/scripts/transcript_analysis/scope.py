@@ -89,6 +89,9 @@ def _path_to_project_slug(path: str) -> str:
     session's cwd and replacing every '/' and '.' with '-'. Verified against real
     dirs: /home/<user>/repo -> -home-<user>-repo;
     /home/<user>/repo/.claude/worktrees/b -> -home-<user>-repo--claude-worktrees-b.
+    This holds for a path made of ASCII letters, digits, '/', '.' and '-'.
+    For any other path see the "Nothing read" bullet in docs/pr-cost.md
+    § "Capture scope, rounds absence and earliest activity".
     """
     return re.sub(r"[/.]", "-", path)
 
@@ -111,8 +114,8 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     does not cover: its project dir is slugged from that subdirectory path and
     is string-unequal to every worktree-root slug, so it is silently excluded —
     the documented prefix-glob fallback covers that case instead.
-    Within this exact-slug scope, _with_removed_worktree_slugs is the only prefix match, used only where a
-    caller opts in.
+    A caller that passes include_removed_worktrees to _resolve_project_scope adds a name-prefix match on
+    top of this list through _with_removed_worktree_slugs.
 
     Fails closed (SystemExit) rather than returning a machine-wide scope whenever
     the environment is not a recognizable git worktree of this repo — a silent
@@ -529,10 +532,8 @@ def _add_project_scope_args(
     """Add the shared --projects/--this-repo scope flags to a subparser.
 
     The flags are mutually exclusive. _resolve_project_scope routes --this-repo through
-    _repo_scoped_project_slugs(), an identity-based minimization control. That routing and its fail-closed
-    exits are unchanged when a caller passes include_removed_worktrees to _resolve_project_scope, which adds
-    a name-prefix match on top of the identity list. --projects defaults to the
-    machine-wide glob "*" unless repo_scope_default is set.
+    _repo_scoped_project_slugs(), an identity-based minimization control.
+    --projects defaults to the machine-wide glob "*" unless repo_scope_default is set.
 
     With repo_scope_default set, args.projects is None when no flag is given.
     _resolve_project_scope reads None as the machine-wide glob "*".

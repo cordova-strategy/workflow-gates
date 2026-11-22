@@ -138,7 +138,7 @@ re-run and check.
     the next section.
   - The reason: it selects ledger rows by this checkout's origin
     repository, applies no filter on the capture scope a row records,
-    and is not a command that refuses a wider project-directory scope
+    and refuses no wider project-directory scope
     for the reads behind its rows.
 - `transcript-analysis.py read-cost --this-repo`, run from this
   repository's checkout, refuses `--projects` and a top-level

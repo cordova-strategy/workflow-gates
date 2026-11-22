@@ -329,6 +329,21 @@ class TestCaptureScopeOfARecordRun:
         assert row["earliest_surviving_activity_at"] == ""
         assert row["turn_count"] == 0
 
+    def test_a_repo_scope_holding_only_unbranched_priced_turns_prints_no_empty_scope_line(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        (root,) = _arrange_roots(tmp_path, monkeypatch)
+        unbranched_turn = _branch_turn("unused")
+        del unbranched_turn["gitBranch"]
+        _write_session(root, _LIVE_UNDER_PREFIX_SLUG, "unbranched", [unbranched_turn])
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None), _NOW, [root])
+
+        err = capsys.readouterr().err
+        assert "1 priced turns attributed to no branch at all" in err
+        assert _empty_scope_line() not in err.splitlines()
+
 
 class TestReadModeUnderTheRepoScope:
     def test_a_bare_listing_names_only_prs_a_record_run_can_capture(self, tmp_path, monkeypatch, capsys):
