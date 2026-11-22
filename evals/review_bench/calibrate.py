@@ -1,9 +1,9 @@
-"""Calibration of the review bench's decision statistics on synthetic data. No
-model runs and nothing is spent: each replicate draws per-defect counts for two
-arms, feeds them through `analysis`'s production fixture terms, t-interval and
-sign-flip test, and records whether each statistic adopts arm X. A cell's
-adopt rates are its false-adopt rate (true difference of -delta) or its power
-(true difference of 0).
+"""Calibration of the review bench's sign-flip test and fixture t-interval on
+synthetic data. No model runs and nothing is spent: each replicate draws
+per-defect counts for two arms, feeds them through `analysis`'s production
+fixture terms, t-interval and sign-flip test, and records whether each
+statistic adopts arm X. A cell's adopt rates are its false-adopt rate (true
+difference of -delta) or its power (true difference of 0).
 
 Only `run_review_bench.py`'s `calibrate` handler imports this module, so it
 stays outside the harness closure that `freeze` and `analyze` hash. The

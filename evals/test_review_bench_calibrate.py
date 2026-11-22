@@ -531,6 +531,7 @@ class TestSweep:
         assert len(printed_rows) == 1
         assert json.loads(out_path.read_text()) == printed_rows
         assert len(terminate_calls) == (1 if workers == 2 else 0)
+        assert sorted(path.name for path in tmp_path.iterdir()) == ["rows.json"]
 
     @pytest.mark.parametrize("failing_write", [2, 3])
     def test_every_printed_row_is_already_in_the_file_when_a_later_write_fails(

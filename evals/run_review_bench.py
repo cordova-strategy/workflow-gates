@@ -2,8 +2,8 @@
 """Review bench CLI: `mine-szz`, `mine-rounds`, `mine-pr-comments`, `confirm` for
 evals/review_bench's known-defect set; `snapshot-arms`, `smoke`, and `run` for its
 fixture and runner harness; `judge`, `spot-check export|import`, `analyze`, and
-`freeze` for its adjudication and analysis; `calibrate` for the decision
-statistics' synthetic false-adopt and power rates.
+`freeze` for its adjudication and analysis; `calibrate` for the synthetic
+false-adopt and power rates of the sign-flip test and fixture t-interval.
 
 LOCAL USE ONLY -- never run in CI. `mine-rounds` reads this account's own
 session transcripts; `mine-pr-comments` reads the authenticated `gh` user's
@@ -2292,7 +2292,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_calibrate = sub.add_parser(
         "calibrate",
-        help="Simulate the decision statistics' false-adopt and power rates on synthetic data (no model, no spend).",
+        help=(
+            "Simulate the false-adopt and power rates of the sign-flip test and fixture t-interval "
+            "on synthetic data (no model, no spend)."
+        ),
     )
     p_calibrate.add_argument("--metric", required=True, choices=("recall", "precision"), help="The metric to simulate.")
     p_calibrate.add_argument(
