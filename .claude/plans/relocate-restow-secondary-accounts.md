@@ -121,6 +121,7 @@ A listed account's marketplace registration stays manual in this PR, and the clo
 54. The plan's declaration is `declared: production, untrusted-input`, with the actors cooperative. A cooperative human or agent runs this command, so a finding that needs a hostile human to craft a value is out of scope. A value that a steered cooperative agent could emit, or that arrives through content the agent read, is in scope. The two axes differ: actor intent is cooperative, and input trust is not assumed. The engineer said: "We are dealing with cooperative agents and cooperative humans." [engineer-verified: "We are dealing with cooperative agents and cooperative humans."] "Cuts 1-5 (Recommended)" (row53) was chosen against the earlier Out of scope text. Asked again whether cut 5 (removing the root physical-path check) should stay once its re-pointing exposure was restated, the engineer gave the statement quoted above and selected no label. The plan treats that statement as keeping cut 5. [unverified: the dispatching session's reading] The tier wording follows a peer session's reading of `ROUTING.md`'s cumulative ladder. [unverified: the peer's interim finding, not re-read by this session]
 55. After round 10 re-derived the `Projected diff:` at about 1,300 changed lines, asked whether to split or proceed, the engineer chose to keep one PR. [engineer-verified: "Proceed anyway"]
 56. A listed dir that the reader or runner cannot use (unreachable, not a directory, or `readlink` absent) prints its warning, is reported in the closing text's unlisted-dirs bullet as not re-linked, and does not change the exit status or stop the `Done.` line. A user re-links it by correcting the line or making the dir reachable, then running `--repair`. This is the plan's own choice, which row47 does not cover. [unverified: the plan's judgment, from M2 and M4]
+57. The test files beyond `test_relocate_claude_config_declared_dirs.py` (helpers, integration, probes, roots_file) were each accepted by the engineer in earlier sessions, under the labels "Split the integration tests out (Recommended)", "Yes, stage it (Recommended)" and "Apply all three (Recommended)". [unverified: the labels come from the handoff and were not re-checked against the engineer's messages this session]
 
 **Mechanism justifications:**
 
@@ -139,13 +140,13 @@ A listed account's marketplace registration stays manual in this PR, and the clo
     - For such a destination, the checkout's package subtrees bound its length (Out of scope, linked package root).
     - It is plain recursion at the unit's own shell level, with no pipeline and no `cd`.
   - Classifying a link at `<rel>`:
-    - Its old text is read with `readlink -- "$path"`, which has no `-f` and so no fallback. The status is checked and stderr is discarded. A failed status takes the failed-step handling below with cause `could not read its text`. `$(...)` drops trailing newlines, so a link whose text ends in a newline is matched and backed up without them. [unverified: not probed]
+    - Its old text is read with `readlink -n -- "$path"`, which has no `-f` and so no fallback. The status is checked and stderr is discarded. A failed status takes the failed-step handling below with cause `could not read its text`. A trailing `x` sentinel is appended inside the `$(...)` and stripped after, so the text is byte-exact. A link whose text ends in a newline therefore fails the ends-with match below and is left alone and counted, never re-pointed or backed up.
     - A link that resolves is skipped.
     - A dangling link is a candidate for the first root whose `<new-real>/<root>/<rel>` exists and whose `/<root>/<rel>` ends its text. The comparison is a literal string match, with the expansion quoted inside `[[ … == *"…" ]]`.
     - A dangling link that matches no root is left alone and counted. Stdout names it: `left <rel> alone in the dir on line <N> of ~/.claude/transcript-config-dirs: it does not resolve and is not recognized as this repo's link`.
-    - A candidate is re-pointed whether its old text names this checkout's old location or another checkout of this layout, absolute or relative. That includes a checkout on a volume not mounted during the run. A `--repair` retry cannot tell these apart (row8). The backup copy keeps the old text, less any trailing newlines (above). README says so.
+    - A candidate is re-pointed whether its old text names this checkout's old location or another checkout of this layout, absolute or relative. That includes a checkout on a volume not mounted during the run. A `--repair` retry cannot tell these apart (row8). The backup copy keeps the old text.
   - Re-pointing a candidate, with each tool's stderr discarded (M6):
-    1. Check that nothing exists at `<parent>/.<name>.relocate-claude-config.$$`, by `-e` or `-L`, then create the new link there with `ln -s` and no force flag (row11). Its text is `_relative_path <parent> <new-real>/<root>/<rel>` (M5), where `<parent>` is the link's own physical parent.
+    1. Check that nothing exists at `<parent>/.<name>.relocate-claude-config.$$`, by `-e` or `-L`, then create the new link there with `ln -s` and no force flag (row11). Its text is `_relative_path <parent> <new-real>/<root>/<rel>` (M5), where `<parent>` is the link's own physical parent. The `$(...)` that captures this text into `new_text` appends a trailing `x` and strips it after, so a checkout entry name ending in a newline keeps it.
     2. Check that the temporary link resolves (`-e`). It sits in the position's own directory, so the renamed link resolves the same way. A wrong text fails here instead of replacing one dangling link with another.
     3. Allocate a backup name with `_new_backup_path <name>.L<line>` (M3), and write the old text there with `ln -sf`.
     4. Re-check that the position still holds a link that does not resolve.
@@ -254,7 +255,7 @@ A listed account's marketplace registration stays manual in this PR, and the clo
     - The registration bullet: Any other account that registered this repo's marketplace, listed or not, still records it at the old location. `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points it once that account's `settings.json` resolves.
   - A failed link gets its own `could not re-point` line and the resolve paragraph's fix, never a `left … alone` line. So the left-alone sentence and the retry instruction never name the same link.
   - Once M1 has re-pointed a listed account's links, the registration bullet is that account's only manual step, unless a link is reported as left alone, a residual the engineer accepted (row47), or its dir as not re-linked, a residual this plan chose (row56). PR 2b removes the registration step for listed accounts by narrowing that one bullet to unlisted ones (Out of scope).
-  - No existing test asserts either bullet (row14), so the integration tests assert both.
+  - No existing test asserts either bullet (row14). The four-token list under the integration test bullets says which test asserts what.
   - `--repair` is the retry: a re-pointed link resolves and is skipped, and one left in place is found again (M1).
   - Set aside: a `sed -n <N>p` hint in the resolve text (round-1 product review R8). The label already names the file and the line.
 - **M5 — `_relative_path <from-dir> <to-path>`** (anchors: row7, row11, row35, row40).
@@ -272,8 +273,8 @@ A listed account's marketplace registration stays manual in this PR, and the clo
   - A backup name holds only the link's basename and line number.
   - Set aside: PR 1's plan's ordinal-to-path map in the backup dir (row23). The line number already resolves against the user's own file.
 - **M7 — tests in two layers, with failure seams that need no root** (anchors: row16, row17, row28, row33, row39, row42, row46).
-  - Unit layer: tests source the script and call `_repoint_declared_dir`, `relink_declared_dirs`, `read_declared_config_dirs`, `_relative_path` and `_quarantine_if_dangling` directly, as `TestRelinkPackagesBatch` does (row39). It carries the decision table, containment, failure paths and roots-file states.
-  - Integration layer: two tests, each run in both modes, for wiring only. They cover call order, outcome lines, exit 3 with the printed retry, and the closing text.
+  - Unit layer: tests source the script and call `_repoint_declared_dir`, `relink_declared_dirs`, `read_declared_config_dirs`, `_relative_path`, `_quarantine_if_dangling` and `print_manual_steps` directly, as `TestRelinkPackagesBatch` does (row39). It carries the decision table, containment, failure paths and roots-file states.
+  - Integration layer: two tests, each run in both modes, for wiring only. They cover call order, outcome lines, exit 3 with the printed retry, and the unlisted-dirs closing text.
   - Failure seams:
     - Sourced tests define a bash `ln` or `mv` function that fails for one named path and runs `command ln` or `command mv` otherwise. The script calls `ln`, `mv` and `rm` by bare name, never through `command` or an absolute path, so the function intercepts them.
     - The `ln` function treats any flag argument whose letters include `f`, such as `-sf` or `-sfn`, as forced. The temporary-link case's function, when forced, removes its destination before failing, as BSD `ln -f` does when its create fails. A mutation back to `ln -sfn` then leaves the position empty. The function stops scanning flags at `--`, so a dash-led link text after `--` that contains an `f` is not read as a flag.
@@ -283,7 +284,7 @@ A listed account's marketplace registration stays manual in this PR, and the clo
     - Only the unwritable, unsearchable, unsearchable-nested and unreadable-file cases set modes, under `requires_non_root`. Each restores modes in `finally` before any assertion, since a `0o644` dir blocks reading its own links.
   - Every sourced call of a unit runs as an `if` condition, as the runner calls it, so errexit is off as in production. The survive test instead calls the runner bare, with errexit on, as production calls it (row33). Every call also runs under a `subprocess` timeout, so a loop that never ends fails instead of hanging CI.
   - The walk and per-link helpers sit above `_repoint_declared_dir` in the file, as `_quarantine_if_dangling` sits above `_relink_package`. So shellcheck reports neither SC2030 nor SC2031 on the locals they share, and SC2034 never fires on a local a helper reads (row46). No `disable` line is planned. If Verification 2 still reports SC2030 or SC2031 after that order, one `# shellcheck disable=SC2030,SC2031` on the unit carries the one-line rationale `CLAUDE.md` § "Engineering Judgment" requires, naming the alternative considered and why it does not apply.
-  - The new file imports its run helpers from `.test_relocate_claude_config` (row16).
+  - The new test files import their run helpers from `.test_relocate_claude_config` (row16).
   - Set aside:
     - Moving those helpers into a `_relocate_helpers.py` module both files import (round-1 SDET review R9). It moves about 180 lines, which adds about 360 changed lines to a PR the engineer accepted at about 710 (row42). The relative import is allowed and has a precedent in the same directory (row16). Splitting the over-limit file is the place for that move (Out of scope).
     - Extending `TestClaudeCliMissing`'s tool tuple. Its run reaches none of the new tools (row17), so its comment narrows instead.
@@ -312,7 +313,13 @@ Comments and docs added below state durable one-line facts only, with no plan te
   - `report_relink_outcome`'s resolve paragraph (`:561`) and `print_manual_steps`'s first bullet (`:511-513`) change as M4 says.
   - Reuse `_readlink_f`, `canonicalize_for_comparison`, `_ensure_backup_dir_is_usable`, `err` and the `[relocate-claude-config]` stdout prefix.
 - **Modify `claude/.claude/scripts/tests/test_relocate_claude_config.py`** — only the three `RELINK_FAILED_PACKAGES` references (`:916, 919, 947`), and `TestClaudeCliMissing`'s comment (`:715-718`), which narrows to every external tool this run reaches (M7, row17). New tests go to the new file below, because this one is already over the 1,000-line limit (row16).
-- **Create `claude/.claude/scripts/tests/test_relocate_claude_config_declared_dirs.py`**, split at the listed-config-dirs seam (M7).
+- **Create five new files under `claude/.claude/scripts/tests/`, split to stay under the 1,000-line limit (row16, row57).**
+  - `test_relocate_claude_config_declared_dirs.py`: the decision-table and unit tests, split at the listed-config-dirs seam (M7). The test and builder names below live here unless a bullet says otherwise.
+  - `_declared_dirs_helpers.py`: shared scene builders.
+  - `test_relocate_claude_config_declared_dirs_integration.py`: full-script wiring.
+  - `test_relocate_claude_config_declared_dirs_probes.py`: reader and runner probes.
+  - `test_relocate_claude_config_declared_dirs_roots_file.py`: roots-file reader and runner parity.
+- **About the first file above**, the listed-config-dirs split (M7):
   - It imports `_SCRIPT`, `requires_non_root`, `_make_repo`, `_stow`, `_script_env`, `_claude_shim`, `_relocation_args_for_mode`, `_run_printed_retry_line`, `_plant_unusable_backup_dir`, `_BACKUP_DIR_REFUSAL_FRAGMENTS`, `_AWKWARD_DESTINATION_NAME` and `_backup_entry_names` from `.test_relocate_claude_config` (row16, row39). It imports `_config_dir` as `test__config_dir.py:9-10` does.
   - Builders:
     - One writes `home/.claude/transcript-config-dirs` from a list of lines, optionally with no final newline.
@@ -340,8 +347,10 @@ Comments and docs added below state durable one-line facts only, with no plan te
         - `other-shape`: a dangling link at a position the new checkout holds, whose text ends elsewhere.
         - `near-miss-text`: a dangling `skills` link whose text ends in `x-claude-skills/skills`.
         - `wrong-root-text`: a dangling `hooks` link whose text ends in `claude-skills/hooks`, which the new checkout lacks.
+        - `trailing-newline-text`: a dangling `hooks` link whose text is a valid old-checkout path followed by one newline. It leaves no backup.
         - `glob-in-name`: a dangling link at a new-checkout position `star*`, whose text ends in `claude/.claude/star-other`.
-        - The four ids above each leave their link unchanged, with counts 0, 0 and 1 and a `left <rel> alone` line naming it.
+        - `newline-ending-name`: a dangling link at a new-checkout position whose entry name ends in a newline, with a sibling entry of the same name without it. The link is re-pointed, resolves to its own entry, and its text names that entry.
+        - The ids `other-shape`, `near-miss-text`, `wrong-root-text`, `glob-in-name` and `trailing-newline-text` each leave their link unchanged, with counts 0, 0 and 1 and a `left <rel> alone` line naming it.
         - `not-a-checkout-position`: a dangling `retired` link the new checkout has no entry for is unchanged and not counted.
         - `under-a-linked-dir`: `hooks` is a live link to a second checkout's `claude/.claude/hooks/`, which holds a dangling shape-matching `_lib.sh` link. That link is unchanged.
         - `linked-checkout-dir`: the new checkout's `claude/.claude/linked` is a link to a directory holding `inner`. The account holds a real `linked/` dir with a dangling `inner` link whose text ends in `claude/.claude/linked/inner`. That link is unchanged, all four counts are 0, and neither stream names `inner`.
@@ -438,11 +447,12 @@ Comments and docs added below state durable one-line facts only, with no plan te
         - `acct-b` holds real files and a dangling `scripts` link whose text ends in `elsewhere/scripts`. It holds no entry named `skills`, a position the new checkout holds, so its listing assertion fails if the run creates a link there.
         - `acct-c` holds a live `hooks` link into a second checkout that exists.
         - `acct-unlisted`, a sibling of the listed dirs that the file does not list, holds a stale shape-matching `hooks` link whose new target exists.
-      - The run exits 0. `acct-a/hooks` and `acct-a/skills/example` resolve into the new checkout, and `acct-a`'s backups hold their pre-run text. `retired`, `acct-c/hooks`, `acct-b`'s listing and `acct-unlisted/hooks` are unchanged, and the entries in the backup dir that carry an `.L<N>.` stem number exactly two, `hooks.L<N>.*` and `example.L<N>.*`, each holding its pre-run text, with no other entry carrying an `.L<N>.` stem. In the `--repair` arm the fixture's stowed `~/.claude` is renamed, so the quarantine entries of `~/.claude` (such as `hooks.<suffix>`) also land in the backup dir. This test does not assert them.
-      - Stdout holds the `~/.claude` skip line and one outcome line per account: `acct-a` 2, 0 and 0, `acct-b` 0, 0 and 1, and `acct-c` 0, 0 and 0. It also holds a `left scripts alone` line for `acct-b`.
-      - Stdout holds a `checking line <N>` line for each listed line but the comment, and each walked account's `walking the dir on line <N>` line before its outcome line.
-      - Stderr holds exactly one reader warning, naming `acct-missing`'s line, and no `transcript-config-dirs:line-` label. Neither stream holds `acct-`.
-      - The closing text is asserted on four stable tokens, not whole sentences: `register-marketplace`, `relocate-claude-config --repair [--allow-outside-home]`, `with the flag when this run passed it` and `gives this command write access to its links`. The second and third tokens are the retry-command assertion. Stdout must also not hold `including any listed in`, a token of the old first bullet.
+      - The run exits 0. `acct-a/hooks` and `acct-a/skills/example` resolve into the new checkout. `retired`, `acct-c/hooks`, `acct-unlisted/hooks` and `acct-b`'s listing are unchanged. The backup text, the `~/.claude` skip line and the reader warning are pinned at the unit layer (the decision table's backup check, the runner cases and the roots-file tests), not here.
+      - Stdout holds one outcome line per account: `acct-a` 2, 0 and 0, `acct-b` 0, 0 and 1, and `acct-c` 0, 0 and 0. It also holds a `left scripts` line for `acct-b`. `acct-b`'s old link text appears in neither stream.
+      - The `checking line <N>` and `walking the dir on line <N>` progress lines are asserted by the two probes-file tests, not here.
+      - The closing text is asserted on four stable tokens, not whole sentences, each in exactly one test:
+        - The integration success test asserts the retry-command tokens `relocate-claude-config --repair [--allow-outside-home]` and the write-access token `gives this command write access to its links`.
+        - `test_manual_steps_name_the_retry_flag_and_give_registration_its_own_bullet` asserts `register-marketplace` and `with the flag when this run passed it`. It calls `print_manual_steps` through `_run_sourced`. It also asserts that the bullet holding the `register-marketplace` line opens with text naming `marketplace`, which fails when registration merges into another bullet.
     - `test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it`, parametrized over primary and `--repair` through `_relocation_args_for_mode`. `acct-a` is listed before `acct-b`.
       - An `mv` shim fails for `acct-a/hooks` only (M7). Before failing, it copies the manifest, `~/.claude-config-source`, to a record file.
       - The run exits 3. Stderr holds `re-linking failed for: transcript-config-dirs:line-<N>`, where `<N>` is `acct-a`'s line number, and the `could not rename the new link over it` cause. It also holds the runner's `re-pointing the dir on line <N> of ~/.claude/transcript-config-dirs failed` err, with `acct-a`'s line number. It holds no `acct-`.
@@ -457,7 +467,7 @@ Comments and docs added below state durable one-line facts only, with no plan te
   - A bullet after it, with nested items:
     - Both modes also re-point links in each config dir listed in `~/.claude/transcript-config-dirs`, other than `~/.claude` and any dir inside the checkout. With no such file in `~/.claude` when this step runs, it does nothing.
     - A link at one of this repo's package paths in that dir, nested ones included, now points to that path in the new checkout when it no longer resolves and its text ends in `/claude/.claude/<path>` or `/claude-skills/<path>` for its own `<path>`. The new text is relative, as Stow writes it.
-    - This holds whichever checkout the old text named, one on a volume not mounted during the run included. The backup copy keeps the old text, except that `$(...)` drops trailing newlines from it. A link's text ending in a newline is not a state this layout's stow produces.
+    - This holds whichever checkout the old text named, one on a volume not mounted during the run included. The backup copy keeps the old link text.
     - A copy of each old link goes to `~/.claude-config-relocate-backup/<name>.L<line>.<suffix>` first. A failed replacement leaves the old link in place, and each retry before the fix can add another copy.
     - Nothing else in the dir changes, so an entry tracked since that account was last installed stays unlinked until its own installer runs.
     - Output names a listed dir only by its line number. One line per dir gives how many links it re-pointed, could not re-point, and left alone, and how many directories it could not search. Each link left alone is named on its own line, and this command did not touch it, so re-link or remove it yourself.
@@ -487,7 +497,7 @@ Comments and docs added below state durable one-line facts only, with no plan te
   - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
   - **Migration:** after a relocation that left a listed account's links pointing at the old location, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.
 
-Projected diff: ~1,300 changed lines, additions plus deletions (relocate script ~350, new test file ~900, `README.md` ~35, existing test file ~10, `CHANGELOG.md` ~15, `docs/scripts.md` ~2, `docs/transcript-analysis.md` ~3). That is above the about 1,000 the engineer accepted at row51, and the engineer then chose to proceed (row55). PR 1's script and tests ran about 1.7x and 2.6x over its projection by `git diff --numstat`, so the earlier ~880 was low. [unverified: an estimate from this plan's own lists, not measured] The script would reach about 1,000 lines (687 now plus the changed lines), which row16's limit makes a split question, and row1 rules out a sourced sibling, so the fallback is landing M3 and its tests as their own PR (about 60 lines). If the test file runs over 1,000 lines, it splits at the unit/integration seam (M7). After the code is written, a `wc -l` and `git diff --numstat` of the diff gives the real figure, which goes in the PR body.
+Projected diff: ~1,300 changed lines, additions plus deletions (relocate script ~350, new test files ~900, `README.md` ~35, existing test file ~10, `CHANGELOG.md` ~15, `docs/scripts.md` ~2, `docs/transcript-analysis.md` ~3). That is above the about 1,000 the engineer accepted at row51, and the engineer then chose to proceed (row55). PR 1's script and tests ran about 1.7x and 2.6x over its projection by `git diff --numstat`, so the earlier ~880 was low. [unverified: an estimate from this plan's own lists, not measured] The script would reach about 1,000 lines (687 now plus the changed lines). Row16's limit makes that a split question. Row1 rules out a sourced sibling. The fallback is landing M3 and its tests as their own PR (about 60 lines). The new tests split across five files by seam (Critical files), so the "new test files ~900" figure is the total across them. After the code is written, a `wc -l` and `git diff --numstat` of the diff gives the real figure, which goes in the PR body.
 
 ## Verification
 
@@ -503,6 +513,8 @@ Projected diff: ~1,300 changed lines, additions plus deletions (relocate script 
      - Drop the leading `/` from the suffix: `[near-miss-text]`.
      - Leave the pattern's expansion unquoted: `[glob-in-name]`.
      - Drop the new-target existence check: `[wrong-root-text]`.
+     - Read the old text with plain `$(readlink -- "$path")` instead of `readlink -n` plus the sentinel: `[trailing-newline-text]`.
+     - Drop the `new_text` sentinel (`; printf x` and the `%x` strip): `[newline-ending-name]`.
      - Descend through a linked directory on the account side: `[under-a-linked-dir]`.
      - Test the checkout side with `-d` alone, without the `-L` exclusion: `[linked-checkout-dir]`.
      - Drop the earlier-root check: `[shared-position]`.
@@ -553,7 +565,7 @@ Projected diff: ~1,300 changed lines, additions plus deletions (relocate script 
      - Use `_readlink_f`'s output with no failure check: the same test's `[readlink-fails]`.
      - Drop the reset: `test_runner_resets_declared_rows_on_each_call`.
      - Drop the dedupe, besides the parity test's failure above: `test_runner_dedupes_a_dir_listed_twice`.
-     - Drop the `checking line` line: the integration success test's progress assertion.
+     - Drop the `checking line` line: `test_reader_names_a_line_before_it_probes_the_path` (probes file).
    - M3, the allocator:
      - Change `_new_backup_path` back to `<stem>.$$`: `test_same_named_dangling_links_get_their_own_backups`.
      - Drop the refusal from `_new_backup_path`: `test_backup_dir_refusal_reaches_the_repoint_unit`.
@@ -568,7 +580,7 @@ Projected diff: ~1,300 changed lines, additions plus deletions (relocate script 
      - Walk a dir the file does not list, such as the siblings of each listed dir or, when the file yields no rows, the siblings of `~/.claude`: the integration success test's `acct-unlisted` assertion and `test_reader_and_runner_survive_every_roots_file_state`'s five no-dir ids.
      - Probe write permission on the listed dir before walking it: `test_a_dir_with_nothing_to_re_point_is_not_written`'s `0o555` id, which would exit 3 for a healthy read-only account.
      - Test containment with a prefix match that has no `/` boundary: `test_runner_skips_home_claude_and_the_checkout_and_bounds_ancestors`'s `[sibling-prefix]`.
-     - Drop the `walking` line: the integration success test's progress assertion.
+     - Drop the `walking` line: `test_runner_names_each_walked_line_before_its_outcome_and_no_skipped_line` (probes file).
      - Take every `RELINK_PACKAGES` row as a root: the runner test's `acct-b/thing` assertion.
      - Drop the `~/.claude` skip, then separately the inside-checkout skip: `test_runner_skips_home_claude_and_the_checkout_and_bounds_ancestors`'s `[home-claude]` and `[inside-checkout]`.
      - Compare `~/.claude` unresolved instead of by physical path: the same test's `[home-claude-symlinked]`.
@@ -576,9 +588,12 @@ Projected diff: ~1,300 changed lines, additions plus deletions (relocate script 
      - Pass `<new-path>` unresolved: `test_runner_resolves_symlinked_and_awkward_paths`.
      - Drop the runner's `re-pointing the dir on line <N> … failed` err: `test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it`'s stderr assertion for that err, in both modes.
      - Read the roots file from `<new-path>`'s `claude/.claude/transcript-config-dirs` instead of `~/.claude/transcript-config-dirs`: `test_both_modes_repoint_listed_dirs_and_report_each`, in both arms, because its roots file is written only into `home/.claude` and the checkout ships none.
-     - Delete the registration bullet: the integration success test's `register-marketplace` assertion. Delete the unlisted-dirs bullet's `--repair` sentence. Separately, delete the bracketed `[--allow-outside-home]` from its printed command, then separately delete its `with the flag when this run passed it` clause. Each of the three fails the same test's retry-command assertion.
-     - Delete the unlisted-dirs bullet's write-access sentence: the same test's write-access token assertion.
-     - Leave the old first bullet unsplit: the same test's `including any listed in` assertion.
+     - Delete the registration bullet: `test_manual_steps_name_the_retry_flag_and_give_registration_its_own_bullet`'s `register-marketplace` assertion.
+     - Delete the unlisted-dirs bullet's `--repair` sentence: the integration success test's retry-command assertion.
+     - Delete the bracketed `[--allow-outside-home]` from its printed command: the integration success test's retry-command assertion.
+     - Delete its `with the flag when this run passed it` clause: the unit test's flag-clause assertion.
+     - Delete the unlisted-dirs bullet's write-access sentence: the integration success test's write-access token assertion.
+     - Leave the old first bullet unsplit, so registration merges into another bullet: the new unit test's assertion that the bullet holding the `register-marketplace` line opens with text naming `marketplace`.
    - M5:
      - Match the prefix without the trailing `/`: the shared-prefix case.
      - Drop the trailing-`/` strip, which is what stops the climb at `/`: the `/`-start case and the different-first-components case, which fail by their timeout.

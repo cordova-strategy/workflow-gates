@@ -518,8 +518,8 @@ _warn_unusable_declared_line() {
 # each usable dir in ~/.claude/transcript-config-dirs.
 # _config_dir.py's declared_roots_matching owns the line grammar, and
 # test_reader_matches_config_dir_parser compares the two on a fixed set of lines.
-# That test does not cover a lone CR, VT, FF or U+2028, which split lines
-# differently, or the whitespace trim, which follows the locale's [:space:]
+# That test does not cover a lone CR, VT, FF or U+2028, which split lines differently.
+# It also does not cover the whitespace trim, which follows the locale's [:space:]
 # where the Python parser trims a fixed ASCII set.
 read_declared_config_dirs() {
   DECLARED_CONFIG_DIRS=()
@@ -601,7 +601,9 @@ _repoint_declared_link() {
     _fail_declared_link "$position" "its temporary name is taken"
     return 0
   fi
-  new_text=$(_relative_path "$parent" "$new_real/$root/$position")
+  # The x sentinel keeps a newline ending the text, which $(...) would drop.
+  new_text=$(_relative_path "$parent" "$new_real/$root/$position"; printf x)
+  new_text=${new_text%x}
   if ! ln -s -- "$new_text" "$temp_link" 2>/dev/null; then
     _fail_declared_link "$position" "could not create the new link"
     return 0
@@ -678,10 +680,12 @@ _walk_declared_position() {
 
       child_path="$dir_real/$child"
       if [ -L "$child_path" ]; then
-        if ! old_text=$(readlink -- "$child_path" 2>/dev/null); then
+        # The x sentinel keeps a newline ending the text, which $(...) would drop.
+        if ! old_text=$(readlink -n -- "$child_path" 2>/dev/null && printf x); then
           _fail_declared_link "$child" "could not read its text"
           continue
         fi
+        old_text=${old_text%x}
         if [ -e "$child_path" ]; then
           continue
         fi

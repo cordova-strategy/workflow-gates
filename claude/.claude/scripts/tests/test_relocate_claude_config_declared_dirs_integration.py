@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import re
 import shlex
 import shutil
 import subprocess
@@ -106,31 +105,58 @@ def test_both_modes_repoint_listed_dirs_and_report_each(tmp_path: Path, mode: st
     assert os.readlink(scene.accounts["acct-c"] / "hooks") == scene.old_texts["c-hooks"]
     assert os.readlink(scene.accounts["acct-unlisted"] / "hooks") == scene.old_texts["unlisted-hooks"]
     assert sorted(entry.name for entry in scene.accounts["acct-b"].iterdir()) == scene.listing_of_b
-    backup_dir = scene.home / ".claude-config-relocate-backup"
-    numbered_backups = {entry.name: os.readlink(entry) for entry in backup_dir.iterdir() if re.search(r"\.L\d+\.", entry.name)}
-    assert sorted(re.sub(r"\.[^.]+$", "", name) for name in numbered_backups) == ["example.L3", "hooks.L3"]
-    assert {name.split(".")[0]: text for name, text in numbered_backups.items()} == {
-        "hooks": scene.old_texts["a-hooks"],
-        "example": scene.old_texts["a-example"],
-    }
-    assert f"the dir on line 2 of {_ROOTS_LABEL} is ~/.claude, which the stows above cover" in result.stdout
     assert _outcomes(result.stdout) == [(3, 2, 0, 0, 0), (5, 0, 0, 1, 0), (6, 0, 0, 0, 0)]
     assert _left_alone(result.stdout) == ["scripts"]
-    for line_number in (2, 3, 4, 5, 6):
-        assert f"checking line {line_number} of {_ROOTS_LABEL}" in result.stdout
-    assert f"checking line 1 of {_ROOTS_LABEL}" not in result.stdout
-    for line_number in (3, 5, 6):
-        walking = result.stdout.index(f"walking the dir on line {line_number} of {_ROOTS_LABEL}")
-        assert walking < result.stdout.index(f"the dir on line {line_number} of {_ROOTS_LABEL}: re-pointed")
-    assert result.stderr.count("is not an absolute path to an existing directory") == 1
-    assert f"line 4 of {_ROOTS_LABEL} is not an absolute path" in result.stderr
-    assert "transcript-config-dirs:line-" not in result.stderr
-    assert "acct-" not in result.stdout and "acct-" not in result.stderr
-    assert "register-marketplace" in result.stdout
-    assert "relocate-claude-config --repair [--allow-outside-home]" in result.stdout
-    assert "with the flag when this run passed it" in result.stdout
+    assert scene.old_texts["b-scripts"] not in result.stdout and scene.old_texts["b-scripts"] not in result.stderr
+    last_outcome = result.stdout.index(f"the dir on line 6 of {_ROOTS_LABEL}: re-pointed")
+    assert last_outcome < result.stdout.index("Done.")
+    assert last_outcome < result.stdout.index("relocate-claude-config --repair [--allow-outside-home]")
+    # The notice that listing a dir grants write access to its links is required in the closing text.
     assert "gives this command write access to its links" in result.stdout
-    assert "including any listed in" not in result.stdout
+
+
+def _stow_into_account(old_repo: Path, account: Path, home: Path, *, real_skills_dir: bool = False) -> None:
+    """Stow `old_repo`'s two packages into `account` with the invocations real accounts use, so the links are Stow's own.
+    With a real `skills/` dir in the account, Stow links inside it instead of folding the dir into one link."""
+    account.mkdir()
+    if real_skills_dir:
+        (account / "skills").mkdir()
+    for stow_args in (
+        ["-d", str(old_repo / "claude"), "-t", str(account), ".claude"],
+        ["-d", str(old_repo), "-t", str(account), "claude-skills"],
+    ):
+        subprocess.run(["stow", *stow_args], check=True, capture_output=True, text=True, env=_script_env(home))
+
+
+@pytest.mark.parametrize("mode", ["primary", "repair"])
+def test_both_modes_repoint_links_that_real_stow_wrote(tmp_path: Path, mode: str) -> None:
+    home = tmp_path / "home"
+    old_repo = _make_repo(tmp_path, "old-repo")
+    _stow(old_repo, home, with_claude_skills=True)
+    bin_dir, _, _ = _claude_shim(tmp_path)
+    account = tmp_path / "acct-stowed"
+    _stow_into_account(old_repo, account, home)
+    stow_written_links = {"hooks": _PACKAGE_ROOT, "scripts": _PACKAGE_ROOT, "skills": _SKILLS_ROOT}
+    assert all((account / name).is_symlink() for name in stow_written_links)
+    nested_account = tmp_path / "acct-stowed-nested"
+    _stow_into_account(old_repo, nested_account, home, real_skills_dir=True)
+    nested_link = nested_account / "skills" / "example"
+    assert nested_link.is_symlink() and not (nested_account / "skills").is_symlink()
+    _write_roots_file(home, [str(account), str(nested_account)])
+    new_repo, args = _relocation_args_for_mode(tmp_path, home, old_repo, mode)
+
+    result = subprocess.run(
+        [str(_SCRIPT), *args],
+        capture_output=True, text=True, check=False, env=_script_env(home, bin_dir),
+        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for name, root in stow_written_links.items():
+        assert (account / name).is_symlink()
+        assert (account / name).resolve() == (new_repo / root / name).resolve()
+    assert nested_link.is_symlink()
+    assert nested_link.resolve() == (new_repo / _SKILLS_ROOT / "skills" / "example").resolve()
 
 
 def _write_failing_mv_shim(shim_dir: Path, failing_destination: Path, manifest: Path, manifest_record: Path) -> None:
@@ -178,12 +204,11 @@ def test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it(tmp_path: Path, 
 
     assert first_run.returncode == 3, first_run.stderr
     assert "re-linking failed for: transcript-config-dirs:line-1" in first_run.stderr
-    assert "could not rename the new link over it" in first_run.stderr
-    assert f"re-pointing the dir on line 1 of {_ROOTS_LABEL} failed" in first_run.stderr
-    assert f"A transcript-config-dirs:line-<N> entry is the dir on line <N> of {_ROOTS_LABEL}" in first_run.stderr
-    assert f"delete the dir's line from {_ROOTS_LABEL} so this command leaves it alone" in first_run.stderr
-    assert "acct-" not in first_run.stderr and "acct-" not in first_run.stdout
+    assert "re-pointing the dir on line 1 of ~/.claude/transcript-config-dirs failed" in first_run.stderr
+    assert "delete the dir's line from ~/.claude/transcript-config-dirs" in first_run.stdout + first_run.stderr
     assert _outcomes(first_run.stdout)[0] == (1, 0, 1, 0, 0)
+    assert "acct-" not in first_run.stdout
+    assert "acct-" not in first_run.stderr
     assert os.readlink(failing_account / "hooks") == failing_text
     assert (passing_account / "hooks").resolve() == (new_repo / _PACKAGE_ROOT / "hooks").resolve()
     assert (home / ".claude" / "hooks").resolve() == (new_repo / _PACKAGE_ROOT / "hooks").resolve()

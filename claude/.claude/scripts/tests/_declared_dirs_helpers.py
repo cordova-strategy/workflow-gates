@@ -28,7 +28,7 @@ _SUBPROCESS_TIMEOUT_SECONDS = 60
 _BASH = shutil.which("bash") or "bash"
 
 _AWKWARD_ENTRY_NAME = "-a b$c]`d@e*f\\g$(touch injected)"
-_AWKWARD_DIR_NAME = "-h i$j]`k@l*m\\n$(touch injected)"
+_AWKWARD_DIR_NAME = "-h i$j]`k@l*m\\né$(touch injected)"
 # An existing variable name plus a subscript, so an indexed-array subscript built from it runs the substitution.
 _SUBSCRIPT_ENTRY_NAME = "HOME[$(touch injected)]"
 
@@ -231,3 +231,22 @@ def _scene(tmp_path: Path) -> _Scene:
         account=account,
         scratch=scratch,
     )
+
+
+@dataclass
+class _RunnerScene:
+    home: Path
+    new_repo: Path
+    scratch: Path
+    skip_line: str | None = None
+    repointed: list[Path] = field(default_factory=list)
+    unchanged: dict[Path, str] = field(default_factory=dict)
+    expected_counts: tuple[int, int, int, int] | None = None
+
+
+def _runner_scene_base(tmp_path: Path) -> _RunnerScene:
+    home = tmp_path / "home"
+    (home / ".claude").mkdir(parents=True)
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    return _RunnerScene(home=home, new_repo=_make_repo(tmp_path, "new-repo"), scratch=scratch)
