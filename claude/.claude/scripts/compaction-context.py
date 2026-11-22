@@ -70,10 +70,6 @@ FRAMING_LINES = (
 )
 
 SKILL_LOAD_PREFIX = "Base directory for this skill"
-HUMAN_ORIGIN_KIND = "human"
-# A record with no `origin` is a `claude -p` prompt only when it carries every one of these values, which every
-# recorded `claude -p` prompt did and no recorded harness-written record did.
-NO_ORIGIN_PROMPT_MARKERS = {"entrypoint": "sdk-cli", "promptSource": "sdk", "turnOrigin": "sdk"}
 PASTED_CONTENT_TAG = "pasted_content"
 
 # Same class as _lib_passes_path_char_allowlist in hooks/_lib.sh; fullmatch because `$` also matches before a trailing newline.
@@ -82,8 +78,6 @@ _SLASH_NAME_RE = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 _SKILL_LOAD_FIRST_LINE_RE = re.compile(rf"{SKILL_LOAD_PREFIX}:?[ \t]+(\S+)[ \t]*")
 _TAG_OPENING_RE = re.compile(r"<[A-Za-z][A-Za-z0-9_.:-]*[\s/>]")
 _PASTED_OPENING_RE = re.compile(rf"<{PASTED_CONTENT_TAG}[\s>]")
-_COMMAND_ARGS_OPENER = "<command-args>"
-_COMMAND_ARGS_CLOSER = "</command-args>"
 
 _HALF_BUDGET = MESSAGE_CHAR_BUDGET // 2
 
@@ -181,17 +175,12 @@ def _plan_path(thread: Sequence[dict]) -> str | None:
     return plan_path
 
 
-def _has_human_origin(rec: dict) -> bool:
-    origin = rec.get("origin")
-    return isinstance(origin, dict) and origin.get("kind") == HUMAN_ORIGIN_KIND
-
-
 def _passes_origin_rule(rec: dict) -> bool:
     """True for a typed or pasted prompt (`origin.kind` human) or a headless prompt (no `origin`, every marker present)."""
     origin = rec.get("origin")
     if origin is None:
-        return all(rec.get(field) == value for field, value in NO_ORIGIN_PROMPT_MARKERS.items())
-    return _has_human_origin(rec)
+        return render._has_headless_markers(rec)
+    return render._has_human_origin(rec)
 
 
 def _is_prompt_candidate(rec: dict) -> bool:
@@ -206,27 +195,14 @@ def _is_prompt_candidate(rec: dict) -> bool:
         return False
     if rec.get("origin") is None and "task-notification>" in _prompt_text(rec):
         return False
-    return "interruptedMessageId" not in rec
-
-
-def _first_command_args(text: str) -> str:
-    """The text between the first `<command-args>` and the first closer after it, or "" when either is missing.
-
-    str.find keeps this linear in text. A lazy regex rescans to the end of text from every opener that has no closer.
-    """
-    opener_start = text.find(_COMMAND_ARGS_OPENER)
-    if opener_start == -1:
-        return ""
-    args_start = opener_start + len(_COMMAND_ARGS_OPENER)
-    closer_start = text.find(_COMMAND_ARGS_CLOSER, args_start)
-    return "" if closer_start == -1 else text[args_start:closer_start]
+    return not render._is_interrupt_marker(rec)
 
 
 def _slash_invocation_quote(name: str, text: str) -> str | None:
     """`/NAME <args>` for a skill slash invocation, or None when NAME fails the allow-list or the invocation has no args."""
     if not _is_allowed_slash_name(name):
         return None
-    args = _first_command_args(text).strip()
+    args = render._first_command_args(text).strip()
     return f"/{name} {args}" if args else None
 
 
@@ -249,7 +225,7 @@ def _quoted_text(thread: Sequence[dict], index: int) -> str | None:
     slash_match = review_rounds._SLASH_COMMAND_RE.search(text)
     if slash_match and index + 1 < len(thread) and _is_skill_load(thread[index + 1]):
         return _slash_invocation_quote(slash_match.group(1), text)
-    if _has_human_origin(rec) and _PASTED_OPENING_RE.match(text.lstrip()):
+    if render._has_human_origin(rec) and _PASTED_OPENING_RE.match(text.lstrip()):
         return text
     if _TAG_OPENING_RE.match(text.lstrip()):
         return None
@@ -277,7 +253,7 @@ def _fenced(text: str) -> str:
 def _quoted_message(rec: dict, text: str) -> str:
     fenced = _fenced(_cut_to_budget(text))
     # The complement of the human-origin test, so a newly admitted `origin` kind is labelled by default.
-    return fenced if _has_human_origin(rec) else f"{HEADLESS_LABEL}\n{fenced}"
+    return fenced if render._has_human_origin(rec) else f"{HEADLESS_LABEL}\n{fenced}"
 
 
 def _recent_messages(thread: Sequence[dict]) -> list[str]:
@@ -298,24 +274,6 @@ def _render_block(skill_paths: Sequence[str], plan_line: str | None, messages: S
         sections.append("\n".join(FRAMING_LINES))
         sections.extend(messages)
     return "\n\n".join(sections) + "\n"
-
-
-def _is_interpretable(rec: object) -> bool:
-    """True for a main-thread dict record whose message and text blocks the predicates below can read.
-
-    A record with a non-dict `message` or a text block whose `text` is not a string would make them raise, so it is
-    dropped alone and the rest of the block is still built.
-    """
-    if not isinstance(rec, dict) or rec.get("isSidechain"):
-        return False
-    message = rec.get("message")
-    if message is not None and not isinstance(message, dict):
-        return False
-    try:
-        render._content_text(message.get("content") if message else None)
-    except TypeError:
-        return False
-    return True
 
 
 def _read_records(transcript: Path) -> list:
@@ -342,7 +300,7 @@ def build_state_block(transcript: Path) -> str:
 
     Raises OSError when the file cannot be opened.
     """
-    thread = [rec for rec in _read_records(transcript) if _is_interpretable(rec)]
+    thread = [rec for rec in _read_records(transcript) if render._is_interpretable(rec)]
 
     skill_paths = _loaded_skill_paths(thread)
     plan_path = _plan_path(thread)

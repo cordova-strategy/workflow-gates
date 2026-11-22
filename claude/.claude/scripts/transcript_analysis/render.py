@@ -73,6 +73,61 @@ def _is_fresh_user_prompt(rec: dict) -> bool:
     return _is_main_thread_user_text(rec) and not _is_task_notification(rec)
 
 
+HUMAN_ORIGIN_KIND = "human"
+# A record with no `origin` is a `claude -p` prompt only when it carries every one of these values, which every
+# recorded `claude -p` prompt did and no recorded harness-written record did.
+NO_ORIGIN_PROMPT_MARKERS = {"entrypoint": "sdk-cli", "promptSource": "sdk", "turnOrigin": "sdk"}
+
+
+def _has_human_origin(rec: dict) -> bool:
+    origin = rec.get("origin")
+    return isinstance(origin, dict) and origin.get("kind") == HUMAN_ORIGIN_KIND
+
+
+def _has_headless_markers(rec: dict) -> bool:
+    return all(rec.get(field) == value for field, value in NO_ORIGIN_PROMPT_MARKERS.items())
+
+
+def _is_interrupt_marker(rec: dict) -> bool:
+    """True when the record carries `interruptedMessageId`, whatever its value."""
+    return "interruptedMessageId" in rec
+
+
+_COMMAND_ARGS_OPENER = "<command-args>"
+_COMMAND_ARGS_CLOSER = "</command-args>"
+
+
+def _first_command_args(text: str) -> str:
+    """The text between the first `<command-args>` and the first closer after it, or "" when either is missing.
+
+    str.find keeps this linear in text. A lazy regex rescans to the end of text from every opener that has no closer.
+    """
+    opener_start = text.find(_COMMAND_ARGS_OPENER)
+    if opener_start == -1:
+        return ""
+    args_start = opener_start + len(_COMMAND_ARGS_OPENER)
+    closer_start = text.find(_COMMAND_ARGS_CLOSER, args_start)
+    return "" if closer_start == -1 else text[args_start:closer_start]
+
+
+def _is_interpretable(rec: object) -> bool:
+    """True for a main-thread dict record whose message and text blocks the predicates above can read.
+
+    A record with a non-dict `message` or a text block whose `text` is not a string would make them raise, so a caller
+    drops it alone and keeps reading the rest.
+    """
+    if not isinstance(rec, dict) or rec.get("isSidechain"):
+        return False
+    message = rec.get("message")
+    if message is not None and not isinstance(message, dict):
+        return False
+    try:
+        _content_text(message.get("content") if message else None)
+    except TypeError:
+        return False
+    return True
+
+
 def _fmt_usd(amount: float) -> str:
     return f"-${-amount:,.2f}" if amount < 0 else f"${amount:,.2f}"
 

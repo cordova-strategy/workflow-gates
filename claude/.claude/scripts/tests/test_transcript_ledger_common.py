@@ -785,6 +785,38 @@ class TestOutPathHelpersNameTheCommand:
         assert err.startswith(f"{_OUT_COMMAND}: --out {str(out_path)!r} is inside a git working tree")
         assert "pr-cost-export" not in err
 
+    @pytest.mark.parametrize("parent_kind", ["missing", "file"])
+    @pytest.mark.parametrize("path_form", ["absolute", "relative-under-a-changed-working-directory", "symlinked-parent"])
+    def test_refuse_unusable_out_path_refuses_a_parent_that_is_not_a_directory_before_any_git_check(
+        self, tmp_path, monkeypatch, capsys, parent_kind, path_form,
+    ):
+        parent = tmp_path / "parent"
+        if parent_kind == "file":
+            parent.write_text("not a directory\n")
+        if path_form == "absolute":
+            out = str(parent / "export.tsv")
+        elif path_form == "symlinked-parent":
+            (tmp_path / "link").symlink_to(parent)
+            out = str(tmp_path / "link" / "export.tsv")
+        else:
+            monkeypatch.chdir(tmp_path)
+            out = "parent/export.tsv"
+
+        def fail_on_any_subprocess(*args, **kwargs):
+            raise AssertionError("the missing-directory refusal must run before the git check")
+
+        monkeypatch.setattr(subprocess, "run", fail_on_any_subprocess)
+
+        with pytest.raises(SystemExit) as exc_info:
+            ledger_common._refuse_unusable_out_path(out, _OUT_COMMAND)
+
+        assert exc_info.value.code == 2
+        assert capsys.readouterr().err == (
+            f"{_OUT_COMMAND}: --out {out!r} is not in an existing directory -- create the directory first\n"
+        )
+        assert parent.exists() is (parent_kind == "file")
+        assert not Path(out).exists()
+
     def test_refuse_unusable_out_path_accepts_a_new_path_outside_a_git_working_tree(self, tmp_path, monkeypatch):
         monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
 

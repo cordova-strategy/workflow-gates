@@ -269,6 +269,13 @@ def _refuse_unusable_out_path(out: str, command: str) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    # The publish step creates its temp file in this directory, so a missing one would fail only after the work is done.
+    if not Path(out).parent.resolve().is_dir():
+        print(
+            f"{command}: --out {out!r} is not in an existing directory -- create the directory first",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     # A symlink retargeted between this check and the publish is an accepted
     # TOCTOU window for this tool's single-operator threat model.
     if _ledger_path_is_git_tracked(resolved_out, command):
