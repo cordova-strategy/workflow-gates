@@ -282,6 +282,8 @@ _MARKED_SOURCED_BY_IT_LINES = [
     "cfg_two() {",  # 6
     "  :",  # 7
     "}",  # 8
+    # Outside every span: edits the live file once a snapshot copy is sourced, never when the checkout's own copy is.
+    "[[ ${BASH_SOURCE[0]%/*} == */hooks ]] || echo 'echo live-edit >&2' >> {live_config}",  # 9
 ]
 _MARKED_CLUSTER_ROWS = [
     "split|_lib.sh|split_alpha|split_beta",
@@ -333,7 +335,12 @@ def test_each_arm_sources_the_spans_it_keeps_in_rotated_order_from_one_snapshot(
     scratch_parent.mkdir()
     checkout_root = tmp_path / "checkout"
     live_lib = _hooks_dir(checkout_root) / "_lib.sh"
-    placeholders = {"{log}": shlex.quote(str(source_log)), "{live_lib}": shlex.quote(str(live_lib))}
+    live_config = _hooks_dir(checkout_root) / "_config.sh"
+    placeholders = {
+        "{log}": shlex.quote(str(source_log)),
+        "{live_lib}": shlex.quote(str(live_lib)),
+        "{live_config}": shlex.quote(str(live_config)),
+    }
 
     def fill(lines: list[str]) -> list[str]:
         filled = []
@@ -347,22 +354,24 @@ def test_each_arm_sources_the_spans_it_keeps_in_rotated_order_from_one_snapshot(
         checkout_root, fill(_MARKED_SOURCED_LINES), fill(_MARKED_SOURCED_BY_IT_LINES), _MARKED_CLUSTER_ROWS
     )
     blob_before_the_run = _git(checkout, "hash-object", "--", str(live_lib)).strip()
+    config_blob_before_the_run = _git(checkout, "hash-object", "--", str(live_config)).strip()
 
     result = _run_script(
         checkout, "--iterations", "2", "--repetitions", "2", env=_script_env(TMPDIR=str(scratch_parent))
     )
 
-    # The live-edit line appends a stderr write to the live file, and any arm built from the live
+    # The live-edit lines append a stderr write to each live file, and any arm built from a live
     # file would print it, which stops the pre-flight.
     assert result.returncode == 0, result.stderr
     assert _git(checkout, "hash-object", "--", str(live_lib)).strip() != blob_before_the_run
+    assert _git(checkout, "hash-object", "--", str(live_config)).strip() != config_blob_before_the_run
     report = _parse_report(result.stdout)
     arms = _arms_by_label(report)
     assert list(arms) == _MARKED_ARM_LABELS
     assert [line for line in result.stdout.splitlines() if line.startswith("span ")] == _MARKED_SPAN_LINES
     header = _lines_of_kind(report, "header")[0]
     assert header["lib_blob"] == blob_before_the_run
-    assert header["config_blob"] == _git(checkout, "hash-object", "--", str(_hooks_dir(checkout) / "_config.sh")).strip()
+    assert header["config_blob"] == config_blob_before_the_run
     noise_floor = _lines_of_kind(report, "noise-floor")[0]["ms"]
     assert noise_floor == arms["baseline"]["spread_ms"]
     for label, arm in arms.items():

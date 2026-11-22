@@ -617,7 +617,6 @@ lsc_spread() {
 }
 
 # lsc_delta_micros <cost|saving> <arm-figure> <reference-figure>
-# A cost is the arm minus its reference, and a saving is the reference minus the arm.
 lsc_delta_micros() {
   case $1 in
     cost) printf '%s\n' "$(( $2 - $3 ))" ;;
@@ -645,7 +644,7 @@ lsc_applied_floor() {
   printf '%s %s\n' "$floor" "$from"
 }
 
-# lsc_verdict <delta-micros> <floor-micros> — a delta under the floor in absolute value is below.
+# lsc_verdict <delta-micros> <floor-micros>
 lsc_verdict() {
   local delta=$1 floor=$2
   if (( delta < 0 )); then
@@ -658,8 +657,7 @@ lsc_verdict() {
   fi
 }
 
-# lsc_format_ms <micros> <signed|unsigned> — milliseconds with exactly three
-# decimals. A negative value always carries `-`, and `signed` adds `+` otherwise.
+# lsc_format_ms <micros> <signed|unsigned>
 lsc_format_ms() {
   local micros=$1 mode=$2 sign=''
   if (( micros < 0 )); then

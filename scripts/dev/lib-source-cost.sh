@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # lib-source-cost.sh — prices sourcing the shared hook shell library, per cluster and for a tail cut.
 #
-# print_usage_and_exit below prints the usage text and the flag defaults.
 # It measures the checkout it runs in, including that checkout's scripts/dev/lib-source-cost-clusters.psv.
 # lsc_arm_labels, lsc_arm_reference and lsc_applied_floor define the arms, each arm's reference and the floor.
 # figure_ms is the smallest of an arm's per-repetition minimums.
 # cost_ms is an arm's figure_ms minus its reference's, and saving_ms is the reference's minus the arm's.
 # floor_ms is the applied floor, and verdict is above when the delta's absolute value reaches it.
-# The header's dirname= and commit= print local values as resolved, so read both before posting a report publicly.
+# Read dirname= and commit= before posting a report publicly: both print local values as resolved.
 #
 # Reading a before/after pair taken from two runs that no loop interleaves:
 #   Compare full's cost_ms across the two runs, never its figure_ms.
 #   Count the change as a saving only when it exceeds the larger of the two full rows' floor_ms.
-#   The before run's minus-<cluster> or param-expansion row is the interleaved estimate of the same change, so cite it when the cross-run change misses it by more than that floor.
+#   Cite the before run's minus-<cluster> or param-expansion row, the interleaved estimate of the same change, when the cross-run change misses it by more than that floor.
 #   The param-expansion saving is the price at a small parent shell. A fork from a hook that has loaded the lib is expected, not measured, to cost more.
 set -euo pipefail
 checkout_root=$(git rev-parse --show-toplevel) || exit 1
