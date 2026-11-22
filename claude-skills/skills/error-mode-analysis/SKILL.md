@@ -24,7 +24,7 @@ python3 ~/.claude/scripts/transcript-analysis.py buckets --this-repo
 
 Always scope `--projects`/`--this-repo` — an unscoped run reads every project, not this repo's alone. See `docs/transcript-analysis.md`'s "Scoping to this repo" section for the derivation, its gaps, and the subdirectory-session fallback.
 
-`buckets`, `review-trace`, and `fail-seq` all accept `--projects GLOB`/`--this-repo` (cross-repo), `--branches B1,B2,...` (multiple branches/PRs at once), and (on `review-trace`) `--since`/`--until DATE` — the tooling already spans repos and calendar time; scope is a choice, not a limitation. A `--projects` glob on `buckets`, `review-trace` or `duration` reads the active account only, while on `fail-seq` it reads every declared account.
+`buckets`, `review-trace`, and `fail-seq` all accept `--projects GLOB`/`--this-repo` (cross-repo), `--branches B1,B2,...` (multiple branches/PRs at once), and (on `review-trace`) `--since`/`--until DATE` — the tooling already spans repos and calendar time; scope is a choice, not a limitation.
 
 **Default to breadth, not the narrowest concrete option.** Default scope (unless the user names one PR/branch): the current project, all branches, last 6 weeks — widen branches and date range rather than narrow them if a scoping question goes unanswered (accounts stay as they are), since under-scoping risks promoting a false pattern to a fix. Take the analysis window from `review-trace --since/--until`, not `buckets`' Date range column — `buckets` takes no `--since`/`--until` flags, so its Date range column reflects each branch's full session span, not the requested window.
 

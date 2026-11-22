@@ -510,6 +510,14 @@ class TestAllAccountsFlagRegistration:
         }
         assert with_pooled_help == set(_NARROWED_SUBCOMMANDS) - {"skill-invocation"}
 
+    @pytest.mark.parametrize("subcommand", _NARROWED_SUBCOMMANDS)
+    def test_narrowed_subcommands_all_accounts_help_says_the_output_is_not_for_publication(self, subcommand):
+        all_accounts_help = _subparsers_by_name(cli.build_parser())[subcommand]._option_string_actions[
+            "--all-accounts"
+        ].help
+
+        assert "not for publication" in all_accounts_help
+
 
 # Copies of the mode predicates the three mode-split commands apply beside `_narrows_to_active_account`.
 # Nothing ties them to the command modules, so a deliberate predicate change needs this table updated too.

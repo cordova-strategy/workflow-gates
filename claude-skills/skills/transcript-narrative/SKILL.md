@@ -84,7 +84,7 @@ For `fail-seq` interpretation: a spike followed by zeros is convergent (expected
 Quoted prompts come from direct JSONL extraction in Step 2 — no subcommand's `--redact` flag touches them. Run this scan before Step 7 writes the artifact to disk, not only before publishing to a shared or public surface:
 
 - Manually scan every quoted prompt for customer PII and credentials
-- For the quantitative appendix, use `audit-routing --redact` to anonymize project-dir names when posting output to GitHub issues or external surfaces
+- Before any quantitative-appendix figure leaves the machine, check it against `docs/private-project-redaction.md` § "Publishing a tooling measurement"; `audit-routing --redact` anonymizes project-dir names only, not figures
 
 ## Step 6 — Extract lessons, ranked by prompt-arc visibility
 

@@ -70,7 +70,7 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     dispatching main thread was on, never its own gitBranch. --projects scopes to
     project dirs. Left unset, it defaults to this repo's own project dirs across
     every declared account, and an explicit glob is the escape hatch for a cross-repo
-    read (branch names are not unique across repos).
+    read.
     """
     branch_filter = scope._branch_filter(args)
     include_subagents = bool(getattr(args, "include_subagents", False))
