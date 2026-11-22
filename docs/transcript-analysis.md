@@ -78,7 +78,7 @@ The four gaps are silent under-coverage, not an error: a narrower-than-expected 
 Most subcommands' default scan corpus is a **union**, not a single account. The active-account-only exceptions are:
 
 - The narrowed commands: `review-trace`'s timeline (`--deny-only` included, `--deny-summary` not), `judgment-pair`, `sessions`, `skill-invocation --projects GLOB`, `buckets`, `duration`, `struggle`, `audit-routing`, `audit-routing-samples`, `turn-shape-samples`, `turn-shape-holdout-samples` and `handoff-signal-response --sample`. They print raw names, paths or text, and read the active account's `projects` directory only unless `--this-repo` or `--all-accounts` widens them.
-  - `--this-repo` reads every declared account and bounds the run to this repository's sessions. `--all-accounts` reads every declared account with no repository bound. Together they read what `--this-repo` alone reads. `--this-repo` is therefore a repo-bounded question, not an equivalent of `--all-accounts`: a question about every project across every account passes `--all-accounts`.
+  - `--this-repo` reads every declared account unless a top-level `--config-dir` names one, and bounds the run to this repository's sessions. `--all-accounts` reads every declared account with no repository bound. Together they read what `--this-repo` alone reads. `--this-repo` is therefore a repo-bounded question, not an equivalent of `--all-accounts`: a question about every project across every account passes `--all-accounts`.
   - Beside `--projects GLOB`, `--all-accounts` reads the glob in every declared account, under the one-level glob rule that applies above one root (see "`--projects` under more than one root" above).
   - The top-level `--config-dir` names one account, so beside `--all-accounts` it exits 2.
   - Three pooled modes read every declared account by default, and `--all-accounts` changes nothing for them: `review-trace --deny-summary`, `handoff-signal-response` without `--sample`, and `skill-invocation` without `--projects`.
@@ -131,7 +131,7 @@ This is the safe way to smoke-test any of these subcommands against synthetic da
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`, all projects)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Subagent attribution" and "Pre-branch default-branch attribution" blocks under `cost`. Only a sidechain record that sits inline in a main transcript file reaches `buckets`; the Sess and turn counts come from main-thread records.
 
@@ -195,7 +195,7 @@ Sequence: 0 0 5 0 0 0 3 0 0 0 0 0
 **Flags.**
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 
 **Sample output.**
@@ -221,7 +221,7 @@ Text inside a `<task-notification>` envelope is excluded from matching, because 
 **Flags.**
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Subagent attribution" and "Pre-branch default-branch attribution" blocks under `cost`. Span and Active include a session's leading default-branch records once they count toward the branch it enters.
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--gap-minutes N` — threshold (in minutes) for classifying an inter-turn gap as idle (default: 30)
 
@@ -507,7 +507,7 @@ CLASSIFICATION SUMMARY
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above). Over more than one declared root it is a wider read, for the owner only. Together with a single top-level `--config-dir` it reads one account, which is the precondition for quoting output publicly.
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above). Over more than one declared root it is a wider read, for the owner only. Together with a single top-level `--config-dir` it reads one account, which is the precondition for quoting output publicly.
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above). It changes nothing for `--deny-summary`, which already pools every declared account.
 - `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--since DATE` — inclusive start date (`YYYY-MM-DD`)
@@ -617,7 +617,7 @@ interrupted                    1
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`, all projects)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--since DATE` — inclusive start date (`YYYY-MM-DD`)
@@ -654,7 +654,7 @@ Good catch. I'll add IP-range validation before trusting that header.
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--top N` — maximum per-session rows to emit (default: 20)
@@ -2706,7 +2706,7 @@ neither           2,167       1,762,987
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum turns to emit (default: 30)
@@ -2791,11 +2791,11 @@ Bucket    Streaks    Share of $
 
 **Purpose.** Emit a random sample of flagged turn-shape streaks (length >= 2) as plain text, for manual precision/recall calibration of the batching and delegation rules against `turn-shape`'s aggregate. Its scope against `turn-shape` is set under "Corpus scope: the declared-roots file" above.
 
-Plain text, not JSON — unlike `audit-routing-samples`, this output is stamped with the `DO NOT PUBLISH` banner, and prepending a banner line would corrupt a JSON stream. (`audit-routing-samples` prints the banner on stderr only, above one root, so its stdout stays parseable JSON.)
+Plain text, not JSON — unlike `audit-routing-samples`, this output is stamped with the `DO NOT PUBLISH` banner, and prepending a banner line would corrupt a JSON stream. (`audit-routing-samples` prints the banner on stderr only, above one root, so its stdout, JSON or markdown, carries no banner line.)
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum streaks to emit (default: 30)
@@ -2825,7 +2825,7 @@ DO NOT PUBLISH — this output contains real project names and session IDs.
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account unless a top-level `--config-dir` names one (see "Scoping to this repo" above)
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum candidates to emit (default: 30)

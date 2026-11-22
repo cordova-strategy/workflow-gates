@@ -543,7 +543,7 @@ def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: 
 
 # The narrowed commands' --this-repo help: unlike the shared default, it says the read spans every declared account.
 _POOLED_THIS_REPO_HELP = (
-    "Scope to this repo's own worktrees, read from every declared account"
+    "Scope to this repo's own worktrees, read from every declared account unless a top-level --config-dir names one"
     " (see docs/transcript-analysis.md)."
 )
 
