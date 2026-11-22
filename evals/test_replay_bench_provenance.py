@@ -1,12 +1,12 @@
 """Tests for the runner provenance the manifest and run records carry, over throwaway git repositories."""
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
 import pytest
 import replay_bench
-import review_bench
 from replay_bench import provenance
 from replay_bench.provenance import RunnerProvenance
 from review_bench import runner as review_runner
@@ -64,6 +64,15 @@ class TestReadRunnerProvenance:
         git(runner_repo, "config", "status.showUntrackedFiles", "no")
         write(runner_repo, "evals/replay_bench/new.py", "x = 1\n")
         assert git(runner_repo, "status", "--porcelain") == "", "the setting hides the file from a plain status"
+
+        assert provenance.read_runner_provenance(runner_repo).has_uncommitted_changes is True
+
+    def test_a_file_only_the_default_global_ignore_file_ignores_still_reads_as_dirty(self, runner_repo, tmp_path, monkeypatch):
+        """Kills: a status probe that leaves core.excludesFile at its default."""
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+        write(tmp_path, "xdg/git/ignore", "*.swp\n")
+        write(runner_repo, "evals/scratch.swp", "x\n")
+        assert "scratch.swp" not in git(runner_repo, "status", "--porcelain"), "the default global ignore file hides it"
 
         assert provenance.read_runner_provenance(runner_repo).has_uncommitted_changes is True
 
@@ -148,6 +157,16 @@ class TestReadRunnerProvenance:
 
         assert provenance.read_runner_provenance(runner_repo) == RunnerProvenance(None, False)
 
+    def test_the_probe_leaves_the_index_file_byte_identical_when_a_tracked_files_stat_data_is_stale(self, runner_repo):
+        """Kills: a status probe that takes the index lock and rewrites `.git/index` in the engineer's own checkout."""
+        os.utime(runner_repo / "evals" / "bench.py", (1_000_000_000, 1_000_000_000))
+        index_file = runner_repo / ".git" / "index"
+        index_before = index_file.read_bytes()
+
+        provenance.read_runner_provenance(runner_repo)
+
+        assert index_file.read_bytes() == index_before
+
     def test_the_default_root_is_the_review_runners_own_checkout(self, runner_repo, monkeypatch):
         """Kills: probing the config checkout or the process's working directory instead of the checkout the
         bench's code runs from."""
@@ -158,13 +177,13 @@ class TestReadRunnerProvenance:
 
 
 class TestTheRunnerSourceLayout:
-    def test_both_bench_packages_load_from_under_the_directory_the_dirty_flag_watches(self):
-        """A tripwire, not behavioural coverage: `git status -- evals` reads clean for any edit once the packages
-        live elsewhere, which would record a dirty checkout as clean."""
+    def test_the_replay_bench_package_loads_from_under_the_directory_the_dirty_flag_watches(self):
+        """A tripwire, not behavioural coverage: `git status -- evals` reads clean for any edit once the package
+        lives elsewhere, which would record a dirty checkout as clean. `REPO_ROOT` derives from the review bench's
+        own location, so only the replay bench's location can differ from it."""
         watched = (review_runner.REPO_ROOT / provenance.RUNNER_SOURCE_DIR).resolve()
 
-        for package in (replay_bench, review_bench):
-            assert Path(package.__file__).resolve().is_relative_to(watched), package.__name__
+        assert Path(replay_bench.__file__).resolve().is_relative_to(watched)
 
 
 class TestManifestRoundTrip:
@@ -310,5 +329,8 @@ class TestDescribeResume:
             f"runner commit {'b' * 40}, with uncommitted changes under evals/"
         )
 
-    def test_a_manifest_with_no_reading_is_not_compared(self):
-        assert provenance.describe_resume(None, RunnerProvenance("b" * 40, False)) == "runner commit not recorded"
+    def test_a_manifest_with_no_reading_names_this_checkouts_reading_alone(self):
+        assert provenance.describe_resume(None, RunnerProvenance("b" * 40, False)) == f"runner commit {'b' * 40}"
+
+    def test_a_manifest_with_no_reading_names_an_unreadable_current_reading_as_such(self):
+        assert provenance.describe_resume(None, provenance.NO_READING) == "runner commit unreadable"

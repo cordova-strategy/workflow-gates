@@ -4,6 +4,7 @@ Nothing here halts a run: a probe that fails records None.
 """
 from __future__ import annotations
 
+import os
 import re
 from collections import Counter
 from collections.abc import Iterable, Mapping
@@ -49,7 +50,7 @@ class RunnerProvenance:
 
     @classmethod
     def from_manifest(cls, manifest: Mapping) -> RunnerProvenance | None:
-        """None for a manifest written before these fields existed. A field with an invalid value reads as None,
+        """None for a manifest that lacks `runner_commit` or `runner_dirty`. A field with an invalid value reads as None,
         which `describe` words as unreadable."""
         if MANIFEST_COMMIT_KEY not in manifest or MANIFEST_DIRTY_KEY not in manifest:
             return None
@@ -72,7 +73,8 @@ def describe(provenance: RunnerProvenance | None) -> str:
     return f"runner commit {provenance.commit}{suffix}"
 
 
-# A reading with neither field says nothing about the runner: git could not produce it, or a record predates the fields.
+# A reading with neither field says nothing about the runner: git could not produce it, or the manifest or record
+# lacks `runner_commit` and `runner_dirty`.
 NO_READING = RunnerProvenance(None, None)
 
 
@@ -102,8 +104,11 @@ def describe_campaign(manifest_reading: RunnerProvenance | None, record_readings
 
 
 def describe_resume(manifest_reading: RunnerProvenance | None, current_reading: RunnerProvenance) -> str:
-    """The clause for a resume's `campaign <id>` line: the pinned reading, and this checkout's when it differs."""
-    if manifest_reading is None or manifest_reading == current_reading:
+    """The clause for a resume's `campaign <id>` line: the pinned reading, and this checkout's when it differs.
+    A manifest that lacks the runner fields pins no reading, so the clause names this checkout's alone."""
+    if manifest_reading is None:
+        return describe(current_reading)
+    if manifest_reading == current_reading:
         return describe(manifest_reading)
     return f"{describe(manifest_reading)} at the first start; this resume runs {describe(current_reading)}"
 
@@ -114,7 +119,8 @@ def read_runner_provenance(repo_root: Path | None = None) -> RunnerProvenance:
     root = review_runner.REPO_ROOT if repo_root is None else repo_root
     # A `GIT_DIR` or `GIT_WORK_TREE` in the caller's environment would point git at another repository.
     git_environment = isolated_git_environment()
-    # An unreadable reading carries no cause, and includes a checkout that git refuses to read, such as one owned by another user.
+    # A failed probe stores None with no failure detail.
+    # A checkout that git refuses to read, such as one owned by another user, also reads as None.
     try:
         commit = review_runner._read_environment_field(
             ["git", "rev-parse", "HEAD"], field="runner commit", cwd=root, env=git_environment,
@@ -124,10 +130,12 @@ def read_runner_provenance(repo_root: Path | None = None) -> RunnerProvenance:
     try:
         # The git(1) manual documents `--no-optional-locks` as skipping optional operations that need locks.
         # `--untracked-files=all` overrides the checkout's own `status.showUntrackedFiles` (git-config(1)).
+        # git-config(1) applies the default `$XDG_CONFIG_HOME/git/ignore` only while `core.excludesFile` is unset, so
+        # the null device skips the global ignore file at any path.
         status = review_runner._read_environment_field(
             [
-                "git", "--no-optional-locks", "status", "--porcelain", "--untracked-files=all", "--",
-                RUNNER_SOURCE_DIR,
+                "git", "-c", f"core.excludesFile={os.devnull}", "--no-optional-locks", "status", "--porcelain",
+                "--untracked-files=all", "--", RUNNER_SOURCE_DIR,
             ],
             field="runner status", cwd=root, env=git_environment,
         )

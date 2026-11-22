@@ -178,6 +178,9 @@ def run_smoke(
                 print("\n".join(format_run_report(arm_name, outcome)))
         failed, printed = evaluate_conditions(block, account)
         print("\n".join(printed))
+        for arm_name in SMOKE_ARM_NAMES:
+            if any(outcome.record.ended_without_text_or_change for outcome in block.outcomes_for(arm_name)):
+                print(f"no deliverable: the {arm_name} run ended with no text and no captured change")
         for name, text in failed:
             print(f"failed: {name}: {text}")
         if failed:

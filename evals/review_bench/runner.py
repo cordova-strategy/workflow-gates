@@ -975,8 +975,8 @@ def evaluate_run_validity(
     RunValidity carrying every observable stat. The live-checkout leak check
     covers changed_relpaths and fix_commit_relpaths together; the read stats
     cover changed_relpaths alone. `allow_empty_final_text` is for a caller
-    whose deliverable is not the final text: a run whose final text is blank
-    is then ok, with a blank findings_text, instead of `empty-findings`."""
+    whose deliverable is not the final text: a blank final text no longer fails
+    the run as `empty-findings`, and every other check still applies."""
     if timed_out:
         return _fail(MISSING_REASON_TIMEOUT)
 

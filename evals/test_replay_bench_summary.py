@@ -792,6 +792,27 @@ class TestThePairedSecondaryOutcome:
         assert "  toolkit, paired tasks pooled: n/a" in lines and "  bare, paired tasks pooled: n/a" in lines
         assert not any(line.startswith("  paired task ") for line in lines)
 
+    def test_a_toolkit_only_campaign_prints_n_a_for_every_rate_and_diagnoses_the_toolkit_arm_alone(self, campaign):
+        """A `--arm toolkit` campaign has no bare record, so no task pairs and every secondary rate reads `n/a`."""
+        toolkit_only_tasks = (reference_task(code=40, docstring=10), reference_task(code=40, docstring=30, commit_digit="c"))
+        tasks.write_task_set(campaign.local_dir / "tasks", "readable", list(toolkit_only_tasks))
+        (campaign.dir / "manifest.json").write_text(json.dumps({
+            "tasks_name": "readable", "task_set_hash": task_set_hash(toolkit_only_tasks),
+        }))
+        for task in toolkit_only_tasks:
+            campaign.add_block(task.id, record(task.id, "toolkit"))
+
+        lines = campaign.summarize()
+
+        assert "  toolkit, paired tasks pooled: n/a" in lines and "  bare, paired tasks pooled: n/a" in lines
+        assert "  reference (the merged commits), paired tasks pooled: n/a" in lines, (
+            "each task has a reference entry, so only the empty paired set makes the line read n/a"
+        )
+        assert not any(line.startswith("  paired task ") for line in lines)
+        diagnostics = lines[lines.index("diagnostics per arm:") + 1:]
+        arm_diagnostics = [line for line in diagnostics if line.startswith(("  toolkit: ", "  bare: "))]
+        assert len(arm_diagnostics) == 1 and arm_diagnostics[0].startswith("  toolkit: ")
+
     def test_the_reference_rate_covers_the_paired_tasks_only(self, campaign):
         paired_task = reference_task(code=40, docstring=10)
         unpaired_task = reference_task(code=40, docstring=30, commit_digit="c")
@@ -878,19 +899,49 @@ class TestTheCampaignLineNamesTheRunner:
             "runner commit unreadable, without uncommitted changes under evals/"
         )
 
-    def test_the_manifest_is_read_once_for_the_whole_summary(self, campaign, monkeypatch):
-        """Kills: a second read, which can answer from another manifest state than the runner clause's."""
-        campaign.add_block("t1", record("t1", "toolkit"), record("t1", "bare"))
-        (campaign.dir / "manifest.json").write_text(json.dumps({"budget_cap_usd": CAP}))
-        reads = []
-        real_read_manifest = summary._read_manifest
-        monkeypatch.setattr(summary, "_read_manifest", lambda path: reads.append(path) or real_read_manifest(path))
+    def test_the_runner_clause_and_the_reference_come_from_one_manifest_state(self, campaign, monkeypatch):
+        """Kills: a second manifest read, which can answer from another state than the runner clause's. Each read
+        of the manifest file returns the next state, so a second read would mix the two."""
+        task_in_first_set = reference_task(code=40, docstring=10)
+        task_in_second_set = reference_task(code=40, docstring=30)
+        assert task_in_first_set.id == task_in_second_set.id
+        tasks.write_task_set(campaign.local_dir / "tasks", "first-set", [task_in_first_set])
+        tasks.write_task_set(campaign.local_dir / "tasks", "second-set", [task_in_second_set])
+        manifest_states = [
+            json.dumps({
+                "runner_commit": "a" * 40, "runner_dirty": False, "tasks_name": "first-set",
+                "task_set_hash": task_set_hash((task_in_first_set,)),
+            }),
+            json.dumps({
+                "runner_commit": "b" * 40, "runner_dirty": False, "tasks_name": "second-set",
+                "task_set_hash": task_set_hash((task_in_second_set,)),
+            }),
+        ]
+        first_reading = {"runner_commit": "a" * 40, "runner_dirty": False}
+        campaign.add_block(
+            task_in_first_set.id,
+            record(task_in_first_set.id, "toolkit", **first_reading), record(task_in_first_set.id, "bare", **first_reading),
+        )
+        manifest_path = campaign.dir / "manifest.json"
+        manifest_path.write_text(manifest_states[0])
+        real_read_text = Path.read_text
+        manifest_reads = []
 
-        campaign.summarize()
+        def read_text_advancing_the_manifest(path, *args, **kwargs):
+            if path == manifest_path:
+                manifest_reads.append(path)
+                return manifest_states[min(len(manifest_reads), len(manifest_states)) - 1]
+            return real_read_text(path, *args, **kwargs)
 
-        assert len(reads) == 1
+        monkeypatch.setattr(Path, "read_text", read_text_advancing_the_manifest)
 
-    def test_a_manifest_that_predates_the_fields_says_the_commit_is_not_recorded(self, campaign):
+        lines = campaign.summarize()
+
+        assert len(manifest_reads) == 1, "the interception saw the one read the summary takes"
+        assert lines[0].endswith(f"; runner commit {'a' * 40}")
+        assert number_after(lines, "  reference (the merged commits), paired tasks pooled:") == pytest.approx(25.0)
+
+    def test_a_manifest_that_lacks_the_runner_fields_says_the_commit_is_not_recorded(self, campaign):
         campaign.add_block("t1", record("t1", "toolkit"), record("t1", "bare"))
         (campaign.dir / "manifest.json").write_text(json.dumps({"budget_cap_usd": CAP}))
 

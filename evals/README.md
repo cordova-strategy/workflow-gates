@@ -1600,6 +1600,11 @@ once the set changes.
   limit below 1 is refused.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
+- The fixture rule below sets each task's changed paths and reference metrics
+  at mining time. Neither the task-set hash nor the manifest records the rule,
+  so a resume does not refuse a task set mined under an earlier rule. Re-mine a
+  task set mined before the rule's last change, which dropped the nested
+  `.claude/scripts/**` paths that the rule now keeps.
 - A task's fixture drops every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`,
   the root `.claude` directory and the root `.mcp.json`, each matched
   case-insensitively. A `.claude` directory below the root keeps its `scripts`
@@ -1792,9 +1797,12 @@ detached run's redirected output shows them as they happen.
 The `campaign <id>` line ends with the runner commit, which is the `HEAD` of the
 checkout the bench's code runs from, not the config checkout. It adds
 `with uncommitted changes under evals/` when `git status` lists a change or an
-untracked, unignored file there. The process reads both once, at the start of
-`run`'s campaign, before it reads each account's environment and before its
-first block. `summarize` prints the same clause on its
+untracked file there that the repository's own ignore rules do not ignore,
+namely its tracked `.gitignore` files and `.git/info/exclude`. No
+global ignore file applies, including the default `~/.config/git/ignore`, so a
+file that only a global ignore file ignores counts as untracked. The process
+reads both once, at the start of `run`'s campaign, before it reads each account's
+environment and before its first block. `summarize` prints the same clause on its
 `campaign '<id>'` line. The runner commit is recorded and never compared:
 
 - The manifest holds it as `runner_commit` and `runner_dirty` from the first
@@ -1804,15 +1812,17 @@ first block. `summarize` prints the same clause on its
   process had loaded the bench's code, read the task set and checked each repo.
   A branch switch, pull or `evals/` edit made while the process runs changes
   the checkout and leaves the reading as it was.
-- A new campaign prints this checkout's reading. A resume prints the manifest's,
-  and adds this checkout's reading when it differs.
+- A new campaign prints this checkout's reading. A resume prints the manifest's
+  and adds this checkout's reading when it differs, except that a manifest
+  lacking either runner field prints this checkout's reading alone.
 - `summarize` names every distinct reading across the manifest and the run
   records, with the number of records at each, when they disagree. Records
   with no reading are listed as `no runner reading` once any other reading
   exists, so a campaign that mixes the two never prints one lone commit.
 - An edit to `evals/` between a start and a resume halts nothing.
-- A manifest written before these fields existed resumes and prints
-  `runner commit not recorded`.
+- A manifest that lacks `runner_commit` or `runner_dirty` resumes. The resume
+  line names this checkout's reading, because the later blocks run under it.
+  `summarize` prints `runner commit not recorded` for such a manifest.
 - A reading that git could not produce is null in the manifest and record, and
   prints as unreadable.
 - A stored commit that is not a full hex object name, or a stored flag that is
@@ -1826,9 +1836,10 @@ first block. `summarize` prints the same clause on its
   `assume-unchanged`, and it holds no digest of an uncommitted diff.
 
 After each block `run` prints one progress line: the task, each arm's `ok` and
-`missing` counts, the arms with no valid run and their reasons, the tasks
-dropped per arm since this invocation started, the block's spend, and the
-cumulative and per-account spend against their stops. A halt prints
+`missing` counts, the arms with no valid run and their reasons, the runs with
+no text and no captured change per arm, the tasks dropped per arm since this
+invocation started, the block's spend, and the cumulative and per-account spend
+against their stops. A halt prints
 `halted: <reason>` and exits 1. Before each block `run` halts if the block's
 ceiling would carry the cumulative total or the block's account past its stop.
 
@@ -1915,10 +1926,15 @@ missing with its reason.
     later check keeps the flag in its record and stays out of that count.
   - A run that changed nothing and ended with no text is `ok` with no code line.
     It does not count toward a failed block and never trips the failed-blocks
-    halt. In a campaign it surfaces only in `summarize`, in three places:
-    - The diagnostics count of runs with no non-test code line.
-    - The diagnostics count of runs with an empty final text.
-    - The paired outcome's exclusion for no non-test code line in an arm.
+    halt, and `smoke` still passes it. It is named, with no effect on the
+    outcome, in these places:
+    - The `run` progress line, as the arm's count of runs with no text and no
+      captured change, meaning an empty final text and no changed path.
+    - The `smoke` printout, as a `no deliverable` line before the verdict.
+    - In `summarize`, the diagnostics count of runs with no non-test code line.
+    - In `summarize`, the diagnostics count of runs with an empty final text.
+    - In `summarize`, the paired outcome's exclusion for no non-test code line
+      in an arm.
   - Every other check still applies, including `api-error-final-record`, whose
     final record is an error message and not an empty turn.
   - A run that narrated in an earlier turn and then ended on a tool-only or
@@ -1960,12 +1976,13 @@ missing with its reason.
   links to as `<config dir>/scripts/**`. Both arms launch on that config dir,
   so every residual in this item applies to both. A Read, a Glob or a Bash
   command that names that alias path reaches the same leak checks as the live
-  path. A Bash command that reaches the file only through a relative path after
-  changing directory, such as `cd ~ && cd .claude && cat scripts/<changed file>`,
-  is an invisible shape. So is a read whose path starts from the `CLAUDE_CONFIG_DIR`
-  variable and continues into `scripts`, because the Bash scan expands only `~`,
-  `$HOME` and `$PWD`. It is
-  unverified whether the Bash tool inherits `CLAUDE_CONFIG_DIR`, which the
+  path. Two shapes are invisible to the checks:
+  - A Bash command that reaches the file only through a relative path after
+    changing directory, such as `cd ~ && cd .claude && cat scripts/<changed file>`.
+  - A read whose path starts from the `CLAUDE_CONFIG_DIR` variable and continues
+    into `scripts`, because the Bash scan expands only `~`, `$HOME` and `$PWD`.
+
+  It is unverified whether the Bash tool inherits `CLAUDE_CONFIG_DIR`, which the
   launch sets in the session's environment for an account that has it. The bench
   adds no permission rule that denies the alias.
 - **Uncommitted toolkit edits.** The environment drift check compares the CLI

@@ -191,6 +191,7 @@ class TestACompletedCampaign:
                 assert (record.runner_commit, record.runner_dirty) == (RUNNER.commit, RUNNER.has_uncommitted_changes)
         printed = capsys.readouterr().out
         assert printed.count("arms with no valid run: none") == 2
+        assert printed.count("runs with no text and no captured change: none") == 2
         assert "cumulative $2.00 of $100.00" in printed
 
     def test_the_first_start_prints_the_ceiling_line(self, env, capsys):
@@ -205,13 +206,15 @@ class TestABlockOfSilentNoOps:
     def test_a_campaign_of_runs_that_changed_nothing_and_said_nothing_counts_them_ok_and_halts_nowhere(self, env, capsys):
         """Pins the current outcome: a silent no-op run is `ok`, so it never retries and never counts toward the
         failed-blocks halt. `summarize` reports it in the diagnostics counts of runs with no non-test code line and
-        of runs with an empty final text."""
+        of runs with an empty final text. The `run` progress line names each arm's runs with neither text nor a
+        captured change."""
         silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
 
         assert env.run(env.world.launch(lambda _number, _agent: silent_no_op)) == 0
 
         printed = capsys.readouterr().out
         assert printed.count("arms with no valid run: none") == len(env.world.tasks)
+        assert printed.count("runs with no text and no captured change: toolkit 1; bare 1") == len(env.world.tasks)
         assert env.completed() == {task.id for task in env.world.tasks}
         for task in env.world.tasks:
             for record in records.read_block_records(env.campaign_dir, task.id):
@@ -221,6 +224,32 @@ class TestABlockOfSilentNoOps:
             diagnostics = next(line for line in lines if line.startswith(f"  {arm_name}: unclassified-line share"))
             assert f"runs with no non-test code line {len(env.world.tasks)}," in diagnostics
             assert f"runs with an empty final text {len(env.world.tasks)}," in diagnostics
+
+    @pytest.mark.parametrize("runs_per_arm", [1, 2])
+    def test_the_progress_line_names_only_the_arm_whose_runs_left_neither_text_nor_a_change(
+        self, env, capsys, runs_per_arm,
+    ):
+        """Kills: a count taken from one arm for both, and a per-block flag in place of a per-run count. The toolkit
+        arm ends with no text but changes a file, so it is not named."""
+        env.world.tasks[:] = env.world.tasks[:1]
+        silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
+        changed_file_without_text = Scenario(final_text="")
+
+        def by_call(call):
+            return silent_no_op if call.agent_name == arms.BARE.agent_name else changed_file_without_text
+
+        assert env.run(
+            env.world.launch(by_call=by_call), k=runs_per_arm, cumulative_stop_usd=200, account_stop_usd=200,
+        ) == 0
+
+        progress_line = next(
+            line for line in capsys.readouterr().out.splitlines() if line.startswith(env.world.tasks[0].id)
+        )
+        clause = next(
+            part for part in progress_line.split(" | ")
+            if part.startswith("runs with no text and no captured change: ")
+        )
+        assert clause == f"runs with no text and no captured change: bare {runs_per_arm}"
 
 
 class TestTheRunnerProvenanceInTheManifest:
@@ -301,12 +330,19 @@ class TestTheRunnerClauseOfTheCampaignLine:
             f"runner commit {EDITED_RUNNER.commit}, with uncommitted changes under evals/"
         )
 
+    def test_a_manifest_that_lacks_the_runner_fields_names_the_current_reading(self, pinned):
+        manifest = json.loads(pinned.manifest_path.read_text())
+        pinned.manifest_path.write_text(
+            json.dumps({key: value for key, value in manifest.items() if not key.startswith("runner_")})
+        )
+
+        assert campaign.runner_clause_for(pinned.manifest_path.parent, EDITED_RUNNER) == (
+            f"runner commit {EDITED_RUNNER.commit}, with uncommitted changes under evals/"
+        )
+
     @pytest.mark.parametrize(
         "manifest_text",
         [
-            pytest.param(lambda manifest: json.dumps(
-                {key: value for key, value in manifest.items() if not key.startswith("runner_")},
-            ), id="written-before-the-fields-existed"),
             pytest.param(lambda manifest: "not json", id="unparseable"),
             pytest.param(lambda manifest: "null", id="json-null"),
             pytest.param(lambda manifest: "5", id="json-number"),
@@ -657,7 +693,7 @@ class TestAResumeAgainstThePinnedManifest:
 
 class TestAResumeOfAManifestWithoutRunnerProvenance:
     def test_it_completes_without_pinning_the_missing_fields(self, env):
-        """A manifest written before the runner fields existed resumes: they are recorded, not compared."""
+        """A manifest that lacks the runner fields resumes: they are recorded, not compared."""
         assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
         manifest_path = env.campaign_dir / "manifest.json"
         manifest = json.loads(manifest_path.read_text())

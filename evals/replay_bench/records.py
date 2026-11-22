@@ -61,7 +61,7 @@ class ReplayRunRecord:
     # A text-less final turn after earlier narration leaves it False, because the last text block is then the narration.
     empty_final_text: bool = False
     # The runner checkout's HEAD (a full hex object name) and whether `evals/` had uncommitted changes when the
-    # process started its blocks. None when unreadable, and in a record written before these fields existed.
+    # process started its blocks. None when unreadable, and in a record that lacks them.
     runner_commit: str | None = None
     runner_dirty: bool | None = None
     # `checks.denied_tool_calls` of the final attempt's transcript. A stored record that lacks the key reads as
@@ -71,6 +71,11 @@ class ReplayRunRecord:
     @property
     def is_ok(self) -> bool:
         return self.status == STATUS_OK
+
+    @property
+    def ended_without_text_or_change(self) -> bool:
+        """An ok run with a blank final text whose captured change lists no path, so it produced no deliverable."""
+        return self.is_ok and self.empty_final_text and not (self.metrics or {}).get("changed_paths")
 
     def to_dict(self) -> dict:
         return asdict(self)

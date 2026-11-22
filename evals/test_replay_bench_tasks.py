@@ -1505,6 +1505,8 @@ _PRUNE_PARITY_ROWS = [
     ("claude/.claude/hooks/h.sh", "file"), ("claude/.claude/hooks/h.sh", "symlink"),
     (".claude/scripts/x.py", "file"), ("claude/.claude/scripts/.claude/y", "file"),
     ("claude/.claude/scripts/.claude", "directory"), ("claude/.claude/scripts/.claude", "symlink"),
+    ("claude/.claude/scripts/sub/.claude", "file"), ("claude/.claude/scripts/sub/.claude", "directory"),
+    ("claude/.claude/scripts/sub/.claude", "symlink"), ("claude/.claude/scripts/sub/.claude/scripts/y.py", "file"),
     ("claude/.claude/scripts", "directory"), ("claude/.claude/scripts", "symlink"), ("claude/.claude/scripts", "file"),
     ("claude/.Claude/Scripts/x.py", "file"),
     ("src/rules/x.md", "file"), ("agents/x.md", "file"), (".claude-plugin/x.json", "file"),
@@ -1552,6 +1554,21 @@ class TestPruneOnAPlainDirectory:
         assert list((fixture / "pkg").iterdir()) == []
         assert sentinel_file.read_text() == "keep\n"
         assert (sentinel_dir / "inside.md").read_text() == "keep\n"
+
+    def test_a_claude_directory_below_a_subdirectory_of_a_kept_scripts_goes_in_full_despite_its_own_scripts(self, tmp_path):
+        """Kills: a walk that stops carrying the kept-scripts scope into a subdirectory of `scripts`, which would keep
+        the nested `.claude`'s own `scripts` subdirectory."""
+        fixture = tmp_path / "fixture"
+        nested_scripts = fixture / "claude" / ".claude" / "scripts" / "sub" / ".claude" / "scripts"
+        nested_scripts.mkdir(parents=True)
+        (nested_scripts / "y.py").write_text("x\n")
+        kept = fixture / "claude" / ".claude" / "scripts" / "sub" / "helper.py"
+        kept.write_text("x\n")
+
+        tasks.prune_instruction_files(fixture)
+
+        assert not (fixture / "claude" / ".claude" / "scripts" / "sub" / ".claude").exists()
+        assert kept.exists()
 
     def test_a_link_chain_that_resolves_outside_the_fixture_makes_the_prune_raise(self, tmp_path):
         fixture = tmp_path / "fixture"

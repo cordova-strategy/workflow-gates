@@ -361,8 +361,8 @@ def prune_instruction_files(dest_dir: Path) -> None:
     """Removes the entries that would load a checkout's own instructions into a session:
     - Every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`.
     - The root `.claude` directory, and the root `.mcp.json`.
-    - Every other `.claude` directory except its `scripts` subdirectory, and a `.claude` nested
-      under that subdirectory in full.
+    - Every entry of a `.claude` directory below the root except its `scripts` subdirectory.
+    - A `.claude` nested under that `scripts` subdirectory, in full.
 
     Each is matched case-insensitively. The walk never follows a link, and a matching symlink is
     unlinked, never its target. Raises UnsafeFixtureConfigError when a remaining symlink resolves

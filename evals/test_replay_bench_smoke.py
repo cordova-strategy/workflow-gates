@@ -84,6 +84,19 @@ class TestAPassingSmoke:
         output = capsys.readouterr().out
         assert exit_code == 0 and smoke_pass_exists(world)
         assert output.count("empty final text: the run ended with no text") == 2
+        assert "no deliverable" not in output, "each run changed a file, so it has a deliverable"
+
+    def test_a_run_that_ends_with_no_text_and_no_change_is_named_in_the_verdict_but_still_passes(self, world, capsys):
+        """Print-only visibility: the run is `ok`, so smoke passes, but the verdict names the arm that produced nothing."""
+        silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
+
+        exit_code, _stub = run_smoke(world, by_call=agent_scenarios(bare=silent_no_op))
+
+        output = capsys.readouterr().out
+        assert exit_code == 0 and smoke_pass_exists(world)
+        assert "no deliverable: the bare run ended with no text and no captured change" in output
+        assert "no deliverable: the toolkit run" not in output
+        assert output.strip().splitlines()[-1] == "instrument: ok"
 
     def test_a_run_that_ends_with_text_prints_no_empty_final_text_line(self, world, capsys):
         run_smoke(world)

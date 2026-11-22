@@ -91,7 +91,8 @@ def _manifest_for(
 
 def runner_clause_for(campaign_dir: Path, current_reading: RunnerProvenance) -> str:
     """What the `campaign <id>` line says of the runner: `current_reading` for a campaign with no manifest yet,
-    and for a resume the manifest's, plus `current_reading` when it differs."""
+    and for a resume the manifest's, plus `current_reading` when it differs. A valid manifest that lacks the runner
+    fields names `current_reading` alone, and an unreadable manifest names no reading."""
     manifest_path = campaign_dir / MANIFEST_NAME
     if not manifest_path.exists():
         return describe(current_reading)
@@ -99,10 +100,9 @@ def runner_clause_for(campaign_dir: Path, current_reading: RunnerProvenance) -> 
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return describe(None)
-    manifest_reading = RunnerProvenance.from_manifest(manifest) if isinstance(manifest, dict) else None
-    if manifest_reading is None:
+    if not isinstance(manifest, dict):
         return describe(None)
-    return describe_resume(manifest_reading, current_reading)
+    return describe_resume(RunnerProvenance.from_manifest(manifest), current_reading)
 
 
 def _check_manifest(manifest: dict, expected: dict, *, path: Path) -> None:
@@ -186,9 +186,15 @@ def _progress_line(
     no_valid = "; ".join(
         f"{arm} ({_missing_summary(arm_records, with_detail=False)})" for arm, arm_records in failures.items()
     ) or "none"
+    no_text_or_change_counts = {
+        arm: sum(1 for outcome in block.outcomes_for(arm) if outcome.record.ended_without_text_or_change)
+        for arm in config.arm_names
+    }
+    no_text_or_change = "; ".join(f"{arm} {count}" for arm, count in no_text_or_change_counts.items() if count) or "none"
     totals = spend.totals()
     return (
         f"{block.task.id}: {', '.join(counts)} | arms with no valid run: {no_valid} | "
+        f"runs with no text and no captured change: {no_text_or_change} | "
         f"tasks dropped so far: {', '.join(f'{arm} {dropped[arm]}' for arm in config.arm_names)} | "
         f"block spend ${totals.by_task_usd.get(block.task.id, 0.0):.2f} | "
         f"cumulative ${totals.total_usd:.2f} of ${config.cumulative_stop_usd:.2f} | "

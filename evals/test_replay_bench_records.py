@@ -6,7 +6,7 @@ import json
 import pytest
 from replay_bench import records
 from review_bench.runner import HarnessInvalidatedError
-from test_replay_bench_summary import record
+from test_replay_bench_summary import metrics, record
 
 
 class TestWriteRun:
@@ -35,8 +35,8 @@ class TestWriteRun:
         assert records.read_block_records(tmp_path, "t1") == [record("t1", "toolkit")]
 
 
-class TestReadingARecordWrittenBeforeNewFieldsExisted:
-    def test_a_record_without_any_later_added_field_reads_with_their_defaults(self, tmp_path):
+class TestReadingARecordThatLacksOptionalKeys:
+    def test_a_record_without_the_optional_keys_reads_with_their_defaults(self, tmp_path):
         records.write_run(tmp_path, record("t1", "toolkit"), None)
         path = records.record_path(tmp_path, "t1", "toolkit", 0)
         stored = json.loads(path.read_text(encoding="utf-8"))
@@ -49,6 +49,29 @@ class TestReadingARecordWrittenBeforeNewFieldsExisted:
         assert (read_back.runner_commit, read_back.runner_dirty) == (None, None)
         assert read_back.empty_final_text is False
         assert read_back.denied_tool_calls == []
+
+
+class TestEndedWithoutTextOrChange:
+    @pytest.mark.parametrize(
+        ("ok", "empty_final_text", "changed_paths", "expected"),
+        [
+            pytest.param(True, True, [], True, id="no-text-and-no-changed-path"),
+            pytest.param(True, True, ["src/a.py"], False, id="no-text-but-a-changed-path"),
+            pytest.param(True, False, [], False, id="text-and-no-changed-path"),
+            pytest.param(False, True, [], False, id="a-missing-run"),
+        ],
+    )
+    def test_it_holds_only_for_an_ok_run_with_neither_text_nor_a_changed_path(
+        self, ok, empty_final_text, changed_paths, expected,
+    ):
+        run_metrics = {**metrics(), "changed_paths": changed_paths}
+
+        run = record(
+            "t1", "toolkit", ok=ok, reason=None if ok else "timeout", run_metrics=run_metrics,
+            empty_final_text=empty_final_text,
+        )
+
+        assert run.ended_without_text_or_change is expected
 
 
 class TestReadingARecordWithInvalidRunnerProvenance:
