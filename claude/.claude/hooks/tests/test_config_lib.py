@@ -77,12 +77,14 @@ def _run(script: str, timeout: float | None = None) -> subprocess.CompletedProce
     )
 
 
-def _run_sourcing_config_sh(script: str) -> subprocess.CompletedProcess:
-    """Source _config.sh alone, with no _lib.sh, then run `script`."""
+def _run_sourcing_config_sh(script: str, timeout: float | None = None) -> subprocess.CompletedProcess:
+    """Source _config.sh alone, with no _lib.sh, then run `script`. `timeout`
+    turns a hang into a TimeoutExpired failure."""
     return subprocess.run(
         ["bash", "-c", f'set -uo pipefail; . "{_CONFIG_SH}"; {script}'],
         capture_output=True,
         text=True,
+        timeout=timeout,
     )
 
 
@@ -1557,25 +1559,6 @@ class TestWritingAValueDocContract:
         assert pinned_sentence in writing_a_value_section
 
 
-class TestConfigStateFileUnreadable:
-    @_SKIP_UNDER_ROOT
-    def test_mode_000_regular_file_returns_0_in_posix_mode(self, tmp_path: Path) -> None:
-        """A failed redirection on a POSIX special builtin ends a POSIX-mode shell, so the
-        predicate must report the status, not kill its caller."""
-        unreadable = tmp_path / "unreadable.toml"
-        unreadable.write_text("handoff_nudge = false\n")
-        unreadable.chmod(0o000)
-        try:
-            result = _run(
-                f"POSIXLY_CORRECT=1; _config_state_file_unreadable {shlex.quote(str(unreadable))}; "
-                "printf 'status=%s' \"$?\"",
-                timeout=10,
-            )
-        finally:
-            unreadable.chmod(0o644)
-        assert result.stdout == "status=0", f"returncode={result.returncode} stderr={result.stderr!r}"
-
-
 # One row per kind of entry that can sit at the state path.
 # Each builder gets the state path, a directory beside the config dir for link targets, and an
 # ExitStack that restores whatever the entry's permissions or blocked openers need.
@@ -1620,6 +1603,14 @@ def _mode_000_file(state_path: Path, elsewhere: Path, cleanup: ExitStack) -> Non
     state_path.write_text(_READABLE_STATE_CONTENT)
     state_path.chmod(0o000)
     cleanup.callback(state_path.chmod, 0o644)
+
+
+def _symlink_to_mode_000_file(state_path: Path, elsewhere: Path, cleanup: ExitStack) -> None:
+    target = elsewhere / "target.toml"
+    target.write_text(_READABLE_STATE_CONTENT)
+    target.chmod(0o000)
+    cleanup.callback(target.chmod, 0o644)
+    state_path.symlink_to(target)
 
 
 def _symlink_to_directory(state_path: Path, elsewhere: Path, cleanup: ExitStack) -> None:
@@ -1679,6 +1670,7 @@ _REFUSED_STATE_PATHS = [
     pytest.param(_directory, id="directory"),
     pytest.param(_fifo, id="fifo"),
     pytest.param(_mode_000_file, id="mode-000-file", marks=_SKIP_UNDER_ROOT),
+    pytest.param(_symlink_to_mode_000_file, id="symlink-to-mode-000-file", marks=_SKIP_UNDER_ROOT),
     pytest.param(_symlink_to_directory, id="symlink-to-directory"),
     pytest.param(_symlink_to_fifo, id="symlink-to-fifo"),
     pytest.param(_symlink_to_dev_null, id="symlink-to-dev-null"),
@@ -1703,6 +1695,53 @@ def _entry_identity(path: Path) -> tuple[int, int, str | None]:
 
 def _row_a_writer_leaves(writer_call: str) -> str:
     return "handoff_nudge = true" if writer_call.startswith("_config_set") else _no_legacy_polarity_default_rows()[0]
+
+
+_PREDICATE_SHELL_MODES = [
+    pytest.param("set -e; ", id="errexit"),
+    pytest.param("set -e; set -o posix; ", id="errexit-posix"),
+]
+
+
+class TestConfigStateFileUnreadable:
+    """Each case asserts the `reached` marker too, because a predicate that ends its caller's
+    shell instead of returning a verdict prints no verdict."""
+
+    @staticmethod
+    def _run_predicate(shell_mode: str, state_path: Path) -> subprocess.CompletedProcess:
+        return _run_sourcing_config_sh(
+            f"{shell_mode}if _config_state_file_unreadable {shlex.quote(str(state_path))}; "
+            "then echo refused; else echo proceeds; fi; echo reached",
+            timeout=10,
+        )
+
+    @pytest.mark.parametrize("shell_mode", _PREDICATE_SHELL_MODES)
+    @pytest.mark.parametrize("build_state_path", _PROCEEDING_STATE_PATHS)
+    def test_proceeds_for_an_entry_it_can_open_or_that_is_absent(
+        self, tmp_path: Path, shell_mode: str, build_state_path: _StatePathBuilder
+    ) -> None:
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        state_path = tmp_path / "claude-config.toml"
+        with ExitStack() as cleanup:
+            build_state_path(state_path, elsewhere, cleanup)
+            result = self._run_predicate(shell_mode, state_path)
+
+        assert result.stdout == "proceeds\nreached\n", f"returncode={result.returncode} stderr={result.stderr!r}"
+
+    @pytest.mark.parametrize("shell_mode", _PREDICATE_SHELL_MODES)
+    @pytest.mark.parametrize("build_state_path", _REFUSED_STATE_PATHS)
+    def test_refuses_an_entry_it_cannot_open(
+        self, tmp_path: Path, shell_mode: str, build_state_path: _StatePathBuilder
+    ) -> None:
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        state_path = tmp_path / "claude-config.toml"
+        with ExitStack() as cleanup:
+            build_state_path(state_path, elsewhere, cleanup)
+            result = self._run_predicate(shell_mode, state_path)
+
+        assert result.stdout == "refused\nreached\n", f"returncode={result.returncode} stderr={result.stderr!r}"
 
 
 class TestWritersAgainstEveryStatePathKind:
