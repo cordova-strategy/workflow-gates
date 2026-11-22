@@ -37,6 +37,8 @@ Columns, in ledger order (`_PR_COST_LEDGER_COLUMNS` in `claude/.claude/scripts/t
 | `earliest_surviving_activity_at` | The earliest first valid-usage turn among the sessions the dollar pass attributed to the branch, as `YYYY-MM-DDTHH:MM:SSZ`. Empty when the scan found none. See "Capture scope, rounds absence and earliest activity" below. |
 | `capture_scope` | `repo` or `glob`: the scope class of the run that wrote the row. An empty cell means the row predates the column. See "Capture scope, rounds absence and earliest activity" below. |
 
+Read mode does not print `capture_scope`, `review_rounds_absence` or `earliest_surviving_activity_at`. Read them from the ledger file by header name, without stripping its lines (see the "Trailing cell" bullet under "The `review_rounds` cell").
+
 The row parser is strict on column count (fails rather than shifting cells). It recognizes six header lines, listed in `_PR_COST_LEDGER_COLUMNS_BY_HEADER_LINE`: the current one, the pre-`capture_scope` header (`_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS`), the pre-`review_rounds` header (`_PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS`), the pre-`invalid_usage_records` header (`_PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS`), the pre-`model_breakdown` header (`_PR_COST_LEDGER_PRE_MODEL_COLUMNS`), and the pre-`host` header (`_PR_COST_LEDGER_LEGACY_COLUMNS`). Each row's width is checked against its own file's header (in `_current_cells_from_file_row`), then every column that header lacks is filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS`: `host` reads `github.com`, `model_breakdown` reads empty (not recorded), `invalid_usage_records` reads `0` (not verified zero, just unchecked by that row's checkout), `review_rounds` reads empty (not captured), and `review_rounds_absence`, `earliest_surviving_activity_at` and `capture_scope` read empty. Frozen headers are kept indefinitely, so a ledger whose owner never records again keeps parsing.
 
 The upgrade to the current header, the write refusals, and recovery for older checkouts are in "Upgrading an existing ledger" below.
@@ -318,7 +320,7 @@ A run that reaches a row write for a branch with local transcript activity, a re
 - `--pr N` exits 1 for one, under `--all-accounts` too.
 - There is no override. `cost --branches <branch>` gives an ad hoc figure.
 
-**An unreadable merged-PR payload.** A merged-PR payload from `gh` that is not a list of objects, each with a boolean `isCrossRepository`, exits 1 before any account work, in read mode too, because both modes join.
+**An unreadable merged-PR payload.** A merged-PR payload from `gh` that is not a list of objects, each with a boolean `isCrossRepository`, exits 1 before any account work, in read mode too, because both modes join. Update `gh`. Report a repeat on claude-config's GitHub Issues (linked from README.md).
 
 ### Machine identity
 
