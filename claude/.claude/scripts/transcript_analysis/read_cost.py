@@ -111,11 +111,7 @@ class _ReadEvent(NamedTuple):
 class _FailedRead(NamedTuple):
     """A Read call whose result was an error. `limit_refusal` classifies the error text, which is not kept.
 
-    It holds the call's `path`, `tool_use_id`, `whole_file`, `offset` and `call_order`, plus `limit_refusal`.
-    Nothing is blanked, because failed reads are not kept in report totals.
-
-    `offset` follows `_ReadEvent.offset`, so a None `offset` with `whole_file` False is either a limit-only call or
-    an `offset` that was not a non-negative integer, and a consumer cannot tell the two apart.
+    `offset` follows `_ReadEvent.offset`.
     """
 
     path: str
@@ -292,6 +288,35 @@ def _truncation_notice_tool_use_id(rec: dict) -> str | None:
     return tool_use_id if isinstance(tool_use_id, str) and tool_use_id else None
 
 
+class _ReadCall(NamedTuple):
+    tool_use_id: str
+    path: str
+    tool_input: dict
+    whole_file: bool
+
+
+def _tool_use_path(block: dict) -> str:
+    """The `file_path` or `notebook_path` of a `tool_use` block's input, or "" when it holds neither as a string."""
+    tool_input = block.get("input")
+    raw_path = (tool_input.get("file_path") or tool_input.get("notebook_path")) if isinstance(tool_input, dict) else None
+    return raw_path if isinstance(raw_path, str) else ""
+
+
+def _read_call(block: dict) -> _ReadCall | None:
+    """The Read call a `tool_use` block makes, or None unless it is a Read with a non-empty path and a non-empty id.
+
+    A call is whole-file when it passes neither `offset` nor `limit`.
+    """
+    if block.get("type") != "tool_use" or block.get("name") != "Read":
+        return None
+    path = _tool_use_path(block)
+    tool_use_id = block.get("id")
+    if not path or not isinstance(tool_use_id, str) or not tool_use_id:
+        return None
+    tool_input = block["input"]
+    return _ReadCall(tool_use_id, path, tool_input, tool_input.get("offset") is None and tool_input.get("limit") is None)
+
+
 def _scan_window(
     records: Sequence[dict], seen_tool_use_ids: set[str], seen_failed_tool_use_ids: set[str] | None = None,
 ) -> _WindowScan:
@@ -346,31 +371,29 @@ def _scan_window(
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "tool_use":
-                tool_input = block.get("input")
-                if not isinstance(tool_input, dict):
-                    tool_input = {}
-                raw_path = tool_input.get("file_path") or tool_input.get("notebook_path")
-                path = raw_path if isinstance(raw_path, str) else ""
-                tool_id = block.get("id")
-                if block.get("name") in _EDIT_TOOLS and path:
-                    edited_at_turn[path] = turn_index
-                elif block.get("name") == "Read" and path and isinstance(tool_id, str) and tool_id:
+                read_call = _read_call(block)
+                if read_call is not None:
+                    tool_id = read_call.tool_use_id
                     if tool_id in seen_tool_use_ids:
                         repeated_reads += 1
                     elif tool_id not in seen_failed_tool_use_ids:
                         pending[tool_id] = {
-                            "path": path,
+                            "path": read_call.path,
                             "turn": turn_index,
-                            "whole_file": tool_input.get("offset") is None and tool_input.get("limit") is None,
+                            "whole_file": read_call.whole_file,
                             "tool_use_id": tool_id,
-                            "offset": _stored_offset(tool_input.get("offset")),
-                            "allow_large": tool_input.get("allow_large") is True,
+                            "offset": _stored_offset(read_call.tool_input.get("offset")),
+                            "allow_large": read_call.tool_input.get("allow_large") is True,
                             "call_order": call_order_by_tool_id.setdefault(tool_id, len(call_order_by_tool_id)),
                         }
+                elif block.get("name") in _EDIT_TOOLS and (edited_path := _tool_use_path(block)):
+                    edited_at_turn[edited_path] = turn_index
             elif block.get("type") == "tool_result":
                 result_tool_id = block.get("tool_use_id")
                 owner = pending.pop(result_tool_id, None) if isinstance(result_tool_id, str) else None
                 result = block.get("content")
+                # A Read with no result record, or a non-error result whose content is not a string, enters no event
+                # and no failed read, so it appears in no count.
                 # `is_error` is read by truthiness, which matches the harness's boolean. A truthy non-boolean
                 # would also count as a failure, and that case is not handled.
                 if owner is not None and block.get("is_error"):
@@ -498,7 +521,7 @@ def _accumulate_session(
         if not event.whole_file:
             continue
         session_whole_file_paths.add(event.path)
-        totals.main_whole_file_events.append(event._replace(path="", tool_use_id="", offset=None))
+        totals.main_whole_file_events.append(event._replace(path="", tool_use_id=""))
         bucket_key = (_SCOPE_MAIN, _size_bucket(event.tokens))
         totals.bucket_calls[bucket_key] += 1
         totals.bucket_tokens[bucket_key] += event.tokens
@@ -526,7 +549,7 @@ def _agent_type_for(agent_file: Path, scan_gaps: Counter | None = None) -> str:
         meta = json.loads(agent_file.with_suffix(".meta.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
         return _UNKNOWN_AGENT_TYPE
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         if scan_gaps is not None:
             scan_gaps[_GAP_SUBAGENT_META] += 1
         return _UNKNOWN_AGENT_TYPE
@@ -539,6 +562,7 @@ def _read_subagent_windows(main_jsonl: Path, scan_gaps: Counter) -> Iterator[tup
     for agent_file in scope._list_dir_recording_gaps(subagent_dir, scan_gaps, _GAP_SUBAGENT_DIR):
         if agent_file.suffix != ".jsonl":
             continue
+        # Each transcript is parsed before its agent type is read, so a caller that discards a type still pays the parse.
         records = corpus._parse_jsonl_records(agent_file)
         if records is None:
             scan_gaps[_GAP_SUBAGENT_FILE] += 1

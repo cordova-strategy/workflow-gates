@@ -3,19 +3,21 @@ the Read share, per-type rows, main-thread round Reads, window edges, comparabil
 from collections import Counter
 
 import pytest
-from transcript_analysis import corpus, pricing, read_cost, reviewer_reads
+from transcript_analysis import pricing, read_cost, reviewer_reads
 
+from ._read_cost_helpers import _HUNDRED_TOKEN_TEXT, _TRACKED_AGENT_TYPE
 from ._reviewer_reads_helpers import (
     _BEFORE_WINDOW,
-    _HUNDRED_TOKEN_TEXT,
     _IN_WINDOW,
-    _TRACKED_REVIEWER,
+    _SINCE_TS,
+    _UNTIL_EPOCH,
+    _WITHHELD,
     _access_recording_read_facts,
     _failed_read_exchange,
     _next_prompt,
-    _read_exchange,
+    _reviewer_turn,
     _round_records,
-    _turn,
+    _structured_read_exchange,
 )
 from .conftest import (
     _WINDOW_EDGE_TIMESTAMPS,
@@ -25,12 +27,9 @@ from .conftest import (
     _user_msg,
 )
 
-_SINCE_TS = corpus._parse_ts("2026-08-10T00:00:00Z")
-_UNTIL_EPOCH = corpus._parse_ts("2026-08-13T00:00:00Z")
 _CODE_PATH = "/repo/src/module.py"
 _PROSE_PATH = "/repo/docs/guide.md"
 _DIFF_PATH = "/home/user/.claude/code-review-diff-markers/review.diff"
-_WITHHELD = "(withheld — untracked agent type)"
 _REFUSAL = "File content (51.2KB) exceeds maximum allowed size (50KB)"
 _PAGED_REFUSAL = "File content (30000 tokens) exceeds maximum allowed tokens (25000)"
 
@@ -41,23 +40,23 @@ def _text_of_tokens(tokens: int) -> str:
 
 def _with_tool_use_result(tool_use_result) -> list[dict]:
     """A Read of the code path whose result record carries the given `toolUseResult`."""
-    return [_turn("m1", [_read_use("r1", _CODE_PATH)]), _read_result("r1", "x", tool_use_result=tool_use_result)]
+    return [_reviewer_turn("m1", [_read_use("r1", _CODE_PATH)]), _read_result("r1", "x", tool_use_result=tool_use_result)]
 
 
 def _one_call(path: str, num_lines: int, total_lines: int, **options) -> list[dict]:
-    return _read_exchange("m1", "r1", path, num_lines=num_lines, total_lines=total_lines, **options)
+    return _structured_read_exchange("m1", "r1", path, num_lines=num_lines, total_lines=total_lines, **options)
 
 
 def _flat(*exchanges: list[dict]) -> list[dict]:
     return [record for exchange in exchanges for record in exchange]
 
 
-def _accumulate(*windows: list[dict], main_records: list[dict] | None = None, agent_type: str = _TRACKED_REVIEWER):
+def _accumulate(*windows: list[dict], main_records: list[dict] | None = None, agent_type: str = _TRACKED_AGENT_TYPE):
     """Accumulates one session whose subagent windows are `windows`, each typed `agent_type`."""
     totals = reviewer_reads._Totals()
     reviewer_reads._accumulate_session(
         totals, read_cost._SeenIds(), main_records or [], [(agent_type, list(window)) for window in windows],
-        pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_REVIEWER}),
+        pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_AGENT_TYPE}),
     )
     return totals
 
@@ -105,7 +104,7 @@ class TestOutcomeClasses:
     def test_whole_file_success_takes_the_first_class_that_fits(
         self, start_line, num_lines, total_lines, truncated, allow_large, expected_outcome, expected_reason,
     ):
-        window = _read_exchange(
+        window = _structured_read_exchange(
             "m1", "r1", _CODE_PATH, num_lines=num_lines, total_lines=total_lines, start_line=start_line,
             truncated=truncated or None, allow_large=allow_large or None,
         )
@@ -116,7 +115,7 @@ class TestOutcomeClasses:
         assert _nonzero(totals.size_unknown_reasons) == ({expected_reason: 1} if expected_reason else {})
 
     def test_cap_flag_on_a_record_failing_a_check_is_size_unknown_under_that_check(self):
-        window = _flat(_read_exchange("m1", "r1", _CODE_PATH, num_lines=-1, total_lines=10, truncated=True))
+        window = _flat(_structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=-1, total_lines=10, truncated=True))
 
         totals = _accumulate(window)
 
@@ -151,7 +150,7 @@ class TestOutcomeClasses:
         ],
     )
     def test_complete_call_is_bucketed_by_its_total_lines(self, total_lines, expected_bucket):
-        window = _read_exchange("m1", "r1", _CODE_PATH, num_lines=total_lines, total_lines=total_lines)
+        window = _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=total_lines, total_lines=total_lines)
 
         assert _only_call(_accumulate(window)) == ("code/other", "complete", expected_bucket)
 
@@ -199,7 +198,7 @@ class TestSizeUnknownReasons:
             {"type": "tool_result", "tool_use_id": "r1", "content": "x"},
             {"type": "tool_result", "tool_use_id": "r2", "content": "x"},
         ])
-        window = [_turn("m1", [_read_use("r1", _CODE_PATH), _read_use("r2", _PROSE_PATH)]), batched_result]
+        window = [_reviewer_turn("m1", [_read_use("r1", _CODE_PATH), _read_use("r2", _PROSE_PATH)]), batched_result]
 
         totals = _accumulate(window)
 
@@ -224,7 +223,7 @@ class TestFileRoles:
         ],
     )
     def test_role_follows_the_exact_parent_directory_then_the_prose_split(self, path, expected_role):
-        window = _read_exchange("m1", "r1", path, num_lines=3, total_lines=3)
+        window = _structured_read_exchange("m1", "r1", path, num_lines=3, total_lines=3)
 
         assert _only_call(_accumulate(window))[0] == expected_role
 
@@ -233,9 +232,9 @@ class TestLargestTotalFallback:
     def test_a_refused_call_takes_the_largest_total_a_later_paged_read_of_its_path_saw(self):
         window = _flat(
             _failed_read_exchange("m1", "r1", _CODE_PATH, _REFUSAL),
-            _read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=1500, offset=0, limit=10),
-            _read_exchange("m3", "r3", _CODE_PATH, num_lines=10, total_lines=3000, offset=0, limit=10),
-            _read_exchange("m4", "r4", _PROSE_PATH, num_lines=10, total_lines=10, offset=0, limit=10),
+            _structured_read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=1500, offset=0, limit=10),
+            _structured_read_exchange("m3", "r3", _CODE_PATH, num_lines=10, total_lines=3000, offset=0, limit=10),
+            _structured_read_exchange("m4", "r4", _PROSE_PATH, num_lines=10, total_lines=10, offset=0, limit=10),
         )
 
         assert _nonzero(_accumulate(window).outcome_calls) == {("code/other", "refused_over_limit", "over_2000"): 1}
@@ -243,14 +242,14 @@ class TestLargestTotalFallback:
     def test_a_size_unknown_success_takes_the_largest_total_of_its_path_too(self):
         window = _flat(
             _with_tool_use_result(None),
-            _read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=1200, offset=0, limit=10),
+            _structured_read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=1200, offset=0, limit=10),
         )
 
         assert _nonzero(_accumulate(window).outcome_calls) == {("code/other", "size_unknown", "1001_to_2000"): 1}
 
     def test_another_windows_total_is_not_used(self):
         first_window = _failed_read_exchange("m1", "r1", _CODE_PATH, _REFUSAL)
-        second_window = _read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=3000, offset=0, limit=10)
+        second_window = _structured_read_exchange("m2", "r2", _CODE_PATH, num_lines=10, total_lines=3000, offset=0, limit=10)
 
         assert _nonzero(_accumulate(first_window, second_window).outcome_calls) == {
             ("code/other", "refused_over_limit", "unknown"): 1,
@@ -325,7 +324,7 @@ class TestHeadlinePopulation:
     def test_allow_large_calls_whose_estimate_alone_decides_the_denominator_are_counted(
         self, path, tokens, total_lines, expected_band_count,
     ):
-        window = _read_exchange(
+        window = _structured_read_exchange(
             "m1", "r1", path, num_lines=total_lines, total_lines=total_lines, allow_large=True,
             text=_text_of_tokens(tokens),
         )
@@ -334,11 +333,11 @@ class TestHeadlinePopulation:
 
     @pytest.mark.parametrize("allow_large", [None, True])
     def test_band_counts_allow_large_calls_only_and_reviewed_files_only(self, allow_large):
-        reviewed_plain = _read_exchange(
+        reviewed_plain = _structured_read_exchange(
             "m1", "r1", _CODE_PATH, num_lines=10, total_lines=10, text=_text_of_tokens(25_000),
             allow_large=allow_large,
         )
-        diff_handoff = _read_exchange(
+        diff_handoff = _structured_read_exchange(
             "m2", "r2", _DIFF_PATH, num_lines=10, total_lines=10, text=_text_of_tokens(25_000), allow_large=True,
         )
 
@@ -352,7 +351,7 @@ class TestHeadlinePopulation:
         ],
     )
     def test_a_refused_targeted_call_takes_no_class_and_leaves_the_headline_alone(self, refusal_text, paging, expected_follow_up):
-        partial_call = _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
+        partial_call = _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
         refusal = _failed_read_exchange("m2", "r2", _CODE_PATH, refusal_text, **paging)
 
         totals = _accumulate(_flat(partial_call, refusal))
@@ -367,11 +366,11 @@ _BIG_PATH = "/repo/src/big.py"
 
 def _partial_call() -> list[dict]:
     """The call every follow-up scenario starts from: lines 1 to 40 of a 100-line file."""
-    return _read_exchange("m1", "r1", _BIG_PATH, num_lines=40, total_lines=100)
+    return _structured_read_exchange("m1", "r1", _BIG_PATH, num_lines=40, total_lines=100)
 
 
 def _paged(message_id: str, tool_id: str, start_line: int, num_lines: int, *, path: str = _BIG_PATH, total: int = 100):
-    return _read_exchange(
+    return _structured_read_exchange(
         message_id, tool_id, path, num_lines=num_lines, total_lines=total, start_line=start_line,
         offset=start_line - 1, limit=num_lines,
     )
@@ -380,7 +379,7 @@ def _paged(message_id: str, tool_id: str, start_line: int, num_lines: int, *, pa
 def _unstructured_paged_read() -> list[dict]:
     """A paged read of the big file whose result record carries no structured fields."""
     return [
-        _turn("m2", [_read_use("r2", _BIG_PATH, offset=40, limit=60)]), _read_result("r2", "x", tool_use_result=None),
+        _reviewer_turn("m2", [_read_use("r2", _BIG_PATH, offset=40, limit=60)]), _read_result("r2", "x", tool_use_result=None),
     ]
 
 
@@ -415,7 +414,7 @@ class TestFollowUpAndCoverage:
             pytest.param([], _paged("m2", "r2", 41, 59), [], (1, 0, 0), id="ranges_one_line_short_of_the_end"),
             pytest.param([], _paged("m2", "r2", 41, 60), [], (1, 1, 0), id="adjacent_ranges_cover_the_file"),
             pytest.param(
-                [], _read_exchange("m2", "r2", _BIG_PATH, num_lines=100, total_lines=100), [], (0, 1, 0),
+                [], _structured_read_exchange("m2", "r2", _BIG_PATH, num_lines=100, total_lines=100), [], (0, 1, 0),
                 id="whole_file_reread_covers_without_an_offset_read",
             ),
             pytest.param(_paged("m0", "r0", 41, 60), [], [], (0, 0, 1), id="covering_read_before_the_call_does_not_count"),
@@ -451,7 +450,7 @@ class TestFollowUpAndCoverage:
     @pytest.mark.parametrize(("later_start", "expected_covered"), [(41, 1), (42, 0)])
     def test_a_trillion_line_file_is_decided_by_interval_without_enumerating_lines(self, later_start, expected_covered):
         huge = 10**12
-        call = _read_exchange("m1", "r1", _BIG_PATH, num_lines=40, total_lines=huge)
+        call = _structured_read_exchange("m1", "r1", _BIG_PATH, num_lines=40, total_lines=huge)
         later = _paged("m2", "r2", later_start, huge - later_start + 1, total=huge)
 
         assert _accumulate(_flat(call, later)).follow_up[("code/other", "covered_after")] == expected_covered
@@ -478,8 +477,8 @@ class TestFollowUpAndCoverage:
         assert 4000 <= len(fact_accesses) <= 5 * 4000
     def test_follow_up_counts_per_role(self):
         window = _flat(
-            _read_exchange("m1", "r1", _DIFF_PATH, num_lines=5, total_lines=9),
-            _read_exchange("m2", "r2", _PROSE_PATH, num_lines=5, total_lines=9),
+            _structured_read_exchange("m1", "r1", _DIFF_PATH, num_lines=5, total_lines=9),
+            _structured_read_exchange("m2", "r2", _PROSE_PATH, num_lines=5, total_lines=9),
         )
 
         assert _nonzero(_accumulate(window).follow_up) == {
@@ -491,21 +490,22 @@ class TestFollowUpAndCoverage:
 class TestReadShare:
     def test_read_weight_parts_reconcile_and_other_windows_are_outside_both_sides(self):
         window = [
-            *_read_exchange("m1", "r1", _CODE_PATH, num_lines=1500, total_lines=1500),
-            *_read_exchange("m2", "r2", _DIFF_PATH, num_lines=1200, total_lines=1200),
-            _turn("m3", [_read_use("r3", _CODE_PATH + "x")]), _read_result("r3", _HUNDRED_TOKEN_TEXT, tool_use_result=None),
-            *_read_exchange("m4", "r4", _CODE_PATH, num_lines=500, total_lines=500),
-            _turn("m5", []),
+            *_structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=1500, total_lines=1500),
+            *_structured_read_exchange("m2", "r2", _DIFF_PATH, num_lines=1200, total_lines=1200),
+            _reviewer_turn("m3", [_read_use("r3", _CODE_PATH + "x")]),
+            _read_result("r3", _HUNDRED_TOKEN_TEXT, tool_use_result=None),
+            *_structured_read_exchange("m4", "r4", _CODE_PATH, num_lines=500, total_lines=500),
+            _reviewer_turn("m5", []),
         ]
-        outside = _read_exchange("o1", "ro1", _CODE_PATH, num_lines=1500, total_lines=1500)
+        outside = _structured_read_exchange("o1", "ro1", _CODE_PATH, num_lines=1500, total_lines=1500)
         totals = reviewer_reads._Totals()
 
         reviewer_reads._accumulate_session(
             totals, read_cost._SeenIds(), [], [
-                (_TRACKED_REVIEWER, window), ("skill-fidelity-reviewer", outside), ("general-purpose", outside),
-                (_TRACKED_REVIEWER, [_turn("m1")]),
+                (_TRACKED_AGENT_TYPE, window), ("skill-fidelity-reviewer", outside), ("general-purpose", outside),
+                (_TRACKED_AGENT_TYPE, [_reviewer_turn("m1")]),
             ],
-            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_REVIEWER}),
+            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_AGENT_TYPE}),
         )
 
         # Five turns of 10 output tokens at weight 50 each; the second window repeats m1 and bills nothing new.
@@ -523,19 +523,19 @@ class TestReadShare:
     @pytest.mark.parametrize("targeted", [False, True])
     def test_a_prose_read_over_1000_lines_adds_to_the_over_page_weight_and_to_neither_role_part(self, total_lines, targeted):
         paging = {"offset": 0, "limit": 10} if targeted else {}
-        exchange = _read_exchange(
+        exchange = _structured_read_exchange(
             "m1", "r1", _PROSE_PATH, num_lines=10 if targeted else total_lines, total_lines=total_lines, **paging,
         )
 
-        totals = _accumulate([*exchange, _turn("m2", [])])
+        totals = _accumulate([*exchange, _reviewer_turn("m2", [])])
 
         assert totals.read_weight_over_page == 100 * 13.5
         assert (totals.read_weight_over_page_code_or_other, totals.read_weight_over_page_diff_handoff) == (0.0, 0.0)
 
     def test_a_targeted_read_adds_to_the_read_weight(self):
         window = [
-            *_read_exchange("m1", "r1", _CODE_PATH, num_lines=10, total_lines=1500, offset=0, limit=10),
-            _turn("m2", []),
+            *_structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=10, total_lines=1500, offset=0, limit=10),
+            _reviewer_turn("m2", []),
         ]
 
         # 100 estimated tokens at a 12.5 cache write plus one cache read for the one later turn.
@@ -545,18 +545,18 @@ class TestReadShare:
 class TestPerType:
     def test_untracked_names_fold_into_one_withheld_row_and_tracked_names_keep_their_own(self):
         totals = reviewer_reads._Totals()
-        partial = _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
+        partial = _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
         refused = _failed_read_exchange("m2", "r2", _CODE_PATH, _REFUSAL)
 
         reviewer_reads._accumulate_session(
             totals, read_cost._SeenIds(), [], [
-                (_TRACKED_REVIEWER, partial), ("staff-untracked-a", refused), ("staff-untracked-b", [_turn("m3")]),
+                (_TRACKED_AGENT_TYPE, partial), ("staff-untracked-a", refused), ("staff-untracked-b", [_reviewer_turn("m3")]),
             ],
-            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_REVIEWER}),
+            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_AGENT_TYPE}),
         )
 
         assert totals.type_rows == {
-            _TRACKED_REVIEWER: Counter(windows=1, larger_than_one_call=1, partial=1),
+            _TRACKED_AGENT_TYPE: Counter(windows=1, larger_than_one_call=1, partial=1),
             _WITHHELD: Counter(windows=2, larger_than_one_call=1, refused=1),
         }
         assert "staff-untracked-a" not in {*totals.type_rows}
@@ -599,7 +599,8 @@ class TestReadCallBlocks:
         ],
     )
     def test_each_read_block_yields_its_id_path_and_whole_file_flag_and_malformed_ones_yield_nothing(self, turn, expected):
-        assert list(reviewer_reads._read_call_blocks(turn)) == expected
+        read_calls = reviewer_reads._read_call_blocks(turn)
+        assert [(call.tool_use_id, call.path, call.whole_file) for call in read_calls] == expected
 
 
 class TestSharedScanState:
@@ -615,20 +616,20 @@ class TestSharedScanState:
         assert _nonzero(_accumulate(replay, second_window).outcome_calls) == {("code/other", "refused_over_limit", "unknown"): 1}
 
     def test_a_successful_call_replayed_in_a_second_window_counts_once(self):
-        first = _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
-        replay = _read_exchange("m2", "r1", _CODE_PATH, num_lines=5, total_lines=9)
+        first = _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9)
+        replay = _structured_read_exchange("m2", "r1", _CODE_PATH, num_lines=5, total_lines=9)
 
         assert _nonzero(_accumulate(first, replay).outcome_calls) == {("code/other", "partial_unflagged", "up_to_1000"): 1}
 
     def test_a_turn_the_main_thread_billed_is_not_billed_again_in_a_reviewer_window(self):
-        turn = _turn("m1")
+        turn = _reviewer_turn("m1")
 
         totals = _accumulate([turn], main_records=[turn])
 
         assert totals.billed_weight == 0.0
 
     def test_a_sidechain_record_in_the_main_file_is_not_a_main_thread_round_read(self):
-        sidechain_read = {**_turn("c", [_read_use("r1", _CODE_PATH)]), "isSidechain": True}
+        sidechain_read = {**_reviewer_turn("c", [_read_use("r1", _CODE_PATH)]), "isSidechain": True}
         main = [*_round_records("code-review", "a"), sidechain_read, _next_prompt()]
 
         assert _accumulate(main_records=main).rounds["code-review"].whole_file_calls == 0
@@ -644,9 +645,9 @@ class TestMainThreadRoundReads:
         return [*_round_records(skill, tag, ts=ts, reads=tuple(uses)), *results]
 
     def test_reads_in_a_window_count_whole_file_and_targeted_and_split_by_outcome_and_size(self):
-        whole = _read_exchange("w1", "rw", _CODE_PATH, num_lines=5, total_lines=2500)
-        targeted = _read_exchange("w2", "rt", _CODE_PATH, num_lines=5, total_lines=2500, offset=0, limit=5)
-        diff = _read_exchange("w3", "rd", _DIFF_PATH, num_lines=5, total_lines=5)
+        whole = _structured_read_exchange("w1", "rw", _CODE_PATH, num_lines=5, total_lines=2500)
+        targeted = _structured_read_exchange("w2", "rt", _CODE_PATH, num_lines=5, total_lines=2500, offset=0, limit=5)
+        diff = _structured_read_exchange("w3", "rd", _DIFF_PATH, num_lines=5, total_lines=5)
         main = [*self._round_reads("code-review", "a", whole, targeted, diff), _next_prompt()]
 
         totals = _accumulate(main_records=main)
@@ -661,12 +662,12 @@ class TestMainThreadRoundReads:
     def test_a_read_split_into_a_duplicate_record_at_the_window_start_and_at_its_end_is_inside_it(self):
         start_read = _read_use("r-start", _CODE_PATH)
         end_read = _read_use("r-end", _CODE_PATH)
-        opening = _turn("o", [], request_id="req-open")
+        opening = _reviewer_turn("o", [], request_id="req-open")
         opening["message"]["content"] = [{"type": "tool_use", "id": "s", "name": "Skill", "input": {"skill": "code-review"}}]
-        start_duplicate = _turn("o", [start_read], request_id="req-open")
-        last = _turn("l", [], request_id="req-last")
-        end_duplicate = _turn("l", [end_read], request_id="req-last")
-        after_window = _turn("x", [_read_use("r-after", _CODE_PATH)])
+        start_duplicate = _reviewer_turn("o", [start_read], request_id="req-open")
+        last = _reviewer_turn("l", [], request_id="req-last")
+        end_duplicate = _reviewer_turn("l", [end_read], request_id="req-last")
+        after_window = _reviewer_turn("x", [_read_use("r-after", _CODE_PATH)])
         main = [opening, start_duplicate, last, end_duplicate, _next_prompt(), after_window]
 
         totals = _accumulate(main_records=main)
@@ -675,12 +676,12 @@ class TestMainThreadRoundReads:
         assert (round_totals.windows, round_totals.whole_file_calls) == (1, 2)
 
     def test_reads_at_the_first_and_last_record_of_a_window_count_and_the_next_record_does_not(self):
-        opening = _turn("o", [
+        opening = _reviewer_turn("o", [
             {"type": "tool_use", "id": "s", "name": "Skill", "input": {"skill": "code-review"}},
             _read_use("r-first", _CODE_PATH),
         ])
-        last_inside = _turn("l", [_read_use("r-last", _CODE_PATH)])
-        next_round = _turn("p", [
+        last_inside = _reviewer_turn("l", [_read_use("r-last", _CODE_PATH)])
+        next_round = _reviewer_turn("p", [
             {"type": "tool_use", "id": "s2", "name": "Skill", "input": {"skill": "plan-review"}},
             _read_use("r-next", _CODE_PATH),
         ])
@@ -691,7 +692,7 @@ class TestMainThreadRoundReads:
         assert (totals.rounds["plan-review"].windows, totals.rounds["plan-review"].whole_file_calls) == (1, 1)
 
     def test_a_read_outside_every_window_counts_nowhere(self):
-        before_any_round = _turn("b", [_read_use("r-before", _CODE_PATH)])
+        before_any_round = _reviewer_turn("b", [_read_use("r-before", _CODE_PATH)])
         main = [before_any_round, _next_prompt()]
 
         totals = _accumulate(main_records=main)
@@ -709,17 +710,24 @@ class TestMainThreadRoundReads:
 
         assert _accumulate(main_records=main).rounds["code-review"].windows == 0
 
-    @pytest.mark.parametrize(("timestamp", "_ledger_expectation", "expected"), _WINDOW_EDGE_TIMESTAMPS)
-    def test_round_windows_are_selected_by_their_opening_records_timestamp(self, timestamp, _ledger_expectation, expected):
+    @pytest.mark.parametrize(
+        ("timestamp", "_ledger_expectation", "expected"), [*_WINDOW_EDGE_TIMESTAMPS, (None, "event_time", "out")],
+    )
+    def test_round_windows_are_selected_by_their_opening_records_timestamp_and_unparsable_ones_are_counted(
+        self, timestamp, _ledger_expectation, expected,
+    ):
         main = [*_round_records("code-review", "a", ts=timestamp), _next_prompt()]
 
-        assert _accumulate(main_records=main).rounds["code-review"].windows == int(expected == "in")
+        totals = _accumulate(main_records=main)
+
+        assert totals.rounds["code-review"].windows == int(expected == "in")
+        assert totals.round_windows_without_timestamp == int(timestamp in (None, "not-a-timestamp"))
 
 
 class TestReviewerWindowEdges:
     @pytest.mark.parametrize(("timestamp", "_ledger_expectation", "expected"), _WINDOW_EDGE_TIMESTAMPS)
     def test_a_reviewer_window_is_selected_by_its_first_timestamped_record(self, timestamp, _ledger_expectation, expected):
-        totals = _accumulate([_turn("m1", ts=timestamp)])
+        totals = _accumulate([_reviewer_turn("m1", ts=timestamp)])
 
         assert totals.reviewer_windows == int(expected == "in")
         assert totals.windows_without_timestamp == int(timestamp == "not-a-timestamp")
@@ -731,23 +739,12 @@ class TestReviewerWindowEdges:
     def test_a_window_is_selected_by_its_first_timestamped_record_whatever_a_later_one_holds(
         self, first_timestamp, expected_windows,
     ):
-        window = [_turn("m0", ts=first_timestamp), _turn("m1", ts=_IN_WINDOW)]
+        window = [_reviewer_turn("m0", ts=first_timestamp), _reviewer_turn("m1", ts=_IN_WINDOW)]
 
         assert _accumulate(window).reviewer_windows == expected_windows
 
-    @pytest.mark.parametrize("error", [OverflowError, OSError])
-    def test_a_timestamp_the_platform_cannot_convert_is_no_timestamp(self, error, monkeypatch):
-        def cannot_convert(_timestamp):
-            raise error
-
-        monkeypatch.setattr(corpus, "_parse_ts", cannot_convert)
-
-        totals = _accumulate([_turn("m1")])
-
-        assert (totals.reviewer_windows, totals.windows_without_timestamp) == (0, 1)
-
     def test_a_non_string_timestamp_is_no_timestamp(self):
-        totals = _accumulate([{**_turn("m1"), "timestamp": 12345}])
+        totals = _accumulate([{**_reviewer_turn("m1"), "timestamp": 12345}])
 
         assert (totals.reviewer_windows, totals.windows_without_timestamp) == (0, 1)
 
@@ -776,13 +773,15 @@ class TestComparability:
         ],
     )
     def test_a_version_prints_only_in_the_bounded_ascii_form(self, version, expected_label):
-        totals = _accumulate([_turn("m1", version=version)])
+        totals = _accumulate([_reviewer_turn("m1", version=version)])
 
         assert dict(totals.version_counts) == {expected_label: 1}
 
     def test_the_first_record_carrying_a_version_decides_and_none_at_all_is_unknown(self):
-        carrying = _accumulate([_turn("m1"), _turn("m2", version="2.1.0"), _turn("m3", version="9.9.9")])
-        carrying_none = _accumulate([_turn("m1"), _turn("m2")])
+        carrying = _accumulate(
+            [_reviewer_turn("m1"), _reviewer_turn("m2", version="2.1.0"), _reviewer_turn("m3", version="9.9.9")],
+        )
+        carrying_none = _accumulate([_reviewer_turn("m1"), _reviewer_turn("m2")])
 
         assert dict(carrying.version_counts) == {"2.1.0": 1}
         assert dict(carrying_none.version_counts) == {"unknown": 1}
@@ -790,7 +789,6 @@ class TestComparability:
     @pytest.mark.parametrize(
         ("model", "expected_label"),
         [
-            pytest.param("claude-sonnet-5", "claude-sonnet-5", id="priced"),
             pytest.param("claude-unpriced-model", "other", id="unpriced"),
             pytest.param("<synthetic>", "other", id="synthetic"),
             pytest.param(5, "other", id="int"),
@@ -801,13 +799,17 @@ class TestComparability:
         ],
     )
     @pytest.mark.parametrize("leading", [[], [_user_msg("dispatch prompt", ts=_IN_WINDOW)]], ids=["alone", "after_a_user_record"])
-    def test_a_model_prints_by_name_only_when_pricing_prices_it(self, leading, model, expected_label):
-        totals = _accumulate([*leading, _turn("m1", model=model)])
+    def test_a_model_pricing_does_not_name_prints_as_other(self, leading, model, expected_label):
+        totals = _accumulate([*leading, _reviewer_turn("m1", model=model)])
 
         assert dict(totals.model_counts) == {expected_label: 1}
 
+    @pytest.mark.parametrize("model", sorted(pricing._MODEL_BASE_INPUT_RATES))
+    def test_every_model_pricing_names_prints_by_name_whether_or_not_it_has_one_rate_set(self, model):
+        assert dict(_accumulate([_reviewer_turn("m1", model=model)]).model_counts) == {model: 1}
+
     def test_a_window_with_no_assistant_record_or_no_model_key_has_an_unknown_model(self):
-        no_model_key = _turn("m1")
+        no_model_key = _reviewer_turn("m1")
         del no_model_key["message"]["model"]
 
         totals = _accumulate([_user_msg("hello", ts=_IN_WINDOW)], [no_model_key])
@@ -815,22 +817,24 @@ class TestComparability:
         assert dict(totals.model_counts) == {"unknown": 2}
 
     def test_the_first_assistant_record_alone_decides_the_model(self):
-        assert dict(_accumulate([_turn("m1", model="claude-unpriced-model"), _turn("m2")]).model_counts) == {"other": 1}
+        window = [_reviewer_turn("m1", model="claude-unpriced-model"), _reviewer_turn("m2")]
+
+        assert dict(_accumulate(window).model_counts) == {"other": 1}
 
 
 class TestDiagnostics:
     def test_an_unexplained_partial_counts_only_on_files_of_up_to_the_default_limit(self):
         window = _flat(
-            _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=2000),
-            _read_exchange("m2", "r2", _CODE_PATH + "2", num_lines=2000, total_lines=2500),
-            _read_exchange("m3", "r3", _CODE_PATH + "3", num_lines=5, total_lines=2001),
-            _read_exchange("m4", "r4", _CODE_PATH + "4", num_lines=5, total_lines=50, truncated=True),
+            _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=2000),
+            _structured_read_exchange("m2", "r2", _CODE_PATH + "2", num_lines=2000, total_lines=2500),
+            _structured_read_exchange("m3", "r3", _CODE_PATH + "3", num_lines=5, total_lines=2001),
+            _structured_read_exchange("m4", "r4", _CODE_PATH + "4", num_lines=5, total_lines=50, truncated=True),
         )
 
         assert _accumulate(window).unexplained_partials == 1
 
     def test_a_partial_token_cap_call_without_a_notice_is_counted(self):
-        window = _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True)
+        window = _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True)
 
         assert _accumulate(window).notices_missing_for_partial_token_cap == 1
 
@@ -840,7 +844,7 @@ class TestDiagnostics:
         assert (totals.unrecognised_limit_errors, _only_call(totals)[1]) == (1, "other_error")
 
     def test_a_skill_fidelity_reviewer_window_is_left_out_and_counted(self):
-        totals = _accumulate([_turn("m1")], agent_type="skill-fidelity-reviewer")
+        totals = _accumulate([_reviewer_turn("m1")], agent_type="skill-fidelity-reviewer")
 
         assert (totals.reviewer_windows, totals.skill_fidelity_windows_left_out) == (0, 1)
 
@@ -850,12 +854,12 @@ class TestDiagnostics:
     def test_a_skill_fidelity_window_outside_the_window_or_without_a_timestamp_is_not_left_out(
         self, timestamp, expected_without_timestamp,
     ):
-        totals = _accumulate([_turn("m1", ts=timestamp)], agent_type="skill-fidelity-reviewer")
+        totals = _accumulate([_reviewer_turn("m1", ts=timestamp)], agent_type="skill-fidelity-reviewer")
 
         assert (totals.skill_fidelity_windows_left_out, totals.windows_without_timestamp) == (0, expected_without_timestamp)
 
     def test_a_window_of_a_non_reviewer_type_is_not_counted_anywhere(self):
-        totals = _accumulate([_turn("m1")], agent_type="general-purpose")
+        totals = _accumulate([_reviewer_turn("m1")], agent_type="general-purpose")
 
         assert (totals.reviewer_windows, totals.skill_fidelity_windows_left_out, totals.windows_without_timestamp) == (0, 0, 0)
 
@@ -863,21 +867,24 @@ class TestDiagnostics:
         ("exchange", "notice_for", "expected_counts"),
         [
             pytest.param(
-                _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True), "r1",
+                _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True), "r1",
                 (0, 0, 0), id="partial_token_cap_call_agrees",
             ),
             pytest.param(
-                _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True), None,
+                _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9000, truncated=True), None,
                 (1, 0, 0), id="partial_token_cap_call_with_no_notice",
             ),
             pytest.param(_with_tool_use_result(None), "r1", (0, 0, 1), id="size_unknown_call"),
             pytest.param(
-                _read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9), "r1", (0, 1, 0),
+                _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=5, total_lines=9), "r1", (0, 1, 0),
                 id="partial_unflagged_call",
             ),
-            pytest.param(_read_exchange("m1", "r1", _CODE_PATH, num_lines=9, total_lines=9), "r1", (0, 1, 0), id="complete_call"),
             pytest.param(
-                _read_exchange("m1", "r1", _CODE_PATH, num_lines=9, total_lines=9), "r-unknown", (0, 1, 0),
+                _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=9, total_lines=9), "r1", (0, 1, 0),
+                id="complete_call",
+            ),
+            pytest.param(
+                _structured_read_exchange("m1", "r1", _CODE_PATH, num_lines=9, total_lines=9), "r-unknown", (0, 1, 0),
                 id="no_call_at_all",
             ),
         ],
@@ -976,7 +983,8 @@ class TestUsableRecords:
         ],
     )
     def test_a_hostile_record_in_the_main_thread_or_a_reviewer_window_raises_nothing(self, hostile):
-        window = [hostile, _turn("m2", [_read_use("r1", _CODE_PATH)]), _read_result("r1", ["not text"], tool_use_result="x")]
+        read = [_reviewer_turn("m2", [_read_use("r1", _CODE_PATH)]), _read_result("r1", ["not text"], tool_use_result="x")]
+        window = [hostile, *read]
 
         totals = _accumulate(window, main_records=window)
 

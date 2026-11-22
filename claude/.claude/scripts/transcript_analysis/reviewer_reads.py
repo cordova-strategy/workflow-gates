@@ -3,10 +3,10 @@ refused), whether the reviewer read on, what share of reviewer spend went to Rea
 dispositions, and the harness versions and models behind the reviewer windows -- plus its subparser registration.
 
 Every printed figure is an aggregate. Nothing printed carries a path, session identifier, project name, ledger id,
-error text, version, model or untracked agent-type name that the corpus supplied: a version, a model and an agent type
-print only after a match against a closed vocabulary, and everything else prints as a count. Stderr can also carry an
-API request id through pricing's two request-id notices, the exception read-cost's stderr has too. Stderr is for the
-session running the command and is never published.
+error text, version, model or untracked agent-type name that the corpus supplied: a model and an agent type print only
+after a match against a closed set of names, a version only after a match against a bounded shape, and everything else
+prints as a count. Stderr can also carry an API request id through pricing's two request-id notices, the exception
+read-cost's stderr has too. Stderr is for the session running the command and is never published.
 
 Imports sibling modules by module (attribute access, not by name) -- see scope.py's own top-of-file comment for why.
 """
@@ -102,6 +102,7 @@ _FINDINGS_PRINT_CEILING = 1_000_000
 
 _VALUE_UNKNOWN = "unknown"
 _VALUE_OTHER = "other"
+# A version prints only when it has this shape: two to four dot-separated groups of one to four digits.
 _VERSION_PATTERN = re.compile(r"[0-9]{1,4}(?:\.[0-9]{1,4}){1,3}")
 
 _FOLLOW_UP_NEITHER_LABEL = "neither (no later offset Read, and not covered by later Reads)"
@@ -153,6 +154,7 @@ class _Totals:
     reviewer_windows: int = 0
     skill_fidelity_windows_left_out: int = 0
     windows_without_timestamp: int = 0
+    round_windows_without_timestamp: int = 0
     invalid_usage_turns: int = 0
     billed_weight: float = 0.0
     read_weight: float = 0.0
@@ -305,10 +307,7 @@ def _record_epoch(rec: dict) -> float | None:
     timestamp = rec.get("timestamp")
     if not isinstance(timestamp, str):
         return None
-    try:
-        return corpus._parse_ts(timestamp)
-    except (OverflowError, OSError):
-        return None
+    return corpus._parse_ts(timestamp)
 
 
 def _first_epoch(records: Iterable[dict]) -> float | None:
@@ -325,7 +324,7 @@ def _window_version(records: Iterable[dict]) -> str:
 
 
 def _window_model(records: Iterable[dict]) -> str:
-    """The first assistant record's model by name when pricing prices it, `other` when it holds anything else."""
+    """The first assistant record's model by name when it is a model pricing names, `other` when it holds anything else."""
     for rec in records:
         if rec.get("type") != "assistant":
             continue
@@ -333,7 +332,7 @@ def _window_model(records: Iterable[dict]) -> str:
         if not isinstance(message, dict) or "model" not in message:
             return _VALUE_UNKNOWN
         model = message["model"]
-        return model if isinstance(model, str) and pricing._model_rates(model) is not None else _VALUE_OTHER
+        return model if isinstance(model, str) and model in pricing._MODEL_BASE_INPUT_RATES else _VALUE_OTHER
     return _VALUE_UNKNOWN
 
 
@@ -505,22 +504,16 @@ def _accumulate_reviewer_window(
     _accumulate_follow_ups(totals, window.calls, window.reads_by_path)
 
 
-def _read_call_blocks(turn: dict) -> Iterator[tuple[str, str, bool]]:
-    """(tool_use id, path, whole-file) of each Read block, with the predicate and path rule `_scan_window` applies."""
+def _read_call_blocks(turn: dict) -> Iterator[read_cost._ReadCall]:
+    """Each Read call in the turn's content, by the predicate `read_cost._scan_window` applies."""
     message = turn.get("message")
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, list):
         return
     for block in content:
-        if not isinstance(block, dict) or block.get("type") != "tool_use" or block.get("name") != "Read":
-            continue
-        tool_input = block.get("input")
-        if not isinstance(tool_input, dict):
-            continue
-        path = tool_input.get("file_path") or tool_input.get("notebook_path")
-        tool_id = block.get("id")
-        if isinstance(path, str) and path and isinstance(tool_id, str) and tool_id:
-            yield tool_id, path, tool_input.get("offset") is None and tool_input.get("limit") is None
+        read_call = read_cost._read_call(block) if isinstance(block, dict) else None
+        if read_call is not None:
+            yield read_call
 
 
 def _accumulate_round_reads(
@@ -531,21 +524,25 @@ def _accumulate_round_reads(
     turns = pricing.dedup_turns_by_request_id(main_thread_records)
     for open_index, window_end, skill in review_rounds.detect_round_windows(turns):
         opened_at = _record_epoch(turns[open_index])
-        if opened_at is None or not since_ts <= opened_at < until_epoch:
+        if opened_at is None:
+            totals.round_windows_without_timestamp += 1
+            continue
+        if not since_ts <= opened_at < until_epoch:
             continue
         round_totals = totals.rounds[skill]
         round_totals.windows += 1
         counted_tool_use_ids: set[str] = set()
         for turn in turns[open_index:window_end]:
-            for tool_id, path, whole_file in _read_call_blocks(turn):
+            for read_call in _read_call_blocks(turn):
+                tool_id = read_call.tool_use_id
                 if tool_id in counted_tool_use_ids:
                     continue
                 counted_tool_use_ids.add(tool_id)
-                if not whole_file:
+                if not read_call.whole_file:
                     round_totals.targeted_calls += 1
                     continue
                 round_totals.whole_file_calls += 1
-                if _role(path) == _ROLE_DIFF_HANDOFF:
+                if _role(read_call.path) == _ROLE_DIFF_HANDOFF:
                     round_totals.diff_handoff_whole_file_calls += 1
                 elif tool_id in call_by_tool_use_id:
                     round_totals.outcomes[call_by_tool_use_id[tool_id].outcome] += 1
@@ -756,10 +753,11 @@ def _yield_pass(
         data = reviewer_yield.compute_reviewer_yield_data(
             _usable_record_sessions(session_iter), since_ts=since_ts, until_ts=until_epoch,
         )
-    except (AttributeError, TypeError, ValueError):
+    except (AttributeError, TypeError, ValueError, RecursionError):
         # reviewer_yield and corpus read some record and sidecar fields unguarded. ValueError covers an integer over the
-        # interpreter's digit limit and, as UnicodeEncodeError's base, a lone surrogate in a hashed path. The exception
-        # text can hold record content, so it is dropped and the section prints a fixed notice.
+        # interpreter's digit limit and, as UnicodeEncodeError's base, a lone surrogate in a hashed path. RecursionError
+        # covers JSON nested past the decoder's stack. The exception text can hold record content, so it is dropped and
+        # the section prints a fixed notice.
         return _YieldPass({}, 0, 0, 0, completed=False)
     pricing._warn_if_subagent_format_drift(data["subagent_spawns"], data["sidechain_turns"])
     rows: dict[str, Counter] = {}
@@ -789,7 +787,7 @@ def _print_yield(yield_pass: _YieldPass, until_epoch: float) -> None:
     if not yield_pass.completed:
         print(
             "reviewer-yield pass: not completed, because the shared reviewer-yield code raised an AttributeError,"
-            " TypeError or ValueError, so no yield rows are printed"
+            " TypeError, ValueError or RecursionError, so no yield rows are printed"
         )
         return
     print(
@@ -878,6 +876,10 @@ def _print_diagnostics(totals: _Totals) -> None:
     print(
         "reviewer windows with no timestamped record, whatever the window:"
         f" {totals.windows_without_timestamp:,}"
+    )
+    print(
+        "review-round windows whose opening record has no parsable timestamp, whatever the window:"
+        f" {totals.round_windows_without_timestamp:,}"
     )
 
 

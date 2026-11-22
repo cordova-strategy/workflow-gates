@@ -2,8 +2,9 @@
 import argparse
 from pathlib import Path
 
-from transcript_analysis import reviewer_reads, scope
+from transcript_analysis import corpus, reviewer_reads, scope
 
+from ._read_cost_helpers import _HUNDRED_TOKEN_TEXT, _TRACKED_AGENT_TYPE, _file_record
 from .conftest import (
     _asst,
     _read_result,
@@ -13,7 +14,6 @@ from .conftest import (
     _write_subagent_dispatch,
 )
 
-_PROJECT_SLUG = "-home-user-testrepo"
 _WORKTREE_PATH = "/home/user/testrepo"
 _SESSION_ID = "session-main"
 # The window `--since 2026-08-10 --until 2026-08-12` selects, and a timestamp inside it.
@@ -21,14 +21,14 @@ _SINCE = "2026-08-10"
 _UNTIL = "2026-08-12"
 _IN_WINDOW = "2026-08-11T10:00:00.000Z"
 _BEFORE_WINDOW = "2026-08-09T10:00:00.000Z"
-_TRACKED_REVIEWER = "staff-backend-engineer"
-# 400 characters are 100 estimated tokens (chars // 4).
-_HUNDRED_TOKEN_TEXT = "x" * 400
+_SINCE_TS = corpus._parse_ts("2026-08-10T00:00:00Z")
+_UNTIL_EPOCH = corpus._parse_ts("2026-08-13T00:00:00Z")
+_WITHHELD = "(withheld — untracked agent type)"
 # Distinguishes a `version` key holding None from no key at all.
 _NO_VERSION = object()
 
 
-def _turn(
+def _reviewer_turn(
     message_id: str, content: list | None = None, *, ts: str | None = _IN_WINDOW, version: object = _NO_VERSION,
     model: object = "claude-sonnet-5", usage: dict | None = None, request_id: str | None = None,
 ) -> dict:
@@ -47,13 +47,13 @@ def _file_result(
     truncated: bool | None = None, text: str = _HUNDRED_TOKEN_TEXT,
 ) -> dict:
     """A Read result record carrying the structured `toolUseResult.file` fields. The flag is absent unless given."""
-    file_record = {"filePath": path, "startLine": start_line, "numLines": num_lines, "totalLines": total_lines}
-    if truncated is not None:
-        file_record["truncatedByTokenCap"] = truncated
-    return _read_result(tool_id, text, tool_use_result={"type": "text", "file": file_record})
+    file_record = _file_record(
+        path, start_line=start_line, num_lines=num_lines, total_lines=total_lines, truncated_by_token_cap=truncated,
+    )
+    return _read_result(tool_id, text, tool_use_result=file_record)
 
 
-def _read_exchange(
+def _structured_read_exchange(
     message_id: str, tool_id: str, path: str, *, num_lines: int, total_lines: int, start_line: int = 1,
     truncated: bool | None = None, offset: int | None = None, limit: int | None = None,
     allow_large: bool | None = None, text: str = _HUNDRED_TOKEN_TEXT, ts: str | None = _IN_WINDOW,
@@ -61,7 +61,7 @@ def _read_exchange(
     """A turn holding one Read call and the record carrying its structured result."""
     use = _read_use(tool_id, path, offset=offset, limit=limit, allow_large=allow_large)
     return [
-        _turn(message_id, [use], ts=ts),
+        _reviewer_turn(message_id, [use], ts=ts),
         _file_result(
             tool_id, path, num_lines=num_lines, total_lines=total_lines, start_line=start_line, truncated=truncated,
             text=text,
@@ -75,13 +75,13 @@ def _failed_read_exchange(
 ) -> list[dict]:
     """A turn holding one Read call and its error result, `toolUseResult` an `Error:` string as the review bench models it."""
     return [
-        _turn(message_id, [_read_use(tool_id, path, offset=offset, limit=limit)], ts=ts),
+        _reviewer_turn(message_id, [_read_use(tool_id, path, offset=offset, limit=limit)], ts=ts),
         _read_result(tool_id, error_text, is_error=True, tool_use_result=f"Error: {error_text}"),
     ]
 
 
 def _reviewer_window(
-    proj: Path, agent_id: str, records: list[dict], *, agent_type: str = _TRACKED_REVIEWER, spawn_depth: int = 1,
+    proj: Path, agent_id: str, records: list[dict], *, agent_type: str = _TRACKED_AGENT_TYPE, spawn_depth: int = 1,
     session_id: str = _SESSION_ID,
 ) -> None:
     """A subagent transcript and its `.meta.json`. Every record is a sidechain record, as on disk."""
@@ -127,8 +127,8 @@ def _round_records(
     The window closes at the next fresh user prompt or round-opening record, which the caller appends.
     """
     return [
-        _turn(f"{message_id}-open", [_skill_block(f"{message_id}-skill", skill)], ts=ts),
-        _turn(f"{message_id}-reads", list(reads), ts=ts),
+        _reviewer_turn(f"{message_id}-open", [_skill_block(f"{message_id}-skill", skill)], ts=ts),
+        _reviewer_turn(f"{message_id}-reads", list(reads), ts=ts),
     ]
 
 

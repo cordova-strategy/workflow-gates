@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
+import stat
 from collections import Counter
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
@@ -121,11 +123,18 @@ def _reduce_row(row: dict) -> tuple[_LedgerRow | None, str | None]:
 
 
 def _read_file_rows(ledger_file: Path) -> list[dict] | None:
-    """The file's rows, or None when it could not be read.
+    """The file's rows, or None when it could not be read or is not a regular file.
 
+    A point-in-time `lstat` by name refuses a symlink, FIFO or other non-regular entry unopened, as the writer's own
+    check does. It does not detect a hard link or a swap between the check and the open, and neither does the writer's.
     The reader prints the file's path on an open failure, and that name carries the repository hash and a session id,
     so its stderr is held back and any output counts the file as unreadable. An exception out of the read does too.
     """
+    try:
+        if not stat.S_ISREG(os.lstat(ledger_file).st_mode):
+            return None
+    except OSError:
+        return None
     reader_stderr = io.StringIO()
     try:
         with contextlib.redirect_stderr(reader_stderr):

@@ -4,34 +4,33 @@ import os
 from collections import Counter
 
 import pytest
-from transcript_analysis import corpus, ledger_dispositions, pricing, read_cost, reviewer_reads, reviewer_yield
+from transcript_analysis import ledger_dispositions, pricing, read_cost, reviewer_reads, reviewer_yield
 
+from ._read_cost_helpers import _TRACKED_AGENT_TYPE
 from ._reviewer_reads_helpers import (
     _BEFORE_WINDOW,
-    _TRACKED_REVIEWER,
+    _SINCE_TS,
+    _UNTIL_EPOCH,
+    _WITHHELD,
     _failed_read_exchange,
     _printed_line,
-    _read_exchange,
     _report_text,
     _reviewer_reads_args,
+    _reviewer_turn,
     _reviewer_window,
-    _turn,
+    _structured_read_exchange,
 )
 from .conftest import _agent_use, _read_result, _read_truncation_notice, _read_use, _write_jsonl
 
-_SINCE_TS = corpus._parse_ts("2026-08-10T00:00:00Z")
-_UNTIL_EPOCH = corpus._parse_ts("2026-08-13T00:00:00Z")
-_WITHHELD = "(withheld — untracked agent type)"
 _DIFF_HANDOFF_DIR = "/home/user/.claude/code-review-diff-markers"
-_BUCKETS = ("up_to_1000", "1001_to_2000", "over_2000", "unknown")
 
 
 def _fixture_totals() -> reviewer_reads._Totals:
     """12 reviewer windows with every figure chosen by hand, so each printed figure has its own expected value."""
     totals = reviewer_reads._Totals(
         sessions=3, reviewer_windows=12, skill_fidelity_windows_left_out=1, windows_without_timestamp=2,
-        invalid_usage_turns=4, billed_weight=20000.0, read_weight=4000.0, read_weight_over_page=1000.0,
-        read_weight_over_page_code_or_other=600.0, read_weight_over_page_diff_handoff=240.0,
+        round_windows_without_timestamp=3, invalid_usage_turns=4, billed_weight=20000.0, read_weight=4000.0,
+        read_weight_over_page=1000.0, read_weight_over_page_code_or_other=600.0, read_weight_over_page_diff_handoff=240.0,
         read_weight_unknown_size=500.0, unrecognised_limit_errors=1, unexplained_partials=2,
         notices_missing_for_partial_token_cap=1, notices_naming_other_calls=0, notices_naming_size_unknown_calls=5,
     )
@@ -57,7 +56,7 @@ def _fixture_totals() -> reviewer_reads._Totals:
     })
     totals.size_unknown_reasons.update({"multi_result_record": 5, "line_field_invalid": 1})
     totals.type_rows.update({
-        _TRACKED_REVIEWER: Counter(windows=7, partial=6, refused=3, larger_than_one_call=12),
+        _TRACKED_AGENT_TYPE: Counter(windows=7, partial=6, refused=3, larger_than_one_call=12),
         "ciso-reviewer": Counter(windows=3, partial=3, larger_than_one_call=3),
         _WITHHELD: Counter(windows=2, partial=1, refused=1, larger_than_one_call=2),
     })
@@ -78,7 +77,7 @@ def _fixture_totals() -> reviewer_reads._Totals:
 def _fixture_yield_pass() -> reviewer_reads._YieldPass:
     return reviewer_reads._YieldPass(
         rows={
-            _TRACKED_REVIEWER: Counter({
+            _TRACKED_AGENT_TYPE: Counter({
                 "dispatches": 11, "findings_found": 6, "zero_finding": 4, "unclassified": 1, "total_findings": 15,
                 ("findings-found", "cited"): 8, ("findings-found", "active"): 12, ("findings-found", "edited"): 3,
                 ("zero-finding", "cited"): 3, ("zero-finding", "active"): 4, ("zero-finding", "edited"): 1,
@@ -245,6 +244,7 @@ class TestPrintedFigures:
             "all roles: other_error=7 unrecognised_limit_error=1",
             "skill-fidelity-reviewer windows left out, in the window: 1",
             "reviewer windows with no timestamped record, whatever the window: 2",
+            "review-round windows whose opening record has no parsable timestamp, whatever the window: 3",
         ]
 
 
@@ -258,8 +258,8 @@ def _accumulated_report(sessions: list[tuple[list[dict], list[list[dict]]]], cap
     seen = read_cost._SeenIds()
     for main_records, windows in sessions:
         reviewer_reads._accumulate_session(
-            totals, seen, main_records, [(_TRACKED_REVIEWER, window) for window in windows],
-            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_REVIEWER}),
+            totals, seen, main_records, [(_TRACKED_AGENT_TYPE, window) for window in windows],
+            pricing._cache_read_equivalent_weights(), _SINCE_TS, _UNTIL_EPOCH, frozenset({_TRACKED_AGENT_TYPE}),
         )
     empty_ledger = ledger_dispositions.LedgerDispositionCounts(
         directory_state="absent", files_read=0, unreadable_files=0,
@@ -282,19 +282,19 @@ class TestPrintedPopulations:
             return f"{_DIFF_HANDOFF_DIR}/{name}.diff"
 
         size_unknown_call = [
-            _turn("m3", [_read_use("r3", diff_path("size-unknown"))]),
+            _reviewer_turn("m3", [_read_use("r3", diff_path("size-unknown"))]),
             _read_result("r3", "x", tool_use_result=None),
         ]
         return [
-            *_read_exchange("m1", "r1", diff_path("partial-unflagged"), num_lines=5, total_lines=9),
-            *_read_exchange("m2", "r2", diff_path("partial-token-cap"), num_lines=5, total_lines=9000, truncated=True),
+            *_structured_read_exchange("m1", "r1", diff_path("partial-unflagged"), num_lines=5, total_lines=9),
+            *_structured_read_exchange("m2", "r2", diff_path("partial-token-cap"), num_lines=5, total_lines=9000, truncated=True),
             *size_unknown_call,
             _read_truncation_notice("r3"),
             *_failed_read_exchange("m4", "r4", diff_path("unrecognised"), "The file is too large to read"),
             *_failed_read_exchange(
                 "m5", "r5", diff_path("refused"), "File content (51.2KB) exceeds maximum allowed size (50KB)",
             ),
-            *_read_exchange("m6", "r6", diff_path("complete"), num_lines=9, total_lines=9),
+            *_structured_read_exchange("m6", "r6", diff_path("complete"), num_lines=9, total_lines=9),
             _read_truncation_notice("r6"),
         ]
 
@@ -316,14 +316,14 @@ class TestPrintedPopulations:
             "outside the denominator, reviewed files only: other_error=0 size_unknown=0"
         )
         assert _printed_line(report, "TOTAL: windows=") == "TOTAL: windows=1 partial=0 refused=0 larger_than_one_call=0"
-        assert _printed_line(report, f"{_TRACKED_REVIEWER}: windows=") == (
-            f"{_TRACKED_REVIEWER}: windows=1 partial=0 refused=0 larger_than_one_call=0"
+        assert _printed_line(report, f"{_TRACKED_AGENT_TYPE}: windows=") == (
+            f"{_TRACKED_AGENT_TYPE}: windows=1 partial=0 refused=0 larger_than_one_call=0"
         )
 
     def test_sessions_count_every_scoped_transcript_whatever_the_window_of_its_records(self, capsys):
-        before_window = [_turn("m0", ts=_BEFORE_WINDOW)]
-        out_of_window_reviewer = [_turn("a0", ts=_BEFORE_WINDOW)]
-        in_window_reviewer = [_turn("a1")]
+        before_window = [_reviewer_turn("m0", ts=_BEFORE_WINDOW)]
+        out_of_window_reviewer = [_reviewer_turn("a0", ts=_BEFORE_WINDOW)]
+        in_window_reviewer = [_reviewer_turn("a1")]
 
         report = _accumulated_report(
             [(before_window, []), (before_window, [in_window_reviewer, out_of_window_reviewer]), ([], [])], capsys,
@@ -334,11 +334,11 @@ class TestPrintedPopulations:
     def test_a_transcript_dated_before_the_window_still_counts_as_a_session_in_the_command_report(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         for session in ("session-main", "session-other"):
-            _write_jsonl(fake_projects / f"{session}.jsonl", [_turn(f"m-{session}", ts=_BEFORE_WINDOW)])
-        _reviewer_window(fake_projects, "agent-in-window", [_turn("a1")])
+            _write_jsonl(fake_projects / f"{session}.jsonl", [_reviewer_turn(f"m-{session}", ts=_BEFORE_WINDOW)])
+        _reviewer_window(fake_projects, "agent-in-window", [_reviewer_turn("a1")])
 
         report = _report_text(args, fake_projects, capsys)
 
@@ -456,7 +456,7 @@ class TestRateMarkers:
     )
     def test_the_yield_edited_rate_at_zero_below_the_floor_and_at_it(self, active, expected_rate, capsys):
         yield_pass = reviewer_reads._YieldPass(
-            rows={_TRACKED_REVIEWER: Counter({
+            rows={_TRACKED_AGENT_TYPE: Counter({
                 "dispatches": 1, "findings_found": 1, ("findings-found", "active"): active,
                 ("findings-found", "edited"): min(active, 1),
             })},
@@ -479,14 +479,14 @@ class TestRateMarkers:
     def test_a_findings_count_prints_in_a_closed_width(self, findings, expected_figure, capsys):
         counts = Counter(dispatches=1, findings_found=1, total_findings=findings)
         yield_pass = reviewer_reads._YieldPass(
-            rows={_TRACKED_REVIEWER: counts}, skipped_input_total=0, meta_read_errors=0, transcript_read_errors=0,
+            rows={_TRACKED_AGENT_TYPE: counts}, skipped_input_total=0, meta_read_errors=0, transcript_read_errors=0,
         )
 
         reviewer_reads._print_yield(yield_pass, _UNTIL_EPOCH)
 
         printed = capsys.readouterr().out
         assert expected_figure in _printed_line(printed, "TOTAL: dispatches=")
-        assert expected_figure in _printed_line(printed, f"{_TRACKED_REVIEWER}: dispatches=")
+        assert expected_figure in _printed_line(printed, f"{_TRACKED_AGENT_TYPE}: dispatches=")
         assert len(printed) < 1_000
 
     def test_an_empty_report_prints_every_rate_as_no_data_and_every_count_as_zero(self, capsys):
@@ -514,13 +514,13 @@ class TestRateMarkers:
 class TestReviewerYieldSection:
     def _seed(self, fake_projects):
         _write_jsonl(fake_projects / "session-main.jsonl", [
-            _turn("m0", [_agent_use("d1", "staff-LEAKSENTINEL-untracked")]),
+            _reviewer_turn("m0", [_agent_use("d1", "staff-LEAKSENTINEL-untracked")]),
         ])
 
     def test_the_yield_pass_receives_the_window_and_the_next_days_start_and_folds_untracked_names(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         self._seed(fake_projects)
         received = {}
@@ -557,7 +557,7 @@ class TestReviewerYieldSection:
     def test_the_yield_passs_gap_counter_prints_on_its_own_line_and_not_in_the_skipped_input_line(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         fake_projects.chmod(0o000)
         try:
@@ -573,9 +573,9 @@ class TestReviewerYieldSection:
     def test_a_dispatch_with_no_meta_sidecar_is_excluded_from_the_yield_section(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
-        _write_jsonl(fake_projects / "session-main.jsonl", [_turn("m0", [_agent_use("d1", _TRACKED_REVIEWER)])])
+        _write_jsonl(fake_projects / "session-main.jsonl", [_reviewer_turn("m0", [_agent_use("d1", _TRACKED_AGENT_TYPE)])])
 
         report = _report_text(args, fake_projects, capsys)
 
@@ -590,16 +590,17 @@ class TestReviewerYieldSection:
 
         assert capsys.readouterr().out.splitlines()[3:] == [
             "reviewer-yield pass: not completed, because the shared reviewer-yield code raised an AttributeError,"
-            " TypeError or ValueError, so no yield rows are printed",
+            " TypeError, ValueError or RecursionError, so no yield rows are printed",
         ]
 
     def test_a_sidecar_the_shared_yield_code_cannot_read_leaves_the_rest_of_the_report_intact(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
-        _write_jsonl(fake_projects / "session-main.jsonl", [_turn("m0", [_agent_use("dispatch-agent-a", _TRACKED_REVIEWER)])])
-        _reviewer_window(fake_projects, "agent-a", [_turn("a1", [])])
+        dispatch = _reviewer_turn("m0", [_agent_use("dispatch-agent-a", _TRACKED_AGENT_TYPE)])
+        _write_jsonl(fake_projects / "session-main.jsonl", [dispatch])
+        _reviewer_window(fake_projects, "agent-a", [_reviewer_turn("a1", [])])
         (fake_projects / "session-main" / "subagents" / "agent-a.meta.json").write_text('["not", "an", "object"]')
 
         report = _report_text(args, fake_projects, capsys)

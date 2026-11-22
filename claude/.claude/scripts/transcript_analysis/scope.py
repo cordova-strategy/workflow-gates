@@ -546,9 +546,9 @@ def _resolve_project_scope(
     fail-closed messages and, uppercased, the caller's resolved-scope header.
     The resolved slug list is cached on `args` so a caller needing two
     independent iterators over the same scope triggers one `git worktree
-    list` call, not two — no current caller does this, but the cache is
-    correct if one starts to. This caching relies on main()'s
-    single-Namespace-per-process, single-subcommand-dispatch invariant — an
+    list` call, not two — reviewer-reads does this, by pre-seeding
+    `args._this_repo_slugs` before its first iterator. This caching relies on
+    main()'s single-Namespace-per-process, single-subcommand-dispatch invariant — an
     `args` object reused across two different subcommand invocations would
     silently reuse the first's resolved slugs instead of re-resolving for the
     second.

@@ -42,7 +42,7 @@ The command reads each Read's outcome from the structured `toolUseResult.file` r
 The engineer settled these choices:
 - The instrument lives in its own module and leaves `read_scope.py` untouched (row 30).
 - The capture runs from this clone only (row 75), which supersedes row 15's second sentence.
-- The work ships as two PRs (row 31). PR 1 proceeds at about 4,250 lines (row 89).
+- The work ships as two PRs (row 31). PR 1 proceeds at about 4,250 lines (row 89). Row 93 records that the branch now measures above that.
 - The diff-handoff kind, the per-type rows and coverage stay, in reduced forms (row 34).
 - Late findings move to their own issue (row 51), which supersedes row 36.
 
@@ -71,7 +71,11 @@ The engineer settled these choices:
   9. `partial_unflagged`: `numLines` below `totalLines`. That is the 2,000-line default limit, or a harness version without the flag.
 - **Targeted calls**, which carry an `offset` or a `limit`, take no outcome class, a refused one included.
   - They enter no outcome table, no headline count and no follow-up population, so the headline's numerator and denominator hold whole-file calls alone.
-  - In reviewer windows a targeted call appears in the call counts only as a later Read under follow-up and coverage. A refused `limit`-only call therefore leaves no trace in the call counts. A successful targeted call adds its weight to the Read share. Its `totalLines` can also set the size bucket of a whole-file call on the same path in the same window that has none of its own.
+  - In reviewer windows:
+    - A targeted call appears in the call counts only as a later Read under follow-up and coverage.
+    - A refused `limit`-only call therefore leaves no trace in the call counts.
+    - A successful targeted call adds its weight to the Read share.
+    - A successful targeted call's `totalLines` can set the size bucket of a whole-file call on the same path in the same window that has none of its own.
   - Main-thread round Reads count them beside whole-file calls.
 - **Size bucket**, by the file's `totalLines`: up to 1,000, an empty file included; 1,001–2,000; over 2,000; unknown. A call without its own `totalLines` takes the largest one any call saw for that path in the same window.
 - **Headline, for GH-1529's first question.**
@@ -115,14 +119,21 @@ The engineer settled these choices:
   - Read calls inside them, whole-file and targeted;
   - whole-file reviewed-file calls by outcome class, and by size bucket;
   - whole-file diff-handoff calls.
+  - The join and the outcome classes count different populations.
+    - The join counts each Read `tool_use` block in a round window once by id, dropping only repeats inside that window.
+    - The outcome and bucket counts take only calls `read_cost._scan_window` classified. The scan skips an id already seen in an earlier window or file of the run, and a call with no usable result (`read_cost.py`:377-417).
+    - Such a call counts among the whole-file calls and in no outcome, so the outcome counts plus the diff-handoff calls can fall short of the whole-file calls. That gap is not a defect, and the page must not read it as one (Capture step 9).
 - **Reviewer-yield.** `reviewer_yield.compute_reviewer_yield_data` runs over a second, subagent-inclusive iterator built from the same single root and scope (M9). It renders with the same fold: dispatches, verdict mix, findings, and cited/active/edited.
   - The report repeats reviewer-yield's caveat that `--until` does not bound the edit table (`reviewer_yield.py`:729-730).
   - The second pass keeps its own gap counter. On a completed pass it prints that counter's total on this section's line. Only the first pass's counter feeds the skipped-input line.
-  - When the shared `reviewer_yield` or `corpus` code raises an `AttributeError`, `TypeError` or `ValueError` on a record or sidecar field it cannot take, the pass ends (`reviewer_reads.py`:759-763).
-    - One fixed notice, starting `reviewer-yield pass: not completed`, prints in place of the gap-counter line and the yield rows. It names the three exception classes and prints no count. The exception text is dropped, because it can hold record content.
+  - When the shared `reviewer_yield` or `corpus` code raises an `AttributeError`, `TypeError`, `ValueError` or `RecursionError` on a record or sidecar it cannot take, the pass ends (`reviewer_reads.py`:756-761).
+    - A field of the wrong type can come from a record or a sidecar. JSON nested past the decoder's stack reaches this catch only from a `.meta.json` sidecar.
+    - A transcript line nested that deep, or holding an integer over the interpreter's digit limit, never reaches it. `corpus._parse_jsonl_records` lets either exception out (`corpus.py`:111-116), so the run ends with a traceback in the first pass, before the yield pass. This PR leaves that as it is (Out of scope).
+    - One fixed notice, starting `reviewer-yield pass: not completed`, prints in place of the gap-counter line and the yield rows. It names the four exception classes and prints no count. The exception text is dropped, because it can hold record content.
     - The exit status stays 0, so Verification step 4's yield-completed floor checks the report for the notice.
     - Any other exception propagates.
 - **Review-ledger dispositions** (M10), over the files `publication_scope._this_repo_ledger_files` selects (M15):
+  - A selected file counts as unreadable, and none of its rows count, when it is not a regular file at its `lstat`, when its read prints anything, or when the read raises `ValueError` or `RecursionError` (M15, M20).
   - Each row is reduced on read to `session_id`, `disposition`, `decided_by`, `id`, `ref` and `event_time` (M20).
   - Each kept field has one rule for absence and one for a wrong type:
     - A row whose `disposition` is absent or not a string is left out under `disposition`.
@@ -149,10 +160,11 @@ The engineer settled these choices:
     - It prints only when it is a string that fully matches ASCII digits joined by dots, in two to four parts of one to four digits each.
     - Any other value prints as `other`. A window whose records carry none prints as `unknown`.
   - A window's model is its first assistant record's `message.model`.
-    - It prints by name only when it is a string `pricing._model_rates` prices, so a printed name is always a key of pricing's own table.
+    - It prints by name only when it is a string that is a key of pricing's `_MODEL_BASE_INPUT_RATES`, a model priced by prompt length such as `claude-haiku-5-5` included (row 92).
     - Any other value, a non-string included, prints as `other`, and the run goes on (row 82).
 - **Diagnostics.**
-  - Read-cost's skipped-input line, `pricing._warn_if_subagent_format_drift`, and reviewer windows with no timestamped record.
+  - Read-cost's skipped-input line and `pricing._warn_if_subagent_format_drift`.
+  - Reviewer windows with no timestamped record, and review-round windows whose opening record has no parsable timestamp (`round_windows_without_timestamp`). Neither count is limited to the date window, because an untimestamped window cannot be placed in it.
   - `skill-fidelity-reviewer` windows left out (M17).
   - Unexplained partials: `partial_unflagged` calls on files of 2,000 lines or fewer. The default line limit cannot explain them.
   - Notice agreement (row 5), as three counts:
@@ -177,6 +189,7 @@ The engineer settled these choices:
     - The worktree-cleanup hold: from the first dry run until PR 2's capture run passes Verification step 4's checks, neither cleanup script runs without `--dry-run`, from any directory, `cleanup-merged-branches --all-projects` included (row 65). A removed worktree's sessions and ledger files leave the scope (row 15).
     - The commit the last dry run ran at, as its 12-character short id. A full commit id trips the redaction gate's long-hex detector (row 66).
     - The re-dry-run rule: a later commit touching `reviewer_reads`, `read_cost`, `ledger_dispositions`, `publication_scope` or `reviewer_yield` needs a fresh dry run before the engineer merges.
+  - Its body also states PR 1's changed-line count, measured when it opens, beside the about 4,250 lines row 89 answered (row 93). That count sizes the diff and is not a figure from the corpus.
 - PR 2 runs on a new branch cut from the default branch after PR 1 merges. It carries the capture page and its index line, edits no plan file, and cites this plan by its merged path.
   - Its body's only closing line is `Fixes #1529`.
   - Its body states that a revert of PR 1 must follow a revert of PR 2, because the page cites PR 1's command and its redaction-doc bullet.
@@ -219,6 +232,7 @@ The engineer settled these choices:
    - The page uses none of `pooled across`, `machine-wide`, `cross-machine` or `multi-account`, the phrases a doc test reserves for grandfathered pages (row 83).
 8. The comparability record names:
    - the version and model counts from the report;
+   - the model labels' reference: they follow pricing's `_MODEL_BASE_INPUT_RATES` at the instrument commit step 7 names. A model priced after that commit prints `other` here and by name in an after-run, so that move alone is not a model shift (M19);
    - the re-run recipe: this clone, from a worktree cut from the default branch, the same window length, the same pinned account, and a run before any worktree cleanup;
    - the modules whose later edits void a comparison: `read_cost`'s scanner and weights, `reviewer_reads`, `ledger_dispositions`, `publication_scope`, and `reviewer_yield._is_reviewer_subagent_type`;
    - the main-thread round counts per skill, as the only indicator of the review-skill mix behind the reviewer figures;
@@ -236,6 +250,8 @@ The engineer settled these choices:
    - this clone only: sessions recorded under any other clone of the repository are not included (row 75);
    - live worktrees only, so removed worktrees' sessions are not included (row 15), and the sample is not a random sample of reviews;
    - both halves of the scope rest on path identity, not repository identity, so the scope does not exclude the cases row 84 lists;
+   - the ledger reader's regular-file check does not exclude a hard link named for this checkout, or a swap between its `lstat` and the open (M15);
+   - per round skill, the whole-file calls can exceed the outcome counts plus the diff-handoff calls, for the reason Approach's Main-thread round Reads states. The page states that the gap is not a defect;
    - reviewer windows include plan-review dispatches, whose reads of code files stay in `code/other`, and per-type rows do not isolate the review skill (M17);
    - prose is `instruction` plus `other_prose` (row 72). `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`. Only its markdown part lies outside #1115 for every reviewer. `other_prose` lies outside it for `comment-discipline-reviewer` alone (row 59);
    - ADDRESS and DEFER shares count disposition rows, and a finding re-raised without `--ref` counts again;
@@ -246,7 +262,7 @@ The engineer settled these choices:
      - Dropping the whole range in the second case is a deliberate conservatism: it under-credits a call and never over-credits one. No field the instrument reads records which lines arrived whole. Keeping all but the last line would therefore rest on row 90's reading of the cut, which covers two harness versions only.
      - `docs/transcript-analysis.md`'s `reviewer-reads` Known limits carries the same statement. It lands in a PR 1 doc commit before PR 1 opens.
    - the window holds this change's own review rounds, as an after-run's window will hold #1115's.
-10. PR 2 closes GH-1529 and no other issue. One human step follows its merge (G4): ticking #1113's "A-field baseline captured" box with the date and the page's path. That tick does not cover #1115's late-findings watch, which has no before-value until the new issue delivers one.
+10. PR 2 closes GH-1529 and no other issue. One human step follows its merge (G4): ticking #1113's "A-field baseline captured" box with the date and the page's path. PR 2's body and the page (step 7) state what that tick does not cover.
 
 **Assumption ledger**
 
@@ -311,8 +327,12 @@ The engineer settled these choices:
 - M13 — Retired. It placed late findings for #1115's watch, which moved to its own issue. `anchors: row51`
 - M14 — Per-type rows print counts only, and rates and weights stay pooled. `anchors: row20, row34, row35`
   - Rejected: per-type billed weight and Read weight. No figure the report states reads them, and the per-lens exceptions #1115 keeps show in the counts (row 59). `anchors: row59`
-- M15 — Ledger files are selected by their repository-hash slot against this checkout's worktree paths. `anchors: row14, row53, row73, row74, row80, row84, G2`
+- M15 — Ledger files are selected by their repository-hash slot against this checkout's worktree paths. `anchors: row14, row53, row73, row74, row80, row84, row91, G2`
   - The repository hash is the sha256 of the worktree path `review-ledger.sh` ran in (row 53). The command hashes each path `scope._repo_worktree_paths` returns, as printed and as resolved, and opens only files whose name matches.
+  - Of those it reads only regular files, by a point-in-time `lstat` check on the name. A symlink or other non-regular entry is refused before any open, as the writer refuses one (row 91), so a matching symlink never contributes its target's rows. `anchors: row91`
+    - The check is not an atomic no-follow open, and it does not detect a hard link, which is a regular file. The writer's own check has the same two limits (row 91).
+    - A hard link named for this checkout, or a swap between the `lstat` and the open, therefore still reads rows stored under another name.
+    - Either needs same-user write access to the ledger directory. The threat model this change was reviewed under, untrusted transcript content, does not supply that actor (ledger id `476e30a33ba4`'s rationale). The docs section and the page list both as known limits.
   - One call to `_repo_worktree_paths` feeds both the transcript scope and the ledger scope, so the two cannot see different worktree sets. A command-level test counts that call.
   - The hash mirrors a one-line formula whose home is `_marker_lib_repo_hash`. A test runs both on the same paths, so the copy cannot drift.
   - A unit case with a symlinked worktree path fails if either the printed or the resolved half is dropped.
@@ -323,6 +343,8 @@ The engineer settled these choices:
     - The rendered ledger block in this repository's PR bodies: `render` publishes live decisions only, and reading PR bodies needs `gh` and the network. `anchors: row74`
     - Leaving the ledger dispositions out: row 1 includes them. `anchors: row1`
   - Declined: a second identity layer beyond the path, such as tree resolution. The transcript scope beside it is path identity too (row 53), so a stricter rule on the ledger half would not strengthen the page's scope.
+    - The regular-file rule is not such a layer. It holds the reader to the writer's own rule (row 91) and leaves path identity as the scope.
+    - That rule reverses round 3's DEFER of the finding that a non-regular entry would be opened (ledger id `476e30a33ba4`). The DEFER rested on a dangling symlink staying listed so its open counts it. The plan no longer relies on that DEFER.
 - M16 — Rates print `no data` at a zero denominator and `insufficient` below a floor of 10. `anchors: row54`
   - The shape follows reviewer-yield's Active floor and its `insufficient` label, which `cost_ledger` reuses. The label is imported from `reviewer_yield`.
   - The floor is the command's own constant, so a later change to reviewer-yield's floor cannot shift this baseline's comparison.
@@ -335,12 +357,16 @@ The engineer settled these choices:
   - A call's `call_order` comes from the first `tool_use` block carrying its id, and a replayed block takes no new number. A Read between the two blocks therefore still orders after the call.
   - Rejected: adding failed ids to the success set. A replayed failed Read would then raise read-cost's `repeated_reads` figure, against the test row 60 cites.
   - Rejected: no deduplication. A replayed failed Read would count twice in `refused_over_limit` or `other_error`, moving the headline's numerator and denominator together.
-- M19 — Reviewer windows are counted by harness version and by model, so an after-run can see whether either moved. `anchors: row70, row82, G3`
+- M19 — Reviewer windows are counted by harness version and by model, so an after-run can see whether either moved. `anchors: row70, row82, row92, G3`
   - Values print only in a known form, because a record's text is untrusted input.
-  - The version takes a bounded ASCII full match. The model prints only as a string pricing's own table holds (row 82).
+  - The version takes a bounded ASCII full match.
+  - The model prints only as a string that is a key of pricing's `_MODEL_BASE_INPUT_RATES`. The string check precedes the lookup, so an unhashable value never reaches it and no `TypeError` path remains (row 82).
+  - Rejected: `pricing._model_rates` as the test. It returns `None` for a model priced by prompt length, so `claude-haiku-5-5` would print as `other`. `anchors: row92`
+  - Known limit: the label depends on pricing's table at the run's commit. A model unpriced at the capture prints `other`, and an after-run whose table has gained it prints it by name, so the move can read as a model shift that did not happen. The page's comparability record names the instrument commit as the table's reference (Capture step 8).
 - M20 — The ledger reader's stderr passes through a buffer, and a file whose read printed anything counts as unreadable. `anchors: row62`
   - `author_outcome._read_ledger_rows_from_file` prints the file's path on an open failure, and that name carries the repository hash and a session id. `routing_guard` already wraps a reader this way.
   - Rows are reduced to the six fields M10 reads right after the read, so no later diagnostic can reach a finding or a quote.
+  - The reader catches neither `ValueError`, which a line holding an integer over the interpreter's digit limit raises, nor `RecursionError`, which a line nested past the decoder's stack raises. The command catches both, counts the file unreadable, and drops the exception unreported (`ledger_dispositions.py`:142-145).
   - Rejected: changing `author_outcome`'s own line. Its own command prints it, and the file has 993 lines (row 24).
 
 **Assumptions:**
@@ -493,7 +519,7 @@ The engineer settled these choices:
 79. The ledger's own shape check accepts only the writer's `YYYY-MM-DDTHH:MM:SSZ` form of `event_time`, and its `is_decision` is a non-carry DEFER or SETTLED row with a non-empty id. `[verified: _review-ledger-lib.sh:653-666]` The writer always emits `ref`, `decided_by`, `reviewers` and `session_id`, empty when unset, and appends an `id` last. `[verified: review-ledger.sh:583-609]`
 80. `/code-review` appends a CLEAN ledger row for a clean round and for a marker short-circuit. `[verified: claude-skills/skills/code-review/SKILL.md:27, :458]` Its other rounds log their findings' dispositions. `[unverified]`
 81. The scope header's `this repo (N project dirs)` counts the slugs `git worktree list` yielded, not the directories that held sessions, so it is never zero. `[verified: scope.py:607-610]`
-82. `pricing._model_rates` looks a model up with `dict.get`, which raises `TypeError` for an unhashable value such as a list or a dict. `[verified: pricing.py:163-173]`
+82. `pricing._model_rates` looks a model up with `dict.get`, which raises `TypeError` for an unhashable value such as a list or a dict. `[verified: pricing.py:225-233]` The command no longer calls `_model_rates`. It tests that the model is a string before its membership test on `_MODEL_BASE_INPUT_RATES`, and a list or a dict model prints as `other`. `[verified: reviewer_reads.py:326-336; tests/test_transcript_reviewer_reads.py:795-796]`
 83. `test_case_study_pooled_figure_markers_are_registered_or_new` fails when a case-study page holds `pooled across`, `machine-wide`, `cross-machine` or `multi-account` and is neither on Remediation's list nor allowlisted, and its allowlist is empty. `[verified: claude-skills/skills/tests/test_doc_cross_references.py:507-550]` `_PER_ACCOUNT_STATE_PATH_RE` matches home-rooted per-account state paths, `<name>-markers/` directories included. `[verified: claude-skills/skills/tests/test_per_account_path_contracts.py:55-64]` That every `docs/**/*.md` file outside `reports/` and `case-studies/` is scanned with it is `[unverified: staff-platform-engineer's round-2 read of :154-162]`.
 84. Path identity, which both halves of the scope rest on, does not exclude these cases: `[verified: claude/.claude/hooks/_lib.sh:644-649; docs/transcript-analysis.md:59; scope.py:104-106]`
     - a live worktree path of this checkout that another repository's checkout occupied earlier, whose sessions and ledger files then match as this repository's;
@@ -512,21 +538,28 @@ The engineer settled these choices:
     - A paged call over the cap fails, so it adds no interval.
     - A flagged range that ends short of `totalLines` can therefore end on a line that arrived in part, and the instrument cannot tell that case from a cut by lines.
     - Whether older harness versions behave the same, and what the third parameter of the auto-pagination condition does, is `[unverified]`.
+91. `review-ledger.sh` refuses a ledger or lock path that is a symlink, dangling or not, or anything but a regular file, before it appends or reads rows. Its own comment states the check's two limits: "a point-in-time test, not an atomic no-follow open, and it does not detect a hard link, which is a regular file". `[verified: _review-ledger-lib.sh:612-625, :638; review-ledger.sh:604]`
+92. `pricing._model_rates` returns `None` for a model in `_LONG_PROMPT_TIERS`, though that model is also a key of `_MODEL_BASE_INPUT_RATES`. `claude-haiku-5-5` is such a model. `[verified: pricing.py:92-119, :135-138, :225-233]`
+93. PR 1 measures about 6,160 changed lines on this branch: about 1,610 code, 4,300 tests and 245 docs, from `git diff main --numstat` excluding this plan and `agent-reviews/`. `[unverified: staff-backend-engineer's plan-review count, not re-run by this plan's author]`
+    - That is above the about 4,250 lines row 89's "Proceed anyway" answered. Whether that answer holds at this size has not been asked. `[unverified]`
+    - PR 1's body states the changed-line count measured when it opens (Delivery).
 
 ## Critical files
 
 Each dispatch prompt states the directed growth of any file it edits that already has 1,000 lines or more (row 24): `scope.py` in 1a and 1c, and `tests/conftest.py` in 1a and 1b. The 1b prompt states `author_outcome.py`'s resulting count, 996.
 
-**PR 1, Phase 1, dispatch 1a: shared machinery** (`code-writer`; read-cost's output must not change).
-- Create `claude/.claude/scripts/transcript_analysis/publication_scope.py`, about 135 lines:
+**PR 1, Phase 1, dispatch 1a: shared machinery** (`code-writer`; read-cost's output must not change, with the one exception the `_agent_type_for` bullet below states).
+- Create `claude/.claude/scripts/transcript_analysis/publication_scope.py`, about 90 lines:
   - read-cost's `_read_cost_roots`, `_refuse_wider_scope` and `_scope_header`, moved with the command label as a parameter. Read-cost's messages and header stay byte-identical.
   - `_ledger_repo_hash(path)`, the sha256 of the path string. Its docstring names `_marker_lib_repo_hash` as the formula's home (row 53).
   - `_this_repo_ledger_files(ledger_dir, worktree_paths, gaps)`: the entries directly under `ledger_dir` whose name's first slot equals the hash of a worktree path, as printed or as resolved.
     - It lists through `scope._list_dir_recording_gaps` (row 73), into the counter its caller passes.
-    - It drops an entry only by name or by `is_dir()`, so a dangling symlink with a matching name stays and fails at open.
+    - It drops an entry only by name or by `is_dir()`. `is_dir()` follows links, so a directory and a symlink to a directory both drop here, and neither is counted anywhere. They are the one exception to a matching entry that is not a regular file counting as unreadable, and the docs section states it.
+    - Any other entry with a matching name stays listed, a dangling symlink included.
+    - Dispatch 1b's reader refuses a non-regular entry unopened.
     - It opens no file, and keeps no count of other files.
 - Modify `claude/.claude/scripts/transcript_analysis/scope.py`, 1,161 to about 1,166 lines: extract `_repo_worktree_paths(command_label)` from `_repo_scoped_project_slugs` (:96-203), which then maps its result to slugs.
-- Modify `claude/.claude/scripts/transcript_analysis/read_cost.py`, 626 to about 700 lines:
+- Modify `claude/.claude/scripts/transcript_analysis/read_cost.py`, 626 to about 800 lines:
   - `_ReadEvent` gains defaulted fields `tool_use_id`, `offset`, `allow_large`, `start_line`, `num_lines`, `total_lines`, `truncated_by_token_cap`, `structured_status` and `call_order`.
   - A new `_FailedRead` (`path`, `tool_use_id`, `whole_file`, `offset`, `limit_refusal`, `call_order`) lands in a new `_WindowScan.failed_reads`, defaulting to an empty tuple.
     - `limit_refusal` is `recognised`, `unrecognised` or `none`, under Approach's rules for `refused_over_limit` and `unrecognised_limit_error`. The two patterns are module constants.
@@ -542,15 +575,17 @@ Each dispatch prompt states the directed growth of any file it edits that alread
   - The unit caption (:514-527) moves into its own function, and `_skipped_input_line` takes the gap counter and the invalid-usage count.
   - `_count_window_diagnostics` (:271-275) keeps its ordering note and calls a new helper that updates the seen-id sets and returns the invalid-usage count. Both commands call that helper after `_new_billed_weight`.
   - It calls the moved helpers with `"read-cost"`.
+  - A new `_read_call(block)` returns a Read `tool_use` block's id, path, input and whole-file flag, or `None` unless the block is a Read with a non-empty path and a non-empty id. It is the one Read predicate: `_scan_window` pairs calls through it, and reviewer-reads' main-thread round join applies it too (dispatch 1c).
+  - `_agent_type_for` also catches `RecursionError`, so a `.meta.json` nested past the JSON decoder's stack counts a `_GAP_SUBAGENT_META` gap and reads as an unknown agent type. A run over such a sidecar used to crash and now completes. That is the only change to read-cost's output. No run that completed before changes output.
 - Modify `claude/.claude/scripts/tests/conftest.py`, 1,973 to about 1,995 lines, for builders the read-cost and reviewer-reads families share:
   - `_read_result` takes an optional `tool_use_result` placed at the record's top level;
   - a new `_read_truncation_notice(tool_id)` builds the attachment record;
   - `_read_use` takes an optional `allow_large`, absent by default.
-- Modify `claude/.claude/scripts/tests/test_transcript_read_cost_command.py`, 93 to about 115 lines. First add tests asserting the exact full stderr of the three refusals, run against the unmodified module. Then move the two root-helper tests (:82-93) out.
+- Modify `claude/.claude/scripts/tests/test_transcript_read_cost_command.py`, 93 to about 125 lines. First add tests asserting the exact full stderr of the three refusals, run against the unmodified module. Then move the two root-helper tests (:82-93) out.
 - Modify `claude/.claude/scripts/tests/test_transcript_read_cost_report.py`, 513 to about 600 lines, with every new test written first and run against the unmodified module:
   - the exact `skipped input:` line and the full unit caption;
   - one `read-cost` run over a seeded corpus holding structured results, a truncation notice, a failed Read and a replayed `tool_use` block. Its full stdout equals the run over the same corpus stripped of `toolUseResult` keys and `attachment` records.
-- Modify `claude/.claude/scripts/tests/test_transcript_read_cost_scan_window.py`, 406 to about 695 lines:
+- Modify `claude/.claude/scripts/tests/test_transcript_read_cost_scan_window.py`, 406 to about 830 lines:
   - each new field from a whole-file record and from a paged record, and an absent flag reading as false;
   - one parametrized case over malformed shapes:
     - `toolUseResult` as a string, a list and `None`;
@@ -574,6 +609,8 @@ Each dispatch prompt states the directed growth of any file it edits that alread
   - a failed call replayed in two windows sharing one `seen_failed_tool_use_ids`: one entry, and `repeated_reads` unchanged;
   - `call_order`: a same-path Read between a call's two `tool_use` blocks orders after the call;
   - truncation-notice ids, one notice placed before any conversation record.
+- Modify `claude/.claude/scripts/tests/_read_cost_helpers.py`: `_file_record`, the structured-result builder, moves here, so `test_transcript_read_cost_scan_window.py` and `_reviewer_reads_helpers.py` import one copy.
+- Modify `claude/.claude/scripts/tests/test_transcript_read_cost_subagent_reading.py`: a `.meta.json` nested past the JSON decoder's stack reads as an unknown agent type and counts one `_GAP_SUBAGENT_META` gap.
 - Create `claude/.claude/scripts/tests/test_transcript_publication_scope.py`, about 245 lines:
   - the two moved root-helper tests;
   - under a second label, the header, and the refusals without `--this-repo`, with `--projects` and with two roots. The reviewer-reads command test keeps only its own wiring case of these;
@@ -588,9 +625,11 @@ Each dispatch prompt states the directed growth of any file it edits that alread
 - Verification: steps 1 and 2.
 
 **PR 1, Phase 1, dispatch 1b: ledger dispositions** (`code-writer`, after 1a is committed, because it imports `publication_scope`).
-- Create `claude/.claude/scripts/transcript_analysis/ledger_dispositions.py`, about 250 lines: one entry point that takes the config root, the worktree paths, the window and the scanned session ids, and returns the counts under Approach's ledger section.
+- Create `claude/.claude/scripts/transcript_analysis/ledger_dispositions.py`, about 225 lines: one entry point that takes the config root, the worktree paths, the window and the scanned session ids, and returns the counts under Approach's ledger section.
   - It takes no transcript gap counter, so an unreadable ledger directory cannot reach the skipped-input line.
-  - It reads each file through `author_outcome._read_ledger_rows_from_file` under `contextlib.redirect_stderr` into a buffer (M20).
+  - It `lstat`s each file first, and counts it unreadable without opening it unless it is a regular file, as the writer refuses a symlinked or non-regular ledger path (row 91). A symlink named for this checkout therefore never contributes its target's rows.
+  - The check has the writer's two limits: it does not detect a hard link, and it is not an atomic no-follow open (M15).
+  - It reads each file through `author_outcome._read_ledger_rows_from_file` under `contextlib.redirect_stderr` into a buffer, and catches the two decode exceptions M20 names.
   - It reduces each row at once to the six fields M10 reads, then applies Approach's absence and type rules, the closed disposition vocabulary and file-order supersession.
   - Its docstring states the output invariant and the ledger fields it reads.
 - Modify `claude/.claude/scripts/transcript_analysis/author_outcome.py`, 993 to 996 lines: DEFER, CLEAN and carry constants beside its ledger enum mirrors (:78-88). That comment also names `--decided-by`.
@@ -603,7 +642,7 @@ Each dispatch prompt states the directed growth of any file it edits that alread
     - the next day's 00:00:00Z: out, out;
     - 00:30:00+02:00 on the day after `--until`, which is 22:30:00Z on `--until`: left out under `event_time`, in. Its wall clock read as UTC falls out, so conversion decides it;
     - an unparsable timestamp: left out under `event_time`, out as untimestamped.
-- Create `claude/.claude/scripts/tests/test_transcript_ledger_dispositions.py`, about 455 lines:
+- Create `claude/.claude/scripts/tests/test_transcript_ledger_dispositions.py`, about 890 lines:
   - a local builder in the writer's full shape, the default for every case: empty-string `ref` and `decided_by`, a `reviewers` list, a `session_id` and an `id` (row 79). Rows with absent keys appear only as the legacy cases below;
   - terminal rows: an ADDRESS, a DEFER and a SETTLED; `--relog` and `--ref` supersession; a chain across two sessions in one file; carries left out on both sides; a carry of a DEFER decided before the window;
   - supersession edges:
@@ -621,6 +660,12 @@ Each dispatch prompt states the directed growth of any file it edits that alread
   - a foreign-hash file holding an in-scope session's rows, excluded;
   - an absent and an unreadable ledger directory, each with its own state;
   - an unreadable file made by a dangling symlink with an in-scope name, so the case runs as root too: counted, with its path absent from both streams;
+  - a symlink with an in-scope name pointing at a foreign-hash ledger file: none of its target's rows count and it counts as one unreadable file, while the regular file beside it is still read;
+  - a named pipe with an in-scope name: one unreadable file, never opened.
+    - The read runs in a worker thread joined with a deadline, so a regression that opens the pipe fails instead of hanging. The dev requirements carry no timeout plugin.
+    - The case skips on a platform without `os.mkfifo`;
+  - a symlink with an in-scope name pointing at a directory: dropped by the selector and not counted unreadable (dispatch 1a);
+  - a line nested past the decoder's stack, and a line holding an integer over the digit limit, each in a file beside a valid row: that file counts as one unreadable file with none of its rows, and the exception text reaches neither stream (M20);
   - a `_leak_sentinel` value in `finding`, `rationale` and `engineer_quote`, which never reaches output;
   - sessions with a disposition row, and how many of those the scan covered;
   - one writer-to-reader test:
@@ -630,24 +675,24 @@ Each dispatch prompt states the directed growth of any file it edits that alread
     - `append` prints no row id, so the test reads each id back from the file.
     - The ADDRESS names the relog row's id, not the DEFER's. The relog retires the DEFER, and `_review_ledger_check_not_retired` refuses a retired `--ref` (`_review-ledger-lib.sh`:878, `review-ledger.sh`:637).
 - Modify `claude/.claude/scripts/tests/test_transcript_package_module_prefixes.py`: list the module and its test file.
-- Modify `docs/transcript-analysis-architecture.md`: a `### ledger_dispositions.py` entry.
+- Modify `docs/transcript-analysis-architecture.md`: a `### ledger_dispositions.py` entry. It claims no more for the regular-file check than M15 states.
 - Verification: step 1.
 
 **PR 1, Phase 1, dispatch 1c: the subcommand** (`code-writer`, after 1b is committed, since it consumes both earlier dispatches. It edits `scope.py`, the prefix test and the architecture doc again, in sequence).
-- Create `claude/.claude/scripts/transcript_analysis/reviewer_reads.py`, about 775 lines: `cmd_reviewer_reads`, `_add_reviewer_reads_subparser`, and the accumulation and report under Approach. The module docstring states the output invariant and its request-id exception (row 77).
+- Create `claude/.claude/scripts/transcript_analysis/reviewer_reads.py`, about 975 lines: `cmd_reviewer_reads`, `_add_reviewer_reads_subparser`, and the accumulation and report under Approach. The module docstring states the output invariant and its request-id exception (row 77).
   - It calls `scope._repo_worktree_paths` once, seeds `args._this_repo_slugs` from the result, and passes the same paths to `ledger_dispositions` (M15).
   - It builds the reviewer-yield iterator with `scope._resolve_project_scope(..., include_subagents=True)` over the one root `publication_scope` returns, never through `scope.resolve_scan_roots`.
   - The outcome classes, their precedence and the `size_unknown` reasons it adds are module constants.
   - Its own fold sums each untracked agent type's integer counts into the withheld row, for the per-type rows and the yield rows alike. `read_cost._fold_untracked_agent_types` builds and merges read-cost's `_AgentTypeRow` (`read_cost.py`:373-385), so it cannot take these rows.
 - Modify `claude/.claude/scripts/transcript_analysis/cli.py`, 205 to about 209 lines: import and register the subparser beside read-cost's (:59-62, :136-137).
 - Modify `claude/.claude/scripts/transcript_analysis/scope.py`: add `reviewer-reads` to `_SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR` (:702), and to its comment's list of commands that build their own single root.
-- Create `claude/.claude/scripts/tests/_reviewer_reads_helpers.py`, about 135 lines, for the three reviewer-reads test files:
+- Create `claude/.claude/scripts/tests/_reviewer_reads_helpers.py`, about 170 lines, for the three reviewer-reads test files:
   - a reviewer window, written through `conftest._write_subagent_dispatch`, with a `spawn_depth` for a nested dispatch;
   - a reviewer-window turn carrying a timestamp, a `version` and `usage`, which `_read_cost_helpers._turn` does not carry;
   - a Read exchange carrying a structured result, with `allow_large` through `conftest._read_use`, and a failed Read exchange;
   - a main-thread round window;
   - an args builder that stubs `scope._repo_worktree_paths` with a call counter.
-- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads.py`, about 775 lines, for accumulation:
+- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads.py`, 998 lines, for accumulation:
   - each outcome class, at the bucket edges 0, 1,000, 1,001, 2,000, 2,001 and unknown;
   - one parametrized precedence table over every adjacent pair in Approach's numbered list that can overlap, each row with its expected class or reason written in the table:
     - the cap flag with `numLines` equal to `totalLines`, with `allow_large`, with `startLine` above 1, and with `numLines` above `totalLines`: `partial_token_cap`;
@@ -673,7 +718,9 @@ Each dispatch prompt states the directed growth of any file it edits that alread
     - a call of unknown size;
     - a `totalLines` of 10**12, which returns at once;
     - a call that is `neither`;
-    - flagged ranges, in `test_transcript_reviewer_reads_command.py` through the printed follow-up line (`test_a_token_cap_flagged_call_reaching_the_last_line_adds_no_coverage_to_the_printed_follow_up`): a flagged call whose range reaches the file's last line is not covered by itself and counts as `neither`, and a flagged call that ends short of the last line is covered by a later paged Read;
+    - flagged ranges, through the printed follow-up line, in `test_transcript_reviewer_reads_command.py`'s `test_a_token_cap_flagged_call_reaching_the_last_line_adds_no_coverage_to_the_printed_follow_up`:
+      - A flagged call whose range reaches the file's last line is not covered by itself and counts as `neither`.
+      - A flagged call that ends short of the last line is covered by a later paged Read;
   - a nested reviewer dispatch, counted in the read figures and not in the yield figures (row 18);
   - the Read share: `skill-fidelity-reviewer` and non-reviewer windows outside both sides, billed weight deduplicated by message id, and the parts reconciling to the Read weight;
   - per-type rows and the withheld fold, with an untracked `staff-` name;
@@ -683,22 +730,26 @@ Each dispatch prompt states the directed growth of any file it edits that alread
     - adjacent windows of two skills;
     - a Read in no window;
     - a window opening before `--since`;
-  - window edges over `_WINDOW_EDGE_TIMESTAMPS`, against each row's transcript expectation, for reviewer windows and round windows, and a reviewer window with no timestamped record;
+  - window edges over `_WINDOW_EDGE_TIMESTAMPS`, against each row's transcript expectation, for reviewer windows and round windows. A reviewer window with no timestamped record, and a round window whose opening record's timestamp is absent or unparsable, each count in their own diagnostic;
   - comparability, parametrized:
     - hostile values for the version and the model: an int, a list, a dict, `None`, `"1.2.3\n"`, a non-ASCII digit, a path, 32 hex digits, an overlong string, and a valid value;
     - the version's bounds: `"1"`, `"1.2.3.4.5"`, `"12345.1"`, `"1.12345"` and a 33-digit string with one dot print as `other`, and `"1.2"`, `"1234.1234.1234.1234"` and `"2.1.0"` print as themselves;
     - each value prints as `other`, `unknown` or its valid form, raises nothing, and appears nowhere else in the output;
+    - every key of pricing's `_MODEL_BASE_INPUT_RATES` prints by name, `claude-haiku-5-5` included (row 92);
   - each diagnostic made nonzero by a seeded mismatch: an unexplained partial, a `partial_token_cap` with no notice, each `size_unknown` reason, an `unrecognised_limit_error`, and a `skill-fidelity-reviewer` window left out;
   - notice agreement, parametrized over the call a notice names, with all three counts asserted:
     - a `partial_token_cap` call agrees and moves no count;
     - a `size_unknown` call under `multi_result_record` moves only the third count;
     - a `partial_unflagged` call, a `complete` call and no call each move the second count.
-- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_report.py`, about 390 lines:
+- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_report.py`, about 610 lines:
   - one hand-computed fixture in the style of `TestPrintedFigures` (`test_transcript_read_cost_report.py`:314), with each printed figure asserted against its own expected value. It holds every outcome class, ADDRESS, DEFER and SETTLED terminal rows with their shares, per-type rows, the yield section and the left-out count;
   - `no data (0/0)` and `insufficient (n/d)` for each rate, at zero, below the floor and at it;
   - the yield section's wiring: `compute_reviewer_yield_data` receives the window's `since_ts` and the next day's 00:00:00Z as `until_ts`, untracked names fold, the `--until` caveat line prints, and the second pass's gap counter prints on its own line and not in the skipped-input line;
-  - the not-completed yield branch: `test_a_yield_pass_that_could_not_complete_prints_one_fixed_notice_and_no_rows` and `test_a_sidecar_the_shared_yield_code_cannot_read_leaves_the_rest_of_the_report_intact` here. `test_transcript_reviewer_reads_command.py`'s `TestYieldPassOverHostileInput` drives it through the command, in `test_a_decode_failure_in_the_yield_pass_prints_the_fixed_notice_and_leaves_the_rest_of_the_report` and `test_a_field_shape_the_shared_yield_code_cannot_take_ends_the_pass_with_a_fixed_notice`, with `test_a_non_object_line_and_a_non_object_message_leave_the_yield_pass_complete` as the case that stays completed.
-- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_command.py`, about 335 lines:
+  - the not-completed yield branch:
+    - In this file: `test_a_yield_pass_that_could_not_complete_prints_one_fixed_notice_and_no_rows` and `test_a_sidecar_the_shared_yield_code_cannot_read_leaves_the_rest_of_the_report_intact`.
+    - Through the command, in `test_transcript_reviewer_reads_command.py`'s `TestYieldPassOverHostileInput`: `test_a_decode_failure_in_the_yield_pass_prints_the_fixed_notice_and_leaves_the_rest_of_the_report` and `test_a_field_shape_the_shared_yield_code_cannot_take_ends_the_pass_with_a_fixed_notice`.
+    - The case that stays completed, in the same class: `test_a_non_object_line_and_a_non_object_message_leave_the_yield_pass_complete`.
+- Create `claude/.claude/scripts/tests/test_transcript_reviewer_reads_command.py`, about 685 lines:
   - the real registrar round-trip;
   - refusal without `--this-repo` under the command's own label, without either date, with `--since` after `--until`, and with an unpadded `--since` and an unpadded `--until` such as `2026-1-5`, each exiting 2 before any scan; `--since` equal to `--until` accepted. The rest of the refusal matrix lives in `test_transcript_publication_scope.py`;
   - the header;
@@ -722,11 +773,16 @@ Each dispatch prompt states the directed growth of any file it edits that alread
 - Modify `claude/.claude/scripts/tests/test_transcript_cli.py`: add `reviewer-reads` to `_REFUSING_SUBCOMMANDS_WITHOUT_THEIR_OWN_CONFIG_DIR_FLAG` (:156-157).
 - Modify `claude/.claude/scripts/tests/test_transcript_package_module_prefixes.py`: list the module and the three test files.
 - Modify `docs/transcript-analysis.md`, 2,675 to about 2,875 lines:
-  - a `## reviewer-reads` section covering flags and their date rule, scope, populations, outcome classes and their precedence, targeted calls, the prose bucket's path rule, the headline, rates and their markers, the unit, the ledger-file scope, path identity's non-exclusions (row 84), and publication;
+  - a `## reviewer-reads` section covering flags and their date rule, scope, populations, outcome classes and their precedence, targeted calls, the prose bucket's path rule, the headline, rates and their markers, the unit, the ledger-file scope with its directory exception (dispatch 1a), path identity's non-exclusions (row 84), and publication;
+  - among the section's Known limits, each as the plan states it:
+    - the regular-file check's two limits, a hard link and a swap between the `lstat` and the open (M15);
+    - a transcript line nested past the decoder's stack, or holding an integer over the digit limit, ends the run before the yield pass (Approach, Reviewer-yield);
+    - the round counts' gap between whole-file calls and outcome plus diff-handoff counts (Approach, Main-thread round Reads);
+    - the model label's dependence on pricing's table (M19);
   - `reviewer-reads` added to the three enumerations that name `read-cost` (row 56).
   - The section shows no sample output. Every config-directory path in it is written `<config-dir>/...`, never home-rooted (row 83).
 - Modify `docs/transcript-analysis-architecture.md`: a `### reviewer_reads.py` entry.
-- Modify `docs/private-project-redaction.md`: a `reviewer-reads --this-repo` bullet beside read-cost's (:142-147). It states that the ledger section opens only files keyed to this checkout's worktrees, and that both halves rest on path identity, not repository identity, with row 84's non-exclusions. Its paths take the `<config-dir>/...` form.
+- Modify `docs/private-project-redaction.md`: a `reviewer-reads --this-repo` bullet beside read-cost's (:142-147). It states that the ledger section opens only files keyed to this checkout's worktrees, and that both halves rest on path identity, not repository identity, with row 84's non-exclusions and the regular-file check's two limits (M15). Its paths take the `<config-dir>/...` form.
 - Modify `CHANGELOG.md`: an `[Unreleased]` entry for the subcommand.
 - Verification: step 1.
 
@@ -736,8 +792,8 @@ Each dispatch prompt states the directed growth of any file it edits that alread
 - Verification: steps 4 to 7.
 
 **Reuse, not reimplement:**
-- `read_cost`: `_scan_window`, `_read_subagent_windows`, `_new_billed_weight`, `_read_weight`, `_SeenIds`, `_file_kind`, `_skipped_input_line`, and the extracted caption and diagnostics helpers.
-- `pricing`: `_cache_read_equivalent_weights`, `dedup_turns_by_request_id`, `_warn_if_subagent_format_drift`, `_model_rates`.
+- `read_cost`: `_scan_window`, `_read_call` (the one Read predicate `_scan_window` and the main-thread round join share), `_read_subagent_windows`, `_new_billed_weight`, `_read_weight`, `_SeenIds`, `_file_kind`, `_skipped_input_line`, and the extracted caption and diagnostics helpers.
+- `pricing`: `_cache_read_equivalent_weights`, `dedup_turns_by_request_id`, `_warn_if_subagent_format_drift`, `_MODEL_BASE_INPUT_RATES`.
 - `review_rounds`: `detect_round_windows`, `REVIEW_SKILLS`.
 - `reviewer_yield`: `_is_reviewer_subagent_type`, `compute_reviewer_yield_data`, `_REVIEWER_YIELD_INSUFFICIENT`.
 - `author_outcome`: `_read_ledger_rows_from_file`, `_SESSION_ID_PATTERN`, and its disposition constants.
@@ -747,7 +803,7 @@ Each dispatch prompt states the directed growth of any file it edits that alread
 - `routing_guard._classify_capture_opt_in`'s stderr-buffer pattern (row 62), as a pattern, not an import.
 - Tests: `conftest._write_subagent_dispatch`, `_write_named_ledger_file`, `_read_use`, `_asst`, `_INHERITED_GIT_VARIABLES`, `_clean_env`, `_git`, `_read_cost_helpers._turn`, `_review_round_corpus_helpers._leak_sentinel` and `_LEAK_SENTINEL_PREFIX`, and `helpers.init_git_repo` and `init_git_repo_with_commit` (`claude/.claude/tests/helpers.py`:1477, :1490).
 
-Projected diff: about 4,375 lines in PR 1 (about 1,325 code, 2,775 tests and 275 docs) and about 200 lines in PR 2. Row 89 records the engineer's decision at about 4,250 lines. The round-3 test cases and the code they pin account for the rise.
+Projected diff: about 6,160 lines in PR 1 (about 1,610 code, 4,300 tests and 245 docs), as measured on the branch (row 93), and about 200 lines in PR 2. Row 89 records the engineer's decision at about 4,250 lines, and row 93 records that this figure exceeds it.
 
 ## Verification
 
@@ -757,6 +813,7 @@ Projected diff: about 4,375 lines in PR 1 (about 1,325 code, 2,775 tests and 275
 2. Dispatch 1a preserves read-cost's behavior:
    - Its new characterization tests, the seeded-corpus stdout comparison among them, pass against the unmodified `read_cost.py`, and again after the change.
    - Its diff changes no existing assertion in `test_transcript_read_cost_accumulation.py`, `test_transcript_read_cost_report.py`, `test_transcript_read_cost_subagent_reading.py`, or `test_transcript_cli.py`'s read-cost tests.
+   - One named exception, dispatch 1a's `_agent_type_for` bullet. Its new case in `test_transcript_read_cost_subagent_reading.py` pins new behavior, not old, so it is not one of the characterization tests above.
    - No live run is compared. `read-cost` has no date filter (row 86), so two runs over a live corpus differ by every session written between them.
 3. Before PR 1 opens:
    - Rebase onto the default branch. If a line-limit check has landed (row 68), ask the engineer before adding its exception file to this PR.
@@ -807,19 +864,20 @@ Projected diff: about 4,375 lines in PR 1 (about 1,325 code, 2,775 tests and 275
 
 ## Out of scope
 
-- A late-findings before-value for #1115's watch (row 37). The engineer moved it to its own issue under #1113 (row 51). The session drafts that issue's text before PR 1 opens (Delivery, row 52). The round-1 plan review found these faults in the measure this plan carried:
-  - Its definition counts code no earlier round had in scope, so its after-value can rise when #1115 works as designed.
-  - Recorded trees exist on ledger rows only from schema 6 on (rows 39 and 40), so only rounds appended since then can be placed.
-  - It needs ledger rows scoped to this repository. M15 now provides that scope, which the new issue can reuse.
-  - It needs a git call hardened against the working directory, output decoding, and the reader's environment and diff config.
-
-  As a result, #1115's "A rise reopens this issue" clause has no before-value until the new issue delivers one. No repository doc states how long review ledgers are retained (row 71). How long pre-#1115 ledger rows stay readable for the new issue is unverified beyond the code's 30-day idle floor (row 38).
+- A late-findings before-value for #1115's watch (row 37). The engineer moved it to its own issue under #1113 (row 51). As a result, #1115's "A rise reopens this issue" clause has no before-value until the new issue delivers one. The session drafts that issue's text before PR 1 opens (Delivery, row 52).
+  - The round-1 plan review found these faults in the measure this plan carried:
+    - Its definition counts code no earlier round had in scope, so its after-value can rise when #1115 works as designed.
+    - Recorded trees exist on ledger rows only from schema 6 on (rows 39 and 40), so only rounds appended since then can be placed.
+    - It needs ledger rows scoped to this repository. M15 now provides that scope, which the new issue can reuse.
+    - It needs a git call hardened against the working directory, output decoding, and the reader's environment and diff config.
+  - No repository doc states how long review ledgers are retained (row 71). How long pre-#1115 ledger rows stay readable for the new issue is unverified beyond the code's 30-day idle floor (row 38).
 - Widening `--this-repo` to removed worktrees or other clones. Every publication instrument depends on that scope primitive. Widening it would widen `cost --this-repo --summary`. That call is one of the two `docs/private-project-redaction.md`:151-167 pre-clears. That section makes a diff widening it a P1 finding. Row 75's decision accepts the coverage gap instead, and the page states it.
 - Fixing the bench's partial-Read detection (row 21). It belongs to #1114's `evals/review_bench/runner.py`. Raise it on #1114. This plan prints no bench-compatible count (M6), so no figure here waits on that fix.
 - Sharing a structured-result parser with the bench. `runner.py` keeps its own pins (:101, :103) and imports nothing from `transcript_analysis`.
 - Relocating `_is_reviewer_subagent_type`, for the reason row 22 records.
 - Changing reviewer-yield's main-thread-only dispatch population or its since-only edit table (row 18). The page states both.
 - Changing `author_outcome._read_ledger_rows_from_file`'s open-failure line. This command captures it (M20).
+- Skipping a transcript line nested past the decoder's stack, or holding an integer over the interpreter's digit limit, in `corpus._parse_jsonl_records`. Such a line ends the run with a traceback for every command that parses transcripts through it (`corpus.py`:111-116), so skipping it would change those commands' output too. The docs section lists it as a known limit (Approach, Reviewer-yield).
 - Changing or suppressing pricing's two request-id notices on stderr (row 77). Read-cost prints them the same way, stderr is read by the session and never published, and Approach names the exception. A 1c test seeds the non-contiguous-run notice and checks that stderr holds its request id only there.
 - Carrying the dry run's figures to PR 2. PR 2 compares against no dry-run figure, so none needs a carrier. PR 1's body carries the hold, the dry-run commit and the re-dry-run rule, none of them a figure.
 - Comparing the capture's worktree count against the dry run's. The page states the count the capture saw, and a smaller count describes a smaller sample correctly.

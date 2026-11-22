@@ -150,9 +150,11 @@ re-run and check.
   refuses `--projects` and a top-level `--config-dir` and reads the
   active config directory alone, without consulting
   `~/.claude/transcript-config-dirs`. It prints aggregates only.
-  - Its ledger section opens only the files in
+  - Its ledger section opens only regular files in
     `<config-dir>/review-narrative-ledger/` named for one of this
-    checkout's worktree paths.
+    checkout's worktree paths, by a point-in-time `lstat` that refuses
+    a symlink or named pipe unopened but detects neither a hard link
+    nor a swap between the check and the open.
   - Both halves of its scope rest on path identity, not repository
     identity. It does not exclude a live worktree path of this
     checkout that another repository's checkout occupied earlier (that

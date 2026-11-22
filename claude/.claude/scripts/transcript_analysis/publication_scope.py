@@ -67,7 +67,8 @@ def _this_repo_ledger_files(ledger_dir: Path, worktree_paths: Iterable[str], gap
     A file is named `<repo hash>.<slot>.jsonl`, and the repo hash digests the path the writer ran in. Each path is
     hashed as printed and as resolved, because `git worktree list` may print a symlinked path the writer saw resolved.
     Identity is the path string, so a deleted worktree path that is later reused matches the earlier checkout's files.
-    Opens no file: a dangling symlink with a matching name stays in the list and fails when the caller opens it.
+    Opens no file: a dangling symlink or a named pipe with a matching name stays in the list, and the caller's own
+    regular-file check counts it as unreadable. A directory, or a symlink to a directory, is dropped without being counted.
     """
     worktree_paths = list(worktree_paths)
     matching_hashes = {_ledger_repo_hash(path) for path in worktree_paths}

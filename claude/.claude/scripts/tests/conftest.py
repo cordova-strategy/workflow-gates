@@ -1646,6 +1646,17 @@ def stub_repo_tracked_agent_types(monkeypatch):
     return _stub
 
 
+@pytest.fixture
+def default_int_str_digit_limit():
+    """Pins the interpreter's default 4300-digit limit so a contributor's PYTHONINTMAXSTRDIGITS cannot change the outcome."""
+    previous_limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(4300)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(previous_limit)
+
+
 @pytest.fixture()
 def fake_config_dir_factory(tmp_path):
     """Factory for extra --config-dir roots: each call builds a fresh config

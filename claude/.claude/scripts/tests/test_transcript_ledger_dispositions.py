@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 import time
 import warnings
 from pathlib import Path
@@ -34,6 +35,8 @@ _DEFER = author_outcome._DISPOSITION_DEFER
 _SETTLED = author_outcome._DISPOSITION_SETTLED
 _ABSENT = object()
 _REVIEW_LEDGER_SH = Path(__file__).parent.parent / "review-ledger.sh"
+# An open of a FIFO with no writer blocks forever, so a read that opens one is told apart from a refusal by this deadline.
+_FIFO_READ_DEADLINE_SECONDS = 10
 
 
 def _row(disposition: str, row_id: str | None, *, ref: str = "", decided_by: str = "",
@@ -686,6 +689,89 @@ class TestFileSelection:
         assert captured.out == "" and captured.err == ""
         assert sys.stderr is stderr_before
 
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_a_regular_file_that_fails_to_open_is_unreadable_and_its_slot_reaches_neither_stream(
+        self, ledger, capfd, caplog, recwarn,
+    ):
+        # The reader prints the failing path to stderr, so only the real reader's print-then-suppress path keeps the slot off it.
+        ledger.write("session-a", [_row(_ADDRESS, "r1")])
+        unopenable = ledger.write(_leak_sentinel("mode-zero-slot"), [_row(_ADDRESS, "r2")])
+        os.chmod(unopenable, 0o000)
+        try:
+            counts = ledger.count()
+        finally:
+            os.chmod(unopenable, 0o644)  # restore before tmp_path teardown
+
+        assert counts == _expect(
+            unreadable_files=1, terminal_by_disposition=_terminal(address=1), sessions_with_disposition_row=1,
+        )
+        assert _LEAK_SENTINEL_PREFIX not in repr(counts) + _captured_text(capfd)
+        assert caplog.records == []
+        assert not recwarn.list
+
+    def test_an_entry_whose_lstat_fails_is_unreadable_and_its_path_reaches_neither_stream(
+        self, ledger, monkeypatch, capfd,
+    ):
+        ledger.write("session-a", [_row(_ADDRESS, "r1")])
+        removed_slot = _leak_sentinel("removed-slot")
+        ledger.write(removed_slot, [_row(_ADDRESS, "r2")])
+        real_lstat = os.lstat
+
+        def lstat_failing_for_the_removed_entry(path, *args, **kwargs):
+            if removed_slot in str(path):
+                raise FileNotFoundError(f"gone {path}")
+            return real_lstat(path, *args, **kwargs)
+
+        monkeypatch.setattr(os, "lstat", lstat_failing_for_the_removed_entry)
+
+        counts = ledger.count()
+
+        assert counts == _expect(
+            unreadable_files=1, terminal_by_disposition=_terminal(address=1), sessions_with_disposition_row=1,
+        )
+        assert _LEAK_SENTINEL_PREFIX not in repr(counts) + _captured_text(capfd)
+
+    def test_a_symlink_named_for_this_checkout_is_unreadable_and_contributes_no_row_of_its_target(self, ledger):
+        ledger.write("session-a", [_row(_ADDRESS, "own")])
+        foreign = _write_named_ledger_file(
+            ledger.config_root, "f" * 64, "session-foreign", [_row(_DEFER, "foreign-1"), _row(_DEFER, "foreign-2")],
+        )
+        (ledger.directory / f"{publication_scope._ledger_repo_hash(str(ledger.worktree))}.session-link.jsonl").symlink_to(foreign)
+
+        assert ledger.count() == _expect(
+            unreadable_files=1, terminal_by_disposition=_terminal(address=1), sessions_with_disposition_row=1,
+        )
+
+    @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="os.mkfifo is unavailable on this platform")
+    def test_a_named_pipe_named_for_this_checkout_is_unreadable_and_never_opened(self, ledger):
+        ledger.write("session-a", [_row(_ADDRESS, "own")])
+        fifo = ledger.directory / f"{publication_scope._ledger_repo_hash(str(ledger.worktree))}.session-fifo.jsonl"
+        os.mkfifo(fifo)
+        outcome: dict[str, ledger_dispositions.LedgerDispositionCounts] = {}
+        reader = threading.Thread(target=lambda: outcome.update(counts=ledger.count()), daemon=True)
+
+        reader.start()
+        reader.join(_FIFO_READ_DEADLINE_SECONDS)
+        if reader.is_alive():
+            # Open the write end so the blocked reader returns instead of outliving the test.
+            os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+            reader.join(_FIFO_READ_DEADLINE_SECONDS)
+            pytest.fail("reading the ledger blocked on a named pipe, so the entry was opened")
+
+        assert outcome["counts"] == _expect(
+            unreadable_files=1, terminal_by_disposition=_terminal(address=1), sessions_with_disposition_row=1,
+        )
+
+    def test_a_symlink_to_a_directory_named_for_this_checkout_is_dropped_without_being_counted(self, ledger, tmp_path):
+        ledger.write("session-a", [_row(_ADDRESS, "own")])
+        directory_target = tmp_path / "directory-target"
+        directory_target.mkdir()
+        (ledger.directory / f"{publication_scope._ledger_repo_hash(str(ledger.worktree))}.session-dir.jsonl").symlink_to(
+            directory_target, target_is_directory=True,
+        )
+
+        assert ledger.count() == _expect(terminal_by_disposition=_terminal(address=1), sessions_with_disposition_row=1)
+
     def test_a_file_whose_read_printed_anything_is_unreadable(self, ledger, monkeypatch, capsys):
         ledger.write("session-a", [_row(_ADDRESS, "r1")])
 
@@ -706,17 +792,6 @@ _UNCAUGHT_DECODE_LINES = [
     pytest.param("[" * 3_000_000 + "]" * 3_000_000, RecursionError, id="deeply nested"),
     pytest.param(_OVER_LIMIT_INTEGER_LINE, ValueError, id="integer over the digit limit"),
 ]
-
-
-@pytest.fixture
-def default_int_str_digit_limit():
-    """Pins the interpreter's default 4300-digit limit so a contributor's PYTHONINTMAXSTRDIGITS cannot change the outcome."""
-    previous_limit = sys.get_int_max_str_digits()
-    sys.set_int_max_str_digits(4300)
-    try:
-        yield
-    finally:
-        sys.set_int_max_str_digits(previous_limit)
 
 
 @pytest.mark.usefixtures("default_int_str_digit_limit")

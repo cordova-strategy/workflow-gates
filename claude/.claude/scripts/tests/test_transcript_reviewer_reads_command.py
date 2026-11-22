@@ -11,29 +11,29 @@ import pytest
 from helpers import REPO_ROOT
 from transcript_analysis import cli, pricing, publication_scope, reviewer_reads, scope
 
+from ._read_cost_helpers import _PROJECT_SLUG, _TRACKED_AGENT_TYPE
 from ._review_round_corpus_helpers import _LEAK_SENTINEL_PREFIX, _leak_sentinel
 from ._reviewer_reads_helpers import (
     _IN_WINDOW,
-    _PROJECT_SLUG,
     _SESSION_ID,
-    _TRACKED_REVIEWER,
     _WORKTREE_PATH,
     _failed_read_exchange,
     _file_result,
     _next_prompt,
     _printed_line,
-    _read_exchange,
     _report_text,
     _reviewer_reads_args,
+    _reviewer_turn,
     _reviewer_window,
     _round_records,
-    _turn,
+    _structured_read_exchange,
 )
 from .conftest import (
     _agent_use,
     _ledger_row,
     _read_truncation_notice,
     _read_use,
+    _skill_block,
     _user_msg,
     _write_jsonl,
     _write_named_ledger_file,
@@ -48,7 +48,7 @@ _REAL_ARGV = ["reviewer-reads", "--this-repo", "--since", "2026-08-10", "--until
 
 def _address_row(row_id: str, *, session_id: str = _SESSION_ID) -> dict:
     return _ledger_row(
-        round=1, disposition="ADDRESS", id=row_id, ref="", decided_by="", reviewers=[_TRACKED_REVIEWER],
+        round=1, disposition="ADDRESS", id=row_id, ref="", decided_by="", reviewers=[_TRACKED_AGENT_TYPE],
         session_id=session_id, event_time="2026-08-11T10:00:00Z", schema_version=3,
     )
 
@@ -176,7 +176,7 @@ class TestReport:
     def test_a_declared_second_root_is_seen_by_no_reader(
         self, fake_projects, stub_repo_tracked_agent_types, tmp_path, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         declared = tmp_path / "declared-account"
         declared_project = declared / "projects" / _PROJECT_SLUG
@@ -185,9 +185,9 @@ class TestReport:
         roots_file.write_text(f"{declared}\n")
         monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(roots_file))
         for project, session in ((fake_projects, "session-main"), (declared_project, "session-other")):
-            dispatch = _agent_use(f"dispatch-agent-{session}", _TRACKED_REVIEWER)
-            _write_jsonl(project / f"{session}.jsonl", [_turn("m0", [dispatch])])
-            _reviewer_window(project, f"agent-{session}", [_turn(f"a-{session}", [])], session_id=session)
+            dispatch = _agent_use(f"dispatch-agent-{session}", _TRACKED_AGENT_TYPE)
+            _write_jsonl(project / f"{session}.jsonl", [_reviewer_turn("m0", [dispatch])])
+            _reviewer_window(project, f"agent-{session}", [_reviewer_turn(f"a-{session}", [])], session_id=session)
         _write_this_repo_ledger_file(declared, _WORKTREE_PATH, "slot", [_address_row("a1", session_id="session-other")])
         roots_seen = []
         resolve_project_scope = scope._resolve_project_scope
@@ -214,7 +214,7 @@ class TestReport:
     ):
         stub_repo_tracked_agent_types()
         args, calls = _reviewer_reads_args(monkeypatch)
-        _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0")])
+        _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_reviewer_turn("m0")])
         _write_this_repo_ledger_file(tmp_path, _WORKTREE_PATH, "branch-slot", [_address_row("in-scope")])
         _write_named_ledger_file(tmp_path, "f" * 64, _SESSION_ID, [_address_row("foreign-1"), _address_row("foreign-2")])
 
@@ -236,6 +236,15 @@ class TestReport:
         )
 
 
+def _structured_result_leaking_text(tool_id: str, path: str, *, num_lines: int, total_lines: int) -> dict:
+    """A successful Read result whose text and `toolUseResult.file.content` both carry a sentinel."""
+    result = _file_result(
+        tool_id, path, num_lines=num_lines, total_lines=total_lines, text=_leak_sentinel("result-text"),
+    )
+    result["toolUseResult"]["file"]["content"] = _leak_sentinel("result-file-content")
+    return result
+
+
 class TestOutputInvariant:
     """A sentinel in every input channel never reaches stdout or stderr, and each channel's record moved a printed count."""
 
@@ -246,10 +255,14 @@ class TestOutputInvariant:
         project = fake_projects.parent / f"-home-user-{self._SLUG_SENTINEL}"
         project.mkdir()
         read_path = f"/repo/{_leak_sentinel('read-path')}/module.py"
+        reviewer_read_id = _leak_sentinel("reviewer-tool-use-id")
         reviewer_records = [
-            _turn("m1", [_read_use("r1", read_path)], version=_leak_sentinel("version"), model=_leak_sentinel("model")),
-            _file_result("r1", read_path, num_lines=5, total_lines=9),
-            *_read_exchange(
+            _reviewer_turn(
+                "m1", [_read_use(reviewer_read_id, read_path)], version=_leak_sentinel("version"),
+                model=_leak_sentinel("model"),
+            ),
+            _structured_result_leaking_text(reviewer_read_id, read_path, num_lines=5, total_lines=9),
+            *_structured_read_exchange(
                 "m2", "r2", f"/x/{_leak_sentinel('diff-dir')}/code-review-diff-markers/review.diff", num_lines=3,
                 total_lines=3,
             ),
@@ -263,7 +276,8 @@ class TestOutputInvariant:
             ),
         ]
         _write_jsonl(project / f"{self._SESSION_SENTINEL}.jsonl", [
-            _turn("m0", [_agent_use("dispatch-agent-leak", f"staff-{_leak_sentinel('subagent-type')}")]),
+            _reviewer_turn("m0", [_agent_use("dispatch-agent-leak", f"staff-{_leak_sentinel('subagent-type')}")]),
+            *self._round_window_leaking_every_main_thread_channel(),
         ])
         _reviewer_window(
             project, "agent-leak", reviewer_records, agent_type=f"staff-{_leak_sentinel('agent-type')}",
@@ -282,6 +296,24 @@ class TestOutputInvariant:
             f"{publication_scope._ledger_repo_hash(f'/home/user/{self._SLUG_SENTINEL}')}.{_leak_sentinel('dangling-slot')}.jsonl"
         )
         dangling.symlink_to(tmp_path / "does-not-exist")
+
+    @staticmethod
+    def _round_window_leaking_every_main_thread_channel() -> list[dict]:
+        """A review-round window whose Skill input, Read inputs, Read result text and ids each carry a sentinel."""
+        whole_file_id = _leak_sentinel("round-whole-file-tool-use-id")
+        targeted_id = _leak_sentinel("round-targeted-tool-use-id")
+        whole_file_path = f"/repo/{_leak_sentinel('round-read-path')}/module.py"
+        skill_open = _skill_block("round-skill-id", "code-review")
+        skill_open["input"]["args"] = _leak_sentinel("skill-args")
+        return [
+            _reviewer_turn("m-round-open", [skill_open]),
+            _reviewer_turn("m-round-reads", [
+                _read_use(whole_file_id, whole_file_path),
+                _read_use(targeted_id, f"/repo/{_leak_sentinel('round-targeted-path')}/b.py", offset=5, limit=10),
+            ]),
+            _structured_result_leaking_text(whole_file_id, whole_file_path, num_lines=3, total_lines=3),
+            _next_prompt(),
+        ]
 
     def test_no_sentinel_reaches_either_stream_and_every_channel_moved_a_printed_count(
         self, fake_projects, stub_repo_tracked_agent_types, tmp_path, monkeypatch, capfd, caplog, recwarn,
@@ -302,6 +334,11 @@ class TestOutputInvariant:
         assert [str(warning.message) for warning in recwarn if _LEAK_SENTINEL_PREFIX in str(warning.message)] == []
         # Positive controls: each channel's record moved a printed count.
         assert "sessions=1 reviewer_windows=1" in out  # the project slug and the transcript name
+        assert "code-review: round_windows=1 read_calls=2 whole_file=1 targeted=1" in out  # the round's Skill and Read inputs
+        round_lines = out.splitlines()
+        round_block = round_lines[round_lines.index("code-review: round_windows=1 read_calls=2 whole_file=1 targeted=1"):]
+        # The round's result record paired with its call through the sentinel id.
+        assert "complete=1" in round_block[1].split() and "up_to_1000=1" in round_block[2].split()
         outcome_tables = out.split("## Whole-file calls in reviewer windows")[1].split("## After a partial")[0]
         code_table = outcome_tables.split("\nprose (")[0]
         diff_handoff_table = outcome_tables.split("\ndiff handoff")[1]
@@ -321,16 +358,37 @@ class TestOutputInvariant:
     def test_a_hostile_value_prints_nowhere_in_the_report(
         self, field, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
-        hostile = _turn("m1", **{field: "/home/user/HOSTILE-value"})
+        hostile = _reviewer_turn("m1", **{field: "/home/user/HOSTILE-value"})
         _reviewer_window(fake_projects, "agent-a", [hostile])
-        _write_jsonl(fake_projects / "session-main.jsonl", [_turn("m0")])
+        _write_jsonl(fake_projects / "session-main.jsonl", [_reviewer_turn("m0")])
 
         report = _report_text(args, fake_projects, capsys)
 
         assert "HOSTILE" not in report
         assert f"{'harness version' if field == 'version' else 'model'}: other=1" in report
+
+    @pytest.mark.parametrize(
+        "hostile_model",
+        [
+            pytest.param(lambda priced: f"{priced}-20260101/HOSTILE-corpus-text", id="priced key extended with hostile text"),
+            pytest.param(str.upper, id="case variant of a priced key"),
+        ],
+    )
+    @pytest.mark.parametrize("priced_model", sorted(pricing._MODEL_BASE_INPUT_RATES))
+    def test_a_model_near_a_priced_key_prints_as_other(
+        self, priced_model, hostile_model, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
+    ):
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
+        args, _calls = _reviewer_reads_args(monkeypatch)
+        _reviewer_window(fake_projects, "agent-a", [_reviewer_turn("m1", model=hostile_model(priced_model))])
+        _write_jsonl(fake_projects / "session-main.jsonl", [_reviewer_turn("m0")])
+
+        report = _report_text(args, fake_projects, capsys)
+
+        assert "HOSTILE" not in report and priced_model.upper() not in report
+        assert "model: other=1" in report
 
     def test_the_capture_mechanism_sees_each_channel_a_sentinel_could_leak_through(self, capfd, caplog, recwarn):
         print(_leak_sentinel("control-out"))
@@ -350,12 +408,12 @@ class TestNestedDispatch:
     def test_a_nested_reviewer_is_in_the_read_figures_and_not_in_the_yield_figures(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
-        main_dispatch = _turn("md", [_agent_use("dispatch-agent-main", _TRACKED_REVIEWER)])
+        main_dispatch = _reviewer_turn("md", [_agent_use("dispatch-agent-main", _TRACKED_AGENT_TYPE)])
         _write_jsonl(fake_projects / "session-main.jsonl", [main_dispatch])
-        _reviewer_window(fake_projects, "agent-main", [_turn("a1", [])])
-        _reviewer_window(fake_projects, "agent-nested", [_turn("n1", [])], spawn_depth=2)
+        _reviewer_window(fake_projects, "agent-main", [_reviewer_turn("a1", [])])
+        _reviewer_window(fake_projects, "agent-nested", [_reviewer_turn("n1", [])], spawn_depth=2)
 
         report = _report_text(args, fake_projects, capsys)
 
@@ -374,9 +432,9 @@ class TestRequestIdNotice:
         monkeypatch.setattr(pricing, "_non_contiguous_merge_notices_logged", set())
         _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [
             *_round_records("code-review", "a"),
-            _turn("n1", [], request_id="req-noncontiguous", usage={"output_tokens": 7}),
-            _read_exchange("n2", "rx", "/repo/a.py", num_lines=1, total_lines=1)[1],
-            _turn("n3", [], request_id="req-noncontiguous", usage={"output_tokens": 7}),
+            _reviewer_turn("n1", [], request_id="req-noncontiguous", usage={"output_tokens": 7}),
+            _structured_read_exchange("n2", "rx", "/repo/a.py", num_lines=1, total_lines=1)[1],
+            _reviewer_turn("n3", [], request_id="req-noncontiguous", usage={"output_tokens": 7}),
             _next_prompt(),
         ])
 
@@ -392,22 +450,11 @@ class TestRequestIdNotice:
 
 
 _YIELD_NOT_COMPLETED = (
-    "reviewer-yield pass: not completed, because the shared reviewer-yield code raised an AttributeError, TypeError or"
-    " ValueError, so no yield rows are printed"
+    "reviewer-yield pass: not completed, because the shared reviewer-yield code raised an AttributeError, TypeError,"
+    " ValueError or RecursionError, so no yield rows are printed"
 )
 _HOSTILE_SENTINEL = _leak_sentinel("hostile-field")
-_TRACKED_DISPATCH = _agent_use("dispatch-agent-a", _TRACKED_REVIEWER)
-
-
-@pytest.fixture
-def default_int_str_digit_limit():
-    """Pins the interpreter's default 4300-digit limit so a contributor's PYTHONINTMAXSTRDIGITS cannot change the outcome."""
-    previous_limit = sys.get_int_max_str_digits()
-    sys.set_int_max_str_digits(4300)
-    try:
-        yield
-    finally:
-        sys.set_int_max_str_digits(previous_limit)
+_TRACKED_DISPATCH = _agent_use("dispatch-agent-a", _TRACKED_AGENT_TYPE)
 
 
 def _hostile(record: dict, **message_changes) -> dict:
@@ -418,14 +465,14 @@ class TestMainThreadPassOverHostileInput:
     @pytest.mark.parametrize(
         "hostile_records",
         [
-            pytest.param([_hostile(_turn("h1", []), content=5)], id="assistant_content_int"),
+            pytest.param([_hostile(_reviewer_turn("h1", []), content=5)], id="assistant_content_int"),
             pytest.param([_user_msg([{"type": "text", "text": 5}], ts=_IN_WINDOW)], id="user_text_block_int_text"),
             pytest.param(
-                [_hostile(_turn(f"p{n}", [], request_id="req-pair"), usage=_HOSTILE_SENTINEL) for n in (1, 2)],
+                [_hostile(_reviewer_turn(f"p{n}", [], request_id="req-pair"), usage=_HOSTILE_SENTINEL) for n in (1, 2)],
                 id="same_request_id_pair_with_string_usage",
             ),
             pytest.param(
-                [_hostile(_turn(f"p{n}", [], request_id="req-pair"), content=5) for n in (1, 2)],
+                [_hostile(_reviewer_turn(f"p{n}", [], request_id="req-pair"), content=5) for n in (1, 2)],
                 id="same_request_id_pair_with_int_content",
             ),
         ],
@@ -450,8 +497,8 @@ class TestMainThreadPassOverHostileInput:
 @pytest.mark.usefixtures("default_int_str_digit_limit")
 class TestYieldPassOverHostileInput:
     def _seed_dispatch(self, fake_projects, dispatch_block, main_lines=(), window_records=None):
-        _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [*main_lines, _turn("m0", [dispatch_block])])
-        _reviewer_window(fake_projects, "agent-a", window_records or [_turn("a1", [])])
+        _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [*main_lines, _reviewer_turn("m0", [dispatch_block])])
+        _reviewer_window(fake_projects, "agent-a", window_records or [_reviewer_turn("a1", [])])
 
     def _seed_oversized_sidecar_integer(self, fake_projects):
         self._seed_dispatch(fake_projects, _TRACKED_DISPATCH)
@@ -459,15 +506,21 @@ class TestYieldPassOverHostileInput:
         sidecar.write_text(f'{{"agentType": "{_HOSTILE_SENTINEL}", "toolUseId": {"1" * 5000}}}')
         return "unreadable_subagent_meta=1"
 
+    def _seed_deeply_nested_sidecar(self, fake_projects):
+        self._seed_dispatch(fake_projects, _TRACKED_DISPATCH)
+        sidecar = fake_projects / _SESSION_ID / "subagents" / "agent-a.meta.json"
+        sidecar.write_text("[" * 3_000_000 + "]" * 3_000_000)
+        return "unreadable_subagent_meta=1"
+
     def _seed_verdict_count_over_the_digit_limit(self, fake_projects):
         verdict = {"type": "text", "text": f"Found {'1' * 4301} issues. {_HOSTILE_SENTINEL}"}
-        self._seed_dispatch(fake_projects, _TRACKED_DISPATCH, window_records=[_turn("a1", [verdict])])
+        self._seed_dispatch(fake_projects, _TRACKED_DISPATCH, window_records=[_reviewer_turn("a1", [verdict])])
         return "sessions=1 reviewer_windows=1"
 
     def _seed_surrogate_write_target(self, fake_projects):
         write = _write_use("w1", "x", path=f"/repo/{_HOSTILE_SENTINEL}/\ud800.py")
         self._seed_dispatch(
-            fake_projects, _TRACKED_DISPATCH, main_lines=[_turn("m1", [write])],
+            fake_projects, _TRACKED_DISPATCH, main_lines=[_reviewer_turn("m1", [write])],
         )
         return "sessions=1 reviewer_windows=1"
 
@@ -475,6 +528,7 @@ class TestYieldPassOverHostileInput:
         "seed",
         [
             pytest.param(_seed_oversized_sidecar_integer, id="sidecar_integer_over_the_digit_limit"),
+            pytest.param(_seed_deeply_nested_sidecar, id="sidecar_nested_past_the_decoders_stack"),
             pytest.param(_seed_verdict_count_over_the_digit_limit, id="verdict_count_over_the_digit_limit"),
             pytest.param(_seed_surrogate_write_target, id="lone_surrogate_in_a_write_target_path"),
         ],
@@ -482,7 +536,7 @@ class TestYieldPassOverHostileInput:
     def test_a_decode_failure_in_the_yield_pass_prints_the_fixed_notice_and_leaves_the_rest_of_the_report(
         self, seed, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capfd,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         expected_figure = seed(self, fake_projects)
 
@@ -498,10 +552,10 @@ class TestYieldPassOverHostileInput:
     def test_a_verdict_count_of_4000_digits_prints_the_ceiling_and_none_of_its_digits(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capfd,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         verdict = {"type": "text", "text": f"Found {'1' * 4000} issues."}
-        self._seed_dispatch(fake_projects, _TRACKED_DISPATCH, window_records=[_turn("a1", [verdict])])
+        self._seed_dispatch(fake_projects, _TRACKED_DISPATCH, window_records=[_reviewer_turn("a1", [verdict])])
 
         reviewer_reads._reviewer_reads_report(args, [fake_projects.parent])
 
@@ -512,10 +566,10 @@ class TestYieldPassOverHostileInput:
     def test_a_non_object_line_and_a_non_object_message_leave_the_yield_pass_complete(
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         self._seed_dispatch(
-            fake_projects, _agent_use("dispatch-agent-a", _TRACKED_REVIEWER),
+            fake_projects, _agent_use("dispatch-agent-a", _TRACKED_AGENT_TYPE),
             main_lines=[5, "text", {"type": "assistant", "timestamp": _IN_WINDOW, "message": "text"}],
         )
 
@@ -528,13 +582,13 @@ class TestYieldPassOverHostileInput:
         "dispatch_block",
         [
             pytest.param(_agent_use("dispatch-agent-a", ["staff-x"]), id="subagent_type_list_raises_attribute_error"),
-            pytest.param(_agent_use(["dispatch-agent-a"], _TRACKED_REVIEWER), id="tool_use_id_list_raises_type_error"),
+            pytest.param(_agent_use(["dispatch-agent-a"], _TRACKED_AGENT_TYPE), id="tool_use_id_list_raises_type_error"),
         ],
     )
     def test_a_field_shape_the_shared_yield_code_cannot_take_ends_the_pass_with_a_fixed_notice(
         self, dispatch_block, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
-        stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
         args, _calls = _reviewer_reads_args(monkeypatch)
         self._seed_dispatch(fake_projects, dispatch_block)
 
@@ -558,9 +612,9 @@ def test_the_ledger_window_includes_the_whole_until_day(
 def test_a_dispatch_with_no_subagent_files_prints_pricings_fixed_format_drift_warning_on_stderr(
     fake_projects, stub_repo_tracked_agent_types, monkeypatch, capfd,
 ):
-    stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+    stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
     args, _calls = _reviewer_reads_args(monkeypatch)
-    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0", [_agent_use("d1", _TRACKED_REVIEWER)])])
+    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_reviewer_turn("m0", [_agent_use("d1", _TRACKED_AGENT_TYPE)])])
 
     reviewer_reads._reviewer_reads_report(args, [fake_projects.parent])
 
@@ -586,11 +640,11 @@ def test_a_refusal_in_a_fresh_interpreter_exits_2_with_the_command_label(tmp_pat
 def test_a_reviewer_window_timestamp_outside_the_window_is_not_counted_through_the_whole_command(
     fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
 ):
-    stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+    stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
     args, _calls = _reviewer_reads_args(monkeypatch)
-    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0")])
-    _reviewer_window(fake_projects, "agent-in", [_turn("a1", ts=_IN_WINDOW)])
-    _reviewer_window(fake_projects, "agent-out", [_turn("b1", ts="2026-08-13T00:00:00.000Z")])
+    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_reviewer_turn("m0")])
+    _reviewer_window(fake_projects, "agent-in", [_reviewer_turn("a1", ts=_IN_WINDOW)])
+    _reviewer_window(fake_projects, "agent-out", [_reviewer_turn("b1", ts="2026-08-13T00:00:00.000Z")])
 
     assert "sessions=1 reviewer_windows=1" in _report_text(args, fake_projects, capsys)
 
@@ -606,16 +660,17 @@ def test_a_token_cap_flagged_call_reaching_the_last_line_adds_no_coverage_to_the
     later_read, expected_covered_after, expected_neither,
     fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
 ):
-    stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+    stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
     args, _calls = _reviewer_reads_args(monkeypatch)
     big_path = "/repo/src/big.py"
     flagged_lines = 40 if later_read else 100
-    reviewer_records = _read_exchange("m1", "r1", big_path, num_lines=flagged_lines, total_lines=100, truncated=True)
+    reviewer_records = _structured_read_exchange("m1", "r1", big_path, num_lines=flagged_lines, total_lines=100, truncated=True)
     if later_read:
-        reviewer_records += _read_exchange(
+        reviewer_records += _structured_read_exchange(
             "m2", "r2", big_path, num_lines=60, total_lines=100, start_line=41, offset=40, limit=60,
         )
-    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0", [_agent_use("dispatch-agent-main", _TRACKED_REVIEWER)])])
+    main_dispatch = _reviewer_turn("m0", [_agent_use("dispatch-agent-main", _TRACKED_AGENT_TYPE)])
+    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [main_dispatch])
     _reviewer_window(fake_projects, "agent-main", reviewer_records)
 
     follow_up_line = _printed_line(_report_text(args, fake_projects, capsys), "code/other: calls=")
@@ -636,11 +691,12 @@ def test_a_truncated_whole_file_read_is_paired_with_its_notice_through_the_repor
     fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
 ):
     # Pins the on-disk path: a real-shaped notice in a subagent transcript file reaches the notice-agreement line.
-    stub_repo_tracked_agent_types(_TRACKED_REVIEWER)
+    stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
     args, _calls = _reviewer_reads_args(monkeypatch)
-    truncated_call = _read_exchange("m1", "r1", "/repo/src/big.py", num_lines=40, total_lines=100, truncated=True)
+    truncated_call = _structured_read_exchange("m1", "r1", "/repo/src/big.py", num_lines=40, total_lines=100, truncated=True)
     notice = [_read_truncation_notice("r1")] if notice_present else []
-    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [_turn("m0", [_agent_use("dispatch-agent-main", _TRACKED_REVIEWER)])])
+    main_dispatch = _reviewer_turn("m0", [_agent_use("dispatch-agent-main", _TRACKED_AGENT_TYPE)])
+    _write_jsonl(fake_projects / f"{_SESSION_ID}.jsonl", [main_dispatch])
     _reviewer_window(fake_projects, "agent-main", [*truncated_call, *notice])
 
     notice_agreement_line = _printed_line(_report_text(args, fake_projects, capsys), "notice agreement:")

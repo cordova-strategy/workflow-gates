@@ -4,6 +4,7 @@ from transcript_analysis import pricing, read_cost
 
 from ._read_cost_helpers import (
     _HUNDRED_TOKEN_TEXT,
+    _file_record,
     _read_exchange,
     _scan,
     _turn,
@@ -405,16 +406,6 @@ class TestScanWindow:
         seen: set[str] = set()
         _scan([_turn("m1", [_read_use("r1", file_path="/a.py")]), _read_result("r1", "boom", is_error=True)], seen)
         assert seen == set()
-
-
-def _file_record(
-    path: str, *, start_line=1, num_lines=100, total_lines=100, truncated_by_token_cap=None,
-) -> dict:
-    """A Read result's `toolUseResult`, in the shape the harness writes beside the result text."""
-    file_fields = {"filePath": path, "startLine": start_line, "numLines": num_lines, "totalLines": total_lines}
-    if truncated_by_token_cap is not None:
-        file_fields["truncatedByTokenCap"] = truncated_by_token_cap
-    return {"type": "text", "file": file_fields}
 
 
 _NULL_TRUNCATION_FLAG_RECORD = {"type": "text", "file": {**_file_record("/a.py")["file"], "truncatedByTokenCap": None}}
