@@ -497,7 +497,7 @@ Full descriptions for utility scripts in `claude/.claude/scripts/` (stowed to `~
   ~/.claude/scripts/ensure-account-dir.sh briefs
   ```
 
-- **`config-set.sh`** — writes one `claude-config.toml` key (`config-set.sh <key> <value>`, value passed bare) and reads it back; `config-get.sh` is its read counterpart. Exit 0 means the key now resolves to the value, and exits 1, 2 and 3 are in the script's header. The four `permissions.ask` entries in `claude/.claude/settings.json` name the permissive command for each enforcement-critical key. The agent is told to run it only on the engineer's explicit instruction. See `docs/config-file.md` § "Writing a value".
+- **`config-set.sh`** — writes one `claude-config.toml` key (`config-set.sh <key> <value>`, value passed bare) and reads it back; `config-get.sh` is its read counterpart. The four `permissions.ask` entries in `claude/.claude/settings.json` name the permissive command for each enforcement-critical key. See `docs/config-file.md` § "Writing a value".
 
   ```bash
   ~/.claude/scripts/config-set.sh commit_stall_block false

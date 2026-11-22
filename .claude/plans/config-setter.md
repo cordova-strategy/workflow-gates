@@ -390,6 +390,7 @@ The code-review rounds changed these plan statements. The code is authoritative.
 - M5: the Stop reason prints `To disable this for the config dir <dir> (...): ` before the command, where M5 and row 12 keep `To disable this on this machine: `. The reason names the hook's config dir because the command resolves its own.
 - M8: `config-get.sh`'s usage message and its `set` rejection point at `docs/config-file.md` and omit the script name by design (`TestWritePointerNamesTheDocNotTheCommand`), where M8 has them name `config-set.sh`.
 - Both writers remove their temp file and return 1 when `mv` fails. The plan earlier left that temp-file leak out of scope.
+- A consumer whose `~/.claude/scripts` is not tree-folded has no `config-set.sh` until it re-runs `./install.sh`. Row 14 dropped README's "already links into this checkout" condition. The Critical files line that prescribed `docs/commit-stall-block.md:24`'s claim that the script is always linked is deleted from that doc.
 
 ## Verification
 

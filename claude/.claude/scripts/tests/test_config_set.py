@@ -1,11 +1,9 @@
 """Tests for config-set.sh's exit-code contract and written bytes.
 
-config-set.sh sources _config.sh via a path relative to its own location, so
-isolating its schema file needs the matching directory layout that
-`_config_script_helpers.py` builds. The input matrices for the value-type
-rule and the enforcement-critical key list live in test_config_lib.py; this
-file holds one subprocess case per branch, plus two cases run once per input
-because the property each pins exists only at the CLI.
+The input matrices for the value-type rule and the enforcement-critical key
+list live in test_config_lib.py; this file holds one subprocess case per
+branch, plus two cases run once per input because the property each pins
+exists only at the CLI.
 """
 from __future__ import annotations
 

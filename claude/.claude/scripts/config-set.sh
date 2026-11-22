@@ -27,17 +27,12 @@ set -uo pipefail
 # Exits 1 and 3 do not imply an unchanged file. The stderr `wrote` line marks
 # every run that replaced the file. No nonzero exit prints anything on stdout.
 #
-# The write goes through _config.sh's _config_set, the only writer, so this
-# script adds only argument checks, the written-path line, a read-back and
-# the notice for an enforcement-critical key's permissive value. It asks for
-# no confirmation and checks no TTY, since a check inside the script cannot
-# show that a human answered. The four permissions.ask rules in
-# claude/.claude/settings.json name the permissive commands instead; their
-# prompt is declared there, not observed (see docs/config-file.md § "The four
-# enforcement-critical keys").
+# The write goes through _config.sh's _config_set, the only writer.
+# No confirmation or TTY check; see docs/config-file.md § "The four
+# enforcement-critical keys".
 #
-# Only `set` and comments precede the source line below. Omits `-e` because
-# every status maps to its own exit code, as config-get.sh does.
+# Omits `-e` because every status maps to its own exit code, as config-get.sh
+# does.
 # shellcheck source=../hooks/_config.sh
 . "$(dirname "$0")/../hooks/_config.sh" || exit 3
 

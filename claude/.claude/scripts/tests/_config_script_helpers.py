@@ -22,9 +22,7 @@ CONFIG_KEYS_PSV = HOOKS_DIR / "config-keys.psv"
 STOW_SOURCE_SETTINGS_PATH = REPO_ROOT / "claude" / ".claude" / "settings.json"
 
 # Each enforcement-critical key's fail-closed value, as _config.sh's
-# _config_enforcement_critical_safe_value returns it. Not derived from
-# config-keys.psv's default or legacy-probe-on-resolution-failure columns,
-# which answer different questions.
+# _config_enforcement_critical_safe_value returns it.
 ENFORCEMENT_CRITICAL_SAFE_VALUES = {
     "worktree_required": "true",
     "round_consult_gate": "true",

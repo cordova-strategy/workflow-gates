@@ -1385,9 +1385,6 @@ _SKIP_UNDER_ROOT = pytest.mark.skipif(
 
 
 class TestConfigTypeAccepts:
-    """The value-type rule _config_set and config-set.sh share. VALUE is
-    bare, never quoted."""
-
     @pytest.mark.parametrize(
         ("key_type", "value"),
         [
@@ -1422,11 +1419,6 @@ class TestConfigTypeAccepts:
 
 class TestEnforcementCriticalKeySet:
     def test_matches_config_keys_psv_header_comment(self) -> None:
-        """config-keys.psv's own header comment is the second place (besides
-        _config.sh's _CONFIG_ENFORCEMENT_CRITICAL_KEYS) that names the four
-        enforcement-critical keys -- checked against the real bash variable
-        itself, not an independently maintained Python copy, so a future key
-        addition/removal can't silently drift the two apart."""
         text = _CONFIG_KEYS_PSV.read_text()
         match = re.search(r"The four enforcement-critical keys \(([^)]+)\)", text, re.DOTALL)
         assert match, "config-keys.psv's header comment must name the four enforcement-critical keys"
@@ -1450,8 +1442,6 @@ _ENFORCEMENT_CRITICAL_SAFE_VALUES = {
 class TestEnforcementCriticalSafeValues:
     @pytest.mark.parametrize(("key", "safe_value"), sorted(_ENFORCEMENT_CRITICAL_SAFE_VALUES.items()))
     def test_pins_the_fail_closed_value(self, key: str, safe_value: str) -> None:
-        """Pins _config_enforcement_critical_safe_value's own pair-list
-        content directly, independent of any legacy-file derivation."""
         result = _run_sourcing_config_sh(
             f"_config_enforcement_critical_safe_value {key} && printf '%s' \"$_CONFIG_SAFE_VALUE\""
         )
@@ -1495,7 +1485,6 @@ class TestConfigSetAskRules:
     runtime: the ask rules' behavior is documented in docs/security-hardening.md, not observed here."""
 
     def test_each_permissive_enforcement_critical_command_has_an_ask_rule(self) -> None:
-        """Declared state, not a runtime prompt."""
         ask_rules = json.loads(_STOW_SOURCE_SETTINGS_PATH.read_text())["permissions"]["ask"]
         missing = [
             rule
@@ -1505,7 +1494,6 @@ class TestConfigSetAskRules:
         assert not missing, f"missing from permissions.ask in claude/.claude/settings.json: {missing!r}"
 
     def test_the_config_set_ask_entries_are_exactly_the_permissive_commands(self) -> None:
-        """Declared state, not a runtime prompt."""
         ask_rules = json.loads(_STOW_SOURCE_SETTINGS_PATH.read_text())["permissions"]["ask"]
         declared = sorted(rule for rule in ask_rules if "config-set.sh" in rule)
         expected = sorted(_permissive_ask_rule(key, value) for key, value in _critical_key_safe_values().items())
@@ -1517,7 +1505,7 @@ class TestConfigSetAskRules:
         ids=lambda path: str(path.relative_to(REPO_ROOT)),
     )
     def test_no_permissions_allow_entry_names_config_set(self, settings_path: Path) -> None:
-        """Declared state, not a runtime prompt. An allow entry would pre-approve every setter command no ask rule names."""
+        """An allow entry would pre-approve every setter command no ask rule names."""
         allow_rules = json.loads(settings_path.read_text()).get("permissions", {}).get("allow", [])
         offending = [rule for rule in allow_rules if "config-set.sh" in rule]
         assert not offending, f"{settings_path.relative_to(REPO_ROOT)}: permissions.allow names config-set.sh: {offending!r}"
@@ -1543,8 +1531,7 @@ class TestConfigSetterEngineerOnlyQualifier:
 
 
 class TestWritingAValueDocContract:
-    """The doc section config-get.sh points at. Pins the heading, the engineer-only qualifier, its
-    exclusion sentence and the hand-edit rule, so an edit that drops one fails here."""
+    """The doc section config-get.sh points at."""
 
     @pytest.fixture
     def writing_a_value_section(self) -> str:
@@ -1589,10 +1576,7 @@ class TestConfigStateFileUnreadable:
         assert result.stdout == "status=0", f"returncode={result.returncode} stderr={result.stderr!r}"
 
 
-# One row per kind of entry that can sit at the state path. A writer proceeds only for an absent
-# path or a regular file readable for opening, directly or through a link that resolves to one.
-# Any other entry is refused with status 3 and left as it was, since a rebuild would replace it
-# with a file holding only the written row, or `mv` its temp file into a directory.
+# One row per kind of entry that can sit at the state path.
 # Each builder gets the state path, a directory beside the config dir for link targets, and an
 # ExitStack that restores whatever the entry's permissions or blocked openers need.
 _StatePathBuilder = Callable[[Path, Path, ExitStack], None]
