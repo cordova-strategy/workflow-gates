@@ -643,6 +643,12 @@ class TestDecodeModelBreakdownCell:
         cell = _single_group_cell(model=model_id)
         assert pr_cost_ledger._decode_model_breakdown_cell(cell, 2) == json.loads(cell)
 
+    @pytest.mark.parametrize("variant_label", pricing._PRICING_VARIANTS)
+    def test_every_pricing_variant_label_satisfies_the_key_rule(self, variant_label):
+        assert pr_cost_ledger._MODEL_BREAKDOWN_KEY_RE.fullmatch(variant_label)
+        cell = _single_group_cell(variant=variant_label)
+        assert pr_cost_ledger._decode_model_breakdown_cell(cell, 2) == json.loads(cell)
+
     @pytest.mark.parametrize("model_id", sorted(pricing._MODEL_BASE_INPUT_RATES))
     def test_every_priced_model_id_matches_the_vendor_model_id_grammar(self, model_id):
         """Table keys persist verbatim in ledger rows and exports, so only vendor-published IDs may be keys.
@@ -650,7 +656,10 @@ class TestDecodeModelBreakdownCell:
         assert re.fullmatch(r"claude-(opus|sonnet|haiku|fable)(-[0-9]+)+", model_id)
 
     def test_pricing_variant_labels_equal_the_hand_written_literal(self):
-        assert pricing._PRICING_VARIANTS == ("standard", "fast", "us_geo", "fast_us_geo"), (
+        assert pricing._PRICING_VARIANTS == (
+            "standard", "fast", "us_geo", "fast_us_geo",
+            "long_prompt", "fast_long_prompt", "us_geo_long_prompt", "fast_us_geo_long_prompt",
+        ), (
             "labels persist in ledger rows: rename or remove none, and add a new one to this literal"
         )
 

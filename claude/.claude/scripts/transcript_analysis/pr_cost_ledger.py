@@ -210,7 +210,7 @@ def _pr_cost_ledger_path_or_exit(subcommand: str, ordinal: int, config_dir_overr
 
 # Persisted contract: a cell outside this key rule, these leaf keys, this leaf integer range, or this depth makes every
 # checkout with this codec refuse the ledger. Never reshape model_breakdown; a new cell shape is a new appended column under a
-# new frozen header. New variant and class labels need neither, because they are checked for key shape only.
+# new frozen header. New variant and class labels need neither here, because this parser checks them for key shape only.
 _MODEL_BREAKDOWN_KEY_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
 _MODEL_BREAKDOWN_LEAF_KEYS = frozenset({"tokens", "usd_micros"})
 _MODEL_BREAKDOWN_LEAF_VALUE_MAX = 2**63 - 1  # int64: a warehouse loader casting the cell to int64 never overflows

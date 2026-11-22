@@ -122,7 +122,7 @@ class TestPricingVariant:
     @pytest.mark.parametrize("extra_usage_fields,expected_label", _PRICING_VARIANT_USAGE_CASES)
     def test_label_for_each_speed_and_geo_combination_and_near_miss(self, extra_usage_fields, expected_label):
         usage = {**_priced("claude-sonnet-5", input=1_000)["message"]["usage"], **extra_usage_fields}
-        assert pricing._pricing_variant(usage) == expected_label
+        assert pricing._pricing_variant("claude-sonnet-5", usage) == expected_label
 
     @pytest.mark.parametrize("extra_usage_fields,expected_label", _PRICING_VARIANT_USAGE_CASES)
     def test_price_turn_dollars_follow_the_label_implied_multiplier_under_the_listed_usage_perturbations(
@@ -160,7 +160,7 @@ class TestPricingVariant:
 
         for perturbation in perturbations:
             usage = {**realistic_usage, **perturbation, **extra_usage_fields}
-            assert pricing._pricing_variant(usage) == expected_label, perturbation
+            assert pricing._pricing_variant("claude-sonnet-5", usage) == expected_label, perturbation
             actual_dollars, _context, _unpriced = pricing._price_turn("claude-sonnet-5", usage)
             for token_class in pricing._TOKEN_CLASSES:
                 assert actual_dollars[token_class] == pytest.approx(
@@ -693,22 +693,41 @@ class TestRepriceTokenSplits:
             "cache_creation": {"ephemeral_1h_input_tokens": 6_000, "ephemeral_5m_input_tokens": 1_000},
             "speed": "fast", "inference_geo": "us",
         },
+        "long_prompt": {
+            "input_tokens": 110_000, "output_tokens": 30_000, "cache_read_input_tokens": 500_000,
+            "cache_creation": {"ephemeral_1h_input_tokens": 5_000, "ephemeral_5m_input_tokens": 12_000},
+        },
+        "fast_long_prompt": {
+            "input_tokens": 120_000, "output_tokens": 20_000, "cache_read_input_tokens": 600_000,
+            "cache_creation": {"ephemeral_1h_input_tokens": 4_000, "ephemeral_5m_input_tokens": 11_000},
+            "speed": "fast",
+        },
+        "us_geo_long_prompt": {
+            "input_tokens": 130_000, "output_tokens": 10_000, "cache_read_input_tokens": 700_000,
+            "cache_creation": {"ephemeral_1h_input_tokens": 3_000, "ephemeral_5m_input_tokens": 10_000},
+            "inference_geo": "us",
+        },
+        "fast_us_geo_long_prompt": {
+            "input_tokens": 140_000, "output_tokens": 5_000, "cache_read_input_tokens": 800_000,
+            "cache_creation": {"ephemeral_1h_input_tokens": 2_000, "ephemeral_5m_input_tokens": 9_000},
+            "speed": "fast", "inference_geo": "us",
+        },
     }
+
+    @staticmethod
+    def _source_model(variant):
+        return "claude-haiku-5-5" if variant.endswith("long_prompt") else _REPRICED_ROUND_MODEL
 
     def test_every_pricing_variant_label_has_a_source_usage_in_this_class(self):
         assert set(self._SOURCE_USAGE_BY_VARIANT) == set(pricing._PRICING_VARIANTS)
 
     @pytest.mark.parametrize("variant", pricing._PRICING_VARIANTS)
-    def test_usage_built_for_a_variant_classifies_back_to_that_variant(self, variant):
-        usage = pricing._usage_for_token_group(variant, {"input": 1})
-        assert pricing._pricing_variant(usage) == variant
-
-    @pytest.mark.parametrize("variant", pricing._PRICING_VARIANTS)
     def test_splits_filed_from_a_source_usage_reprice_to_that_usages_own_price(self, variant):
         source_usage = self._SOURCE_USAGE_BY_VARIANT[variant]
-        assert pricing._pricing_variant(source_usage) == variant
-        splits = {_REPRICED_ROUND_MODEL: {variant: pricing._token_counts(source_usage)}}
-        source_dollars, _context, _unpriced = pricing._price_turn(_REPRICED_ROUND_MODEL, source_usage)
+        source_model = self._source_model(variant)
+        assert pricing._pricing_variant(source_model, source_usage) == variant
+        splits = {source_model: {variant: pricing._token_counts(source_usage)}}
+        source_dollars, _context, _unpriced = pricing._price_turn(source_model, source_usage)
         assert pricing._reprice_token_splits(splits) == pytest.approx(sum(source_dollars.values()))
 
     def test_groups_across_models_and_variants_sum(self):
@@ -737,6 +756,24 @@ class TestRepriceTokenSplits:
         )
         assert pricing._reprice_token_splits(splits) == pytest.approx(per_turn_dollars)
 
+    def test_a_haiku_round_whose_lower_tier_turns_sum_past_the_threshold_reprices_per_turn(self):
+        """Two lower-tier turns share one stored group whose summed prompt tokens exceed the threshold, so a re-price
+        that read the group as one prompt would pick the higher tier."""
+        model = "claude-haiku-5-5"
+        lower_tier_turns = [
+            {"input_tokens": 60_000, "output_tokens": 500},
+            {"input_tokens": 70_000, "output_tokens": 700},
+        ]
+        higher_tier_turn = {"input_tokens": 150_000, "output_tokens": 900}
+        turns = [*lower_tier_turns, higher_tier_turn]
+        splits: dict = {}
+        for turn in turns:
+            review_rounds._add_turn_tokens(splits, model, turn)
+        standard_group = splits[model]["standard"]
+        assert standard_group["input"] + standard_group["cache_read"] > 100_000
+        per_turn_dollars = sum(sum(pricing._price_turn(model, turn)[0].values()) for turn in turns)
+        assert pricing._reprice_token_splits(splits) == pytest.approx(per_turn_dollars)
+
     def test_a_class_missing_from_a_group_prices_as_zero(self):
         full = {"input": 5_000, "output": 0, "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0}
         assert pricing._reprice_token_splits({_REPRICED_ROUND_MODEL: {"standard": {"input": 5_000}}}) == pytest.approx(
@@ -745,7 +782,7 @@ class TestRepriceTokenSplits:
 
     @pytest.mark.parametrize("token_class", pricing._TOKEN_CLASSES)
     def test_every_token_class_prices_above_zero(self, token_class):
-        # A class added to _TOKEN_CLASSES but not mapped in _usage_for_token_group would price at zero silently.
+        # A class added to _TOKEN_CLASSES with no rate in _rates_from_base fails here instead of pricing at zero silently.
         splits = {_REPRICED_ROUND_MODEL: {"standard": {token_class: 1_000_000}}}
         assert pricing._reprice_token_splits(splits) > 0
 
@@ -760,6 +797,9 @@ class TestRepriceTokenSplits:
 
     def test_returns_none_for_a_class_label_outside_the_token_classes(self):
         assert pricing._reprice_token_splits({_REPRICED_ROUND_MODEL: {"standard": {"unknown-class": 1}}}) is None
+
+    def test_returns_none_for_a_long_prompt_label_on_a_model_without_a_tier(self):
+        assert pricing._reprice_token_splits({_REPRICED_ROUND_MODEL: {"long_prompt": {"input": 1}}}) is None
 
     def test_one_unpriceable_group_makes_the_whole_object_unpriceable(self):
         splits = {

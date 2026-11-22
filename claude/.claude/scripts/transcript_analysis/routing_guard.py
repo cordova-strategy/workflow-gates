@@ -281,24 +281,19 @@ _OUT_PUBLISHED_NOTICE = (
     f"{_COMMAND}: the --out file is DO NOT PUBLISH; read it only outside an agent session,"
     " and delete it once its figures are read"
 )
+# Only the key-off arm prices later turns, so only its notice can name a model priced by prompt length.
+_DEGRADED_CAUSES_BY_ARM = {
+    _STATE_ON: "a dispatch transcript was lost, a turn had malformed usage or a model has no price",
+    _STATE_OFF: (
+        "a dispatch transcript was lost, a turn had malformed usage, or a model has no price or is priced by prompt length"
+    ),
+}
 _DEGRADED_NOTICES = {
-    arm: (
-        f"{_COMMAND}: some key-{arm} loops are degraded:"
-        " a dispatch transcript was lost, a turn had malformed usage or a model has no price"
-    )
-    for arm in (_STATE_ON, _STATE_OFF)
+    arm: f"{_COMMAND}: some key-{arm} loops are degraded: {causes}" for arm, causes in _DEGRADED_CAUSES_BY_ARM.items()
 }
 _UNDEFINED_REPLICATE_NOTICES = {
     arm: f"{_COMMAND}: some bootstrap replicates left the key-{arm} arm with no loop whose growth is defined"
     for arm in (_STATE_ON, _STATE_OFF)
-}
-
-# The speed and inference_geo values pricing._pricing_variant maps back to each label.
-_VARIANT_USAGE_FIELDS: dict[str, dict[str, str]] = {
-    "standard": {},
-    "fast": {"speed": "fast"},
-    "us_geo": {"inference_geo": "us"},
-    "fast_us_geo": {"speed": "fast", "inference_geo": "us"},
 }
 
 
@@ -1818,31 +1813,13 @@ def _select_sample(
     return _SampleSelection(on_rows, off_rows, loops_by_line, reasons)
 
 
-def _usage_from_variant_tokens(variant: str, token_counts: Mapping[str, int]) -> dict:
-    """A usage dict that pricing._price_turn prices as `token_counts` at `variant`'s multipliers.
-
-    The token-class keys are pricing._token_counts' own.
-    """
-    usage: dict = {
-        "input_tokens": token_counts.get("input", 0),
-        "output_tokens": token_counts.get("output", 0),
-        "cache_read_input_tokens": token_counts.get("cache_read", 0),
-        "cache_creation": {
-            "ephemeral_1h_input_tokens": token_counts.get("cache_write_1h", 0),
-            "ephemeral_5m_input_tokens": token_counts.get("cache_write_5m", 0),
-        },
-    }
-    usage.update(_VARIANT_USAGE_FIELDS[variant])
-    return usage
-
-
 def _loop_overhead(loop: Mapping, priced_models: set[str]) -> tuple[float, bool]:
     """(dollars, whether a model was skipped) for one loop's overhead tokens at the current rate table."""
     dollars = 0.0
     skipped = False
     for model, by_variant in loop["overhead_tokens"].items():
         for variant, token_counts in by_variant.items():
-            dollars_by_class, _context, _unpriced = pricing._price_turn(model, _usage_from_variant_tokens(variant, token_counts))
+            dollars_by_class = pricing._price_token_counts(model, variant, token_counts)
             if dollars_by_class is None:
                 skipped = True
                 continue

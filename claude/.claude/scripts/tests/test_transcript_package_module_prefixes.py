@@ -130,6 +130,7 @@ TEST_FILES = (
     "test_transcript_review_cost_by_size_aggregates.py",
     "test_transcript_ledger_rounds.py",
     "test_transcript_pricing.py",
+    "test_transcript_pricing_prompt_tiers.py",
     "test_transcript_redaction.py",
     "test_transcript_render.py",
     "test_transcript_read_cost_scan_window.py",

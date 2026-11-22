@@ -139,6 +139,45 @@ class TestCacheRebuild1hTo5mDeltaPricing:
         assert delta == pytest.approx(12.25)
         assert unpriced_tokens == 0
 
+    def test_haiku_5_5_1h_to_5m_delta_uses_the_higher_tier(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_1h=1_000_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_1h_to_5m_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=False
+        )
+        # The 1,000,000-token prompt is over the threshold: -(1,000,000/1e6 * (1.00 - 0.625)) = -0.375.
+        assert delta == pytest.approx(-0.375)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_idle_cause_1h_to_5m_delta_reads_the_higher_tier_cache_read_rate(self):
+        usage = _priced("claude-haiku-5-5", cache_read=1_000_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_1h_to_5m_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=True
+        )
+        # Over the threshold: expiry cost 1,000,000/1e6 * (0.625 - 0.05) = 0.575.
+        # A cache-read rate taken from the lower tier ($0.01) would give 0.615.
+        assert delta == pytest.approx(0.575)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_1h_to_5m_delta_at_the_threshold_uses_the_lower_tier(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_1h=100_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_1h_to_5m_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=False
+        )
+        # The 100,000-token prompt is at the threshold, not over it: -(100,000/1e6 * (0.20 - 0.125)) = -0.0075.
+        # The higher tier would give -0.0375.
+        assert delta == pytest.approx(-0.0075)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_idle_cause_1h_to_5m_delta_at_the_threshold_reads_the_lower_tier_cache_read_rate(self):
+        usage = _priced("claude-haiku-5-5", cache_read=100_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_1h_to_5m_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=True
+        )
+        # At the threshold: expiry cost 100,000/1e6 * (0.125 - 0.01) = 0.0115.
+        # The higher tier would give 0.0575.
+        assert delta == pytest.approx(0.0115)
+        assert unpriced_tokens == 0
+
 
 class TestCacheRebuild1hTo5mDeltaArithmetic:
     """Direct unit coverage for _cache_rebuild_1h_to_5m_delta_dollars' own
