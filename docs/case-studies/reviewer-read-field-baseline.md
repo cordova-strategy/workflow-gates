@@ -2,7 +2,7 @@
 
 How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. GH-1529 calls this the A-field baseline: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The report's terms (reviewer window, whole-file call, outcome classes, diff handoff) are defined in `docs/transcript-analysis.md` § "reviewer-reads". The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
 
-The figures come from transcripts and ledger files selected by this checkout's path identity, on one account. The command requires `--this-repo`, refuses any `--projects` value other than the default, and refuses a scan over more than one root. `docs/private-project-redaction.md` § "Publishing a tooling measurement" publishes figures from that scope. Its § "This repository, one account" states what the scope does not exclude, including path identity and the ledger file check.
+The figures come from transcripts and ledger files selected by this checkout's path identity, on one account. The command requires `--this-repo`, refuses any `--projects` value other than the default, and refuses a scan over more than one root. `docs/private-project-redaction.md` § "Publishing a tooling measurement" permits publishing figures from that scope. Its § "This repository, one account" states what the scope does not exclude, including path identity and the ledger file check.
 
 ## Headline answers
 
@@ -21,11 +21,11 @@ The figures come from transcripts and ledger files selected by this checkout's p
 - **Window:** 2026-10-25 to 2026-11-21, both days included, 28 days.
 - **`cleanupPeriodDays`:** absent from the account's settings, so the 30-day default applies. At that default, records from about 2026-10-23 onward were still kept at the run, so the window's first day, 2026-10-25, falls inside the retained span.
 - **Instrument commit:** `e5e1f34f573a`. The `claude/.claude/scripts/transcript_analysis/` package is unchanged between `daeeae4fbd4a` (#1575's head commit) and `e5e1f34f573a`.
-- **Self-checks:** five checks passed before this page was written, each defined in `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4. They are the reviewer-window floor, the ledger floor, the yield-completed floor, the sample check and the output scan. The output scan expects the fixed label `~/.claude/transcript-config-dirs` in the report header.
+- **Self-checks:** five checks passed before this page was written. `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines each of them. They are the reviewer-window floor, the ledger floor, the yield-completed floor, the sample check and the output scan. The report header prints the fixed label `~/.claude/transcript-config-dirs`, which the output scan tolerates.
 
 ## The report as printed
 
-Two edits to the output. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's gap counter, and the three ledger-section lines that follow its sessions line. Of those three, one reports the ledger-file directory scan and two count ledger rows. One placeholder stands in for each group.
+Two edits to the output. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's counter line, and the three ledger-section lines that follow its sessions line. Of those three, one reports the ledger-file directory scan and two count ledger rows. One placeholder stands in for each group.
 
 ```text
 REVIEWER READS SOURCES (this repo (33 worktrees listed); reads one account (the active account), the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)
@@ -112,7 +112,7 @@ ready-for-review: round_windows=36 read_calls=20 whole_file=17 targeted=3
 
 ## Reviewer-yield: main-thread reviewer dispatches in the window (agent types this repo does not track are folded into one withheld row)
 (--until 2026-11-21 does not bound the cited, active and edited counts: their tool-result and edit indexes are bounded by --since alone.)
-[the yield pass's gap counter is withheld; the capture's self-checks passed]
+[the yield pass's counter line, one gap counter and two read-error counters, is withheld; the capture's self-checks passed]
 TOTAL: dispatches=431 findings_found=351 zero_finding=77 unclassified=3 findings=1,653
   findings-found: cited=337 active=337 edited=124 edited_rate 36.8% (124/337)
   zero-finding: cited=73 active=73 edited=13 edited_rate 17.8% (13/73)
@@ -241,14 +241,15 @@ d246e014 prose granularity rule (#1354)
 
 ## Limitations
 
-The instrument's known limits are in `docs/transcript-analysis.md` § "reviewer-reads" (its "Known limits" paragraph). The residuals that bound publication, path identity and the ledger file check, are in `docs/private-project-redaction.md` § "This repository, one account". The limits below are specific to this run.
+The instrument's known limits are in `docs/transcript-analysis.md` § "reviewer-reads" (its "Known limits" paragraph). The residuals that bound publication, path identity and the ledger file check, are in `docs/private-project-redaction.md` § "This repository, one account". This page's figures also carry the limits below.
 
-- **Under-cap truncation.** What a 2,000-line default truncation of an under-cap file returns was not tested. `partial_unflagged` catches it structurally whatever its shape, and this run found none.
+- **Round-window counts.** `code-review`'s 240 whole-file calls exceed its 227 reviewed-file outcomes plus 12 diff-handoff calls by one. A whole-file call can lack an outcome class (`docs/transcript-analysis.md` § "reviewer-reads", its "Main-thread round Reads" paragraph), so the gap is not a defect.
+- **Under-cap truncation.** What a 2,000-line default truncation returns for a file under the token cap was not tested. `partial_unflagged` counts a read that returned fewer lines than the file holds and carries no truncation flag. No reviewed-file whole-file call in this run was on a file over 2,000 lines (`over_2000=0` in every reviewed-file size table), so the run did not exercise it.
 - **Reviewer types.** `_is_reviewer_subagent_type` matches bare agent-type names with no plugin namespace. A namespaced value on another harness version would fall outside the population.
+- **Yield pass counters.** The withheld `reviewer-yield pass:` line holds a gap counter and two read-error counters. No self-check covers them. The capturer read all three as 0 in this run.
 - **Prose.** All 65 partials are prose, which is `instruction` plus `other_prose`. #1115's entry read leaves markdown instruction files whole for every reviewer. It leaves markdown docs, which `other_prose` holds, whole for `comment-discipline-reviewer` alone. `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`, which #1115's entry read does change.
 - **The instrument's own review rounds.** The window holds the review rounds of the change that built this instrument (#1575), as a later run's window will hold #1115's.
 
 ## What this page does not cover
 
-- It records no late-findings before-value. #1556 tracks that measure. A late finding is an issue raised in a later review round on code an earlier round had in scope, as #1115's post-merge watch defines it.
-- It covers the read before-state only. It says nothing about #1115's late-findings watch.
+- It records no late-findings before-value. #1556 tracks that measure. #1113's box for the A-field baseline covers this page's read before-state only, not #1115's late-findings watch. A late finding is an issue raised in a later review round on code an earlier round had in scope, as #1115's post-merge watch defines it.
