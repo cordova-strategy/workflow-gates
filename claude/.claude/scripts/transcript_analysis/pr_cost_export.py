@@ -12,7 +12,7 @@ from pathlib import Path
 
 import _config
 from _config_dir import declared_roots_file_is_overridden
-from transcript_analysis import ledger_common, pr_cost_ledger, pricing, redaction, review_rounds, scope
+from transcript_analysis import ledger_common, pr_cost, pr_cost_ledger, pricing, redaction, review_rounds, scope
 
 # pr_cost_ledger._PR_COST_LEDGER_COLUMNS with a leading account column.
 # head_branch is renamed head_branch_label: a stored label is per-run, not a
@@ -29,12 +29,23 @@ _PR_COST_EXPORT_HEADER_LINE = "\t".join(_PR_COST_EXPORT_COLUMNS)
 
 
 def _pr_cost_export_date_only(value: str) -> str:
-    """Date portion of an already-validated ISO8601 timestamp
-    (YYYY-MM-DDTHH:MM:SS[Z|+HH:MM]). Validated by
-    _parse_pr_cost_ledger_row_cells before this is ever called. Applies to
-    merged_at/captured_at only. rate_stamp is already date-only and never
-    passed through this."""
+    """Date portion of a writer-form ISO8601 timestamp (YYYY-MM-DDTHH:MM:SS[Z|+HH:MM]). Applies to merged_at,
+    captured_at and earliest_surviving_activity_at. The parser holds earliest_surviving_activity_at to the writer's
+    form. merged_at and captured_at accept any fromisoformat value, so a hand-edited one without a T passes through
+    whole. rate_stamp is already date-only and never passed through this."""
     return value.split("T", 1)[0]
+
+
+# Stands in for a review_rounds_absence value this checkout's writer vocabulary does not know.
+_UNRECOGNIZED_ROUNDS_ABSENCE = "unrecognized"
+
+
+def _review_rounds_absence_for_export(absence: str) -> str:
+    """The code unchanged when it is empty or in pr_cost._ROUNDS_ABSENCES, else a fixed token, so a code a newer
+    checkout added never reaches the export as free text."""
+    if absence == "" or absence in pr_cost._ROUNDS_ABSENCES:
+        return absence
+    return _UNRECOGNIZED_ROUNDS_ABSENCE
 
 
 def _tokens_for_export(token_object: dict) -> tuple[dict, int]:
@@ -100,7 +111,8 @@ def _redact_pr_cost_row_for_export(
 
     - host/repo/pr_number/head_branch/machine are tokenized through five
       separate per-kind maps.
-    - merged_at/captured_at are truncated to a date.
+    - merged_at/captured_at/earliest_surviving_activity_at are truncated to a date.
+    - review_rounds_absence outside the writer's vocabulary becomes a fixed token.
     - supersedes is replaced by the caller-computed correction_count.
 
     `row["head_branch"]` is re-tokenized here even though it already holds
@@ -124,6 +136,8 @@ def _redact_pr_cost_row_for_export(
     exported["machine"] = redaction._assign_root_scoped_redact_label("machine", ordinal, row["machine"], machine_map)
     exported["merged_at"] = _pr_cost_export_date_only(row["merged_at"])
     exported["captured_at"] = _pr_cost_export_date_only(row["captured_at"])
+    exported["earliest_surviving_activity_at"] = _pr_cost_export_date_only(row["earliest_surviving_activity_at"])
+    exported["review_rounds_absence"] = _review_rounds_absence_for_export(row["review_rounds_absence"])
     exported["correction_count"] = correction_count
     del exported["head_branch"]
     del exported["supersedes"]

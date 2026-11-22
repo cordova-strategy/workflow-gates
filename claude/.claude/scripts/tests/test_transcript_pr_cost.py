@@ -29,6 +29,7 @@ from ._pr_cost_helpers import (
     _FORCE_REFUSAL_STEM,
     _FROZEN_HEADER_CASES,
     _LEDGER_DIR_MARKER,
+    _NOW,
     _PER_PR_DEGRADE_STEM,
     _PRE_MODEL_HEADER_LINE,
     _PRE_REVIEW_ROUNDS_HEADER_LINE,
@@ -38,6 +39,8 @@ from ._pr_cost_helpers import (
     _SEEDED_MACHINE_IDENTITY,
     _UPGRADE_NOTICE_STEM,
     _already_captured_line,
+    _arrange_record_run,
+    _cell_of,
     _cell_with,
     _current_line_with_cell,
     _enable_pr_cost,
@@ -45,6 +48,7 @@ from ._pr_cost_helpers import (
     _first_round,
     _force_refusal_line,
     _FrozenHeaderCase,
+    _ledger_rows,
     _make_mkstemp_create_0644,
     _merged_pr,
     _parse_pr_cost_export_row,
@@ -56,6 +60,7 @@ from ._pr_cost_helpers import (
     _rounds_pass_failure_line,
     _rounds_per_pr_line,
     _rounds_scan_start_line,
+    _run_record,
     _sample_model_breakdown,
     _sample_pr_cost_row,
     _sample_review_round,
@@ -541,7 +546,8 @@ class TestPrCostBranchRedactionJoinIntegrity:
             enrichment=None, join_confidence="medium", status=pr_cost_ledger._PR_COST_STATUS_OK, machine="ci1",
             captured_at="2026-01-01T00:00:00Z", supersedes="",
             plan_glob=pr_cost._DEFAULT_PR_COST_PLAN_FILE_GLOB, risk_globs=pr_cost._DEFAULT_PR_COST_RISK_SURFACE_GLOBS,
-            ordinal=1, branch_map={}, review_rounds_cell=None,
+            ordinal=1, branch_map={}, review_rounds_cell=None, review_rounds_absence=None,
+            capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_GLOB,
         )
         assert row["head_branch"] != self._HEXISH_BRANCH
         assert row["head_branch"] == "account-1/branch-1"
@@ -651,6 +657,7 @@ class TestPrCostReportOrchestration:
         err = capsys.readouterr().err
         assert "has no matching local corpus activity" in err
         assert "1 other branch(es)" in err
+        assert "or its sessions sit outside this run's scope" in err
         assert "old-name" not in err
         assert "new-name" not in err
 
@@ -1066,7 +1073,6 @@ class TestPrCostAsofWindowOk:
         assert pr_cost._pr_cost_asof_window_ok("not-a-timestamp", 3.0, now) is False
 
 
-_NOW = datetime(2026, 8, 10, tzinfo=UTC)
 _TOKEN_CLASS_NAMES = ("cache_read", "cache_write_5m", "cache_write_1h", "output", "input")
 _REJECTED_MARKER = "zzmarkerzz"  # passes the model_breakdown key rule, so it can stand in any key position
 # The cause each check rule prints, hand-written: "shape" and "dollars" are the rules transcript data can reach.
@@ -1109,7 +1115,8 @@ def _row_from_agg(agg: dict) -> dict:
         branch="feature-a", agg=agg, enrichment=None, join_confidence="medium",
         status=pr_cost_ledger._PR_COST_STATUS_OK, machine="ci1", captured_at="2026-01-01T00:00:00Z", supersedes="",
         plan_glob=pr_cost._DEFAULT_PR_COST_PLAN_FILE_GLOB, risk_globs=pr_cost._DEFAULT_PR_COST_RISK_SURFACE_GLOBS,
-        ordinal=1, branch_map={}, review_rounds_cell=None,
+        ordinal=1, branch_map={}, review_rounds_cell=None, review_rounds_absence=None,
+        capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_GLOB,
     )
 
 
@@ -1617,22 +1624,6 @@ class TestSeededBreakdownSweep:
         assert written_row["model_breakdown"] == row["model_breakdown"]
 
 
-def _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a", "feature-b")) -> Path:
-    """Opt the account in, give each branch one priced sonnet turn and one merged PR (numbered 1..N in branch
-    order), and fake git/gh. Returns the (not yet existing) ledger path, which sits in a marker-named directory."""
-    _enable_pr_cost(tmp_path)
-    ledger_dir = tmp_path / _LEDGER_DIR_MARKER
-    ledger_dir.mkdir()
-    ledger_path = ledger_dir / "pr-cost-ledger.tsv"
-    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
-    for index, branch in enumerate(branches):
-        _write_jsonl(fake_projects / f"sess-{index}.jsonl", [_priced("claude-sonnet-5", input=1_000_000, branch=branch)])
-    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
-        merged_prs=[_merged_pr(index + 1, branch) for index, branch in enumerate(branches)],
-    ))
-    return ledger_path
-
-
 def _fail_check_on_calls(monkeypatch, failing_call_numbers: set[int], rule: str = "dollars") -> None:
     """Make _check_model_breakdown_cell raise _ModelBreakdownCheckError(rule) on the listed 1-based calls and
     run the real check on every other call."""
@@ -1659,18 +1650,14 @@ def _per_pr_degrade_line(pr_number: int, rule: str = "dollars") -> str:
 def _count_line(count: int, entries: str) -> str:
     return (
         f"pr-cost: {count} {_COUNT_LINE_STEM} ({entries}); those rows are valid --"
-        " once the cause is fixed, re-capture each with --record --force --pr N and this run's account flags,"
-        " only while every session of that PR is still inside cleanupPeriodDays (see docs/pr-cost.md)"
+        " once the cause is fixed, re-capture each with --record --force --pr N and this run's scope and account"
+        " flags, only while every session of that PR is still inside cleanupPeriodDays (see docs/pr-cost.md)"
     )
 
 
 def _assert_no_markers(captured) -> None:
     for marker in (_LEDGER_DIR_MARKER, _PRIOR_ROW_MARKER):
         assert marker not in captured.err + captured.out, marker
-
-
-def _ledger_rows(ledger_path: Path) -> list[dict]:
-    return pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())
 
 
 class TestPrCostRecordDegradesOnBreakdownCheckFailure:
@@ -2088,8 +2075,14 @@ class TestPrCostPrescribedHandEdits:
                 id="corrupt-populated-review-rounds-cell",
             ),
             pytest.param(
-                "review_rounds", None, ("line 2", "if an editor trimmed trailing whitespace, append a tab to this line"),
-                id="editor-stripped-trailing-tab",
+                "review_rounds", None,
+                ("line 2", "if an editor trimmed trailing whitespace, append 4 tabs to this line"),
+                id="editor-stripped-the-four-trailing-tabs",
+            ),
+            pytest.param(
+                "earliest_surviving_activity_at", "2026-03-04 05:06:07+00:00",
+                ("line 2", "malformed earliest_surviving_activity_at"),
+                id="earliest-surviving-activity-at-fromisoformat-valid-but-not-writer-form",
             ),
         ],
     )
@@ -2099,10 +2092,11 @@ class TestPrCostPrescribedHandEdits:
         ledger_path = _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a",))
         header = pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE
         if broken_cell_or_tail is None:
-            # review_rounds is the current header's trailing column and may legitimately be blank, so a
-            # blank cell followed by a stripped tab is one cell short; restoring the tab is the fix.
-            broken_line = _current_line_with_cell("review_rounds", "", pr_number=50)[:-1]
+            # review_rounds, review_rounds_absence, earliest_surviving_activity_at and capture_scope are the current
+            # header's four trailing columns, and a legacy-shaped row leaves all four blank, so an editor that trims
+            # trailing whitespace strips four tabs and the row is four cells short; restoring them is the fix.
             fixed_line = _current_line_with_cell("review_rounds", "", pr_number=50)
+            broken_line = fixed_line.rstrip("\t")
         else:
             broken_line = _current_line_with_cell(broken_column, broken_cell_or_tail, pr_number=50)
             fixed_line = _current_line_with_cell(broken_column, "", pr_number=50)  # blank the cell, keeping its tab
@@ -2323,10 +2317,6 @@ def _write_account_session(root: Path, branch: str = "feature-a") -> None:
     _write_jsonl(root / "-home-user-testrepo" / "sess.jsonl", [_priced("claude-sonnet-5", input=1_000, branch=branch)])
 
 
-def _run_record(fake_projects, **arg_overrides) -> None:
-    pr_cost._pr_cost_report(_pr_cost_args(record=True, **arg_overrides), _NOW, [fake_projects.parent])
-
-
 class TestReviewRoundsCellCapture:
     @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
     def test_two_code_review_rounds_a_plan_review_a_ready_for_review_and_a_dispatch_record_the_hand_computed_cell(
@@ -2338,6 +2328,7 @@ class TestReviewRoundsCellCapture:
         _run_record(fake_projects)
 
         assert _ledger_rows(ledger_path)[0]["review_rounds"] == _FOUR_ROUND_CELL
+        assert _ledger_rows(ledger_path)[0]["review_rounds_absence"] == ""
         assert [call["roots"] for call in spy.scope_calls] == [[fake_projects.parent]] * 2
         assert len(spy.scalar_scans) == 1
         assert len(spy.round_scans) == 1
@@ -2526,7 +2517,7 @@ class TestReviewRoundScanLaziness:
 
         assert len(spy.scalar_scans) == 2
         assert [call["roots"] for call in spy.round_scans] == [[roots[0]]]
-        assert "account-2 has no local corpus activity for this branch -- skipped" in capsys.readouterr().err
+        assert "account-2 has no local corpus activity in this run's scope for this branch -- skipped" in capsys.readouterr().err
 
     def test_unforced_uncaptured_pr_runs_one_round_scan_and_prints_one_start_line(
         self, fake_projects, tmp_path, monkeypatch, capsys,
@@ -2671,7 +2662,9 @@ class TestReviewRoundsPreLockSkip:
     ):
         ledger_path = _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a",))
         pr_cost_ledger._write_pr_cost_ledger_file(
-            ledger_path, [_sample_pr_cost_row(pr_number=1, machine=_SEEDED_MACHINE_IDENTITY)],
+            ledger_path, [_sample_pr_cost_row(
+                pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO,
+            )],
         )
         spy = _spy_on_scans(monkeypatch)
 
@@ -2688,7 +2681,9 @@ class TestReviewRoundsPreLockSkip:
         ledger_path = _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a",))
         spy = _spy_on_scans(monkeypatch)
         _write_ledger_row_on_lock_acquire(
-            monkeypatch, ledger_path, _sample_pr_cost_row(pr_number=1, machine=_SEEDED_MACHINE_IDENTITY),
+            monkeypatch, ledger_path, _sample_pr_cost_row(
+                pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO,
+            ),
         )
 
         with pytest.raises(SystemExit) as exc_info:
@@ -2735,6 +2730,7 @@ class TestReviewRoundPassFailure:
         assert [(r["pr_number"], r["model_breakdown"] is not None, r["review_rounds"]) for r in rows] == [
             (1, True, None), (2, True, None),
         ]
+        assert [r["review_rounds_absence"] for r in rows] == ["pass-failed", "pass-failed"]
         reason = "were not captured (the review-round pass failed)"
         assert _rounds_per_pr_line(1, reason) in err_lines
         assert _rounds_per_pr_line(2, reason) in err_lines
@@ -2961,7 +2957,9 @@ class TestReviewRoundsCellContainment:
             _run_record(fake_projects)
 
         assert exc_info.value.code == 1
-        assert [(r["pr_number"], r["review_rounds"] is None) for r in _ledger_rows(ledger_path)] == [(1, True), (2, False)]
+        rows = _ledger_rows(ledger_path)
+        assert [(r["pr_number"], r["review_rounds"] is None) for r in rows] == [(1, True), (2, False)]
+        assert [r["review_rounds_absence"] for r in rows] == [rule, ""]
         captured = capsys.readouterr()
         reason = f"failed their {rule} check ({_REVIEW_ROUNDS_CAUSE_BY_RULE[rule]})"
         assert _rounds_per_pr_line(1, reason) in captured.err.splitlines()
@@ -2977,6 +2975,7 @@ class TestReviewRoundsCellContainment:
 
         assert exc_info.value.code == 1
         assert _ledger_rows(ledger_path)[0]["review_rounds"] is None
+        assert _ledger_rows(ledger_path)[0]["review_rounds_absence"] == "size"
         reason = f"failed their size check ({_REVIEW_ROUNDS_CAUSE_BY_RULE['size']})"
         assert _rounds_per_pr_line(1, reason) in capsys.readouterr().err.splitlines()
 
@@ -2994,7 +2993,9 @@ class TestReviewRoundsCellContainment:
             _run_record(fake_projects)
 
         assert exc_info.value.code == 1
-        assert [(r["pr_number"], r["review_rounds"] is None) for r in _ledger_rows(ledger_path)] == [(1, True), (2, False)]
+        rows = _ledger_rows(ledger_path)
+        assert [(r["pr_number"], r["review_rounds"] is None) for r in rows] == [(1, True), (2, False)]
+        assert [r["review_rounds_absence"] for r in rows] == ["build", ""]
         captured = capsys.readouterr()
         reason = f"failed their build check ({_REVIEW_ROUNDS_CAUSE_BY_RULE['build']}: RuntimeError)"
         assert _rounds_per_pr_line(1, reason) in captured.err.splitlines()
@@ -3053,6 +3054,7 @@ class TestReviewRoundsCellContainment:
         rows = _ledger_rows(ledger_path)
         assert rows[0]["review_rounds"] == _sample_review_rounds()
         assert (rows[1]["pr_number"], rows[1]["review_rounds"]) == (1, None)
+        assert rows[1]["review_rounds_absence"] == "not-built"
         err = capsys.readouterr().err
         assert _ROUNDS_PER_PR_STEM not in err
         assert _COUNT_LINE_STEM not in err
@@ -3110,18 +3112,6 @@ class TestFailedCellsCountEntry:
 
         assert exc_info.value.code == 1
         assert _count_line(1, "PR #1 (model_breakdown and review_rounds)") in capsys.readouterr().err.splitlines()
-
-
-def _cell_of(rule: int, **agents_by_skill: list[int]) -> dict:
-    """A review_rounds cell whose skill holds one round per listed `agents` value (`code_review` is the skill
-    code-review)."""
-    return {
-        "rule": rule,
-        "rounds": {
-            skill.replace("_", "-"): [{**_sample_review_round(), "agents": agents} for agents in agents_list]
-            for skill, agents_list in agents_by_skill.items()
-        },
-    }
 
 
 _REASON_PASS_FAILED = "the review-round pass failed"
@@ -3185,7 +3175,9 @@ class TestReviewRoundsAbsenceClosedSet:
                 lambda absence: pr_cost._review_rounds_degrade_reason(absence, None), KeyError, id="degrade-reason",
             ),
             pytest.param(
-                lambda absence: pr_cost._review_rounds_force_refusal(_cell_of(1, code_review=[1]), None, absence, None),
+                lambda absence: pr_cost._review_rounds_force_refusal(
+                    _cell_of(1, code_review=[1]), None, absence, None, prior_capture_scope="glob", new_capture_scope="glob",
+                ),
                 KeyError, id="force-refusal",
             ),
         ],
@@ -3202,7 +3194,9 @@ class TestReviewRoundsAbsenceClosedSet:
         assert pr_cost._review_rounds_cell_outcome(None, absence, merged_at) == (None, absence, None)
         degrade_reason = pr_cost._review_rounds_degrade_reason(absence, None)
         assert (degrade_reason is None) == (absence in pr_cost._QUIET_ROUNDS_ABSENCES)
-        assert pr_cost._review_rounds_force_refusal(_cell_of(1, code_review=[1]), None, absence, None)
+        assert pr_cost._review_rounds_force_refusal(
+            _cell_of(1, code_review=[1]), None, absence, None, prior_capture_scope="glob", new_capture_scope="glob",
+        )
 
 
 class TestReviewRoundsForceRefusal:
@@ -3214,7 +3208,9 @@ class TestReviewRoundsForceRefusal:
         pytest.param(None, "size", id="check-rule"),
     ])
     def test_a_prior_cell_that_was_never_captured_allows_every_new_cell(self, new_cell, new_absence):
-        assert pr_cost._review_rounds_force_refusal(None, new_cell, new_absence, None) is None
+        assert pr_cost._review_rounds_force_refusal(
+            None, new_cell, new_absence, None, prior_capture_scope="glob", new_capture_scope="glob",
+        ) is None
 
     @pytest.mark.parametrize("prior_cell", [
         pytest.param(_cell_of(1, code_review=[1]), id="populated-prior"),
@@ -3223,11 +3219,15 @@ class TestReviewRoundsForceRefusal:
     @pytest.mark.parametrize("new_absence,expected_reason", [
         pytest.param("pass-failed", _REASON_PASS_FAILED, id="pass-failed"),
         pytest.param("size", "the new cell failed its size check", id="size"),
-        pytest.param("no-local-activity", "this branch has no local transcript activity", id="no-local-activity"),
+        pytest.param(
+            "no-local-activity", "this branch has no local transcript activity in this run's scope", id="no-local-activity"
+        ),
         pytest.param("not-built", "this checkout does not record review rounds", id="not-built"),
     ])
     def test_an_empty_new_cell_refuses_with_the_reason_its_absence_gives(self, prior_cell, new_absence, expected_reason):
-        assert pr_cost._review_rounds_force_refusal(prior_cell, None, new_absence, None) == expected_reason
+        assert pr_cost._review_rounds_force_refusal(
+            prior_cell, None, new_absence, None, prior_capture_scope="glob", new_capture_scope="glob",
+        ) == expected_reason
 
     def test_a_build_absence_refuses_with_its_exception_class_name_and_never_a_message(self, monkeypatch):
         def raising_builder(rounds, merged_at) -> dict:
@@ -3240,6 +3240,7 @@ class TestReviewRoundsForceRefusal:
 
         reason = pr_cost._review_rounds_force_refusal(
             _cell_of(1, code_review=[1]), new_cell, new_absence, build_error_class,
+            prior_capture_scope="glob", new_capture_scope="glob",
         )
 
         assert reason == f"the new cell failed its build check ({_REVIEW_ROUNDS_CAUSE_BY_RULE['build']}: RuntimeError)"
@@ -3260,14 +3261,18 @@ class TestReviewRoundsForceRefusal:
         pytest.param(_cell_of(1, code_review=[1]), _cell_of(2, code_review=[]), id="all-empty-lists-under-a-higher-rule"),
     ])
     def test_a_cell_at_least_as_complete_or_under_a_higher_rule_is_allowed(self, prior_cell, new_cell):
-        assert pr_cost._review_rounds_force_refusal(prior_cell, new_cell, None, None) is None
+        assert pr_cost._review_rounds_force_refusal(
+            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
+        ) is None
 
     def test_more_dangling_alone_is_allowed(self):
         prior_cell = _cell_of(1, code_review=[1])
         new_cell = _cell_of(1, code_review=[1])
         new_cell["rounds"]["code-review"][0]["dangling"] += 5
 
-        assert pr_cost._review_rounds_force_refusal(prior_cell, new_cell, None, None) is None
+        assert pr_cost._review_rounds_force_refusal(
+            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
+        ) is None
 
     @pytest.mark.parametrize("prior_cell,new_cell,expected_reason", [
         pytest.param(_cell_of(2, code_review=[1]), _cell_of(1, code_review=[1]), _REASON_OLDER_RULE, id="lower-rule"),
@@ -3297,7 +3302,9 @@ class TestReviewRoundsForceRefusal:
         ),
     ])
     def test_an_older_rule_or_a_less_complete_cell_under_the_same_rule_is_refused(self, prior_cell, new_cell, expected_reason):
-        assert pr_cost._review_rounds_force_refusal(prior_cell, new_cell, None, None) == expected_reason
+        assert pr_cost._review_rounds_force_refusal(
+            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
+        ) == expected_reason
 
 
 class TestReviewRoundsForceGuardIntegration:
@@ -3324,7 +3331,9 @@ class TestReviewRoundsForceGuardIntegration:
 
     @pytest.mark.parametrize("cause,expected_reason", [
         pytest.param("pass-failed", _REASON_PASS_FAILED, id="pass-failed"),
-        pytest.param("no-local-activity", "this branch has no local transcript activity", id="no-local-activity"),
+        pytest.param(
+            "no-local-activity", "this branch has no local transcript activity in this run's scope", id="no-local-activity"
+        ),
         pytest.param("check-failed", "the new cell failed its shape check", id="builder-cell-failing-a-check-rule"),
         pytest.param(
             "build", f"the new cell failed its build check ({_REVIEW_ROUNDS_CAUSE_BY_RULE['build']}: RuntimeError)",

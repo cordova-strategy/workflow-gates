@@ -250,6 +250,7 @@ def test_transcript_analysis_pr_cost_help_exits_zero():
     assert result.returncode == 0, result.stderr
     assert "--asof-window-days" in result.stdout
     assert "default: 3" in result.stdout
+    assert "capture_scope=glob" in result.stdout
 
 
 def _seed_pr_cost_export_account(config_dir: Path) -> None:

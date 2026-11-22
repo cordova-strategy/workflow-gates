@@ -1,5 +1,5 @@
-"""The pr-cost ledger's on-disk format: column schema, status and join-confidence enums, path resolution, canonical parser and
-formatter, append-only upsert, kernel-crash-safe write, and the --record lock.
+"""The pr-cost ledger's on-disk format: column schema, status, join-confidence and capture-scope enums, path resolution,
+canonical parser and formatter, append-only upsert, kernel-crash-safe write, and the --record lock.
 
 Imports ledger_common by module (attribute access, not by name) -- see scope.py's own top-of-file comment for why."""
 from __future__ import annotations
@@ -53,10 +53,21 @@ _PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS: tuple[str, ...] = (
     *_PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS,
     "invalid_usage_records",
 )
-_PR_COST_LEDGER_COLUMNS: tuple[str, ...] = (
+# Exact column order of pre-capture_scope ledgers; never edit, and never revert to code that lacks it.
+_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS: tuple[str, ...] = (
     *_PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS,
     # Empty cell: not recorded. Every skill list empty: recorded, no rounds.
     "review_rounds",
+)
+_PR_COST_LEDGER_COLUMNS: tuple[str, ...] = (
+    *_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS,
+    # Why review_rounds is empty; empty when the cell is present, the row predates this column, or the cell was blanked
+    # by hand. Checked for shape only, so a newer checkout's value still parses.
+    "review_rounds_absence",
+    # The earliest first valid-usage turn among the branch's surviving sessions at capture; empty when the scan found none.
+    "earliest_surviving_activity_at",
+    # Empty cell: recorded before this column, so the scope is unknown.
+    "capture_scope",
 )
 _PR_COST_LEDGER_HEADER_LINE = "\t".join(_PR_COST_LEDGER_COLUMNS)
 
@@ -76,8 +87,8 @@ _PR_COST_LEDGER_LEGACY_HOST_DEFAULT = "github.com"
 _PR_COST_LEDGER_COLUMNS_BY_HEADER_LINE: dict[str, tuple[str, ...]] = {
     "\t".join(columns): columns
     for columns in (
-        _PR_COST_LEDGER_COLUMNS, _PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS, _PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS,
-        _PR_COST_LEDGER_PRE_MODEL_COLUMNS, _PR_COST_LEDGER_LEGACY_COLUMNS,
+        _PR_COST_LEDGER_COLUMNS, _PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS, _PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS,
+        _PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS, _PR_COST_LEDGER_PRE_MODEL_COLUMNS, _PR_COST_LEDGER_LEGACY_COLUMNS,
     )
 }
 # Cell text for each column added after the first header, read by name for a row whose header lacks it.
@@ -89,6 +100,9 @@ _PR_COST_LEDGER_COLUMN_DEFAULTS: dict[str, str] = {
     # default, the same reasoning _PR_COST_LEDGER_LEGACY_HOST_DEFAULT already applies to "host".
     "invalid_usage_records": "0",
     "review_rounds": "",
+    "review_rounds_absence": "",
+    "earliest_surviving_activity_at": "",
+    "capture_scope": "",
 }
 
 _PR_COST_FLOAT_COLUMNS = (
@@ -115,16 +129,37 @@ _PR_COST_STATUS_DEGRADED_RATE_LIMIT = "degraded_rate_limit"
 _PR_COST_STATUS_DEGRADED_NETWORK = "degraded_network"
 _PR_COST_STATUS_VALUES = (_PR_COST_STATUS_OK, _PR_COST_STATUS_DEGRADED_RATE_LIMIT, _PR_COST_STATUS_DEGRADED_NETWORK)
 
-# "high": direct headRefName match corroborated by plan-slug or SHA overlap.
-# "medium": direct match, uncorroborated. "low": resolved only via the
-# branch-reuse tie-break (highest commit-SHA overlap, most recent
-# mergedAt), or unresolved (no row written).
+# "high": direct headRefName match corroborated by plan-slug or SHA overlap. "medium": direct match, uncorroborated.
+# "low": the head name matched more than one merged PR, a cross-repository one included; resolved by the branch-reuse
+# tie-break (highest commit-SHA overlap, most recent mergedAt) among the same-repository matches, or unresolved (no row
+# written).
 _PR_COST_JOIN_CONFIDENCE_HIGH = "high"
 _PR_COST_JOIN_CONFIDENCE_MEDIUM = "medium"
 _PR_COST_JOIN_CONFIDENCE_LOW = "low"
 _PR_COST_JOIN_CONFIDENCE_VALUES = (
     _PR_COST_JOIN_CONFIDENCE_HIGH, _PR_COST_JOIN_CONFIDENCE_MEDIUM, _PR_COST_JOIN_CONFIDENCE_LOW,
 )
+
+_PR_COST_CAPTURE_SCOPE_REPO = "repo"
+_PR_COST_CAPTURE_SCOPE_GLOB = "glob"
+_PR_COST_CAPTURE_SCOPE_VALUES = (_PR_COST_CAPTURE_SCOPE_REPO, _PR_COST_CAPTURE_SCOPE_GLOB)
+# Leading clauses appended to an already-captured refusal, since a bare --force records the repo scope.
+_PR_COST_GLOB_RESCOPE_HINT = (
+    "; a bare --force re-scopes the row to this repo, so pass the same --projects glob to keep its scope"
+)
+_PR_COST_LEGACY_RESCOPE_HINT = (
+    "; this row predates capture scope and was read machine-wide by default, a bare --force re-scopes it"
+    " to this repo, and --projects '*' keeps the machine-wide reading"
+)
+
+
+def _rescope_hint_for_captured_scope(captured_scope: str) -> str:
+    """An empty captured_scope is a row recorded before capture_scope existed; a repo row keeps its scope and needs no hint."""
+    if captured_scope == _PR_COST_CAPTURE_SCOPE_GLOB:
+        return _PR_COST_GLOB_RESCOPE_HINT
+    if captured_scope == _PR_COST_CAPTURE_SCOPE_REPO:
+        return ""
+    return _PR_COST_LEGACY_RESCOPE_HINT
 
 
 class _PrCostLedgerParseError(Exception):
@@ -390,6 +425,19 @@ _PR_COST_JSON_COLUMN_DECODERS = {
     "review_rounds": _decode_review_rounds_cell,
 }
 
+# The one form the writer emits for earliest_surviving_activity_at. ASCII-only, so no non-ASCII digit reaches fromisoformat.
+_EARLIEST_SURVIVING_ACTIVITY_AT_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", re.ASCII)
+
+
+def _earliest_surviving_activity_at_is_writer_form(cell: str) -> bool:
+    if not _EARLIEST_SURVIVING_ACTIVITY_AT_RE.fullmatch(cell):
+        return False
+    try:
+        datetime.fromisoformat(cell.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
 
 def _parse_pr_cost_ledger_row_cells(cells: list[str], line_no: int) -> dict:
     """Validate and coerce one already-split, already-tab-separated data
@@ -432,6 +480,14 @@ def _parse_pr_cost_ledger_row_cells(cells: list[str], line_no: int) -> dict:
         raise _PrCostLedgerParseError(f"line {line_no}: unknown join_confidence")
     if row["status"] not in _PR_COST_STATUS_VALUES:
         raise _PrCostLedgerParseError(f"line {line_no}: unknown status")
+    if row["review_rounds_absence"] and not _MODEL_BREAKDOWN_KEY_RE.fullmatch(row["review_rounds_absence"]):
+        raise _PrCostLedgerParseError(f"line {line_no}: malformed review_rounds_absence")
+    if row["earliest_surviving_activity_at"] and not _earliest_surviving_activity_at_is_writer_form(
+        row["earliest_surviving_activity_at"]
+    ):
+        raise _PrCostLedgerParseError(f"line {line_no}: malformed earliest_surviving_activity_at")
+    if row["capture_scope"] and row["capture_scope"] not in _PR_COST_CAPTURE_SCOPE_VALUES:
+        raise _PrCostLedgerParseError(f"line {line_no}: unknown capture_scope")
 
     for float_col in _PR_COST_FLOAT_COLUMNS:
         try:
@@ -457,18 +513,28 @@ def _parse_pr_cost_ledger_row_cells(cells: list[str], line_no: int) -> dict:
     return row
 
 
+def _short_row_hint(missing_columns: Sequence[str]) -> str:
+    """The hint for a row short by `missing_columns`, the file header's last columns, or "" for none.
+    A column absent from _PR_COST_LEDGER_COLUMN_DEFAULTS, such as risk_surface_flag, has no empty default."""
+    shortfall = len(missing_columns)
+    defaults = [_PR_COST_LEDGER_COLUMN_DEFAULTS.get(column) for column in missing_columns]
+    if all(default == "" for default in defaults):
+        tabs = "a tab" if shortfall == 1 else f"{shortfall} tabs"
+        return f" (if an editor trimmed trailing whitespace, append {tabs} to this line)"
+    if shortfall == 1 and defaults[0]:
+        return " (restore the column's correct value instead of a bare tab)"
+    return ""
+
+
 def _current_cells_from_file_row(cells: list[str], file_columns: tuple[str, ...], line_no: int) -> list[str]:
     """One data row's cells, split under its own file header `file_columns`,
     reordered by name into current column order with each column that header
     lacks filled from _PR_COST_LEDGER_COLUMN_DEFAULTS."""
     if len(cells) != len(file_columns):
         message = f"line {line_no}: expected {len(file_columns)} columns, got {len(cells)}"
-        if len(cells) == len(file_columns) - 1:
-            last_column = file_columns[-1]
-            if last_column in _PR_COST_JSON_COLUMN_DECODERS:
-                message += " (if an editor trimmed trailing whitespace, append a tab to this line)"
-            elif _PR_COST_LEDGER_COLUMN_DEFAULTS.get(last_column, ""):
-                message += " (restore the column's correct value instead of a bare tab)"
+        shortfall = len(file_columns) - len(cells)
+        if shortfall > 0:
+            message += _short_row_hint(file_columns[-shortfall:])
         raise _PrCostLedgerParseError(message)
     cell_by_column = dict(zip(file_columns, cells, strict=True))
     return [
@@ -611,9 +677,10 @@ def _append_pr_cost_ledger_row(existing_rows: list[dict], new_row: dict, already
     re-derived here so there is one call site for that lookup per write.
     """
     if already is not None and not force:
+        rescope_hint = _rescope_hint_for_captured_scope(already["capture_scope"])
         raise ValueError(
             f"a row for pr_number={new_row['pr_number']} machine={new_row['machine']}"
-            " already exists -- pass --force with --pr to append a correcting row"
+            f" already exists -- pass --force with --pr to append a correcting row{rescope_hint}"
         )
     return [*existing_rows, new_row]
 

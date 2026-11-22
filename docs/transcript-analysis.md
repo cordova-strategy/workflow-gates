@@ -1527,7 +1527,7 @@ A scope-unverified notice follows the header on every run. In default mode a one
 **Sample output** (every figure below is illustrative filler, not derived from any real run; default mode, stdout only):
 ```
 REVIEW COST BY SIZE SOURCES (pr-cost ledger rows for this checkout's origin; active account only)
-Scope unverified -- a pr-cost ledger row does not record which project directories its --record run read, so a PR's rounds can include another repository's session on a same-named branch; see docs/transcript-analysis.md § "review-cost-by-size".
+Scope unverified -- this report selects pr-cost ledger rows by this checkout's origin repository and does not filter on the capture scope a row records. A PR's rounds can include another repository's session on a same-named branch; see docs/transcript-analysis.md § "review-cost-by-size".
 LEDGER VIEW -- publishable only under docs/private-project-redaction.md § "The owner can authorize one figure, case by case". Quote the scope-unverified notice above in the proposal.
 
 Aggregates -- code-review rounds per merged PR; size is additions + deletions

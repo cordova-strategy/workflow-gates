@@ -88,6 +88,8 @@ TEST_FILES = (
     "test_transcript_pr_cost_read_mode.py",
     "test_transcript_pr_cost_export_accounts.py",
     "test_transcript_pr_cost_ledger.py",
+    "test_transcript_pr_cost_ledger_capture_scope.py",
+    "test_transcript_pr_cost_capture_scope.py",
     "test_transcript_read_scope.py",
     "test_transcript_review_trace.py",
     "test_transcript_review_trace_deny_summary.py",

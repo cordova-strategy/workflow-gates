@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from transcript_analysis import pr_cost_export, pr_cost_ledger
+from transcript_analysis import pr_cost, pr_cost_export, pr_cost_ledger
 
 from ._pr_cost_helpers import (
     _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL,
@@ -200,10 +200,10 @@ class TestRedactPrCostRowForExportColumnShape:
         export unredacted: every column must already be triaged below as
         tokenized, date-truncated, or an explicitly-approved passthrough."""
         tokenized = {"host", "repo", "pr_number", "head_branch", "machine"}
-        date_truncated = {"merged_at", "captured_at"}
+        date_truncated = {"merged_at", "captured_at", "earliest_surviving_activity_at"}
         renamed_to_correction_count = {"supersedes"}
         approved_passthrough = {
-            "rate_stamp", "join_confidence", "status",
+            "rate_stamp", "join_confidence", "status", "capture_scope",
             "cache_read_usd", "cache_write_5m_usd", "cache_write_1h_usd", "output_usd", "input_usd",
             "cache_read_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "output_tokens", "input_tokens",
             "unpriced_turns", "unpriced_tokens", "invalid_usage_records", "turn_count", "session_count",
@@ -214,8 +214,9 @@ class TestRedactPrCostRowForExportColumnShape:
         }
         # Documentation only: model_breakdown passes through un-tokenized (TestPrCostExportModelBreakdown pins that
         # decision) and review_rounds passes through vocabulary-filtered (TestPrCostExportReviewRounds). Both stay
-        # DO-NOT-PUBLISH because they ride an export row.
-        model_bearing_row_level = {"model_breakdown", "review_rounds"}
+        # DO-NOT-PUBLISH because they ride an export row. review_rounds_absence is vocabulary-filtered beside
+        # review_rounds (TestPrCostExportCaptureScopeColumns).
+        model_bearing_row_level = {"model_breakdown", "review_rounds", "review_rounds_absence"}
         triaged = (
             tokenized | date_truncated | renamed_to_correction_count | approved_passthrough | model_bearing_row_level
         )
@@ -506,6 +507,48 @@ class TestPrCostExportTimestamps:
         assert exported["merged_at"] == "2026-03-04"
         assert exported["captured_at"] == "2026-03-08"
         assert exported["rate_stamp"] == "2026-08-02"
+
+
+class TestPrCostExportCaptureScopeColumns:
+    @pytest.mark.parametrize("cell,expected_export", [
+        pytest.param("2026-03-04T05:06:07Z", "2026-03-04", id="writer-form-truncated-to-its-date"),
+        pytest.param("", "", id="empty-stays-empty"),
+    ])
+    def test_earliest_surviving_activity_at_exports_as_its_date(
+        self, tmp_path, fake_projects, monkeypatch, cell, expected_export,
+    ):
+        row, _provenance, _text = _export_ledger_rows(
+            tmp_path, monkeypatch, [_sample_pr_cost_row(earliest_surviving_activity_at=cell)],
+        )
+
+        assert row["earliest_surviving_activity_at"] == expected_export
+
+    @pytest.mark.parametrize("capture_scope", ["repo", "glob", ""])
+    def test_capture_scope_exports_unchanged(self, tmp_path, fake_projects, monkeypatch, capture_scope):
+        row, _provenance, _text = _export_ledger_rows(
+            tmp_path, monkeypatch, [_sample_pr_cost_row(capture_scope=capture_scope)],
+        )
+
+        assert row["capture_scope"] == capture_scope
+
+    @pytest.mark.parametrize("absence", ["", *sorted(pr_cost._ROUNDS_ABSENCES)])
+    def test_a_known_review_rounds_absence_exports_unchanged(self, tmp_path, fake_projects, monkeypatch, absence):
+        row, _provenance, _text = _export_ledger_rows(
+            tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds_absence=absence)],
+        )
+
+        assert row["review_rounds_absence"] == absence
+
+    def test_an_unknown_shape_valid_review_rounds_absence_exports_as_unrecognized_without_its_raw_text(
+        self, tmp_path, fake_projects, monkeypatch,
+    ):
+        unknown_absence = "zzfuturereasonzz"
+        row, _provenance, text = _export_ledger_rows(
+            tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds_absence=unknown_absence)],
+        )
+
+        assert row["review_rounds_absence"] == "unrecognized"
+        assert unknown_absence not in text
 
 
 class TestPrCostExportRefusals:
