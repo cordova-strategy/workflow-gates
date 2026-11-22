@@ -22,8 +22,10 @@ from replay_bench.spend import SpendAppendError, SpendFile, SpendLine
 from review_bench import runner as review_runner
 from review_bench.runner import HarnessInvalidatedError, RunStore
 from test_replay_bench_runner_support import (
+    EDITED_RUNNER,
     MODEL_ID,
     READING,
+    RUNNER,
     Scenario,
     add_second_account,
     build_replay_world,
@@ -184,8 +186,12 @@ class TestACompletedCampaign:
                 "toolkit-0.json", "toolkit-0.diff", "bare-0.json", "bare-0.diff",
             }
         assert env.completed() == {task.id for task in env.world.tasks}
+        for task in env.world.tasks:
+            for record in records.read_block_records(env.campaign_dir, task.id):
+                assert (record.runner_commit, record.runner_dirty) == (RUNNER.commit, RUNNER.has_uncommitted_changes)
         printed = capsys.readouterr().out
         assert printed.count("arms with no valid run: none") == 2
+        assert printed.count("runs with no text and no captured change: none") == 2
         assert "cumulative $2.00 of $100.00" in printed
 
     def test_the_first_start_prints_the_ceiling_line(self, env, capsys):
@@ -194,6 +200,192 @@ class TestACompletedCampaign:
         env.run(env.world.launch())
 
         assert "2 runs in 1 blocks; nominal ceiling $4.00" in capsys.readouterr().out
+
+
+class TestABlockOfSilentNoOps:
+    def test_a_campaign_of_runs_that_changed_nothing_and_said_nothing_counts_them_ok_and_halts_nowhere(self, env, capsys):
+        """A silent no-op run is `ok`, so it never retries and never counts toward the failed-blocks halt."""
+        silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
+
+        assert env.run(env.world.launch(lambda _number, _agent: silent_no_op)) == 0
+
+        printed = capsys.readouterr().out
+        assert printed.count("arms with no valid run: none") == len(env.world.tasks)
+        assert printed.count("runs with no text and no captured change: toolkit 1; bare 1") == len(env.world.tasks)
+        assert env.completed() == {task.id for task in env.world.tasks}
+        for task in env.world.tasks:
+            for record in records.read_block_records(env.campaign_dir, task.id):
+                assert (record.status, record.attempts, record.empty_final_text) == ("ok", 1, True)
+        lines = summary.summarize(env.campaign_dir, local_dir=env.world.local_dir, budget_cap_usd=CAP)
+        for arm_name in ("toolkit", "bare"):
+            diagnostics = next(line for line in lines if line.startswith(f"  {arm_name}: unclassified-line share"))
+            assert f"runs with no non-test code line {len(env.world.tasks)}," in diagnostics
+            assert f"runs with an empty final text {len(env.world.tasks)}," in diagnostics
+
+    @pytest.mark.parametrize("runs_per_arm", [1, 2])
+    def test_the_progress_line_names_only_the_arm_whose_runs_left_neither_text_nor_a_change(
+        self, env, capsys, runs_per_arm,
+    ):
+        """Kills: a count taken from one arm for both, and a per-block flag in place of a per-run count. The toolkit
+        arm ends with no text but changes a file, so it is not named."""
+        env.world.tasks[:] = env.world.tasks[:1]
+        silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
+        changed_file_without_text = Scenario(final_text="")
+
+        def by_call(call):
+            return silent_no_op if call.agent_name == arms.BARE.agent_name else changed_file_without_text
+
+        assert env.run(
+            env.world.launch(by_call=by_call), k=runs_per_arm, cumulative_stop_usd=200, account_stop_usd=200,
+        ) == 0
+
+        progress_line = next(
+            line for line in capsys.readouterr().out.splitlines() if line.startswith(env.world.tasks[0].id)
+        )
+        clause = next(
+            part for part in progress_line.split(" | ")
+            if part.startswith("runs with no text and no captured change: ")
+        )
+        assert clause == f"runs with no text and no captured change: bare {runs_per_arm}"
+
+
+class TestTheRunnerProvenanceInTheManifest:
+    @pytest.mark.parametrize("has_uncommitted_changes", [False, True])
+    def test_a_new_campaign_pins_the_runners_commit_and_dirty_flag(self, env, monkeypatch, has_uncommitted_changes):
+        env.world.tasks[:] = env.world.tasks[:1]
+        reading = dataclasses.replace(RUNNER, has_uncommitted_changes=has_uncommitted_changes)
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: reading)
+
+        env.run(env.world.launch())
+
+        manifest = json.loads((env.campaign_dir / "manifest.json").read_text())
+        assert (manifest["runner_commit"], manifest["runner_dirty"]) == (RUNNER.commit, has_uncommitted_changes)
+
+    def test_a_resume_does_not_rewrite_the_pinned_provenance(self, env, monkeypatch):
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        pinned = (env.campaign_dir / "manifest.json").read_text()
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: EDITED_RUNNER)
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        assert (env.campaign_dir / "manifest.json").read_text() == pinned
+        readings_of_records = {
+            (record.runner_commit, record.runner_dirty)
+            for task in env.world.tasks for record in records.read_block_records(env.campaign_dir, task.id)
+        }
+        assert readings_of_records == {
+            (RUNNER.commit, RUNNER.has_uncommitted_changes), (EDITED_RUNNER.commit, EDITED_RUNNER.has_uncommitted_changes),
+        }, "each process stamps its blocks with its own reading"
+
+
+class TestTheRunnerProbeOfACampaignStart:
+    def test_each_process_probes_the_runner_checkout_once_however_many_blocks_it_runs(self, env, monkeypatch):
+        """Kills: a probe per block, which stamps a block with a checkout state the running code never loaded."""
+        probes = []
+
+        def counting_probe():
+            probes.append(1)
+            return RUNNER
+
+        monkeypatch.setattr(campaign, "read_runner_provenance", counting_probe)
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        assert len(probes) == 1
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        assert len(probes) == 2, "the resume takes its own reading, once, for the blocks it runs"
+
+    def test_every_block_of_a_process_carries_the_reading_taken_at_its_start(self, env, monkeypatch, capsys):
+        """Kills: a probe consulted again once the campaign is running, such as the one at each block's start or the
+        one behind the `campaign <id>` line."""
+        readings = iter([RUNNER, EDITED_RUNNER, EDITED_RUNNER, EDITED_RUNNER])
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: next(readings))
+
+        assert env.run(env.world.launch()) == 0
+
+        stamped = {
+            (record.runner_commit, record.runner_dirty)
+            for task in env.world.tasks for record in records.read_block_records(env.campaign_dir, task.id)
+        }
+        assert len(env.world.tasks) > 1
+        assert all(records.read_block_records(env.campaign_dir, task.id) for task in env.world.tasks)
+        assert stamped == {(RUNNER.commit, RUNNER.has_uncommitted_changes)}
+        campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
+        assert RUNNER.commit in campaign_line and EDITED_RUNNER.commit not in campaign_line
+
+    def test_a_resume_at_another_reading_prints_the_pinned_and_the_current_reading_in_its_campaign_line(
+        self, env, monkeypatch, capsys,
+    ):
+        """Kills: a resume's campaign line that names only the resuming checkout's reading."""
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        capsys.readouterr()
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: EDITED_RUNNER)
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
+        assert (
+            f"runner commit {RUNNER.commit} at the first start; this resume runs runner commit {EDITED_RUNNER.commit}"
+        ) in campaign_line
+
+    def test_a_resume_at_the_pinned_reading_prints_it_once_in_its_campaign_line(self, env, capsys):
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        capsys.readouterr()
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        campaign_line = next(line for line in capsys.readouterr().out.splitlines() if line.startswith("campaign "))
+        assert campaign_line.count(RUNNER.commit) == 1
+        assert "at the first start" not in campaign_line
+
+
+class TestTheRunnerClauseOfTheCampaignLine:
+    def test_a_campaign_with_no_manifest_describes_the_current_reading(self, tmp_path):
+        assert campaign.runner_clause_for(tmp_path / "absent", RUNNER) == f"runner commit {RUNNER.commit}"
+
+    def test_a_resume_at_the_recorded_reading_describes_it_once(self, pinned):
+        assert campaign.runner_clause_for(pinned.manifest_path.parent, RUNNER) == f"runner commit {RUNNER.commit}"
+
+    def test_a_resume_at_another_reading_names_both_the_recorded_and_the_current_one(self, pinned):
+        assert campaign.runner_clause_for(pinned.manifest_path.parent, EDITED_RUNNER) == (
+            f"runner commit {RUNNER.commit} at the first start; this resume runs "
+            f"runner commit {EDITED_RUNNER.commit}, with uncommitted changes under evals/"
+        )
+
+    def test_a_manifest_that_lacks_the_runner_fields_names_the_current_reading(self, pinned):
+        manifest = json.loads(pinned.manifest_path.read_text())
+        pinned.manifest_path.write_text(
+            json.dumps({key: value for key, value in manifest.items() if not key.startswith("runner_")})
+        )
+
+        assert campaign.runner_clause_for(pinned.manifest_path.parent, EDITED_RUNNER) == (
+            f"runner commit {EDITED_RUNNER.commit}, with uncommitted changes under evals/"
+        )
+
+    @pytest.mark.parametrize(
+        "manifest_text",
+        [
+            pytest.param(lambda manifest: "not json", id="unparseable"),
+            pytest.param(lambda manifest: "null", id="json-null"),
+            pytest.param(lambda manifest: "5", id="json-number"),
+        ],
+    )
+    def test_a_manifest_that_records_no_provenance_says_so(self, pinned, manifest_text):
+        pinned.manifest_path.write_text(manifest_text(json.loads(pinned.manifest_path.read_text())))
+
+        assert campaign.runner_clause_for(pinned.manifest_path.parent, RUNNER) == "runner commit not recorded"
+
+    def test_a_manifest_holding_a_forged_commit_reads_as_unreadable_and_prints_none_of_it(self, pinned):
+        """Kills: echoing a stored `runner_commit` unchecked, which lets a hand-edited manifest forge a line of the
+        `campaign <id>` output."""
+        manifest = json.loads(pinned.manifest_path.read_text())
+        manifest["runner_commit"] = "a" * 40 + "\nforged report line"
+        pinned.manifest_path.write_text(json.dumps(manifest))
+
+        clause = campaign.runner_clause_for(pinned.manifest_path.parent, RUNNER)
+
+        assert clause.startswith("runner commit unreadable")
+        assert "forged" not in clause and "\n" not in clause
 
 
 class BlockBufferedStream(io.StringIO):
@@ -436,9 +628,10 @@ class PinnedCampaign:
         self.accounts = {self.tasks[0].source_repo: self.account}
         self.manifest_path = self.local_dir / "campaigns" / "test" / "manifest.json"
         monkeypatch.setattr(review_runner, "read_environment_record", lambda *, checkout_root=None: READING)
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: RUNNER)
         self.manifest_path.parent.mkdir(parents=True)
         self.manifest_path.write_text(json.dumps(campaign._manifest_for(
-            self.config(), self.accounts, {self.account.key: READING},
+            self.config(), self.accounts, {self.account.key: READING}, RUNNER,
         )))
 
     def config(self, **overrides) -> campaign.CampaignConfig:
@@ -516,6 +709,27 @@ class TestAResumeAgainstThePinnedManifest:
     def test_a_resume_with_the_pinned_inputs_is_not_refused_on_the_manifest(self, pinned):
         """The control for the refusals above: with nothing changed the manifest check passes and the resume goes on,
         here to the smoke gate, which no smoke record passes."""
+        with pytest.raises(HarnessInvalidatedError, match="no passing smoke"):
+            pinned.resume()
+
+
+class TestAResumeOfAManifestWithoutRunnerProvenance:
+    def test_it_completes_without_pinning_the_missing_fields(self, env):
+        """A manifest that lacks the runner fields resumes: they are recorded, not compared."""
+        assert env.run(env.world.launch(), cumulative_stop_usd=EARLY_STOP_USD, allow_early_stop=True) == 1
+        manifest_path = env.campaign_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        without_runner_fields = json.dumps({key: value for key, value in manifest.items() if not key.startswith("runner_")})
+        manifest_path.write_text(without_runner_fields)
+
+        assert env.run(env.world.launch(), cumulative_stop_usd=100.0) == 0
+
+        assert env.completed() == {task.id for task in env.world.tasks}
+        assert manifest_path.read_text() == without_runner_fields
+
+    def test_a_changed_runner_commit_is_not_refused_either(self, pinned, monkeypatch):
+        monkeypatch.setattr(campaign, "read_runner_provenance", lambda: EDITED_RUNNER)
+
         with pytest.raises(HarnessInvalidatedError, match="no passing smoke"):
             pinned.resume()
 
@@ -807,15 +1021,16 @@ class TestEnvironmentDrift:
 
     def test_an_unlistable_worktree_set_at_a_later_blocks_start_raises(self, env):
         env.world.tasks[:] = env.world.tasks[:2]
-        listings = []
+        source_repo_listings = []
 
-        def fail_the_second_listing(checkout):
-            listings.append(checkout)
-            if len(listings) == 2:
-                raise HarnessInvalidatedError("git worktree list failed")
+        def fail_the_second_source_repo_listing(checkout):
+            if checkout == Path(env.world.task.source_repo):
+                source_repo_listings.append(checkout)
+                if len(source_repo_listings) == 2:
+                    raise HarnessInvalidatedError("git worktree list failed")
             return ()
 
-        env.monkeypatch.setattr(review_runner, "_worktree_top_levels", fail_the_second_listing)
+        env.monkeypatch.setattr(review_runner, "_worktree_top_levels", fail_the_second_source_repo_listing)
         launch_stub = env.world.launch()
 
         with pytest.raises(HarnessInvalidatedError, match="could not list the worktrees"):

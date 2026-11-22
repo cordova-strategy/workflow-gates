@@ -11,6 +11,7 @@ Run with: pytest claude/.claude/
 from __future__ import annotations
 
 import ast
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -18,7 +19,24 @@ import sys
 from pathlib import Path
 
 import pytest
+from _timing_split import SERIAL_PASS_MARKER_EXPRESSION, TIMING_MARKER, scan_timing_marks
 from helpers import REPO_ROOT
+from pytest import ExitCode
+
+_SELECT_TESTS_SCRIPT = REPO_ROOT / "claude" / ".claude" / "scripts" / "select-tests.py"
+_select_tests_spec = importlib.util.spec_from_file_location("select_tests", _SELECT_TESTS_SCRIPT)
+_select_tests = importlib.util.module_from_spec(_select_tests_spec)
+_select_tests_spec.loader.exec_module(_select_tests)
+FULL_SUITE_TARGETS = _select_tests.FULL_SUITE_TARGETS
+
+# A change to this file selects this guard through select-tests.py's test-tree packaging row.
+CPU_SATURATING_TEST_FILE = "claude/.claude/scripts/tests/test_cursor_adapter_shim_hook_run.py"
+CPU_SATURATING_TEST_NODE_ID = (
+    f"{CPU_SATURATING_TEST_FILE}::TestShimHookRun::"
+    "test_a_hook_that_prints_a_deny_and_exits_at_once_denies_every_time_under_cpu_contention"
+)
+# A failed collect-only prints its error after the node-ID listing, so the stdout tail holds the error and the head is noise.
+COLLECTION_FAILURE_STDOUT_TAIL_LINES = 40
 
 
 class TestNestedWorktreeExcludedFromCollection:
@@ -204,16 +222,24 @@ class TestTimingMarkerCoverageParity:
     silently broken. This does NOT catch a test losing its `timing` marker
     — `not timing` and `timing` are complementary by construction, so a
     test moving between the two buckets leaves their sum unchanged
-    regardless."""
+    regardless.
+
+    The same collections pin that select-tests.py's scan marks the files pytest collects `timing` tests from. A
+    separate collection of the CPU-saturating test's file pins that the serial pass's expression deselects that
+    test."""
 
     @staticmethod
-    def _collected_node_ids(marker_expr: str | None) -> tuple[list[str], subprocess.CompletedProcess]:
+    def _collected_node_ids(
+        marker_expr: str | None,
+        targets: tuple[str, ...] | list[str] = FULL_SUITE_TARGETS,
+        accepted_exit_codes: tuple[int, ...] = (ExitCode.OK,),
+    ) -> tuple[list[str], int]:
         # -n0: unnecessary defensive redundancy, not a requirement — xdist's
         # own pytest_configure() unconditionally skips itself on
         # --collect-only regardless of -n, so this collect-only run was
         # never going to spawn workers even without it.
         args = [
-            sys.executable, "-m", "pytest", "claude/.claude/",
+            sys.executable, "-m", "pytest", *targets,
             "--collect-only", "-q", "-n0", "--rootdir", str(REPO_ROOT),
         ]
         if marker_expr is not None:
@@ -225,23 +251,51 @@ class TestTimingMarkerCoverageParity:
             text=True,
             timeout=120,
         )
-        node_ids = [line for line in result.stdout.splitlines() if "::" in line]
-        return node_ids, result
+        stdout_tail = "\n".join(result.stdout.splitlines()[-COLLECTION_FAILURE_STDOUT_TAIL_LINES:])
+        assert result.returncode in accepted_exit_codes, (
+            f"collection failed (exit {result.returncode}) for -m {marker_expr!r} over {list(targets)}; "
+            f"stderr:\n{result.stderr}\n"
+            f"last {COLLECTION_FAILURE_STDOUT_TAIL_LINES} stdout lines:\n{stdout_tail}"
+        )
+        return [line for line in result.stdout.splitlines() if "::" in line], result.returncode
 
-    def test_not_timing_plus_timing_selection_equals_unfiltered_total(self):
-        not_timing_ids, not_timing_result = self._collected_node_ids("not timing")
-        timing_ids, timing_result = self._collected_node_ids("timing")
-        all_ids, all_result = self._collected_node_ids(None)
+    def test_the_timing_partition_sums_to_the_unfiltered_total_and_the_scan_matches_the_timing_files(self):
+        not_timing_ids, _ = self._collected_node_ids("not timing")
+        timing_ids, _ = self._collected_node_ids("timing")
+        all_ids, _ = self._collected_node_ids(None)
+        scan = scan_timing_marks(FULL_SUITE_TARGETS, [], repo_root=REPO_ROOT)
 
-        for result in (not_timing_result, timing_result, all_result):
-            assert result.returncode == 0, (
-                f"collection failed (exit {result.returncode}):\n{result.stdout}\n{result.stderr}"
-            )
+        assert scan.marked_files, "the scan found no file holding the timing mark text in the real tree"
+        timing_files = {node_id.split("::", 1)[0] for node_id in timing_ids}
+        unmarked_timing_files = sorted(timing_files - set(scan.marked_files))
+        assert not unmarked_timing_files, (
+            f"pytest collects a timing test from {unmarked_timing_files}, whose text lacks the mark; the scan decides "
+            "from file text whether a selection holds timing tests, so the mark must sit in the file pytest collects "
+            "the test from"
+        )
 
         assert len(not_timing_ids) + len(timing_ids) == len(all_ids), (
-            f'-m "not timing" selected {len(not_timing_ids)}, -m timing selected '
-            f"{len(timing_ids)}, but the unfiltered run collected {len(all_ids)} — "
+            f'-m "not timing" selected {len(not_timing_ids)}, -m timing selected {len(timing_ids)}, '
+            f"but the unfiltered run collected {len(all_ids)} — "
             "pytest's mark-filtering disagrees with itself across these three invocations"
+        )
+
+        roots_without_ids = [root for root in FULL_SUITE_TARGETS if not any(node_id.startswith(root) for node_id in all_ids)]
+        assert not roots_without_ids, f"the unfiltered collection holds no test ID under {roots_without_ids}"
+
+    def test_the_serial_pass_expression_deselects_the_cpu_saturating_test(self):
+        deselected_expression = f"{TIMING_MARKER} and not ({SERIAL_PASS_MARKER_EXPRESSION})"
+
+        selected_ids, exit_code = self._collected_node_ids(
+            deselected_expression, [CPU_SATURATING_TEST_FILE], accepted_exit_codes=(ExitCode.OK, ExitCode.NO_TESTS_COLLECTED),
+        )
+
+        assert exit_code == ExitCode.OK and set(selected_ids) == {CPU_SATURATING_TEST_NODE_ID}, (
+            f"the serial pass's expression does not deselect exactly {CPU_SATURATING_TEST_NODE_ID} from "
+            f"{CPU_SATURATING_TEST_FILE} (exit {exit_code}, selected {selected_ids}). Either the test lost its "
+            "saturates_cpu mark or no longer carries timing beside it, the test or its class was renamed "
+            "(update CPU_SATURATING_TEST_NODE_ID in the same change as the rename), or a second test in the file "
+            "carries both marks."
         )
 
 

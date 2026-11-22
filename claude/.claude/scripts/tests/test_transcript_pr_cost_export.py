@@ -330,6 +330,20 @@ class TestPrCostExportReviewRounds:
         assert provenance["review_rounds_dropped_keys"] == "0"
         assert _DROPPED_LINE_PREFIX not in capsys.readouterr().err
 
+    def test_a_haiku_5_5_long_prompt_group_survives_export_with_its_tokens_and_no_dropped_count(
+        self, tmp_path, fake_projects, monkeypatch, capsys,
+    ):
+        def add_haiku_5_5_long_prompt_group(cell: dict) -> None:
+            _first_round(cell)["main_tokens"].update({"claude-haiku-5-5": {"long_prompt": _tokens(input=1_000_000)}})
+
+        row, provenance, _text = _export_one_row(tmp_path, monkeypatch, _cell_with(add_haiku_5_5_long_prompt_group))
+
+        assert pr_cost_ledger._decode_review_rounds_cell(row["review_rounds"], 2) == _cell_with(
+            add_haiku_5_5_long_prompt_group
+        )
+        assert provenance["review_rounds_dropped_keys"] == "0"
+        assert _DROPPED_LINE_PREFIX not in capsys.readouterr().err
+
     def test_the_provenance_key_follows_legacy_machine_value_rows(self, tmp_path, fake_projects, monkeypatch):
         _row, provenance, _text = _export_one_row(tmp_path, monkeypatch, _sample_review_rounds())
 
