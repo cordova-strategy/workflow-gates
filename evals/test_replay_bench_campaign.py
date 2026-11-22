@@ -204,8 +204,7 @@ class TestACompletedCampaign:
 
 class TestABlockOfSilentNoOps:
     def test_a_campaign_of_runs_that_changed_nothing_and_said_nothing_counts_them_ok_and_halts_nowhere(self, env, capsys):
-        """Pins the current outcome: a silent no-op run is `ok`, so it never retries and never counts toward the
-        failed-blocks halt."""
+        """A silent no-op run is `ok`, so it never retries and never counts toward the failed-blocks halt."""
         silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
 
         assert env.run(env.world.launch(lambda _number, _agent: silent_no_op)) == 0

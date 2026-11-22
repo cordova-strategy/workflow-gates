@@ -1604,13 +1604,15 @@ once the set changes.
   each task's changed paths and reference metrics at mining time, and neither
   the task-set hash nor the manifest records it, so a resume does not refuse a
   set mined under another rule.
-- A task's fixture drops every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`,
-  the root `.claude` directory and the root `.mcp.json`, each matched
-  case-insensitively. A `.claude` directory below the root keeps its `scripts`
-  subdirectory and loses every other entry, so a commit that changes only files
-  under `claude/.claude/scripts/` stays a task. A `.claude` nested under a kept
-  `scripts` subdirectory goes in full. A changed path the fixture drops does not
-  count as a task's changed path.
+- A task's fixture drops the entries that would load a checkout's own
+  instructions, each matched case-insensitively:
+  - Everywhere, every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`. At the
+    root, also the `.claude` directory and the `.mcp.json` file.
+  - A `.claude` directory below the root keeps its `scripts` subdirectory and
+    loses every other entry, so a commit that changes only files under
+    `claude/.claude/scripts/` stays a task.
+  - A `.claude` nested under a kept `scripts` subdirectory goes in full.
+  - A changed path the fixture drops does not count as a task's changed path.
 - `tasks` prints the kept and skipped counts by reason, the largest kept tasks
   by base-tree size and by entry count, and every raw author and committer
   identity among the commits examined, so you can see whom the trust list
@@ -1830,16 +1832,15 @@ recorded and never compared:
 - A stored commit that is not a full hex object name, or a stored flag that is
   not a boolean, reads as unreadable in the manifest. A run record holding
   either is refused as unreadable.
-- A checkout that lacks `runner_commit`, `runner_dirty`, `empty_final_text` or
-  `denied_tool_calls` refuses a record that carries it, because it refuses a
-  record with an unknown key.
 - The flag has these limits:
-  - An edit outside `evals/` does not set it.
   - The bench imports a config-dir helper from `claude/.claude/scripts/`, so an
     uncommitted edit there does not set it.
-  - A file the ignore rules above hide does not set it.
   - An entry marked `skip-worktree` or `assume-unchanged` does not set it.
   - It holds no digest of the uncommitted diff.
+
+An older checkout refuses a run record written by this one, because it refuses a
+record with an unknown key, and this one adds `runner_commit`, `runner_dirty`,
+`empty_final_text` and `denied_tool_calls`.
 
 After each block `run` prints one progress line: the task, each arm's `ok` and
 `missing` counts, the arms with no valid run and their reasons, the runs with
@@ -1931,8 +1932,8 @@ missing with its reason.
     arm's valid runs as the `no non-test code line` count is. A run that fails a
     later check keeps the flag in its record and stays out of that count.
   - A run that changed nothing and ended with no text is `ok` with no code line.
-    It does not count toward a failed block and never trips the failed-blocks
-    halt, and `smoke` still passes it. It is named, with no effect on the
+    It never counts toward a failed block, so it never trips the failed-blocks
+    halt. `smoke` still passes it. It is named, with no effect on the
     outcome, in these places:
     - The `run` progress line, as the arm's count of runs with no text and no
       captured change, meaning an empty final text and no changed path.

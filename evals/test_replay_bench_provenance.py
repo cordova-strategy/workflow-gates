@@ -206,6 +206,7 @@ class TestManifestRoundTrip:
         [
             pytest.param({}, id="neither-key"),
             pytest.param({"runner_commit": "a" * 40}, id="no-dirty-key"),
+            pytest.param({"runner_dirty": True}, id="no-commit-key"),
         ],
     )
     def test_a_manifest_missing_a_key_reads_as_not_recorded(self, manifest):
