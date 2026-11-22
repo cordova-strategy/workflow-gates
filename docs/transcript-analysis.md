@@ -32,8 +32,8 @@ For question-driven routing ("which subcommand answers X?"), use the `/transcrip
 - **transcripts scanned** — files matched by the run's `--projects`/`--this-repo` scope, counted before any `--branches`/`--since` record filter narrows what is priced. It is legitimately far larger than the priced counts.
 - **unreadable** — the subset of scanned transcripts that failed an open probe. A subset, never an addition.
 - **project directory that fails to resolve** (an unreadable ancestor on an existing entry) — how a scan treats it depends on the scan path:
-  - `--this-repo` and multi-root scans of every subcommand except `review-round-cost --pooled`, `read-cost` and `routing-guard --capture` abort the whole invocation with an uncaught error, with the path stripped from the message.
-  - `review-round-cost --pooled`, `read-cost` and `routing-guard --capture` record it as a scan gap instead. `routing-guard --capture` then refuses with exit 2 (see the exit-code table under "routing-guard").
+  - `--this-repo` and multi-root scans of every subcommand except `review-round-cost --pooled`, `read-cost`, `reviewer-reads` and `routing-guard --capture` abort the whole invocation with an uncaught error, with the path stripped from the message.
+  - `review-round-cost --pooled`, `read-cost`, `reviewer-reads` and `routing-guard --capture` record it as a scan gap instead. `routing-guard --capture` then refuses with exit 2 (see the exit-code table under "routing-guard").
   - A single-root glob scan (any `--projects` value, including the default, on a one-root scan) skips it silently, because `Path.glob` swallows the error.
   - `cost`'s per-root scan diagnostic also skips it silently.
   - A project directory or transcript that is a symlink loop reads as absent and is skipped without aborting.
@@ -82,16 +82,18 @@ Most subcommands' default scan corpus is a **union**, not a single account. The 
 - `cost-counts`: reads the active account's `projects` directory only (see its section below).
 - `review-cost-by-size` without `--all-accounts`: reads the active account's pr-cost ledger only, for the rows recorded for this repository. A non-empty `PR_COST_LEDGER_PATH` makes it read that one file instead (see its section below).
 - `read-cost`: reads the active account's `projects` directory only, scoped to this repository (see its section below).
+- `reviewer-reads`: reads the active account's `projects` directory and review-ledger directory only, scoped to this repository and an explicit date window (see its section below).
 - `routing-guard`: under `--capture` reads only the one root the top-level `--config-dir` names, and otherwise reads no transcripts (see its section below).
 - `user-input`: reads the active account's `projects` directory only, narrowed by `--projects GLOB`.
 
 List additional Claude Code config directories, one absolute path per line, in `~/.claude/transcript-config-dirs` (blank lines and `#`-comments ignored, a leading `~`/`~/` expands to `$HOME`) — a machine running several accounts to keep engagements apart (`~/.config/claude-accounts/<account>/`, for example) declares each one here. The active profile's own config dir is always scanned first regardless of this file; every declared entry is added to it, deduped by resolved path. `post-crash-sessions.py` reads this same file but with a looser `sessions/`-or-`projects/` validity predicate than the `projects/`-only predicate `declared_transcript_roots()` applies here — its scanned-root count can legitimately differ from this toolkit's.
 
-The resolved-scope header (`<NAME> SOURCES (...)`) states the root count unconditionally on every funnel site that prints it, even at one root with nothing declared — that line is what makes a scan self-disclosing about whether it covered one account or several, including on a zero-match run, where it is the only thing separating a wrongly-scoped scan from a correctly-scoped empty one — except these three, which print no root count:
+The resolved-scope header (`<NAME> SOURCES (...)`) states the root count unconditionally on every funnel site that prints it, even at one root with nothing declared — that line is what makes a scan self-disclosing about whether it covered one account or several, including on a zero-match run, where it is the only thing separating a wrongly-scoped scan from a correctly-scoped empty one — except these four, which print no root count:
 
 - `cost --summary`: prints no header at all and states its repository-and-account scope on its own `Scope:` line instead.
 - `review-cost-by-size`: its header names the pr-cost ledger rows for this checkout's origin and whether it read the active account or every declared account. Under a non-empty `PR_COST_LEDGER_PATH` it prints `PR_COST_LEDGER_PATH file, account scope unverified` instead.
 - `read-cost`: its header names the scope label, the active account and this repository, and states that the declared-roots file was not consulted.
+- `reviewer-reads`: its header names the scope label, the active account and this repository, and states that the declared-roots file was not consulted.
 
 `review-trace` additionally prints `No sessions matched in scope.` under the header when nothing matched, on both its default timeline and `--deny-summary`. Populating this file also changes `cost --no-redact`'s behavior even with no `--config-dir` flag involved: it now exits 2 once more than one root is in scope, where it previously always worked with zero declared roots (see the `cost` section's `--no-redact` entry below).
 
@@ -1626,6 +1628,145 @@ The command refuses a top-level `--config-dir` (exit 2). It has no `--config-dir
 **Publication.** Publishes under `docs/private-project-redaction.md` § "This repository, one account". Publish only from this repository's own checkout, because `--this-repo` takes its worktrees from the working directory's checkout. It reads the active config directory's `projects/` alone, and any symlink under that directory is followed. Cite the command beside any figure. A new figure from it still takes the check in `docs/private-project-redaction.md` § "New figures against the grandfathered set".
 
 **When to reach for it.** Answer "how much of spend sits in large whole-file reads, and in which agent types", for example to re-check whether the cost reopens `docs/design-decisions/large-read-gate-declined.md`'s decision. A run that reports `sessions=0` measured nothing and does not count toward that re-check, for example when the run was under an account that does not hold this repository's transcripts. `read-cost` has no date filter. Its figures cover every in-scope transcript Claude Code still retains. Claude Code deletes transcripts after `cleanupPeriodDays`, default 30 days, so the reopen check's 1% test is evaluated on the corpus retained when the command runs. The section "Scoping to this repo: `--this-repo`" states what that scope leaves out. It scans every retained transcript for this repository's worktrees, prints nothing between the header and the report, and can take several minutes. Reach for `read-scope` instead for the Read-call census by `offset`/`limit` shape.
+
+## reviewer-reads
+
+**Purpose.** How reviewer subagents' whole-file `Read` calls came back (complete, partial or refused), whether the reviewer read on afterwards, what share of reviewer spend went to `Read`, the review ledger's terminal dispositions, and the harness versions and models behind the reviewer windows. Run over a window before and a window after a change to how reviewers read files, with the same window length, account and checkout, it shows what the change did to those figures. It is a measurement of tool results, not of whether a review was good.
+
+**Flags.**
+- `--this-repo` -- required. The command exits 2 without it and refuses any `--projects` scope.
+- `--since DATE` and `--until DATE` -- both required, zero-padded `YYYY-MM-DD` UTC dates. The window runs from `--since` at 00:00:00Z up to, not including, 00:00:00Z on the day after `--until`, so `--since` equal to `--until` is one day. The command exits 2 before any scan for a missing date, for an unpadded date such as `2026-1-5`, and for a `--since` after `--until`. There is no relative `--since Nd` form, because a relative window cannot be re-run to the same figures. The usage line shows both flags as optional, and each flag's help says "Required", because the command checks them itself and exits 2 under its own label.
+
+The command refuses a top-level `--config-dir` (exit 2). It has no `--config-dir` flag of its own and does not consult `~/.claude/transcript-config-dirs`, a file that sits in the home directory whichever account is active. It reads the active config dir's `projects/` directory (`$CLAUDE_CONFIG_DIR` when set, else the default config dir) and its `review-narrative-ledger/` directory.
+
+**Scope.** `git worktree list` is called once. Its paths feed both the transcript scope, as project-directory slugs, and the ledger-file scope, as hashed file names, so the two halves cannot see different worktree sets. The reviewer-yield section reads a second, subagent-inclusive iterator over the same one root.
+
+**Populations.**
+- *Reviewer windows* are subagent transcripts whose sibling `.meta.json` `agentType` is a reviewer type (a `staff-` name, `ciso-reviewer`, `comment-discipline-reviewer` or `skill-fidelity-reviewer`) and whose first timestamped record falls inside the window. A record whose timestamp is missing or unparsable is not timestamped.
+  - `skill-fidelity-reviewer` windows are left out and counted, because that agent's instructions carry no read-every-changed-file rule.
+  - Reviewer windows that have no timestamped record are counted and left out.
+  - A reviewer dispatched by another subagent is included, because the command reads every `.jsonl` file in a session's `subagents/` directory and `corpus._index_subagent_dispatches` records that the harness writes nested dispatches there too. That harness behaviour is unverified against the harness's own documentation.
+  - Plan-review and code-review dispatches of one reviewer type are not told apart, because `.meta.json` names no dispatching skill.
+- *Main-thread round Reads* are main-thread `Read` calls whose `tool_use` block lies inside a review-round window (`code-review`, `plan-review` or `ready-for-review`) whose opening record falls inside the window. Main-thread records are deduplicated by request id first, so a call split across duplicate records counts once. The round-window join counts a repeat of a call only within one window. A call that recurs from an earlier window or file counts in `whole_file` but in no outcome, so the outcomes plus diff-handoff can fall short of `whole_file`.
+
+**What each printed count covers.** The `window:` line bounds only the counts that say so.
+- `sessions` and the scan-gap counts on the `skipped input:` line cover every retained in-scope transcript, whatever the window. `reviewer_windows` is windowed. `invalid_usage_turns` counts every main-thread turn and only the reviewer windows in the window.
+- `reviewer windows with no timestamped record` is not windowed, because such a window has no timestamp to test. It includes `skill-fidelity-reviewer` windows. `skill-fidelity-reviewer windows left out` counts only those whose first timestamp is in the window.
+- The headline, its estimate-band count, its outside-the-denominator counts and the by-reviewer-type counts cover reviewed files only, apart from `windows`, which counts every reviewer window. The outcome tables and every diagnostics line cover all three roles, diff handoffs included.
+- `other_error` therefore prints twice, under two labels: "outside the denominator, reviewed files only" in the headline and "all roles" in the diagnostics. The two differ by the diff-handoff errors.
+- In the ledger section, `id_less_disposition_rows` and `unknown_disposition_rows` are windowed. The `left_out_*` counts cover every row of every date and disposition in the files read, `CLEAN`, `CONSULT` and carry rows included.
+
+**File roles.** A *diff handoff* is a file whose parent directory is named exactly `code-review-diff-markers` or `cumulative-review-diff-markers`, the two directories the review-diff script writes into. Every other file is a *reviewed file*, split by `read-cost`'s file kind into `code/other` and *prose*. Prose is the `instruction` and `other_prose` kinds together. `instruction` is decided by path, whatever the extension, so prose also holds code and JSON files under `skills/`. The headline and the outcome-by-size tables for reviewed files count reviewed files only, and diff handoffs print as their own rows.
+
+**Outcome of a whole-file call.** A whole-file call has no `offset` and no `limit`, the predicate `read-cost` applies. The predicate applies to failed calls as to successful ones. The outcome comes from the structured `toolUseResult.file` record the harness writes beside the result, never from the result text. Each call takes the first class below that fits:
+
+1. `refused_over_limit`: a failed call whose error text holds `exceeds maximum allowed`, the phrase both known size-refusal wordings share. The match is case-sensitive.
+2. `other_error`: any other failed call. One whose text holds `File content (`, or `exceed`, `maximum` or `too large` in any case, also counts as `unrecognised_limit_error`, which means the harness used a refusal wording the command does not know.
+3. `size_unknown`: a success whose structured fields failed a check. It prints by reason: `multi_result_record` (one record holding several results), `tool_use_result_not_a_dict`, `file_not_a_dict`, `file_path_mismatch`, `line_field_invalid` and `truncation_flag_invalid`.
+4. `partial_token_cap`: `truncatedByTokenCap` is true, whatever `startLine`, `numLines` and `allow_large` say.
+5. `size_unknown` under `start_after_first_line`: `startLine` above 1.
+6. `size_unknown` under `lines_exceed_total`: `numLines` above `totalLines`.
+7. `complete_allow_large`: `numLines` equals `totalLines` and the call passed `allow_large: true`.
+8. `complete`: `numLines` equals `totalLines`. An empty file, with both counts 0 and `startLine` 0 or 1, is complete.
+9. `partial_unflagged`: `numLines` is below `totalLines` and the flag is absent. The Read tool's documented 2,000-line default limit explains it on a longer file. On a file of 2,000 lines or fewer it counts as an unexplained partial, and whether any harness version leaves the flag unset when it cuts by tokens is unverified.
+
+**Targeted calls** carry an `offset` or a `limit`. A refused one included, they take no outcome class. Where they appear:
+- They enter no outcome table, no headline count and no follow-up population.
+- In reviewer windows, a targeted call appears in the call counts only as a later `Read` under follow-up and coverage.
+- A refused `limit`-only call therefore leaves no trace in the call counts.
+- A `read_truncation_notice` record can name a targeted call, such as one with `offset` 1 and no `limit`. The notice-agreement diagnostics count that as naming another call.
+- A successful targeted call adds its weight to the Read share.
+- A successful targeted call's `totalLines` can set the size bucket of a whole-file call on the same path in the same window that has none of its own.
+- Main-thread round Reads count targeted calls beside whole-file calls.
+
+**Size bucket**, by the file's `totalLines`: up to 1,000 (an empty file included), 1,001 to 2,000, over 2,000, and unknown. A call without its own `totalLines`, a failed call included, takes the largest one any `Read` in the same window saw for its path.
+
+**Headline.** *Partial* is `partial_token_cap` or `partial_unflagged`. *Refused* is `refused_over_limit`. They print apart, and a refused read is never called partial.
+
+A whole-file call of a reviewed file is *larger than one Read call* when any of these holds:
+- it is partial or refused;
+- it is `complete` or `complete_allow_large` on a file over 2,000 lines;
+- it is `complete_allow_large` with an estimated 25,000 tokens or more (4 characters per token).
+
+A plain `complete` call came back whole from one default call, so its estimate never moves it into the denominator.
+
+The headline is partial calls, refused calls and their sum, each over the larger-than-one-call calls, for `code/other`, for prose and pooled. Beside it prints the count of `complete_allow_large` calls on files of 2,000 lines or fewer whose estimate falls from 20,000 to 29,999 tokens, where the estimate alone decides the denominator. `other_error` and `size_unknown` calls stay out of the denominator, and their counts print beside it.
+
+**Follow-up and coverage.** For each partial or refused whole-file call in a reviewer window, where a call's place in its window is the position of the first `tool_use` block carrying its id:
+- `later_offset_read`: a later `Read` of the same path in the same window carries an `offset`, whether it succeeded or failed.
+- `covered_after`: the union of `[startLine, startLine + numLines - 1]` over the call itself and that window's later successful reads of the path covers every line of the file. The union is computed over intervals. A read whose structured fields are missing adds no interval, and a result flagged `truncatedByTokenCap` whose range reaches the file's last line adds none either, because the flag says the result stopped before the end of the file. A call whose file size is unknown is never covered.
+- `neither`: no later offset read, and not covered by later reads. It is an upper bound on the calls after which the reviewer made no further attempt to read on. The command sees `Read` calls only, so a recovery by Grep, Bash or a diff read is not seen, and its call counts here.
+
+All three print for `code/other`, for prose and for diff handoffs.
+
+**Read share of reviewer spend.** The reviewer windows' summed read weight over successful reads (whole-file and targeted), divided by those windows' own billed weight, both in `read-cost`'s unit. It is a share of modeled billed weight, not of tokens. Parts of the read weight print as shares of it: weight on files over 1,000 lines, that weight for `code/other` reviewed files alone, the diff-handoff part, and the unknown-size part. The raw sums print with the shares.
+
+**Unit.** The same as `read-cost`'s: cache-read-token equivalents with one price ratio across all models, so every share is a share of token equivalents, not of dollars. The report prints the same unit caption.
+
+**Rates and markers.** Every rate prints with its numerator and denominator.
+- A zero denominator prints `no data (0/0)`, never `0.0%`.
+- A count denominator below 10 prints `insufficient (n/d)`.
+- A share of billed or read weight takes the same floor of 10 on the number of reviewer windows behind it, and prints the two weights as its numerator and denominator.
+
+The floor is this command's own constant, separate from `reviewer-yield`'s.
+
+**By reviewer type.** Counts only, for each tracked reviewer type and a total: windows (every reviewer window of the type), and partial, refused and larger-than-one-call calls over reviewed files, diff handoffs not included. The total therefore equals the pooled headline counts, not the sums of the outcome tables. Rates and weights print pooled. A type this repository's `agents/` directory does not track folds into one `(withheld — untracked agent type)` row.
+
+**Main-thread round Reads.** Per review skill, counts with no rate: the round windows that opened in the window, the `Read` calls inside them (whole-file and targeted), the whole-file reviewed-file calls by outcome class and by size bucket, and the whole-file diff-handoff calls. A call with no result record in the main-thread window has no outcome class. A round window whose opening record has no parsable timestamp is not selected by the window and is counted under Diagnostics.
+
+**Reviewer-yield.** A capture must check the report for the `reviewer-yield pass: not completed` line, because the exit status stays 0 when the pass fails. `reviewer-yield`'s dispatch accumulation runs over a second, subagent-inclusive pass of the same scope, with the window's start and the next day's 00:00:00Z as its bounds. The pass prints dispatches, verdict mix, findings, and cited, active and edited counts, with the same withheld fold. Its figures differ from the read figures in these ways:
+- As in `reviewer-yield`, `--until` does not bound the cited, active and edited counts, and the report says so.
+- Only main-thread dispatches appear in the yield figures, so a nested reviewer is in the read figures and not in these.
+- The pass keeps its own skipped-input total, and the section prints it on its own line, apart from the `skipped input:` line.
+- The section prints a `skill-fidelity-reviewer` row, because `reviewer-yield` counts that type, although the read figures leave it out.
+- The printed `findings` count is bounded: a count above 1,000,000 prints as `over 1,000,000`, so a reviewer's own text cannot set the width of a printed figure.
+
+If `reviewer-yield` or `corpus` raises an `AttributeError`, `TypeError`, `ValueError` or `RecursionError` during the pass, the pass ends and the section prints one fixed line in place of its rows. The line names the four exception classes and no value. A `ValueError` covers an integer over the interpreter's digit limit in a sidecar or a verdict text and a lone surrogate in a hashed path. A `RecursionError` covers JSON nested past the decoder's stack, which the pass can reach through a `.meta.json` sidecar. A transcript line nested past the decoder's stack aborts the run in the shared corpus parser, before the yield pass. Any other exception propagates.
+
+**Malformed records.** Before any scan, each record is reduced, and the reductions below are the whole set.
+- A non-object record, or one with a non-string `type`, is dropped.
+- A non-object `message` becomes empty, and a non-string `message.id` or `requestId` becomes absent.
+- A truthy `usage` that is not an object, or one holding a count too large for a float, becomes an invalid usage, which `read-cost` counts under `invalid_usage_turns` and skips.
+- `message.content` that is not a string, null or a list becomes an empty list, a content block's non-string `name` becomes null, and a text block's non-string `text` becomes the empty string.
+
+Those are the fields that `read-cost`'s scan, the request-id deduplication, round detection and their shared text join read. A malformed field outside that set, in a shared module the command calls, can still abort a run, apart from the yield pass above.
+
+**Review-ledger dispositions.** The ledger section opens only the files in `<config-dir>/review-narrative-ledger/` whose name's first slot is the sha256 of one of this checkout's worktree paths, taken as `git worktree list` prints it and as resolved. A point-in-time `lstat` decides by name whether a matching entry is a regular file. A symlink, a named pipe or any other non-regular entry is refused unopened and counts as an unreadable file. The check does not detect a hard link, or a swap of the entry between the check and the open, and the ledger writer's own check has the same limits. One exception: the file listing drops a directory, or a symlink to a directory, without counting it.
+- A *disposition row* is an `ADDRESS`, `DEFER` or `SETTLED` row that is not a carry. `CLEAN` and `CONSULT` rows are neither. The report says "disposition row" because the ledger's own *decision* is a narrower set.
+- A disposition row is superseded when a later disposition row in the same file, in file order, has an id and names the row's `id` as its `ref`, with an `event_time` before the window's end. A *terminal* row is an unsuperseded disposition row with an id whose `event_time` falls in the window.
+- It counts disposition rows, not distinct findings: a finding re-raised in a later round without `--ref` counts again. It prints terminal rows by disposition and the `ADDRESS` and `DEFER` shares of all terminal rows, under the rate rule.
+- Each row is reduced on read to `session_id`, `disposition`, `decided_by`, `id`, `ref` and `event_time`. A wrong-typed field, or an `event_time` that is not the writer's `YYYY-MM-DDTHH:MM:SSZ` form, leaves the row out under that field and counts it in `left_out_<field>`, over every row of every date and disposition in the files read. `session_id` comes from the row alone, never from the file name.
+- The report also prints id-less disposition rows (superseding nothing, never terminal), unknown dispositions (counted, never printed by value), rows left out by field, the ledger files read, the unreadable ones, whether the ledger directory is present, absent or unreadable, and the sessions with a disposition row in the window and how many of them the transcript scan covered.
+
+**Comparability.** Reviewer windows count by harness version and by model, so a later run can see whether either moved.
+- A window's version is the `version` of its first record carrying one. It prints only when it fully matches a bounded shape, ASCII digits joined by dots in two to four parts of one to four digits each, which is a shape and not a vocabulary. Any other value prints as `other`, and a window with no `version` key prints as `unknown`.
+- A window's model is its first assistant record's `message.model`. It prints by name only when it is a model `pricing.py` has a base input rate for, a model priced by prompt length included. Any other value prints as `other`, and a window with no assistant record or no `model` key prints as `unknown`. A model unpriced when a baseline was captured prints `other`, and prints by name once `pricing.py`'s table gains it, so compare captures taken with the same pricing table.
+
+**Diagnostics.** The report prints the `skipped input:` line (the same inputs as `read-cost`, for the first pass over the transcripts), and a count of each of these:
+- unexplained partials, which are `partial_unflagged` calls on files of 2,000 lines or fewer, since the default line limit cannot explain them, counted over all roles;
+- notice agreement, as three counts: `partial_token_cap` calls that no `read_truncation_notice` record names, such records that name neither a `partial_token_cap` call nor a `size_unknown` one, and such records that name a `size_unknown` call. The third count is expected to be nonzero wherever the harness batches several results in one record (`multi_result_record`), so a nonzero value alone is not an instrument defect;
+- `size_unknown` calls by reason, over all roles, where `multi_result_record` means one record held several results;
+- `other_error` calls over all roles, with their `unrecognised_limit_error` part;
+- `skill-fidelity-reviewer` windows left out in the window, reviewer windows with no timestamped record in any window, and review-round windows whose opening record has no parsable timestamp in any window.
+
+**Output invariant.** Every printed figure is an aggregate. No path, session id, project name, ledger id, error text or untracked agent-type name prints, and a model and an agent type print only after a match against a closed set of names, a version only after a match against a bounded shape. Stderr can also carry an API request id through the two request-id notices `pricing.py` prints, as `read-cost`'s stderr does. Stderr is read by the session and is never published.
+
+**Known limits.**
+- Both halves of the scope rest on path identity, not repository identity. A live worktree path of this checkout that another repository's checkout occupied earlier, so that checkout's sessions and ledger files match as this repository's, ledger rows appended from this checkout about work elsewhere, a checkout of any repository whose path maps to the same project-directory slug as one of this checkout's worktrees, and a subagent file under an in-scope session, whatever repository the subagent worked in, are not excluded.
+- Only this checkout's live worktrees count. Sessions and ledger files of removed worktrees, and of other clones of the repository, are not included, and the sample is not a random sample of reviews.
+- A transcript older than `cleanupPeriodDays` (default 30 days) is gone, and `review-ledger.sh append` sweeps ledger files idle longer than 30 days, so a window older than that is incomplete.
+- `read-cost`'s limits apply to the weights and the turn counts.
+- Reviewer windows include plan-review dispatches, whose reads of code files stay in `code/other`, so the per-type rows do not isolate the review skill.
+- `covered_after` can be wrong around the last line of a `truncatedByTokenCap` result, in both directions:
+  - A flagged result that ends short of the file's last line adds its reported range. Its last reported line can have arrived only in part when the harness cuts by characters. A later read starting after it can then make `covered_after` true for a line never fully read.
+  - A flagged result whose range reaches the file's last line adds no interval, although the lines before the last arrived whole. A later read of only the last line then leaves `covered_after` false for a file that was fully read.
+
+  The command sees structured fields only and cannot tell a cut by characters from a cut by lines. It drops the whole range in the second case on purpose, because that under-credits a call and never over-credits one. The reading that a cut by characters delivers the last reported line in part was checked against Claude Code 2.1.318 and 2.1.330 only, and older versions are unverified.
+- Ledger shares count disposition rows, so a finding re-raised without `--ref` counts again.
+
+**Publication.** Publishes under `docs/private-project-redaction.md` § "This repository, one account", with the ledger-file scope stated there. Publish only from this repository's own checkout. Cite the command beside any figure. A new figure from it still takes the check in `docs/private-project-redaction.md` § "New figures against the grandfathered set".
+
+**When to reach for it.** Answer "how often did reviewers' whole-file reads of large files come back partial or refused, and how much of reviewer spend went to `Read`", from transcripts and ledgers that are still retained. Run it over a window before and again over a window after any change to how reviewers read files, with the same window length, account and checkout, and compare the figures. A run with `reviewer_windows=0` measured nothing. A run that counts review-round windows and reads no ledger file points at a path-identity miss between this checkout's worktrees and the ledger file names, not at an empty ledger.
 
 ---
 

@@ -13,6 +13,8 @@ from pathlib import Path
 from review_bench.defects import atomic_write_text
 from review_bench.runner import STATUS_OK, HarnessInvalidatedError
 
+from replay_bench.provenance import is_valid_commit_field, is_valid_dirty_field
+
 RUNS_DIR_NAME = "runs"
 
 
@@ -55,6 +57,14 @@ class ReplayRunRecord:
     out_of_session_paths: list[str] = field(default_factory=list)
     ignored_paths_count: int = 0
     ignored_paths: list[str] = field(default_factory=list)
+    # True when the run passed the validity checks and the transcript's last text block is blank or absent.
+    # A run that failed a validity check records False whatever its text.
+    # A text-less final turn after earlier narration leaves it False, because the last text block is then the narration.
+    empty_final_text: bool = False
+    # The runner checkout's HEAD (a full hex object name) and whether `evals/` had uncommitted changes when the
+    # process started its blocks. None when unreadable, and in a record that lacks them.
+    runner_commit: str | None = None
+    runner_dirty: bool | None = None
     # `checks.denied_tool_calls` of the final attempt's transcript. A stored record that lacks the key reads as
     # empty, so an empty list beside a nonzero `permission_denials` means the calls were not recorded.
     denied_tool_calls: list[dict] = field(default_factory=list)
@@ -62,6 +72,11 @@ class ReplayRunRecord:
     @property
     def is_ok(self) -> bool:
         return self.status == STATUS_OK
+
+    @property
+    def ended_without_text_or_change(self) -> bool:
+        """An ok run with a blank final text whose captured change lists no path, so it produced no deliverable."""
+        return self.is_ok and self.empty_final_text and not (self.metrics or {}).get("changed_paths")
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -73,9 +88,14 @@ class ReplayRunRecord:
         if unknown:
             raise ValueError(f"unknown record keys {unknown}")
         try:
-            return cls(**data)
+            record = cls(**data)
         except TypeError as exc:
             raise ValueError(str(exc)) from exc
+        if not is_valid_commit_field(record.runner_commit):
+            raise ValueError("runner_commit is neither null nor a full hex object name")
+        if not is_valid_dirty_field(record.runner_dirty):
+            raise ValueError("runner_dirty is neither null nor a boolean")
+        return record
 
 
 def block_runs_dir(campaign_dir: Path, task_id: str) -> Path:

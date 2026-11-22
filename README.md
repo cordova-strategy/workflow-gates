@@ -1,6 +1,6 @@
 # claude-config
 
-[![Tests](https://github.com/jcdendrite/claude-config/actions/workflows/tests.yml/badge.svg)](https://github.com/jcdendrite/claude-config/actions/workflows/tests.yml)
+[![Tests](https://github.com/cordova-strategy/workflow-gates/actions/workflows/tests.yml/badge.svg)](https://github.com/cordova-strategy/workflow-gates/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 [![Works with Claude Code](https://img.shields.io/badge/Works%20with-Claude%20Code-blueviolet)](https://claude.ai/claude-code)
 
@@ -86,7 +86,7 @@ The README below is organized by feature surface (hooks, skills, plugins, script
 ## Quickstart
 
 ```bash
-git clone git@github.com:jcdendrite/claude-config.git ~/claude-config
+git clone git@github.com:cordova-strategy/workflow-gates.git ~/claude-config
 cd ~/claude-config
 ./install.sh
 ```
@@ -310,7 +310,7 @@ mkdir -p .claude
 cat > .claude/worktree-required <<'EOF'
 # Claude Code worktree enforcement marker.
 # Presence of this file activates ~/.claude/hooks/require-worktree-for-git-writes.sh.
-# See https://github.com/jcdendrite/claude-config for details.
+# See https://github.com/cordova-strategy/workflow-gates for details.
 EOF
 
 grep -qxF '.claude/worktrees/' .gitignore 2>/dev/null || echo '.claude/worktrees/' >> .gitignore
@@ -485,7 +485,7 @@ This repo is public — any project codename, organization name, or tracker-ID t
 2. **Private-projects blocklist** (opt-in) — the same hook reads a user-local `<config-dir>/private-projects.md` and blocks any commit or PR whose content matches a listed project name (case-insensitive, whole-word). `install-dev.sh` requires this file to exist before setting up a contributor's `.venv`, so the opt-in isn't silently skippable at first setup.
 3. **Reviewer discipline** — what the hook can't catch: structural fingerprints (a verbatim RLS policy, a rare column-naming pattern) and private-corpus provenance (a fact known only through exposure to private engagement material, whether quoted, computed, or recalled) are a review responsibility, not a mechanical one.
 
-The repo-root [`CLAUDE.md`](./CLAUDE.md) "Redact private-project-identifying content" rule defines *what* to keep out; the hook is the mechanical enforcement of tiers 1–2. The hook runs in claude-config and its forks (origin URL contains `claude-config`), and in any other repo that commits `.claude/private-projects-optin`; see [`docs/private-project-redaction.md`](docs/private-project-redaction.md#opting-in-another-repository). For blocklist setup, file format, match semantics, the deny-message contract, and the fork-contributor path, see [`docs/private-project-redaction.md`](docs/private-project-redaction.md).
+The repo-root [`CLAUDE.md`](./CLAUDE.md) "Redact private-project-identifying content" rule defines *what* to keep out; the hook is the mechanical enforcement of tiers 1–2. The hook runs in claude-config and its forks (origin URL contains `claude-config` or `workflow-gates`), and in any other repo that commits `.claude/private-projects-optin`; see [`docs/private-project-redaction.md`](docs/private-project-redaction.md#opting-in-another-repository). For blocklist setup, file format, match semantics, the deny-message contract, and the fork-contributor path, see [`docs/private-project-redaction.md`](docs/private-project-redaction.md).
 
 ### Auto mode
 
@@ -592,7 +592,7 @@ Test trees under `claude/.claude/` that carry their own `conftest.py` are Python
   - Checks ahead of xdist's own core-count detection.
   - Applies to both a direct `scripts/venv-run.sh pytest` run and `select-tests.py`.
   - Wins over `select-tests.py`'s own sizing, which defers whenever the variable is already set.
-- Or pass `-n <N>` on the command line for a single run. It wins over both. `select-tests.py` forwards it through to pytest.
+- Or pass `-n <N>` on the command line for a single run. It wins over both. In a `select-tests.py` split run, only the parallel pass honors it (see the split-run list below).
 - When running several suites at once, size it as logical cores divided by the number of concurrent runs you expect (e.g. a 16-core machine expecting four concurrent runs → `-n 4`). Check xdist's startup banner to confirm a run picked up the value.
 - Agents' Bash-tool subprocesses inherit the environment `claude` had at launch rather than reading the shell live, so export it before starting that session — setting it afterward in a running session's terminal won't reach that session's test runs.
 
@@ -606,13 +606,42 @@ scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py
 
 This is the required local command for agents, including in `/ready-for-review`. CI still runs the whole suite on every PR and main push — a deliberate choice, see [`docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md`](docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md).
 
+`select-tests.py` splits a run into two pytest passes, as CI does:
+
+- It runs a parallel pass for everything not marked `timing`, then a serial `-n0` pass for the `timing` tests.
+- The serial pass leaves out tests marked `saturates_cpu`, each of which starts one busy process per CPU core. CI's serial step runs them.
+  - A split run never runs them, so `-m saturates_cpu` selects nothing in a split run.
+  - To run them locally, pass `-n 0 -m saturates_cpu`, which runs one unsplit pass, or run `scripts/venv-run.sh pytest <file> -m timing -n0`. `-n 1 -m saturates_cpu` runs nothing, because the test skips itself inside an xdist worker.
+  - A plain `-n 0` run of a selection that includes `claude/.claude/scripts/tests` runs that test.
+- The serial pass collects the whole selection and filters it with `-m`.
+- Whether a selection holds `timing` tests is read from file text, so the mark must sit in the file pytest collects the test from. `test_pytest_collection_config.py` fails CI when it does not.
+- With `--collect-only`/`--co`, a split run prints each pass's share, and the two shares together omit `saturates_cpu` tests. Add `-n 0` for one complete listing.
+- A split run adds one more collection of the whole selection plus the serial pass's wall time.
+- It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
+- It runs one unsplit pass instead when:
+  - your `-n` is 1 or less, since one worker has no sibling workers for the serial pass to protect;
+  - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 1 or less, and your `-n`, if any, is `auto` or `logical`;
+    - When it is unset and the 1-minute load average is readable, `select-tests.py` sizes it from the CPU count and load, so a one-CPU machine runs one pass too.
+  - an argument starts with `@`;
+  - an argument is a bare `--`;
+  - neither a selected file nor a path you pass contains `mark.timing`.
+- Your arguments reach both passes, and the serial pass's `-n0` overrides your `-n`.
+- A `-m` you pass combines as `(<expr>) and not timing` and `(<expr>) and timing and not saturates_cpu`. A `-m` inside a flag cluster such as `-vm`, or in `PYTEST_ADDOPTS`, is not recognized, and each pass's own `-m` overrides it.
+- It does not read `PYTEST_ADDOPTS` or `--pdb` when it decides whether to split.
+- It exits with the first non-zero code, the parallel pass's first. A pass that collected no tests, exit 5, defers to the other unless both did.
+- Each pass writes report files such as `--junitxml` once, so the serial pass's file replaces the parallel pass's.
+- `--lf` in a split run reads the cache the parallel pass just wrote. Once that pass clears the recorded failures, the serial pass runs every selected timing test. Pass `-n 0` for an exact rerun.
+- A run where both passes fail may lose the parallel pass's `tmp_path` directories.
+- The serial pass removes only this run's own sibling-worker load, not load from other processes on the machine.
+- The interpreter that runs it must be able to import pytest.
+
 Set `test_selection_tracking = true` in `<config-dir>/claude-config.toml` (off by default) to log every `select-tests.py` invocation's selection outcome to `<config-dir>/.test-selection-log.jsonl`, one JSON line per invocation. Each line always records the selection reason. For a full-suite fallback, it also records which changed path triggered it. When that invocation computed a load-aware worker count, it also records the worker count and the 1-minute load average. This makes fallback-to-full-suite frequency measurable instead of a stderr line that scrolls away. Like [`.permission-prompt-log.jsonl`](docs/permission-prompt-tracking.md#known-limitations), the log is append-only with no automatic rotation; trim it manually if disk space or data age is a concern. Its invocation frequency is structurally higher than that log's, since it appends on every `select-tests.py` run rather than only on an interactive permission dialog.
 
 ## Acknowledgments
 
 Heavy reliance on official Anthropic documentation throughout: [Claude Code docs](https://code.claude.com/docs/en/), [permission modes reference](https://code.claude.com/docs/en/permission-modes), [auto-mode engineering deep dive](https://www.anthropic.com/engineering/claude-code-auto-mode), [skill best practices](https://code.claude.com/docs/en/skill-best-practices), and [Claude Code best practices](https://code.claude.com/docs/en/best-practices). Stow distribution pattern inspired by the GNU Stow community.
 
-Bug reports and feature requests: [GitHub Issues](https://github.com/jcdendrite/claude-config/issues). Security disclosures: see [SECURITY.md](./SECURITY.md).
+Bug reports and feature requests: [GitHub Issues](https://github.com/cordova-strategy/workflow-gates/issues). Security disclosures: see [SECURITY.md](./SECURITY.md).
 
 ## License
 

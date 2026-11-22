@@ -295,6 +295,50 @@ class TestAccumulateSession:
         )
         assert [event.path for event in totals.main_whole_file_events] == [""]
 
+    def test_retained_main_thread_events_blank_the_path_and_tool_use_id_and_keep_every_other_field(self):
+        totals = read_cost._ReadCostTotals()
+        structured_record = {
+            "type": "text",
+            "file": {
+                "filePath": "/sentinel/a.py", "startLine": 1, "numLines": 100, "totalLines": 120,
+                "truncatedByTokenCap": True,
+            },
+        }
+        read_cost._accumulate_session(
+            totals, read_cost._SeenIds(),
+            [
+                _turn("m1", [_read_use("r1", file_path="/sentinel/a.py", allow_large=True)]),
+                _read_result("r1", _HUNDRED_TOKEN_TEXT, tool_use_result=structured_record),
+                _turn("m2", [_edit_use("e1", path="/sentinel/a.py")]),
+                _turn("m3"),
+            ],
+            [], _weights(),
+        )
+
+        (event,) = totals.main_whole_file_events
+
+        assert event == read_cost._ReadEvent(
+            path="", whole_file=True, tokens=100, lines=1, remaining_turns=2, edited_later=True,
+            tool_use_id="", offset=None, allow_large=True, start_line=1, num_lines=100, total_lines=120,
+            truncated_by_token_cap=True, structured_status=read_cost._STRUCTURED_OK, call_order=0,
+        )
+
+    def test_call_that_failed_in_the_main_thread_is_not_counted_when_a_subagent_window_replays_it(self):
+        failed_main_exchange = [
+            _turn("m1", [_read_use("r1", file_path="/sentinel/a.py")]),
+            _read_result("r1", "boom", is_error=True),
+        ]
+        seen = read_cost._SeenIds()
+        totals = read_cost._ReadCostTotals()
+
+        read_cost._accumulate_session(
+            totals, seen, failed_main_exchange,
+            [(_TRACKED_AGENT_TYPE, _read_exchange("s1", "r1", "/sentinel/a.py"))], _weights(),
+        )
+
+        assert seen.failed_tool_use_ids == {"r1"}
+        assert totals.bucket_calls[(read_cost._SCOPE_SUBAGENT, "<2000")] == 0
+
     def test_bucket_tables_split_main_from_subagent_by_size(self):
         totals = read_cost._ReadCostTotals()
         read_cost._accumulate_session(

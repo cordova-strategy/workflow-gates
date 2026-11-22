@@ -66,6 +66,7 @@ from transcript_analysis.review_cost_by_size import (
 )
 from transcript_analysis.review_rounds import _add_review_round_cost_subparser
 from transcript_analysis.review_trace import _add_review_trace_subparser
+from transcript_analysis.reviewer_reads import _add_reviewer_reads_subparser
 from transcript_analysis.reviewer_yield import _add_reviewer_yield_subparser
 from transcript_analysis.routing_guard import (
     _add_routing_guard_subparser,
@@ -135,6 +136,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_edit_format_subparser(sub)
     _add_read_scope_subparser(sub)
     _add_read_cost_subparser(sub)
+    _add_reviewer_reads_subparser(sub)
     _add_instrument_authoring_subparser(sub)
     _add_context_composition_subparser(sub)
     _add_cache_efficiency_subparser(sub)

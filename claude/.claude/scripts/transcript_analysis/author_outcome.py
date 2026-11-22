@@ -75,13 +75,16 @@ from transcript_analysis import corpus, pricing, render, review_rounds, scope
 # Each is validated independently by its own hook allowlist.
 _CODE_REVIEW_SKILL = "code-review"
 
-# Mirrors review-ledger.sh's own --disposition/--authoring-agent case enums.
+# Mirrors review-ledger.sh's own --disposition/--authoring-agent/--decided-by case enums.
 # This module never writes a ledger line, only reads back what
 # review-ledger.sh already wrote, so these are read-side comparison
 # targets, not a second validator.
 _DISPOSITION_ADDRESS = "ADDRESS"
 _DISPOSITION_SETTLED = "SETTLED"
 _DISPOSITION_CONSULT = "CONSULT"
+_DISPOSITION_DEFER = "DEFER"
+_DISPOSITION_CLEAN = "CLEAN"
+_DECIDED_BY_CARRY = "carry"
 _AUTHORING_AGENT_CODE_WRITER = "code-writer"
 _AUTHORING_AGENT_INLINE = "inline"
 _AUTHORING_AGENT_MIXED = "mixed"

@@ -6,6 +6,15 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
+- **The repository moved to `cordova-strategy/workflow-gates`.**
+  - A clone whose origin still names the old owner and repo needs the origin repointed.
+  - The old URL redirects only until a repository is created at that name ([GitHub's transfer documentation](https://docs.github.com/en/repositories/creating-and-managing-repositories/transferring-a-repository)).
+  - With a stale origin, `pr-cost`, `workstream-cost --check-pr-status` and the `/review-pr` scripts that check the origin stop until the origin is repointed. After the repoint, `pr-cost` records pull requests under the new repository name.
+  - After the repoint, `memory-store-audit` downgrades each file-as-issue item, and each migrate bound for the `claude-config` checkout, to keep, because its check expects an origin containing `claude-config`.
+  - The redaction and stow-reminder hooks match either name, so they keep working without the change.
+  - Do not rename the checkout folder to match. Use `relocate-claude-config` to move it.
+  - **Migration:** run `git remote set-url origin https://github.com/cordova-strategy/workflow-gates.git`, or `git remote set-url origin git@github.com:cordova-strategy/workflow-gates.git` for an SSH remote.
 - **The documented `claude-config.toml` append one-liners now start with a newline, `.gitignore` covers six more legacy sentinel filenames, and `git-feature-branch-sync`'s explicit `--force-with-lease` recipe uses a pre-rewrite SHA.**
   - Every `printf 'key = value\n' >> .../claude-config.toml` copy in `README.md`, `docs/`, and the `advance-past-commit-stall.sh` block reason is now `printf '\nkey = value\n'`. Without the leading newline, a file lacking a trailing newline fused the new key onto its last line, and `_config.sh` skipped both as a malformed line. `docs/config-file.md` states the requirement.
   - **Migration:** a one-liner copied before this change still fuses lines on such a file. Re-copy it from the docs, or add the leading `\n`.
@@ -22,6 +31,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - A session that loaded `/code-review` before the pull may keep its old skill text, so each of its appends is rejected (exit 2, nothing written) until the call carries `--pass-kind`, and a value picked from the rejection hint is that session's own reading of the round. Restart any session that loaded `/code-review` before the pull: a restart avoids a rejected first call and a pass kind guessed from the rejection hint.
   - The change is live on `git pull`.
   - Reverting it needs no data change, because the reverted script's readers that read rows by named key ignore the added field. The exception is the retry check: a `--ref` append that landed at schema 7 and is retried after the revert is rejected as no longer live. After a revert, restart any session that loaded `/code-review` since the pull, because the reverted script rejects `--pass-kind` as an unknown argument.
+- **`select-tests.py` now runs `timing`-marked tests in a second, serial pytest pass that collects the selection and filters it with `-m`, as CI's split does, when the selection contains them and the run starts two or more workers (README's Tests section lists the other cases that run one pass).**
+  - A split run never runs the one `timing` test that starts a busy process per core, which now carries the `saturates_cpu` marker, and the README's Tests section states the rest of the split-run contract and how to run that test locally.
+  - **Migration:** a split run prints two pytest summaries and a closing stderr line.
+  - **Migration:** each pass writes report files such as `--junitxml`, so the serial pass's report file replaces the parallel pass's.
+  - **Migration:** the interpreter that runs `select-tests.py` must be able to import pytest.
 - **`transcript-analysis.py review-cost-by-size` now reads the pr-cost ledger's `review_rounds` cells instead of transcripts, so a PR's round series outlives transcript retention.**
   - It keeps each PR's one current ledger row for this checkout's origin repository, re-prices each round's stored token splits at this checkout's rate table, and excludes and counts the PRs it cannot trust. See `docs/transcript-analysis.md` § "review-cost-by-size".
   - **Migration:** `gh` is no longer required, and transcripts are no longer read.
@@ -718,6 +732,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Added
 
+- **`transcript-analysis.py reviewer-reads --this-repo --since DATE --until DATE` measures how reviewer subagents' whole-file Reads came back.**
+  - It reports each whole-file call as complete, partial or refused, whether the reviewer read on afterwards, the Read share of reviewer spend, the review ledger's terminal ADDRESS, DEFER and SETTLED rows, and the harness versions and models behind the reviewer windows. See `docs/transcript-analysis.md` § "reviewer-reads".
+  - It reads this repository's live worktrees on the active account only and refuses a wider scope, as `read-cost` does. Its ledger section opens only the files named for this checkout's worktree paths.
+  - It needs both dates and exits 2 without them. There is no relative `--since Nd` form.
+  - The change is live on `git pull`.
 - **A new `agent_branch_records` config key makes both cleanup scripts snapshot a worktree's `agent-reviews/` before they remove it.**
   - **Behavior:** with the key on, `cleanup-merged-branches.sh` and `cleanup-idle-open-pr-worktrees.sh` copy and verify the directory under `~/.local/state/agent-branch-records/` before every `git worktree remove`. The key is per-account and defaults to `false`.
   - **Refusals:** a worktree whose copy fails is kept, and `cleanup-merged-branches.sh` also keeps its local and remote branch. The script then exits 1. A real run exits 1 before removing anything in the repo it is processing when the archive is unavailable. With the archive unavailable, `--list-removable` prints no list and exits 1. A key that reads as off but whose `claude-config.toml` cannot be read as on or off also refuses, even for an account that never enabled the key. A config directory or schema that cannot be resolved refuses regardless of the key. `docs/agent-branch-records.md` lists the causes.
