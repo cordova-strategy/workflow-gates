@@ -50,7 +50,7 @@ Every subcommand except five accepts `--this-repo` as a mutually exclusive alter
 
 **`--projects` under more than one root.** When the invocation resolves more than one root (a populated `~/.claude/transcript-config-dirs`, or an explicit `--config-dir` extra), `--projects` must match one project-directory name: a value containing `/` or `**`, or equal to `.` or `..`, exits 2. A single-root invocation has no such restriction — `--projects` there supports `Path.glob`'s full nested-directory syntax, except that a `..` component reads nothing and an absolute value exits 2 at every root count. A single-root invocation keeps a project directory or transcript symlinked outside the scan root in scope. Under more than one root, one symlinked outside every declared root makes any run that attributes sessions to a root abort. Under `review-round-cost --pooled`, that surfaces as the generic unexpected-error refusal.
 
-The default differs by subcommand: `skill-invocation` defaults to repo-scoped (safe-by-default, except under `--include-subagents`; see Limits), reading this repo's sessions across every declared account, so its counts are cross-account pooled figures, and treats `--this-repo` as a no-op; every other subcommand defaults to reading every project (unsafe-by-default) and requires `--this-repo` to opt into repo scoping. Which accounts a default run reads is set under "Corpus scope: the declared-roots file" below.
+The default differs by subcommand: `skill-invocation` defaults to repo-scoped, reading this repo's sessions across every declared account. Its counts are therefore cross-account pooled figures, and a default run is not a publication instrument (see Limits). It treats `--this-repo` as a no-op. Every other subcommand defaults to reading every project (unsafe-by-default) and requires `--this-repo` to opt into repo scoping. Which accounts a default run reads is set under "Corpus scope: the declared-roots file" below.
 
 **`review-trace` output is not publish-safe at its default scope** — each event line's branch string can carry a ticket ID or project name. The timeline reads the active account's projects by default and every declared account under `--this-repo` or `--all-accounts`, and `--deny-summary` pools every declared account by default (see "Corpus scope: the declared-roots file" below). `--this-repo` does not guarantee single-account output: once `~/.claude/transcript-config-dirs` declares more than one root, it unions across every resolved root the same way `--all-accounts` does. The default timeline still covers every project in the active account, so bound it with `--this-repo`, and name one account with an explicit single top-level `--config-dir PATH`, before quoting output anywhere public. This applies to a zero-match run too: its scope header echoes an explicit `--projects` glob verbatim, so a glob naming a private project reaches the output even when no session matched.
 
@@ -82,6 +82,7 @@ Most subcommands' default scan corpus is a **union**, not a single account. The 
   - Beside `--projects GLOB`, `--all-accounts` reads the glob in every declared account, under the one-level glob rule that applies above one root (see "`--projects` under more than one root" above).
   - The top-level `--config-dir` names one account, so beside `--all-accounts` it exits 2.
   - Three pooled modes read every declared account by default, and `--all-accounts` changes nothing for them: `review-trace --deny-summary`, `handoff-signal-response` without `--sample`, and `skill-invocation` without `--projects`.
+  - A sample command reads the active account while its aggregate sibling pools every declared account: `audit-routing-shape` for `audit-routing-samples`, and `turn-shape` for `turn-shape-samples` and `turn-shape-holdout-samples`. A comparison of the two passes `--all-accounts` on the sample command, or `--this-repo` on both.
   - The `--all-accounts` output carries every declared account's raw names, paths and text and is not for publication; see `docs/private-project-redaction.md` § "A wider corpus goes to the owner, never into a public artifact".
 - `cost --summary`: resolves to this repository within the active account's config dir only (see the `cost` section's `--summary` entry below).
 - `period-cost`: reads the active account's whole projects directory only (see its section below).
@@ -107,10 +108,10 @@ A narrowed command's default run reads one account, and its one-root clause then
 
 This union amplifies two costs, both linearly in the number of declared roots:
 
-- **Scan time.** Measured on one workstation: ~9s per root at top-level scope, ~16s per root with `--include-subagents`. A four-root union runs roughly 35–65s against ~9s at one root — expect a per-root progress line on stderr above one root so a long-running scan doesn't read as hung. The narrowed commands already read one root by default. For any other command, the one narrowing control, if a given invocation needs to run faster or scope to fewer accounts, is an explicit single top-level `--config-dir PATH`, which overrides the union back to exactly one root (see "Scoping to this repo" above and the `cost`/`context-distribution`/`context-composition` sections below for their own separate, repeatable `--config-dir`).
+- **Scan time.** Measured on one workstation: ~9s per root at top-level scope, ~16s per root with `--include-subagents`. A four-root union runs roughly 35–65s against ~9s at one root — expect a per-root progress line on stderr above one root so a long-running scan doesn't read as hung. The narrowed commands already read one root by default. For any other command not listed in `transcript_analysis/scope.py`'s `_SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR`, an explicit single top-level `--config-dir PATH` overrides the union back to exactly one root. The commands listed there, `subagents` and `subagent-mix` among them, exit 2 on that flag. The repeatable `--config-dir DIR` some of them register adds roots and never narrows (see the `cost` section's `--config-dir` contract below).
 - **Redaction's ordinal fingerprint.** `cost` and `audit-routing --redact` already read every project's transcript bytes to build their redact map, even under `--this-repo` (see the `cost` section's `--config-dir` contract below) — a structural fingerprint of the operator's other local projects. `audit-routing --redact` reads every declared root's transcripts only under `--this-repo` or `--all-accounts`. A declared-roots union multiplies both the bytes read and that fingerprint's information content: the ordinals now encode which projects exist across every declared account, not just one. Two redacted reports built from the **same** declared-roots file assign the same `account-N` to the same physical root regardless of which profile produced either report, which makes them correlatable by ordinal across time — a property that did not exist before this file was populated, even though neither report reveals `account-2`'s real name. Two reports built from **different** declared-roots files are not comparable; a changed root set can renumber every ordinal. This comparability guarantee excludes `cost --summary`: it always resolves to exactly one root, so its own per-root `cost: account-N: scanned …` line has no second root in the same run to be ordinally consistent against, and its `account-N` for the active root is not guaranteed to match the ordinal a full (non-`--summary`) report built from the same declared-roots file assigns that same physical root.
 
-Redaction — the `DO NOT PUBLISH` banner and `account-N`/`private-project-N` labels — is not uniform across the three subcommands that mention it. `cost` and `audit-routing` build the redact map and print per-project or per-account labels. `context-distribution` prints the same banner and refuses `--no-redact` above one root, but never builds the redact map and emits no project label at all, so there is nothing in its output to actually redact. Every other subcommand, `fail-seq`, `pr-link` and the narrowed commands among them, has no redaction of any kind and prints raw branch names, paths, or prior-user text. `fail-seq` and `pr-link` print that under the default union. The narrowed commands read the active account by default; the list above names them. `audit-routing-samples` and `handoff-signal-response --sample` print the `DO NOT PUBLISH` banner on stderr above one root, which on those two takes `--this-repo` or `--all-accounts`. Free text prints raw under every flag. `cost --summary` is now a second narrowing path, but it applies to `cost` specifically, not to any subcommand in this list. `subagents`, `subagent-mix` and `review-round-cost` are outside this three-bucket split entirely: all redact branch names (and, for `subagent-mix`, `subagent_type` values) under more than one root via `account-N/branch-N`-style opaque labels, disclosing the raw value only under `--this-repo` — see their own sections below for the full contract.
+Redaction — the `DO NOT PUBLISH` banner and `account-N`/`private-project-N` labels — is not uniform across the three subcommands that mention it. `cost` and `audit-routing` build the redact map and print per-project or per-account labels. `context-distribution` prints the same banner and refuses `--no-redact` above one root, but never builds the redact map and emits no project label at all, so there is nothing in its output to actually redact. Every other subcommand, `fail-seq` and `pr-link` among them, has no redaction of any kind and prints raw branch names, paths, or prior-user text. The narrowed commands are in that group, except `audit-routing` (above) and `handoff-signal-response --sample`, which redacts session IDs to `session-N` only and prints free text raw. `fail-seq` and `pr-link` print raw text under the default union. The narrowed commands read the active account by default; the list above names them. `audit-routing-samples` and `handoff-signal-response --sample` print the `DO NOT PUBLISH` banner on stderr above one root, which on those two takes `--this-repo` or `--all-accounts`. `cost --summary` is now a second narrowing path, but it applies to `cost` specifically, not to any subcommand in this list. `subagents`, `subagent-mix` and `review-round-cost` are outside this three-bucket split entirely: all redact branch names (and, for `subagent-mix`, `subagent_type` values) under more than one root via `account-N/branch-N`-style opaque labels, disclosing the raw value only under `--this-repo` — see their own sections below for the full contract.
 
 `context-composition` matches `context-distribution`'s own contract exactly: same banner, same multi-root `--no-redact` refusal, no redact map, and no per-root/per-account/per-project breakdown of its category ranking — only the per-root scan-summary line (`context-composition: account-N: scanned … transcripts`) every multi-root subcommand above already prints.
 
@@ -131,7 +132,7 @@ This is the safe way to smoke-test any of these subcommands against synthetic da
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`, all projects)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Subagent attribution" and "Pre-branch default-branch attribution" blocks under `cost`. Only a sidechain record that sits inline in a main transcript file reaches `buckets`; the Sess and turn counts come from main-thread records.
 
 **Sample output.**
@@ -195,7 +196,7 @@ Sequence: 0 0 5 0 0 0 3 0 0 0 0 0
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 
 **Sample output.**
 ```
@@ -221,7 +222,7 @@ Text inside a `<task-notification>` envelope is excluded from matching, because 
 - `--branches B1,B2,...` — filter to specific branches (default: all). Attribution follows the "Subagent attribution" and "Pre-branch default-branch attribution" blocks under `cost`. Span and Active include a session's leading default-branch records once they count toward the branch it enters.
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--gap-minutes N` — threshold (in minutes) for classifying an inter-turn gap as idle (default: 30)
 
 **Sample output.**
@@ -460,12 +461,12 @@ bin          sessions   turns  skill-inv  skill/1k commits  w-skill  wo-skill  n
 
 **Purpose.** Per-skill invocation-source tally for a scoped set of projects (this repo by default), split into three buckets: `top-level` (description-triggered Skill tool_use on a main-thread turn with no parent skill active), `routed` (Skill tool_use fired while another skill's body was active — `attributionSkill` is non-empty), and `user-slash` (user record containing `<command-name>/skillname</command-name>`, the `/slash` invocation path). The classification summary at the bottom identifies routed-only candidates (name-only eligible) and slash-only candidates (disable-model-invocation eligible) for skill-description budget analysis.
 
-**Scope defaults to this repo.** With `--projects` unset, the read is scoped to *this repository's own worktrees*, derived from `git worktree list` and matched by exact directory identity. This is a minimization control: the output is routinely quoted into public PR descriptions, and skill names on the machine can themselves be private-project identifiers. `--include-subagents` weakens this bound; see Limits below. It fails closed (error, no output) rather than falling back to a machine-wide read if the repo scope cannot be derived. Passing an explicit `--projects` glob is an escape hatch for corpus analysis — the output is then no longer scoped to this repo. The header labels that state as `explicit --projects (not repo-scoped)` rather than interpolating the glob, so the glob itself never reaches stdout; `review-trace`, whose scope label is the glob, differs here.
+**Scope defaults to this repo.** With `--projects` unset, the read is scoped to *this repository's own worktrees*, derived from `git worktree list` and matched by exact directory identity. This is a minimization control: it keeps other projects' sessions out of the read, and skill names on the machine can themselves be private-project identifiers. A default run still pools every declared account, so its output is local-only (see Limits). `--include-subagents` weakens this bound; see Limits below. It fails closed (error, no output) rather than falling back to a machine-wide read if the repo scope cannot be derived. Passing an explicit `--projects` glob is an escape hatch for corpus analysis — the output is then no longer scoped to this repo. The header labels that state as `explicit --projects (not repo-scoped)` rather than interpolating the glob, so the glob itself never reaches stdout; `review-trace`, whose scope label is the glob, differs here.
 
 **Flags.**
-- `--projects GLOB` — project directory glob. Default: this repo's own worktrees only (publish-safe without `--include-subagents`; see Limits), but it reads this repo's sessions across every declared account, so its counts are cross-account pooled figures; an explicit glob is the escape hatch (not repo-scoped). An explicit glob reads the active account only, unless `--all-accounts`.
+- `--projects GLOB` — project directory glob. Default: this repo's own worktrees only, read across every declared account. Its counts are cross-account pooled figures, so a default run is not a publication instrument (see Limits). An explicit glob is the escape hatch (not repo-scoped) and reads the active account only, unless `--all-accounts`.
 - `--this-repo` — explicit no-op: `skill-invocation` already defaults to this repo's own worktrees. Kept so the flag is uniform across every `--projects` subcommand; mutually exclusive with `--projects` like everywhere else.
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above); without `--projects`, the default repo-scoped mode already pools this repo's worktrees from every declared account, so the flag changes nothing there
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above). Without `--projects`, the default repo-scoped mode already pools this repo's worktrees from every declared account, so the flag changes nothing there.
 - `--branches B1,B2,...` — restrict to the named branches (default: all branches in scope). Attribution follows the "Pre-branch default-branch attribution" block under `cost`, and with `--include-subagents` the "Subagent attribution" block too.
 - `--include-subagents` — also count invocations inside spawned subagents, adding a `thread` column (`main` vs `sidechain`). Off by default so budget analysis stays main-thread-only; the fidelity consumer opts in. Its output can carry another project's skill names; see Limits.
 
@@ -506,8 +507,8 @@ CLASSIFICATION SUMMARY
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
-- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above); required before quoting output publicly (see below)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above); changes nothing for `--deny-summary`, which already pools every declared account
+- `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above). Over more than one declared root it is a wider read, for the owner only. Together with a single top-level `--config-dir` it reads one account, which is the precondition for quoting output publicly.
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above). It changes nothing for `--deny-summary`, which already pools every declared account.
 - `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--since DATE` — inclusive start date (`YYYY-MM-DD`)
 - `--until DATE` — inclusive end date (`YYYY-MM-DD`)
@@ -617,7 +618,7 @@ interrupted                    1
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`, all projects)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--branches B1,B2,...` — filter to specific branches. Attribution follows the "Pre-branch default-branch attribution" block under `cost`.
 - `--since DATE` — inclusive start date (`YYYY-MM-DD`)
 - `--until DATE` — inclusive end date (`YYYY-MM-DD`)
@@ -654,7 +655,7 @@ Good catch. I'll add IP-range validation before trusting that header.
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--top N` — maximum per-session rows to emit (default: 20)
 - `--redact` — replace project dir names with anonymized labels (`private-project-1`, `private-project-2`, …); `claude-config` is preserved. Use this flag when posting output to GitHub issues.
@@ -784,6 +785,7 @@ The full `cost` report under `--branches` prints one extra line, `Pre-branch def
 - Rounds price a whole dispatch at its spawn record's branch, while per-record consumers split a subagent that straddles a switch.
 - `review-trace` renders `?` where per-record consumers fall forward.
 - `--include-subagents` output, in any form, can carry another project's skill names, because a subagent file under an in-repo session is read whatever repo the subagent worked in. A skill name can itself identify a private project. `--branches X` additionally counts such records under X. Treat all `skill-invocation --include-subagents` output as local-only.
+- A default `skill-invocation` run, with or without `--include-subagents`, reads this repo's sessions in every declared account. A skill invoked in this repo's sessions in one account only, such as an account-level plugin or skill directory, therefore appears in its output by name, and that name can identify a private project. Treat a default run's output as local-only too. That holds at any number of declared accounts, and with a single top-level `--config-dir` named: no run of this command refuses a wider corpus, so none is a publication instrument (see `docs/private-project-redaction.md` § "This repository, one account"). An explicit `--projects GLOB` run is local-only for the same reason.
 - A session that moves its working directory into another repo can name a foreign branch as the pre-branch successor, so the leading run goes to that name and this PR's branch loses it. A foreign-repo default-branch stretch followed by a branch here is credited to this PR.
 - Sidechain records are identified by each record's own `isSidechain` flag, not by which file holds them. A record in a `subagents/*.jsonl` file without the flag is treated as a main-thread record: it keeps its own tag, and that tag enters the timeline, where it can attribute later subagent records and become the pre-branch successor. The subagent-format drift warning fires only when main-thread spawns are recorded and no flagged assistant turn is read, so it does not catch a partial loss of the flag. `pr-cost` and `workstream-cost` emit no drift warning.
 
@@ -2531,7 +2533,7 @@ Field definitions:
 **Flags.**
 - `--config-dir PATH` — top-level flag (precedes the subcommand name), resolves sessions under `PATH/projects` instead of the default config dir. Composes with `--this-repo`/`--projects` the same way every non-`cost`-family subcommand does (`_resolve_scan_roots`) — this subcommand is not in `_SUBCOMMANDS_WITH_OWN_CONFIG_DIR`, so it has no separate, repeatable per-subcommand `--config-dir` of its own the way `cost`/`context-distribution` do.
 - `--projects GLOB` / `--this-repo` — project directory scope (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above); without `--sample`, the aggregate report already pools every declared account, so the flag changes nothing there; a `--sample` run reads the active account unless the flag is passed
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above). Without `--sample`, the aggregate report already pools every declared account, so the flag changes nothing there. A `--sample` run reads the active account unless the flag is passed.
 - `--no-redact` — emit raw session IDs in `--sample` curation cards instead of a run-scoped opaque label (`session-1`, `session-2`, ...), and print the `DO NOT PUBLISH` banner. Refused (exit 2) once scope resolves to more than one root — matching `context-distribution`'s own contract, not `audit-routing-samples`' (which has no redaction of any kind). A default `--sample` run reads the active account's one root and is not refused. Under `--this-repo` or `--all-accounts` it is refused once more than one root is in scope.
 - `--sample N` — emit the top N signal rows by post-signal spend (`dollars_after_signal` descending) as curation cards instead of the aggregate census report. A default run ranks its top N and computes each card's `exceeds_startup_burn_benchmark` over the active account only, so its cards are not comparable to a census run's benchmark without `--all-accounts`. Above one root a `--sample` run prints the `DO NOT PUBLISH` banner on stderr, and stdout is unchanged. The banner names real project names and session IDs, but on this command the redacted cards print session IDs as `session-N` and no project name, so the hazard it points at is mostly the `excerpt` and `forward_context` text, which prints raw under every flag.
 - `--seed N` — seed for reproducible tie-breaking among equal-spend rows in `--sample` (default: unseeded — ties keep scan order)
@@ -2705,7 +2707,7 @@ neither           2,167       1,762,987
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum turns to emit (default: 30)
 - `--seed N` — random seed for reproducible sampling
@@ -2736,7 +2738,7 @@ neither           2,167       1,762,987
 
 Verdict meanings: `true (delegate)` — the reads sat in context with no immediate consumer, delegation would have saved tokens; `false (inline correct)` — the reads fed an immediate edit or comprehension-driven response; `skip` — ambiguous or noise.
 
-**When to reach for it.** Build a labeled training set for delegation-rule calibration. Use `--seed` for reproducible samples across sessions; use `--format md` for human curation review; use `--format json` to feed a downstream scoring script. `audit-routing-shape` pools every declared account by default while this command reads the active account, so a comparison of the two passes `--all-accounts` here, or `--this-repo` on both.
+**When to reach for it.** Build a labeled training set for delegation-rule calibration. Use `--seed` for reproducible samples across sessions; use `--format md` for human curation review; use `--format json` to feed a downstream scoring script. Its scope against `audit-routing-shape` is set under "Corpus scope: the declared-roots file" above.
 
 ---
 
@@ -2787,14 +2789,14 @@ Bucket    Streaks    Share of $
 
 ## turn-shape-samples
 
-**Purpose.** Emit a random sample of flagged turn-shape streaks (length >= 2) as plain text, for manual precision/recall calibration of the batching and delegation rules against `turn-shape`'s aggregate. `turn-shape` pools every declared account by default while this command reads the active account, so `--all-accounts` here, or `--this-repo` on both, makes their populations match.
+**Purpose.** Emit a random sample of flagged turn-shape streaks (length >= 2) as plain text, for manual precision/recall calibration of the batching and delegation rules against `turn-shape`'s aggregate. Its scope against `turn-shape` is set under "Corpus scope: the declared-roots file" above.
 
 Plain text, not JSON — unlike `audit-routing-samples`, this output is stamped with the `DO NOT PUBLISH` banner, and prepending a banner line would corrupt a JSON stream. (`audit-routing-samples` prints the banner on stderr only, above one root, so its stdout stays parseable JSON.)
 
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum streaks to emit (default: 30)
 - `--seed N` — random seed for reproducible sampling
@@ -2824,7 +2826,7 @@ DO NOT PUBLISH — this output contains real project names and session IDs.
 **Flags.**
 - `--projects GLOB` — project directory glob (default: `*`)
 - `--this-repo` — scope to this repo's own worktrees by identity, in every declared account (see "Scoping to this repo" above)
-- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone; the output is not for publication (see "Corpus scope: the declared-roots file" above)
+- `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--sample N` — maximum candidates to emit (default: 30)
 - `--seed N` — random seed (default: `0`, fixed rather than OS entropy, so repeated invocations shuffle the same population identically — required for `--offset` to page without overlap or gaps)
@@ -2843,7 +2845,7 @@ DO NOT PUBLISH — this output contains real project names and session IDs.
 
 A single isolated, non-mutating-git Bash turn qualifies as a length-1 streak under *both* the batching and delegation rules, so it renders as two candidates — one `batching`, one `delegation` — for the same session and turn, as in the example above (the same `git log` call). Recognize this as one repeated run when rating, not two independent candidates toward the sizing tally.
 
-**When to reach for it.** Page through the unflagged population to count how many genuine violations the streak-length threshold lets through — the recall half of the batching/delegation calibration `turn-shape-samples` alone can't produce. Like `turn-shape-samples`, it reads the active account by default while the `turn-shape` aggregate pools every declared account, so `--all-accounts` here, or `--this-repo` on both, makes their populations match.
+**When to reach for it.** Page through the unflagged population to count how many genuine violations the streak-length threshold lets through — the recall half of the batching/delegation calibration `turn-shape-samples` alone can't produce. Its scope against `turn-shape` is set under "Corpus scope: the declared-roots file" above.
 
 - **Paging protocol:** run, rate the page, note how many pages have been seen, then re-invoke with `--offset` advanced by the prior `--sample` size (the fixed default `--seed` guarantees the same shuffle each time) — no tool-side bookkeeping needed.
 - **Inter-rater agreement:** two raters sharing one `--seed` and paging the same `--offset`/`--sample` sequence land on identical runs at each step.

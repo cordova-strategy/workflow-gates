@@ -603,10 +603,6 @@ def cmd_audit_routing_samples(args: argparse.Namespace) -> None:
     code-read turn, and the kind of action taken in the next non-user Opus turn. Designed
     for manual curation of which turns should/should not have been delegated.
 
-    cmd_audit_routing_shape pools every declared account by default while this command
-    reads the active account. --all-accounts on this command, or --this-repo on both,
-    makes their populations match.
-
     The judgment-span state machine is intentionally duplicated from cmd_audit_routing —
     tests cross-validate the two copies to guard against drift.
     """

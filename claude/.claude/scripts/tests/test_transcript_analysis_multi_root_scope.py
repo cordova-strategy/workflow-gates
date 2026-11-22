@@ -35,15 +35,24 @@ from transcript_analysis import (
     struggle,
     subagent_mix,
     subagents,
+    turn_shape,
 )
 
-from ._account_scope_helpers import ACTIVE_ACCOUNT_CLAUSE, _sessions_args
+from ._account_scope_helpers import (
+    ACTIVE_ACCOUNT_CLAUSE,
+    ACTIVE_ROOT_SENTINEL,
+    DECLARED_ROOT_SENTINEL,
+    _sessions_args,
+    seed_one_session_per_root,
+    write_judgment_pair_session,
+)
 from ._audit_routing_helpers import _audit_routing_samples_args, _audit_routing_shape_args
 from ._cache_rebuild_helpers import _cache_rebuild_args
 from ._commit_gate_helpers import _gate_args
 from ._handoff_nudge_helpers import _rearm_backtest_args, _spend_over_threshold_args
-from ._skill_helpers import _judgment_pair_args, _review_asst, _skill_inv_args, _skill_pair_args, _user_reply
+from ._skill_helpers import _judgment_pair_args, _skill_inv_args, _skill_pair_args
 from ._subagent_helpers import _subagents_args
+from ._turn_shape_helpers import _turn_shape_args
 from .conftest import (
     _audit_routing_args,
     _context_distribution_args,
@@ -111,6 +120,7 @@ _UNCONDITIONAL_HEADER_CASES: list[tuple[str, str, object, object, bool]] = [
      _spend_over_threshold_args, False),
     ("rearm-backtest", "REARM BACKTEST", rearm_backtest.cmd_rearm_backtest, _rearm_backtest_args, False),
     ("audit-routing-shape", "AUDIT ROUTING SHAPE", audit_routing.cmd_audit_routing_shape, _audit_routing_shape_args, False),
+    ("turn-shape", "TURN SHAPE", turn_shape.cmd_turn_shape, _turn_shape_args, False),
     ("audit-routing-samples", "AUDIT ROUTING SAMPLES", audit_routing.cmd_audit_routing_samples,
      _audit_routing_samples_args, True),
     ("judgment-pair", "JUDGMENT PAIR", judgment_pair.cmd_judgment_pair, _judgment_pair_args, True),
@@ -494,25 +504,11 @@ class TestMultiRootFormatOutliers:
         records = json.loads(out)
         assert {rec["session_id"] for rec in records} == {"sess-0", "sess-1"}
 
-    _ROOT_MARKERS = ("active-root", "declared-root")
-
-    @classmethod
-    def _seed_one_review_session_per_root(cls, roots):
-        """Each root's review text carries its own marker, so an output names the roots it read."""
-        for idx, (root, marker) in enumerate(zip(roots, cls._ROOT_MARKERS, strict=True)):
-            proj = root / f"-home-user-repo-{idx}"
-            proj.mkdir(parents=True)
-            _write_jsonl(proj / f"sess-{idx}.jsonl", [
-                _skill_use_rec("code-review", "2026-05-20T10:00:00.000Z"),
-                _review_asst(f"Logic error in retry loop ({marker}).", "2026-05-20T10:01:00.000Z"),
-                _user_reply("Will fix the retry logic."),
-            ])
-
     def test_judgment_pair_out_file_one_header_line_under_all_accounts(
         self, tmp_path, monkeypatch
     ):
         roots = _two_declared_roots(tmp_path, monkeypatch)
-        self._seed_one_review_session_per_root(roots)
+        seed_one_session_per_root(roots, write_judgment_pair_session)
         out_file = roots[0].parent / "out.txt"
         args = _judgment_pair_args(out=str(out_file))
         args.all_accounts = True
@@ -523,21 +519,20 @@ class TestMultiRootFormatOutliers:
         assert lines[0] == "JUDGMENT PAIR SOURCES (*; 2 roots)"
         header_lines = [ln for ln in lines if ln.startswith("JUDGMENT PAIR SOURCES")]
         assert len(header_lines) == 1
-        assert all(marker in content for marker in self._ROOT_MARKERS)  # one block per root's session
+        assert ACTIVE_ROOT_SENTINEL in content and DECLARED_ROOT_SENTINEL in content  # one block per root's session
 
     def test_judgment_pair_out_file_header_names_the_active_account_read(
         self, tmp_path, monkeypatch
     ):
         roots = _two_declared_roots(tmp_path, monkeypatch)
-        self._seed_one_review_session_per_root(roots)
+        seed_one_session_per_root(roots, write_judgment_pair_session)
         out_file = roots[0].parent / "out.txt"
 
         judgment_pair.cmd_judgment_pair(_judgment_pair_args(out=str(out_file)))
         content = out_file.read_text()
         assert content.splitlines()[0] == f"JUDGMENT PAIR SOURCES (*; {ACTIVE_ACCOUNT_CLAUSE})"
-        active_marker, declared_marker = self._ROOT_MARKERS
-        assert active_marker in content
-        assert declared_marker not in content
+        assert ACTIVE_ROOT_SENTINEL in content
+        assert DECLARED_ROOT_SENTINEL not in content
 
 
 class TestSkillFilesQuoteRootCountDescLiteral:

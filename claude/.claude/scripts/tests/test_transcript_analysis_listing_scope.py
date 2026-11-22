@@ -25,17 +25,21 @@ from ._account_scope_helpers import (
     ACTIVE_ROOT_SENTINEL,
     DECLARED_ROOT_SENTINEL,
     NAMED_ACCOUNT_SENTINEL,
+    SESSION_TS,
     SHARED_PROJECT_SLUG,
     _sessions_args,
+    seed_one_session_per_root,
+    write_judgment_pair_session,
+    write_skill_name_session,
 )
 from ._audit_routing_helpers import _audit_routing_samples_args
 from ._handoff_nudge_helpers import (
     _handoff_cards,
     _handoff_signal_response_args,
-    _write_signal_with_excerpt_under_each_root,
+    _write_signal_with_excerpt_session,
 )
 from ._session_signal_helpers import _branch_args
-from ._skill_helpers import _judgment_pair_args, _review_asst, _skill_inv_args, _user_reply
+from ._skill_helpers import _judgment_pair_args, _skill_inv_args
 from ._turn_shape_helpers import _turn_shape_holdout_samples_args, _turn_shape_samples_args
 from .conftest import (
     _asst,
@@ -54,47 +58,28 @@ from .conftest import (
     _write_subagent_jsonl,
 )
 
-_SESSION_TS = "2026-05-20T10:00:00.000Z"
 _LATER_SESSION_TS = "2026-05-20T10:10:00.000Z"
 _STDOUT = "out"
 _STDERR = "err"
 
 
 class _NarrowedRow(NamedTuple):
-    """One narrowed command: how to seed both roots, build its args, run it, and where its header prints."""
+    """One narrowed command: how to seed one root's session, build its args, run it, and where its header prints."""
     name: str
     header_stream: str
     args_factory: Callable[[], object]
-    write_roots: Callable[[list[Path], str, list[str]], None]
+    write_session: Callable[[Path, str], None]
     run: Callable[[object], None]
     # skill-invocation reads this repo's slugs only while --projects is unset.
     unsets_projects_under_this_repo: bool = False
 
 
-def _per_root_writer(write_session: Callable[[Path, str], None]) -> Callable[[list[Path], str, list[str]], None]:
-    """Seed each root's `project_slug` directory with one session carrying that root's sentinel."""
-    def _write_roots(roots: list[Path], project_slug: str, sentinels: list[str]) -> None:
-        for root, sentinel in zip(roots, sentinels, strict=True):
-            project_dir = root / project_slug
-            project_dir.mkdir(parents=True, exist_ok=True)
-            write_session(project_dir, sentinel)
-    return _write_roots
-
-
 def _write_review_trace_session(project_dir: Path, sentinel: str) -> None:
-    _write_jsonl(project_dir / f"{sentinel}.jsonl", [_skill_use_rec("code-review", _SESSION_TS)])
+    _write_jsonl(project_dir / f"{sentinel}.jsonl", [_skill_use_rec("code-review", SESSION_TS)])
 
 
 def _write_review_trace_denial_session(project_dir: Path, sentinel: str) -> None:
     _write_jsonl(project_dir / f"{sentinel}.jsonl", [_hook_deny_current("Commit blocked by code-review gate.")])
-
-
-def _write_judgment_pair_session(project_dir: Path, sentinel: str) -> None:
-    _write_jsonl(project_dir / f"{sentinel}.jsonl", [
-        _skill_use_rec("code-review", _SESSION_TS),
-        _review_asst("Logic error in retry loop.", "2026-05-20T10:01:00.000Z"),
-        _user_reply("Will fix the retry logic."),
-    ])
 
 
 def _write_sessions_session(project_dir: Path, sentinel: str) -> None:
@@ -118,24 +103,20 @@ def _write_one_commit_turn_session(project_dir: Path, sentinel: str) -> None:
     ])
 
 
-def _write_skill_name_session(project_dir: Path, sentinel: str) -> None:
-    _write_jsonl(project_dir / "sess.jsonl", [_skill_use_rec(sentinel, _SESSION_TS)])
-
-
 def _write_branch_session(project_dir: Path, sentinel: str) -> None:
-    _write_jsonl(project_dir / "sess.jsonl", [_asst("claude-sonnet-4-6", branch=sentinel, ts=_SESSION_TS)])
+    _write_jsonl(project_dir / "sess.jsonl", [_asst("claude-sonnet-4-6", branch=sentinel, ts=SESSION_TS)])
 
 
 def _write_two_timestamp_branch_session(project_dir: Path, sentinel: str) -> None:
     _write_jsonl(project_dir / "sess.jsonl", [
-        _asst("claude-sonnet-4-6", branch=sentinel, ts=_SESSION_TS),
+        _asst("claude-sonnet-4-6", branch=sentinel, ts=SESSION_TS),
         _asst("claude-sonnet-4-6", branch=sentinel, ts=_LATER_SESSION_TS),
     ])
 
 
 def _write_struggle_branch_session(project_dir: Path, sentinel: str) -> None:
     _write_jsonl(project_dir / "sess.jsonl", [
-        _asst("claude-sonnet-4-6", branch=sentinel, ts=_SESSION_TS),
+        _asst("claude-sonnet-4-6", branch=sentinel, ts=SESSION_TS),
         _user_msg("are you saying the build passes?", branch=sentinel, ts=_LATER_SESSION_TS),
     ])
 
@@ -143,56 +124,56 @@ def _write_struggle_branch_session(project_dir: Path, sentinel: str) -> None:
 _NARROWED_ROWS = [
     _NarrowedRow(
         "review-trace", _STDOUT, _review_trace_args,
-        _per_root_writer(_write_review_trace_session), review_trace.cmd_review_trace,
+        _write_review_trace_session, review_trace.cmd_review_trace,
     ),
     _NarrowedRow(
         "review-trace --deny-only", _STDOUT, lambda: _review_trace_args(deny_only=True),
-        _per_root_writer(_write_review_trace_denial_session), review_trace.cmd_review_trace,
+        _write_review_trace_denial_session, review_trace.cmd_review_trace,
     ),
     _NarrowedRow(
         "judgment-pair", _STDOUT, _judgment_pair_args,
-        _per_root_writer(_write_judgment_pair_session), judgment_pair.cmd_judgment_pair,
+        write_judgment_pair_session, judgment_pair.cmd_judgment_pair,
     ),
     _NarrowedRow(
         "sessions", _STDERR, _sessions_args,
-        _per_root_writer(_write_sessions_session), sessions.cmd_sessions,
+        _write_sessions_session, sessions.cmd_sessions,
     ),
     _NarrowedRow(
-        "skill-invocation", _STDOUT, _skill_inv_args,
-        _per_root_writer(_write_skill_name_session), skill_invocation.cmd_skill_invocation,
+        "skill-invocation --projects", _STDOUT, _skill_inv_args,
+        write_skill_name_session, skill_invocation.cmd_skill_invocation,
         unsets_projects_under_this_repo=True,
     ),
     _NarrowedRow(
         "buckets", _STDOUT, _branch_args,
-        _per_root_writer(_write_branch_session), buckets.cmd_buckets,
+        _write_branch_session, buckets.cmd_buckets,
     ),
     _NarrowedRow(
         "duration", _STDOUT, _branch_args,
-        _per_root_writer(_write_two_timestamp_branch_session), duration.cmd_duration,
+        _write_two_timestamp_branch_session, duration.cmd_duration,
     ),
     _NarrowedRow(
         "struggle", _STDOUT, _branch_args,
-        _per_root_writer(_write_struggle_branch_session), struggle.cmd_struggle,
+        _write_struggle_branch_session, struggle.cmd_struggle,
     ),
     _NarrowedRow(
         "audit-routing", _STDOUT, _audit_routing_args,
-        _per_root_writer(_write_opus_read_session), audit_routing.cmd_audit_routing,
+        _write_opus_read_session, audit_routing.cmd_audit_routing,
     ),
     _NarrowedRow(
         "audit-routing-samples", _STDERR, _audit_routing_samples_args,
-        _per_root_writer(_write_opus_read_session), audit_routing.cmd_audit_routing_samples,
+        _write_opus_read_session, audit_routing.cmd_audit_routing_samples,
     ),
     _NarrowedRow(
         "turn-shape-samples", _STDERR, _turn_shape_samples_args,
-        _per_root_writer(_write_two_commit_turns_session), turn_shape.cmd_turn_shape_samples,
+        _write_two_commit_turns_session, turn_shape.cmd_turn_shape_samples,
     ),
     _NarrowedRow(
         "turn-shape-holdout-samples", _STDERR, _turn_shape_holdout_samples_args,
-        _per_root_writer(_write_one_commit_turn_session), turn_shape.cmd_turn_shape_holdout_samples,
+        _write_one_commit_turn_session, turn_shape.cmd_turn_shape_holdout_samples,
     ),
     _NarrowedRow(
         "handoff-signal-response --sample", _STDOUT, lambda: _handoff_signal_response_args(sample=5, seed=1),
-        _write_signal_with_excerpt_under_each_root, handoff_signal_response.cmd_handoff_signal_response,
+        _write_signal_with_excerpt_session, handoff_signal_response.cmd_handoff_signal_response,
     ),
 ]
 _ROW_IDS = [row.name for row in _NARROWED_ROWS]
@@ -200,8 +181,7 @@ _ROW_IDS = [row.name for row in _NARROWED_ROWS]
 
 def _seed_two_roots(row: _NarrowedRow, tmp_path, monkeypatch) -> object:
     """Seed both declared roots with one session each under one shared project slug and return the row's args."""
-    roots = _two_declared_roots(tmp_path, monkeypatch)
-    row.write_roots(roots, SHARED_PROJECT_SLUG, [ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL])
+    seed_one_session_per_root(_two_declared_roots(tmp_path, monkeypatch), row.write_session)
     return row.args_factory()
 
 
@@ -267,11 +247,35 @@ class TestNarrowedCommandsReadScope:
     ):
         roots = _two_declared_roots(tmp_path, monkeypatch)
         named_account = fake_config_dir_factory("named-account")
-        row.write_roots(
-            [*roots, named_account / "projects"], SHARED_PROJECT_SLUG,
-            [ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, NAMED_ACCOUNT_SENTINEL],
+        seed_one_session_per_root(
+            [*roots, named_account / "projects"], row.write_session,
+            markers=(ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, NAMED_ACCOUNT_SENTINEL),
         )
         args = row.args_factory()
+        args.config_dir = str(named_account)
+
+        row.run(args)
+
+        streams = _streams(capsys)
+        everything = streams[_STDOUT] + streams[_STDERR]
+        assert NAMED_ACCOUNT_SENTINEL in everything  # positive control: the run printed the named account's row
+        assert ACTIVE_ROOT_SENTINEL not in everything
+        assert DECLARED_ROOT_SENTINEL not in everything
+        assert " SOURCES (" in streams[row.header_stream]  # positive control: a header printed on this stream
+        assert ACTIVE_ACCOUNT_CLAUSE not in streams[row.header_stream]
+
+    def test_this_repo_beside_a_top_level_config_dir_prints_the_named_account_alone(
+        self, row, tmp_path, monkeypatch, fake_config_dir_factory, capsys,
+    ):
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        named_account = fake_config_dir_factory("named-account")
+        seed_one_session_per_root(
+            [*roots, named_account / "projects"], row.write_session,
+            markers=(ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, NAMED_ACCOUNT_SENTINEL),
+        )
+        args = _bound_to_this_repo(
+            row.args_factory(), monkeypatch, unset_projects=row.unsets_projects_under_this_repo,
+        )
         args.config_dir = str(named_account)
 
         row.run(args)
@@ -305,7 +309,7 @@ class TestBucketsCombinations:
     ):
         shared_branch = "shared-branch"
         roots = _two_declared_roots(tmp_path, monkeypatch)
-        _per_root_writer(_write_branch_session)(roots, SHARED_PROJECT_SLUG, [shared_branch, shared_branch])
+        seed_one_session_per_root(roots, _write_branch_session, markers=(shared_branch, shared_branch))
         args = _bound_to_this_repo(_branch_args(), monkeypatch)
 
         buckets.cmd_buckets(args)
@@ -329,65 +333,21 @@ class TestJudgmentPairHeaderWhenNothingMatches:
         assert lines == [f"JUDGMENT PAIR SOURCES (*; {ACTIVE_ACCOUNT_CLAUSE})", "No judgment pairs found."]
 
 
-class TestTopLevelConfigDirKeepsItsOwnHeader:
-    def test_config_dir_run_prints_that_roots_branch_without_the_active_account_clause(
-        self, tmp_path, monkeypatch, fake_config_dir_factory, capsys,
-    ):
-        roots = _two_declared_roots(tmp_path, monkeypatch)
-        named_account = fake_config_dir_factory("named-account")
-        _per_root_writer(_write_branch_session)(
-            [roots[0], roots[1], named_account / "projects"], SHARED_PROJECT_SLUG,
-            [ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, NAMED_ACCOUNT_SENTINEL],
-        )
-        args = _branch_args()
-        args.config_dir = str(named_account)
-
-        buckets.cmd_buckets(args)
-
-        out = capsys.readouterr().out
-        assert NAMED_ACCOUNT_SENTINEL in out
-        assert ACTIVE_ROOT_SENTINEL not in out
-        assert DECLARED_ROOT_SENTINEL not in out
-        assert "BUCKETS SOURCES (" in out
-        assert ACTIVE_ACCOUNT_CLAUSE not in out
-
-    def test_config_dir_run_under_this_repo_prints_no_active_account_clause(
-        self, tmp_path, monkeypatch, fake_config_dir_factory, capsys,
-    ):
-        _two_declared_roots(tmp_path, monkeypatch)
-        named_account = fake_config_dir_factory("named-account")
-        _per_root_writer(_write_branch_session)(
-            [named_account / "projects"], SHARED_PROJECT_SLUG, [NAMED_ACCOUNT_SENTINEL],
-        )
-        args = _bound_to_this_repo(_branch_args(), monkeypatch)
-        args.config_dir = str(named_account)
-
-        buckets.cmd_buckets(args)
-
-        out = capsys.readouterr().out
-        assert NAMED_ACCOUNT_SENTINEL in out
-        assert "BUCKETS SOURCES (" in out
-        assert ACTIVE_ACCOUNT_CLAUSE not in out
-
-
 class TestSessionsIncludeSubagentsReadsTheActiveRootByDefault:
     """--include-subagents lists each split subagent file beside its main session, so it must stay inside the
     roots the run resolved."""
 
     @staticmethod
-    def _seed_session_with_subagent_per_root(roots: list[Path]) -> None:
-        for root, sentinel in zip(roots, (ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL), strict=True):
-            project_dir = root / SHARED_PROJECT_SLUG
-            project_dir.mkdir(parents=True)
-            _write_jsonl(project_dir / f"{sentinel}.jsonl", [_asst("claude-sonnet-4-6")])
-            _write_subagent_jsonl(project_dir, sentinel, f"agent-{sentinel}", [_asst("claude-sonnet-4-6")])
+    def _write_session_with_subagent(project_dir: Path, sentinel: str) -> None:
+        _write_jsonl(project_dir / f"{sentinel}.jsonl", [_asst("claude-sonnet-4-6")])
+        _write_subagent_jsonl(project_dir, sentinel, f"agent-{sentinel}", [_asst("claude-sonnet-4-6")])
 
     @staticmethod
     def _listed_paths(capsys) -> list[str]:
         return capsys.readouterr().out.splitlines()
 
     def test_default_run_lists_the_active_roots_session_and_subagent_only(self, tmp_path, monkeypatch, capsys):
-        self._seed_session_with_subagent_per_root(_two_declared_roots(tmp_path, monkeypatch))
+        seed_one_session_per_root(_two_declared_roots(tmp_path, monkeypatch), self._write_session_with_subagent)
         args = _sessions_args()
         args.include_subagents = True
 
@@ -400,7 +360,7 @@ class TestSessionsIncludeSubagentsReadsTheActiveRootByDefault:
         assert not any(DECLARED_ROOT_SENTINEL in path for path in listed)
 
     def test_all_accounts_run_lists_both_roots_sessions_and_subagents(self, tmp_path, monkeypatch, capsys):
-        self._seed_session_with_subagent_per_root(_two_declared_roots(tmp_path, monkeypatch))
+        seed_one_session_per_root(_two_declared_roots(tmp_path, monkeypatch), self._write_session_with_subagent)
         args = _sessions_args()
         args.include_subagents = True
         args.all_accounts = True
@@ -440,7 +400,7 @@ class TestPooledModesKeepReadingEveryDeclaredRoot:
         assert scope._DO_NOT_PUBLISH_BANNER not in captured.out + captured.err
 
     def test_skill_invocation_without_projects_reads_both_roots(self, tmp_path, monkeypatch, capsys):
-        row = next(row for row in _NARROWED_ROWS if row.name == "skill-invocation")
+        row = next(row for row in _NARROWED_ROWS if row.name == "skill-invocation --projects")
         _seed_two_roots(row, tmp_path, monkeypatch)
         monkeypatch.setattr(scope, "_repo_scoped_project_slugs", lambda *_a, **_k: [SHARED_PROJECT_SLUG])
 

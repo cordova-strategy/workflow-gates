@@ -511,6 +511,28 @@ class TestAllAccountsFlagRegistration:
         assert with_pooled_help == set(_NARROWED_SUBCOMMANDS) - {"skill-invocation"}
 
 
+# Copies of the mode predicates the three mode-split commands apply beside `_narrows_to_active_account`.
+# Nothing ties them to the command modules, so a deliberate predicate change needs this table updated too.
+_MODE_SPLIT_NARROWING_SWITCH = {
+    "review-trace": lambda parsed: not parsed.deny_summary,
+    "skill-invocation": lambda parsed: bool(parsed.projects),
+    "handoff-signal-response": lambda parsed: bool(parsed.sample),
+}
+# review-trace's bare run is its timeline, which narrows.
+_POOLED_BY_CLI_DEFAULT = ("skill-invocation", "handoff-signal-response")
+
+
+class TestNarrowedCommandsCliDefaults:
+    @pytest.mark.parametrize("subcommand", _NARROWED_SUBCOMMANDS)
+    def test_bare_invocation_narrows_to_the_active_account_unless_the_mode_default_pools(self, subcommand):
+        parsed = cli.build_parser().parse_args([subcommand])
+        mode_narrows = _MODE_SPLIT_NARROWING_SWITCH.get(subcommand, lambda _parsed: True)(parsed)
+
+        narrows_by_default = scope._narrows_to_active_account(parsed) and mode_narrows
+
+        assert narrows_by_default is (subcommand not in _POOLED_BY_CLI_DEFAULT)
+
+
 class TestAllAccountsBesideTopLevelConfigDir:
     """The top-level --config-dir names one account, so main() refuses it beside --all-accounts, which asks
     for every account, rather than print one account's rows as if they were complete."""

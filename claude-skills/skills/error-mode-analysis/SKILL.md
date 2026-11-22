@@ -24,9 +24,9 @@ python3 ~/.claude/scripts/transcript-analysis.py buckets --this-repo
 
 Always scope `--projects`/`--this-repo` — an unscoped run reads every project, not this repo's alone. See `docs/transcript-analysis.md`'s "Scoping to this repo" section for the derivation, its gaps, and the subdirectory-session fallback.
 
-`buckets`, `review-trace`, and `fail-seq` all accept `--projects GLOB`/`--this-repo` (cross-repo), `--branches B1,B2,...` (multiple branches/PRs at once), and (on `review-trace`) `--since`/`--until DATE` — the tooling already spans repos and calendar time; scope is a choice, not a limitation. A `--projects` glob on `buckets` or `review-trace` reads the active account only, while on `fail-seq` it reads every declared account. `--this-repo` is the one scope all of these commands (`buckets`, `review-trace`, `duration`, `fail-seq`, `subagents` and `pr-link`) share. Adding `--all-accounts` to span every declared account is the user's call, not a routine fallback.
+`buckets`, `review-trace`, and `fail-seq` all accept `--projects GLOB`/`--this-repo` (cross-repo), `--branches B1,B2,...` (multiple branches/PRs at once), and (on `review-trace`) `--since`/`--until DATE` — the tooling already spans repos and calendar time; scope is a choice, not a limitation. A `--projects` glob on `buckets`, `review-trace` or `duration` reads the active account only, while on `fail-seq` it reads every declared account.
 
-**Default to breadth, not the narrowest concrete option.** Default scope (unless the user names one PR/branch): the current project, all branches, last 6 weeks — widen rather than narrow if a scoping question goes unanswered, since under-scoping risks promoting a false pattern to a fix. Take the analysis window from `review-trace --since/--until`, not `buckets`' Date range column — `buckets` takes no `--since`/`--until` flags, so its Date range column reflects each branch's full session span, not the requested window.
+**Default to breadth, not the narrowest concrete option.** Default scope (unless the user names one PR/branch): the current project, all branches, last 6 weeks — widen branches and date range rather than narrow them if a scoping question goes unanswered (accounts stay as they are), since under-scoping risks promoting a false pattern to a fix. Take the analysis window from `review-trace --since/--until`, not `buckets`' Date range column — `buckets` takes no `--since`/`--until` flags, so its Date range column reflects each branch's full session span, not the requested window.
 
 ## Step 2 — Collect transcript signals
 
@@ -38,7 +38,7 @@ Invoke `transcript-narrative` and `transcript-analysis` by name — do not resta
 Tell the delegated `transcript-analysis` run which scope Step 1 used.
 
 - `--this-repo` is the one scope `buckets`, `review-trace`, `duration`, `fail-seq`, `subagents` and `pr-link` all share.
-- For a `--projects '<glob>'` scope (a glob starting with `-` is passed as `--projects='<glob>'`), `--all-accounts` goes on `buckets`, `review-trace` and `duration` only: `fail-seq`, `subagents` and `pr-link` register no `--all-accounts` and already read every declared account.
+- For a `--projects '<glob>'` scope (a glob starting with `-` is passed as `--projects='<glob>'`), add `--all-accounts` to `buckets`, `review-trace` and `duration` only when the user asked for cross-account scope. An unanswered scope question does not widen accounts, because `--all-accounts` is the user's call, not a routine fallback. `fail-seq`, `subagents` and `pr-link` register no `--all-accounts` and already read every declared account.
 - A glob without `--all-accounts` makes these commands mixed-scope, with `buckets`, `review-trace` and `duration` on the active account and the rest on every declared account. Report it as mixed-scope.
 
 `review-trace` locates every skill invocation, hook denial, and reviewer-agent spawn per session — exactly the Pipeline working and Post-commit bot evidence Step 4 needs.
@@ -145,10 +145,10 @@ Return the paths to Artifact A and Artifact B, plus the Step 4 bucket table, rat
 
 A single run buckets one flat window. That's enough to tell you a failure mode exists; it isn't enough to tell you whether it's recurring, growing, or a one-off — and that distinction changes the priority column in Step 4 (a human-unique finding seen once across six weeks is a different fix priority than the same finding recurring every PR).
 
-Split the Step 1 date range into successive sub-windows (weekly, or biweekly for a longer range) and re-run Steps 2–4 per sub-window using `--since`/`--until` on `review-trace` (and `--branches` and whichever scope Step 1 used held constant across sub-windows — `--this-repo`, or `--projects '<glob>'` (as `--projects='<glob>'` when it starts with `-`) with or without `--all-accounts` — so the only thing varying is time). Each sub-window's own Step 2 re-invocation of `transcript-narrative` returns its own file path — record each sub-window's path (e.g. by sub-window label) rather than overwriting a single variable, since Step 5 needs the full set once every sub-window has run:
+Split the Step 1 date range into successive sub-windows (weekly, or biweekly for a longer range) and re-run Steps 2–4 per sub-window using `--since`/`--until` on `review-trace`. Hold `--branches` and the scope Step 1 used constant across sub-windows, so the only thing varying is time. That scope is `--this-repo` or `--projects '<glob>'`, with or without `--all-accounts`; Step 2 gives the leading-dash glob form. Each sub-window's own Step 2 re-invocation of `transcript-narrative` returns its own file path — record each sub-window's path (e.g. by sub-window label) rather than overwriting a single variable, since Step 5 needs the full set once every sub-window has run:
 
 ```bash
-python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --since <window-start> --until <window-end>
+python3 ~/.claude/scripts/transcript-analysis.py review-trace <scope-flags-from-step-1> --since <window-start> --until <window-end>
 ```
 
 For each distinct error mode identified in Step 4, classify it against the sub-window sequence:

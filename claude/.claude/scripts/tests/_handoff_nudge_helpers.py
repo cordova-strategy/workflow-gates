@@ -52,23 +52,16 @@ def _handoff_signal_response_args(
     })()
 
 
-def _write_signal_with_excerpt_under_each_root(
-    roots: list[Path], project_slug: str, excerpts: list[str],
-) -> None:
-    """One session per root under the same `project_slug`, each holding one
-    over-threshold signal followed by an assistant text turn reading that
-    root's entry in `excerpts` (parallel to `roots`)."""
-    for root, excerpt in zip(roots, excerpts, strict=True):
-        project_dir = root / project_slug
-        project_dir.mkdir(parents=True, exist_ok=True)
-        _write_jsonl(project_dir / f"sess-{excerpt}.jsonl", [
-            _check_call_turn(input=200_000, output=1_000, request_id="r1"),
-            _user_msg([_tool_result("chk1", _check_result_json(over_threshold=True))]),
-            _priced(
-                "claude-sonnet-5", input=210_000, output=500, request_id="r2",
-                content=[{"type": "text", "text": excerpt}],
-            ),
-        ])
+def _write_signal_with_excerpt_session(project_dir: Path, excerpt: str) -> None:
+    """One session holding one over-threshold signal followed by an assistant text turn reading `excerpt`."""
+    _write_jsonl(project_dir / f"sess-{excerpt}.jsonl", [
+        _check_call_turn(input=200_000, output=1_000, request_id="r1"),
+        _user_msg([_tool_result("chk1", _check_result_json(over_threshold=True))]),
+        _priced(
+            "claude-sonnet-5", input=210_000, output=500, request_id="r2",
+            content=[{"type": "text", "text": excerpt}],
+        ),
+    ])
 
 
 def _handoff_cards(stdout: str) -> list[dict]:

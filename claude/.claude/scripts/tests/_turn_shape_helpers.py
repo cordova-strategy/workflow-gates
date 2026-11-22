@@ -1,5 +1,18 @@
-"""Args factories shared by test_transcript_turn_shape.py and
-test_transcript_analysis_listing_scope.py."""
+"""Args factories shared by test_transcript_turn_shape.py,
+test_transcript_analysis_listing_scope.py and test_transcript_analysis_multi_root_scope.py."""
+
+
+def _turn_shape_args(
+    *,
+    projects: str = "*",
+    this_repo: bool = False,
+    since: str | None = None,
+) -> object:
+    return type("A", (), {
+        "projects": projects,
+        "this_repo": this_repo,
+        "since": since,
+    })()
 
 
 def _turn_shape_samples_args(

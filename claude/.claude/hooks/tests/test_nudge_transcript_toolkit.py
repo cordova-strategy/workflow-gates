@@ -217,6 +217,17 @@ class TestMessageIsActionable:
         assert "unions" in ctx or "union" in ctx
         assert "~/.claude/transcript-config-dirs" in ctx
 
+    def test_leads_with_the_skill_instruction_then_splits_pooled_from_narrowed_commands(self):
+        """The instruction comes first, the pooled commands sit in the first
+        half of the scope sentence and the widening flags in the narrowed half."""
+        ctx = _additional_context(_run_hook(write_input("/tmp/scan_transcripts.py", content=INCIDENT_GLOB)))
+
+        assert ctx.startswith("Invoke the transcript-analysis skill instead of a one-off script.")
+        pooled_half, narrowed_half = ctx.split("while its other commands", 1)
+        assert all(command in pooled_half for command in ("fail-seq", "subagents", "pr-link"))
+        assert "--this-repo" in narrowed_half
+        assert "--all-accounts" in narrowed_half
+
 
 class TestDocumentedResiduals:
     """Each construction here is a known miss, pinned by a regression test

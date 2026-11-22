@@ -5,21 +5,8 @@ commands end to end.
 import pytest
 from transcript_analysis import corpus, pricing, render, scope, turn_shape
 
-from ._turn_shape_helpers import _turn_shape_holdout_samples_args, _turn_shape_samples_args
+from ._turn_shape_helpers import _turn_shape_args, _turn_shape_holdout_samples_args, _turn_shape_samples_args
 from .conftest import _asst, _bash_use, _priced, _table_cols, _write_jsonl
-
-
-def _turn_shape_args(
-    *,
-    projects: str = "*",
-    this_repo: bool = False,
-    since: str | None = None,
-) -> object:
-    return type("A", (), {
-        "projects": projects,
-        "this_repo": this_repo,
-        "since": since,
-    })()
 
 
 class TestBashCommandIsMutatingGit:

@@ -97,9 +97,10 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     """Exact project-dir slugs for this repo's own worktrees (main + linked).
 
     This is the minimization control for any caller (`command_label`) that must
-    scope a transcript read to this repo: output built from it is routinely
-    quoted into public PR descriptions, and transcripts under
-    ~/.claude/projects/ span every project on the machine. Scoping the read to
+    scope a transcript read to this repo, since transcripts under
+    ~/.claude/projects/ span every project on the machine. It bounds projects,
+    not accounts: a caller that reads every declared account still pools them,
+    so its output is local-only. Scoping the read to
     this repository — by *identity*, via `git worktree list`, matched as exact dir
     names — keeps other projects' own sessions out of the read. A subagent file
     under an in-repo session is read regardless of the repo the subagent worked
@@ -558,7 +559,8 @@ def _add_all_accounts_arg(parser: argparse.ArgumentParser) -> None:
         "--all-accounts", action="store_true",
         help=(
             "Read every account ~/.claude/transcript-config-dirs declares, not the active account's"
-            " alone. The output carries every declared account's raw names, paths and text and is not"
+            " alone. It adds no repository bound; --this-repo bounds the run to this repo."
+            " The output carries every declared account's raw names, paths and text and is not"
             " for publication (see docs/private-project-redaction.md)."
         ),
     )

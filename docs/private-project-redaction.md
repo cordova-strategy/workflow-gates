@@ -205,9 +205,13 @@ asking. They are not worth publishing. Measure them with the same
 tools at their wider scope — `cost` without `--summary` (add
 `--share-only` to keep raw absolutes out of the agent's context),
 `pr-cost --all-accounts`, any narrowed `transcript-analysis` command
-under `--all-accounts` or `--this-repo` (the list is in
-`docs/transcript-analysis.md` under "Corpus scope: the declared-roots
-file"), or any other subcommand at its default machine-wide scope.
+under `--all-accounts`, or under `--this-repo` over more than one
+declared root (the list is in `docs/transcript-analysis.md` under
+"Corpus scope: the declared-roots file"), or any other subcommand at
+its default machine-wide scope. `--this-repo` together with a single
+top-level `--config-dir` reads one account, but no narrowed command
+refuses a wider corpus, so no narrowed run is a publication instrument,
+that one included.
 Report the figures to the owner in session or through another
 non-public channel.
 

@@ -9,14 +9,19 @@ from pathlib import Path
 import pytest
 from transcript_analysis import cost, handoff_signal_response, scope
 
-from ._account_scope_helpers import ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL, SHARED_PROJECT_SLUG
+from ._account_scope_helpers import (
+    ACTIVE_ROOT_SENTINEL,
+    DECLARED_ROOT_SENTINEL,
+    SHARED_PROJECT_SLUG,
+    seed_one_session_per_root,
+)
 from ._handoff_nudge_helpers import (
     _check_call_turn,
     _check_result_json,
     _handoff_advisory_attachment,
     _handoff_cards,
     _handoff_signal_response_args,
-    _write_signal_with_excerpt_under_each_root,
+    _write_signal_with_excerpt_session,
 )
 from .conftest import _priced, _thinking_block, _tool_result, _two_declared_roots, _user_msg, _write_jsonl
 
@@ -71,9 +76,7 @@ class TestCmdHandoffSignalResponseScopeAndRedaction:
 
     def test_sample_no_redact_runs_over_the_active_root_alone_by_default(self, tmp_path, monkeypatch, capsys):
         roots = _two_declared_roots(tmp_path, monkeypatch)
-        _write_signal_with_excerpt_under_each_root(
-            roots, SHARED_PROJECT_SLUG, [ACTIVE_ROOT_SENTINEL, DECLARED_ROOT_SENTINEL],
-        )
+        seed_one_session_per_root(roots, _write_signal_with_excerpt_session)
 
         handoff_signal_response.cmd_handoff_signal_response(_handoff_signal_response_args(no_redact=True, sample=5))
 

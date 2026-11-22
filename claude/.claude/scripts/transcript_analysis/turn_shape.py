@@ -274,9 +274,8 @@ def cmd_turn_shape_samples(args: argparse.Namespace) -> None:
     _TURN_SHAPE_SAMPLES_MIN_STREAK_LEN) as plain text, for manual calibration
     of the batching and delegation rules against cmd_turn_shape's aggregate.
 
-    cmd_turn_shape pools every declared account by default while this command
-    reads the active account. --all-accounts on this command, or --this-repo
-    on both, makes their populations match.
+    cmd_turn_shape pools every declared account by default, while this command
+    reads the active account.
 
     Plain text, not JSON, unlike audit-routing-samples: this output is
     stamped with _DO_NOT_PUBLISH_BANNER, and prepending a banner line would
@@ -324,9 +323,7 @@ def cmd_turn_shape_holdout_samples(args: argparse.Namespace) -> None:
     """Emit a random sample of unflagged turn-shape streaks (length ==
     _TURN_SHAPE_HOLDOUT_STREAK_LEN) as plain text, for manual recall
     calibration of the batching and delegation rules — the complement of
-    cmd_turn_shape_samples's flagged population. Like cmd_turn_shape_samples,
-    it reads the active account unless --all-accounts or --this-repo is passed,
-    while cmd_turn_shape pools every declared account by default.
+    cmd_turn_shape_samples's flagged population.
 
     --seed defaults to a fixed constant (not None, unlike turn-shape-samples):
     --offset pages this same shuffled population across repeated invocations,

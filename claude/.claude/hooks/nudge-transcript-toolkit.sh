@@ -3,13 +3,12 @@
 # PostToolUse Write|Edit|MultiEdit hook: when the content just written to a
 # .py/.sh file looks like a hand-rolled transcript-corpus glob
 # (`projects/*/*.jsonl`-shaped), name `transcript-analysis.py` via
-# `additionalContext` — `fail-seq`, `subagents`, `pr-link`, the `review-trace`
-# `--deny-summary` mode and the other pooled modes union across every config root
-# declared in `~/.claude/transcript-config-dirs` by default, while the narrowed
-# commands (for example `buckets`, `duration`, `struggle`, `audit-routing`) read the active
-# account unless `--this-repo` or `--all-accounts` is passed. A one-off glob
-# almost never covers every root. See `.claude/plans/transcript-parsing-guardrails.md`
-# for the incident this backstops.
+# `additionalContext`, because a one-off glob almost never covers every config root.
+# `fail-seq`, `subagents`, `pr-link` and the other pooled modes union across every
+# config root declared in `~/.claude/transcript-config-dirs` by default. Its other
+# commands, which print raw names, paths or text, read the active account unless
+# `--this-repo` or `--all-accounts` is passed.
+# See `.claude/plans/transcript-parsing-guardrails.md` for the incident this backstops.
 #
 # The harness does not support `additionalContext` on `PreToolUse` at all,
 # so this fires one step later than ideal: after the write, before the
@@ -126,7 +125,7 @@ esac
 TRANSCRIPT_GLOB_PATTERN='projects/\*.*\.jsonl'
 grep -qE "$TRANSCRIPT_GLOB_PATTERN" <<< "$CONTENT" || exit 0
 
-ADDITIONAL_CONTEXT="This file's content looks like a hand-rolled transcript-corpus glob (a projects/*/*.jsonl shape). transcript-analysis.py's fail-seq, subagents, pr-link, review-trace --deny-summary and the other pooled modes union across every config root declared in ~/.claude/transcript-config-dirs by default, while the narrowed commands (for example buckets, duration, struggle, audit-routing) read the active account unless --this-repo or --all-accounts is passed — invoke the transcript-analysis skill instead of a one-off script, which silently covers only one root."
+ADDITIONAL_CONTEXT="Invoke the transcript-analysis skill instead of a one-off script. This file's content looks like a hand-rolled transcript-corpus glob (a projects/*/*.jsonl shape), which silently covers only one root. transcript-analysis.py's fail-seq, subagents, pr-link and the other pooled modes union across every config root declared in ~/.claude/transcript-config-dirs by default, while its other commands, which print raw names, paths or text, read the active account unless --this-repo or --all-accounts is passed."
 
 # shellcheck disable=SC2016 # single-quoted on purpose: $ctx is a jq --arg binding, not a shell variable; double-quoting would expand it in the shell before jq sees it. Bare `jq` suppresses this itself, but the _lib_jq wrapper that carries the timeout backstop is opaque to shellcheck's jq awareness.
 _lib_jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
