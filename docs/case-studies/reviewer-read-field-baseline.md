@@ -1,8 +1,8 @@
 # Reviewer whole-file reads: the A-field baseline
 
-How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. It is the A-field baseline GH-1529 asks for: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The report's terms (reviewer window, whole-file call, outcome classes, diff handoff) are defined in `docs/transcript-analysis.md` § "reviewer-reads". The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
+How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. GH-1529 calls this the A-field baseline: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The report's terms (reviewer window, whole-file call, outcome classes, diff handoff) are defined in `docs/transcript-analysis.md` § "reviewer-reads". The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
 
-The figures come from transcripts and ledger files selected by this checkout's path identity, on one account (see Limitations for what that selection does not exclude). The command refuses any wider scope, which is what makes them publishable under `docs/private-project-redaction.md` § "Publishing a tooling measurement".
+The figures come from transcripts and ledger files selected by this checkout's path identity, on one account. The command requires `--this-repo`, refuses any `--projects` value other than the default, and refuses a scan over more than one root. `docs/private-project-redaction.md` § "Publishing a tooling measurement" publishes figures from that scope. Its § "This repository, one account" states what the scope does not exclude, including path identity and the ledger file check.
 
 ## Headline answers
 
@@ -20,13 +20,8 @@ The figures come from transcripts and ledger files selected by this checkout's p
 - **Run at:** 2026-11-22T11:44:30Z.
 - **Window:** 2026-10-25 to 2026-11-21, both days included, 28 days.
 - **`cleanupPeriodDays`:** absent from the account's settings, so the 30-day default applies. At that default, records from about 2026-10-23 onward were still kept at the run, so the window's first day, 2026-10-25, falls inside the retained span.
-- **Instrument commit:** `e5e1f34f573a`, the commit the capture's worktree was cut from. `daeeae4fbd4a` is #1575's head commit, and the same commit the instrument was last dry-run against before this capture. The `claude/.claude/scripts/transcript_analysis/` package shows no diff between `daeeae4fbd4a` and `e5e1f34f573a`.
-- **Self-checks:** five checks passed before this page was written, as `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines them.
-  - Reviewer-window floor: the reviewer-window count is above zero.
-  - Ledger floor: a report that counts any `code-review` round window also counts at least one ledger file read.
-  - Yield-completed floor: the report holds no line starting `reviewer-yield pass: not completed`.
-  - Sample check: neither the pooled headline nor the Read share prints `insufficient` or `no data`.
-  - Output scan: no output file holds a run of 32 or more hex digits, a UUID shape, or an absolute path under a home or config directory. The fixed label `~/.claude/transcript-config-dirs` in the report header is expected.
+- **Instrument commit:** `e5e1f34f573a`. The `claude/.claude/scripts/transcript_analysis/` package is unchanged between `daeeae4fbd4a` (#1575's head commit) and `e5e1f34f573a`.
+- **Self-checks:** five checks passed before this page was written, each defined in `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4. They are the reviewer-window floor, the ledger floor, the yield-completed floor, the sample check and the output scan. The output scan expects the fixed label `~/.claude/transcript-config-dirs` in the report header.
 
 ## The report as printed
 
@@ -171,29 +166,35 @@ The page describes each diagnostic by its printed definition only.
 
 Rerun this the same way after #1115 and compare like with like.
 
-- **Harness versions and models:** reviewer windows ran on three harness versions (2.1.328 for 14 windows, 2.1.329 for 389, 2.1.330 for 15) and one model label (`claude-sonnet-5-5`, 418 windows).
+- **Harness versions and models:** compare the report's "Comparability: reviewer windows by harness version and by model" section between the runs.
 - **Model labels:** they follow `pricing._MODEL_BASE_INPUT_RATES` at instrument commit `e5e1f34f573a`. A model priced after that commit prints `other` here and by name in a later run, so that move alone is not a model shift. `other` can also stand for a window whose first assistant record is the harness's `<synthetic>` error record, in which case no rate moves.
 - **Re-run recipe:** the window length, account and checkout follow `docs/transcript-analysis.md` § "reviewer-reads". Run it from a worktree cut from the default branch, and before any worktree cleanup.
-- **Edits that void a comparison:** an edit to any of these makes a later run measure a different instrument:
-  - `read_cost`'s scanner and weights
+- **Edits that void a comparison:** an edit to any of these makes a later run measure a different instrument. The list is not exhaustive, and a diff of the `claude/.claude/scripts/transcript_analysis/` package between the two instrument commits is the full check.
+  - `read_cost`'s scanner
+  - `pricing._cache_read_equivalent_weights`
+  - `pricing.dedup_turns_by_request_id`
   - `reviewer_reads`
+  - `review_rounds`
   - `ledger_dispositions`
   - `publication_scope`
+  - the corpus-selection functions `scope._repo_worktree_paths`, `scope._path_to_project_slug` and `scope._resolve_project_scope`
   - `reviewer_yield._is_reviewer_subagent_type`
   - `author_outcome._read_ledger_rows_from_file`
   - `author_outcome._SESSION_ID_PATTERN`
-- **Review-skill mix behind the figures:** main-thread round windows in the window were 74 for `code-review`, 24 for `plan-review` and 36 for `ready-for-review`. This is the only indicator of that mix on this page.
+- **Review-skill mix:** compare the per-skill `round_windows` counts in the report's "Main-thread Reads inside review-round windows" section.
 
 What a rise or fall after #1115 can and cannot show, read against #1115's body:
 
-- **Headline partial and refused rates:** before-state only. #1115's entry read is still one default Read, so the rate can hold or rise while reviewers handle a partial view as #1115 prescribes.
+- **Headline partial and refused rates:** before-state only. The partial rate and the partial-or-refused rate are already 100.0%, so neither can rise. #1115's entry read is still one default Read, so both can hold while reviewers handle a partial view as #1115 prescribes.
 - **Larger-than-one-call calls per reviewer window:** a fall shows fewer whole-file attempts on large files. No fall does not show #1115 failing, because the entry read still probes such files unless line counts arrive beforehand.
-- **Per-type counts:** the only place #1115's per-lens exceptions show. `ciso-reviewer`'s and `staff-data-engineer`'s counts may fall less, because #1115 keeps their CI and policy config files and their migrations whole.
+- **Per-type counts:** the only place #1115's per-lens exceptions show.
+  - `ciso-reviewer`'s counts may fall less, because #1115 keeps its CI and policy config files whole.
+  - `staff-data-engineer` had no reviewer window in this run, so #1115's exception for its migrations has no before-count on this page.
 - **`covered_after` per reviewer window:** before-state only. #1115 replaces paging through the rest of a file with an outline and a function-context diff, so a fall is by design.
 - **`later_offset_read` per reviewer window:** it can rise on #1115's fallback of reading an enclosing function's range. A rise does not show that the rest of the file was read.
 - **`neither` per reviewer window:** before-state only. #1115's outline and diff are invisible to the instrument, while its fallback adds a ranged Read the instrument counts. Its direction therefore cannot be predicted.
 - **The Read share and its over-1,000-line part:** neither direction identifies #1115 working. Its mandatory expansions add Reads of other files while its entry rule cuts Reads of large changed files.
-- **The ledger dispositions:** a move shows a change in the mix of terminal disposition rows. A finding re-raised without `--ref` adds a row, so re-raising can move the mix as well as resolution. It cannot attribute that change to how files were read.
+- **The ledger dispositions:** a move shows a change in the mix of terminal disposition rows, which the report counts as rows and not as distinct findings. It cannot attribute that change to how files were read.
 
 ## Confounders in the window
 
@@ -240,25 +241,11 @@ d246e014 prose granularity rule (#1354)
 
 ## Limitations
 
-- **This clone only.** Sessions recorded under any other clone of the repository are not included.
-- **Live worktrees only.** Sessions of removed worktrees are not included. The sample is not a random sample of reviews.
-- **Path identity, not repository identity.** Both halves of the scope rest on it. It does not exclude:
-  - a live worktree path of this checkout that another repository's checkout occupied earlier;
-  - ledger rows appended from this checkout about work elsewhere;
-  - a checkout of any repository whose path maps to the same project-directory slug as one of this checkout's worktrees;
-  - a subagent file under an in-scope session, whatever repository the subagent worked in.
-- **Ledger file check.** The regular-file check in `ledger_dispositions._read_file_rows` is point-in-time. It does not exclude a hard link named for this checkout, or a swap between its `lstat` and the open.
-- **Whole-file counts per round skill.** They can exceed the outcome counts plus the diff-handoff counts. The join counts each Read `tool_use` block in a round window once by id, while the outcome counts skip an id already seen earlier in the run and a call with no usable result. The gap is not a defect.
-- **Plan-review windows.** Reviewer windows include `plan-review` dispatches, whose reads of code files stay in `code/other`, so the per-type rows do not isolate the review skill.
-- **Prose.** It is `instruction` plus `other_prose`. `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`. Only its markdown part lies outside #1115's change for every reviewer. `other_prose` lies outside it for `comment-discipline-reviewer` alone.
-- **ADDRESS and DEFER shares.** They count disposition rows, and a finding re-raised without `--ref` counts again.
-- **`neither`.** It is an upper bound on calls with no further attempt to read on, because Grep, Bash and diff reads are not seen.
-- **`covered_after`.** It can be wrong at a flagged result's last reported line, in both directions. A flagged range that ends short of the file's last line still adds `[1, numLines]`, though line `numLines` can have arrived only in part. A flagged range that reaches the file's last line adds no interval, though lines 1 to `numLines − 1` arrived whole. The second case is a deliberate conservatism: it under-credits a call and never over-credits one.
+The instrument's known limits are in `docs/transcript-analysis.md` § "reviewer-reads" (its "Known limits" paragraph). The residuals that bound publication, path identity and the ledger file check, are in `docs/private-project-redaction.md` § "This repository, one account". The limits below are specific to this run.
+
 - **Under-cap truncation.** What a 2,000-line default truncation of an under-cap file returns was not tested. `partial_unflagged` catches it structurally whatever its shape, and this run found none.
 - **Reviewer types.** `_is_reviewer_subagent_type` matches bare agent-type names with no plugin namespace. A namespaced value on another harness version would fall outside the population.
-- **Yield and reads.** The yield figures count main-thread dispatches only and bound their edit table by `--since` alone. Nested reviewer dispatches therefore appear in the read figures and not in the yield figures.
-- **Diff handoff.** Reviewers receive the review diff as a file. Its whole-file Reads are reported as their own class, not as reviewed files.
-- **Notice-agreement `other` bucket.** A notice can land in "notices naming neither a partial_token_cap nor a size_unknown call" for more than a real disagreement. A notice naming a call the instrument does not count as whole-file lands there, for example a Read with `offset: 1` and no `limit`. The printed label is true either way, but the count cannot be read as a count of real disagreements only.
+- **Prose.** All 65 partials are prose, which is `instruction` plus `other_prose`. #1115's entry read leaves markdown instruction files whole for every reviewer. It leaves markdown docs, which `other_prose` holds, whole for `comment-discipline-reviewer` alone. `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`, which #1115's entry read does change.
 - **The instrument's own review rounds.** The window holds the review rounds of the change that built this instrument (#1575), as a later run's window will hold #1115's.
 
 ## What this page does not cover
