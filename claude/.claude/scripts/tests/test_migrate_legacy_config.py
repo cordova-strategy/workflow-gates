@@ -29,31 +29,22 @@ from pathlib import Path
 import pytest
 from helpers import HOOKS_DIR, SCRIPTS_DIR
 
+from ._config_script_helpers import (
+    ENFORCEMENT_CRITICAL_SAFE_VALUES,
+    SKIP_UNDER_ROOT,
+    engineer_only_qualifier,
+    stow_source_ask_rules,
+)
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from _config import SchemaRow, config_value, schema  # noqa: E402
 
 MIGRATE_SCRIPT = SCRIPTS_DIR / "migrate-legacy-config.sh"
 CONFIG_KEYS_PSV = HOOKS_DIR / "config-keys.psv"
 
-_ENFORCEMENT_CRITICAL_KEYS = frozenset({
-    "worktree_required",
-    "round_consult_gate",
-    "commit_stall_block",
-    "authorization_boundary_restore",
-})
+_ENFORCEMENT_CRITICAL_KEYS = frozenset(ENFORCEMENT_CRITICAL_SAFE_VALUES)
 
-# Mirrors migrate-legacy-config.sh's own
-# _migrate_enforcement_critical_safe_value pair-list -- each value is that
-# key's enforcement-stays-on direction, not
-# simply its schema default (see that function's own header for why it is
-# not derived from config-keys.psv's default or
-# legacy-probe-on-resolution-failure columns).
-_ENFORCEMENT_CRITICAL_SAFE_VALUES = {
-    "worktree_required": "true",
-    "round_consult_gate": "true",
-    "commit_stall_block": "true",
-    "authorization_boundary_restore": "true",
-}
+_ENGINEER_ONLY_QUALIFIER = engineer_only_qualifier()
 
 _SCHEMA = schema()
 _ALL_KEYS = sorted(_SCHEMA)
@@ -190,7 +181,7 @@ class TestMigrationMatrixStateFileAbsent:
             # pins scaffold's own exclusion logic.
             assert config_value(key, config_dir_override=config_dir) == row.default
         elif key in _ENFORCEMENT_CRITICAL_KEYS:
-            if _legacy_derived_value(row) == _ENFORCEMENT_CRITICAL_SAFE_VALUES[key]:
+            if _legacy_derived_value(row) == ENFORCEMENT_CRITICAL_SAFE_VALUES[key]:
                 assert state.get(key) == _legacy_derived_value(row), (
                     f"a legacy value matching {key!r}'s fail-closed direction must import with no gate: "
                     f"state={state!r}"
@@ -239,7 +230,7 @@ class TestMigrationMatrixStateFilePresentKeyRowAbsent:
             # pins scaffold's own exclusion logic.
             assert config_value(key, config_dir_override=config_dir) == row.default
         elif key in _ENFORCEMENT_CRITICAL_KEYS:
-            if _legacy_derived_value(row) == _ENFORCEMENT_CRITICAL_SAFE_VALUES[key]:
+            if _legacy_derived_value(row) == ENFORCEMENT_CRITICAL_SAFE_VALUES[key]:
                 assert state.get(key) == _legacy_derived_value(row)
             else:
                 assert key not in state
@@ -601,7 +592,7 @@ class TestDeleteConfirmationPrompt:
             "$HOME/.claude/worktree-required must never be offered for deletion, even with a TTY and a 'y' response"
         )
 
-    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    @SKIP_UNDER_ROOT
     def test_delete_failure_does_not_abort_the_remaining_records(self, tmp_path: Path) -> None:
         """Review finding: _migrate_prompt_delete_legacy_file's
         case arm ended in `rm -f -- "$path" && echo ...` as the function's
@@ -787,50 +778,6 @@ class TestTTYInvarianceOfEnforcementCriticalImport:
         assert legacy_file.exists(), "declining the delete-confirmation prompt must leave the legacy file in place"
 
 
-def _migrate_enforcement_critical_keys_from_script() -> set[str]:
-    """Sources migrate-legacy-config.sh and reads its own
-    $_MIGRATE_ENFORCEMENT_CRITICAL_KEYS directly -- the actual bash source
-    of truth -- rather than comparing against a third, independently
-    maintained Python copy of the same list."""
-    result = _run_sourced('printf \'%s\' "$_MIGRATE_ENFORCEMENT_CRITICAL_KEYS"\n', "", dict(os.environ))
-    assert result.returncode == 0, f"stderr={result.stderr!r}"
-    return set(result.stdout.split())
-
-
-class TestEnforcementCriticalKeySet:
-    def test_matches_config_keys_psv_header_comment(self) -> None:
-        """config-keys.psv's own header comment is the second place (besides
-        migrate-legacy-config.sh's _MIGRATE_ENFORCEMENT_CRITICAL_KEYS and
-        _migrate_enforcement_critical_safe_value) that names the four
-        enforcement-critical keys -- checked against the real bash variable
-        itself, not a third, independently maintained Python copy, so a
-        future key addition/removal can't silently drift the two apart."""
-        text = CONFIG_KEYS_PSV.read_text()
-        match = re.search(r"The four enforcement-critical keys \(([^)]+)\)", text, re.DOTALL)
-        assert match, "config-keys.psv's header comment must name the four enforcement-critical keys"
-        # The parenthesized list wraps across a `#`-continued comment line,
-        # so each name is stripped of the leading `#` and whitespace a
-        # mid-list line break leaves behind, not just surrounding spaces.
-        named = {name.strip().lstrip("#").strip() for name in match.group(1).split(",")}
-        assert named == _migrate_enforcement_critical_keys_from_script()
-
-
-class TestEnforcementCriticalSafeValues:
-    @pytest.mark.parametrize(("key", "safe_value"), sorted(_ENFORCEMENT_CRITICAL_SAFE_VALUES.items()))
-    def test_pins_the_fail_closed_value(self, key: str, safe_value: str, tmp_path: Path) -> None:
-        """Pins _migrate_enforcement_critical_safe_value's own pair-list
-        content directly, independent of any legacy-file derivation."""
-        home = tmp_path / "home"
-        home.mkdir()
-        result = _run_sourced(
-            f'_migrate_enforcement_critical_safe_value {key} && printf \'%s\' "$_MIGRATE_SAFE_VALUE"\n',
-            "",
-            _env(home),
-        )
-        assert result.returncode == 0, f"stderr={result.stderr!r}"
-        assert result.stdout == safe_value
-
-
 # Every enforcement-critical key except worktree_required pairs a
 # presence-only legacy polarity with a safe value on the opposite boolean --
 # so any legacy file for these three, merely by existing, always derives the
@@ -838,14 +785,17 @@ class TestEnforcementCriticalSafeValues:
 # their own safe-import branch. worktree_required is the sole exception
 # (presence-enables, safe value "true"), covered by its own test below.
 _PERMISSIVE_VIA_LEGACY_FILE_KEYS = sorted(_ENFORCEMENT_CRITICAL_KEYS - {"worktree_required"})
+_NON_CRITICAL_LEGACY_KEYS = sorted(
+    key for key, row in _SCHEMA.items() if row.legacy_polarity and key not in _ENFORCEMENT_CRITICAL_KEYS
+)
 
 
 class TestEnforcementCriticalDirectionAwareImport:
     """Import writes a legacy-derived value for one of the four
     enforcement-critical keys only when it matches that key's own
     fail-closed value; a permissive-direction value is never written -- it
-    is deferred and printed for a human to hand-paste into
-    claude-config.toml instead."""
+    is deferred and printed as a config-set.sh command to run only on the
+    engineer's own instruction."""
 
     def test_worktree_required_legacy_presence_imports_with_no_gate(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
@@ -856,6 +806,22 @@ class TestEnforcementCriticalDirectionAwareImport:
         result = _run(_env(home, config_dir=config_dir))
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert _read_state(config_dir)["worktree_required"] == "true"
+        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
+        assert "config-set.sh" not in result.stderr
+
+    def test_non_critical_key_legacy_import_prints_no_setter_hint(self, tmp_path: Path) -> None:
+        key = _NON_CRITICAL_LEGACY_KEYS[0]
+        row = _SCHEMA[key]
+        home = tmp_path / "home"
+        config_dir = home / ".claude"
+        _write_legacy_file(config_dir, row, present=True)
+
+        result = _run(_env(home, config_dir=config_dir))
+
+        assert result.returncode == 0, f"stderr={result.stderr!r}"
+        assert _read_state(config_dir)[key] == _legacy_derived_value(row)
+        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
+        assert "config-set.sh" not in result.stderr
 
     @pytest.mark.parametrize("key", _PERMISSIVE_VIA_LEGACY_FILE_KEYS)
     def test_permissive_direction_legacy_value_is_never_imported(self, key: str, tmp_path: Path) -> None:
@@ -872,9 +838,23 @@ class TestEnforcementCriticalDirectionAwareImport:
         # The deferred key still resolves via its ordinary legacy fallback --
         # deferring the import changes nothing about what the key means.
         assert config_value(key, config_dir_override=config_dir) == _legacy_derived_value(row)
-        assert f"{key} = {_legacy_derived_value(row)}" in result.stderr, (
-            "the permissive value must be printed for a human to hand-paste"
+        setter_command = f"~/.claude/scripts/config-set.sh {key} {_legacy_derived_value(row)}"
+        still_resolves_clause = (
+            f"The key still resolves to {_legacy_derived_value(row)} through "
+            f"{config_dir / row.legacy_filename} until a row is written."
         )
+        config_dir_clause = (
+            f"To write it for the config dir {config_dir} "
+            "(the command acts on the config dir its own shell resolves):"
+        )
+        assert (
+            f"not imported automatically. {still_resolves_clause} {_ENGINEER_ONLY_QUALIFIER} {config_dir_clause}"
+            f"\n  {setter_command}\n"
+        ) in result.stderr, (
+            "the permissive value must be printed as a qualified setter command naming the config dir, "
+            "after the legacy source the key still resolves through"
+        )
+        assert f"Bash({setter_command})" in stow_source_ask_rules(),"the printed command must be one a permissions.ask rule names"
 
 
 # ---------------------------------------------------------------------------
@@ -889,11 +869,7 @@ class TestPerKeyFailureIsolation:
     enforcement-critical one, since the exclude-list logic must generalize
     to both."""
 
-    @pytest.mark.skipif(
-        hasattr(os, "geteuid") and os.geteuid() == 0,
-        reason="root bypasses discretionary file-permission bits (CAP_DAC_OVERRIDE on Linux), "
-        "so chmod(0o000) does not make the file unreadable and the read would not fail",
-    )
+    @SKIP_UNDER_ROOT
     def test_pr_cost_disclosure_unrecognized_content_isolated(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         config_dir = home / ".claude"
@@ -914,11 +890,7 @@ class TestPerKeyFailureIsolation:
         assert config_value("commit_stall_block", config_dir_override=config_dir) == "true"
         assert config_value("worktree_required", config_dir_override=config_dir) == "false"
 
-    @pytest.mark.skipif(
-        hasattr(os, "geteuid") and os.geteuid() == 0,
-        reason="root bypasses discretionary file-permission bits (CAP_DAC_OVERRIDE on Linux), "
-        "so chmod(0o000) does not make the file unreadable and the read would not fail",
-    )
+    @SKIP_UNDER_ROOT
     def test_enforcement_critical_key_unreadable_legacy_file_isolated(self, tmp_path: Path) -> None:
         home = tmp_path / "home"
         config_dir = home / ".claude"
@@ -978,6 +950,34 @@ class TestStateFileMalformedBeforeMigrationRuns:
         )
 
 
+class TestStateFileUnreadableBeforeMigrationRuns:
+    @SKIP_UNDER_ROOT
+    def test_unreadable_state_file_is_refused_by_import_and_scaffold_and_never_replaced(self, tmp_path: Path) -> None:
+        """The import's `_config_set` (handoff_nudge's legacy file gives it a row to write) and the final
+        `_config_scaffold` both refuse a state file they cannot read, instead of replacing it with one holding
+        only their own rows. Neither message advises deleting a file whose rows a `chmod` would recover."""
+        home = tmp_path / "home"
+        config_dir = home / ".claude"
+        config_dir.mkdir(parents=True)
+        original = "commit_stall_block = true\n"
+        state_file = _state_file(config_dir)
+        state_file.write_text(original)
+        legacy_file = config_dir / ".handoff-nudge-disabled"
+        legacy_file.touch()
+        state_file.chmod(0o000)
+        try:
+            result = _run(_env(home, config_dir=config_dir), stdin="")
+        finally:
+            state_file.chmod(0o644)
+
+        assert result.returncode == 1, f"stderr={result.stderr!r}"
+        assert state_file.read_text() == original
+        assert "could not write handoff_nudge -- claude-config.toml may be unreadable" in result.stderr
+        assert "could not scaffold claude-config.toml with schema defaults -- it may be unreadable" in result.stderr
+        assert "delete" not in result.stderr
+        assert legacy_file.exists()
+
+
 # ---------------------------------------------------------------------------
 # A legacy file named by no schema row is ignored, not enumerated.
 # ---------------------------------------------------------------------------
@@ -987,7 +987,7 @@ class TestRetiredAutonomousShippingSentinelIgnored:
     def test_leftover_required_file_writes_no_row_and_prints_no_hint(self, tmp_path: Path) -> None:
         """`autonomous-shipping-required` belongs to no schema row, so a home
         holding only that file migrates with no `autonomous_shipping` row, no
-        hand-paste hint and no mention of the key."""
+        setter hint and no mention of the key."""
         home = tmp_path / "home"
         config_dir = home / ".claude"
         config_dir.mkdir(parents=True)
@@ -1000,7 +1000,7 @@ class TestRetiredAutonomousShippingSentinelIgnored:
         assert state.items() >= _scaffolded_default_rows().items(), "migration must still scaffold"
         assert "autonomous_shipping" not in state
         assert "autonomous" not in (result.stdout + result.stderr).lower()
-        assert "add this line to claude-config.toml by hand" not in result.stderr
+        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
 
     def test_leftover_state_row_survives_migration_alongside_the_legacy_file(self, tmp_path: Path) -> None:
         """A state file still holding `autonomous_shipping = true` and a

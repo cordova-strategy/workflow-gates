@@ -737,6 +737,12 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - It reads this repository's live worktrees on the active account only and refuses a wider scope, as `read-cost` does. Its ledger section opens only the files named for this checkout's worktree paths.
   - It needs both dates and exits 2 without them. There is no relative `--since Nd` form.
   - The change is live on `git pull`.
+- **A new `config-set.sh <key> <value>` writes one `claude-config.toml` key and reads it back, and the Stop reason and the migrator hint now print it.**
+  - **Script:** it works for any schema key in either direction, takes the value bare, and prints the resolved value on success. See `docs/config-file.md` § "Writing a value".
+  - **Ask rules:** `claude/.claude/settings.json` declares four `permissions.ask` entries, one per enforcement-critical key's permissive command (`worktree_required`, `round_consult_gate`, `commit_stall_block` and `authorization_boundary_restore`, each set to `false`).
+  - **Stop reason:** `advance-past-commit-stall.sh`'s block reason now ends with `~/.claude/scripts/config-set.sh commit_stall_block false`, where it ended with a `printf … >>` append. A qualifier before the command tells the agent to run it only on the engineer's own instruction. The reason carries the qualifier and the command only when `_config.sh` defines `_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER`.
+  - **Migrator hint:** `migrate-legacy-config.sh` prints the `config-set.sh` command for a permissive legacy value it does not import, where it printed a `key = value` line to paste.
+  - **Migration:** a `printf … >>` one-liner copied earlier without its leading `\n` joins the new row onto the file's last line when that line has no trailing newline. The reader skips the joined line, so the last row and the new row are both lost. Use the setter, which leaves the file newline-terminated.
 - **A new `agent_branch_records` config key makes both cleanup scripts snapshot a worktree's `agent-reviews/` before they remove it.**
   - **Behavior:** with the key on, `cleanup-merged-branches.sh` and `cleanup-idle-open-pr-worktrees.sh` copy and verify the directory under `~/.local/state/agent-branch-records/` before every `git worktree remove`. The key is per-account and defaults to `false`.
   - **Refusals:** a worktree whose copy fails is kept, and `cleanup-merged-branches.sh` also keeps its local and remote branch. The script then exits 1. A real run exits 1 before removing anything in the repo it is processing when the archive is unavailable. With the archive unavailable, `--list-removable` prints no list and exits 1. A key that reads as off but whose `claude-config.toml` cannot be read as on or off also refuses, even for an account that never enabled the key. A config directory or schema that cannot be resolved refuses regardless of the key. `docs/agent-branch-records.md` lists the causes.
@@ -927,6 +933,9 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Fixed
 
+- **`_config.sh`'s two writers no longer replace a state path that is not absent or a readable regular file.**
+  - **Cause:** `install.sh`'s opt-in prompt and `migrate-legacy-config.sh` both write through `_config.sh`, and an unreadable file or a dangling or looped symlink at the `claude-config.toml` path read as empty, so the rebuild replaced it with a new file.
+  - **Behavior:** the writers now refuse and write nothing. The migrator's scaffold error for that case no longer suggests deleting the file, and its write warning names the unreadable and not-a-regular-file causes.
 - **`advance-past-commit-stall.sh` no longer misses a permission question on a later line of a multi-line final message.**
   - **Cause:** it read only the first line of `last_assistant_message`.
   - **Judgment:** it now reads the whole message and judges the last sentence of the last non-blank line, so a heading, bullets, then a closing "Should I push and open a PR?" fires.

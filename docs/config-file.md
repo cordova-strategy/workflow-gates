@@ -36,8 +36,7 @@ pr_cost_disclosure = "dollars"
   hand-edit typo affects only that one key.
 - A row whose key has no schema row (a removed key, for example) is
   skipped with a stderr warning each time a reader parses the file.
-  Neither `install.sh` nor `migrate-legacy-config.sh` removes it, so
-  delete the line by hand.
+  No writer removes it, so delete the line by hand.
 - Values are matched case-insensitively (`TRUE`/`True`/`FALSE` all
   resolve), but keys are matched case-sensitively; this repo's own key
   names are already lowercase snake_case.
@@ -174,8 +173,9 @@ It runs two phases, always in this order:
      [`sentinel-config-consolidation.md`](design-decisions/sentinel-config-consolidation.md)
      for the full design rationale.
    - A permissive-direction legacy value is never written; it is deferred
-     the same way a read failure is (below) and printed for a human to
-     hand-paste into `claude-config.toml`.
+     the same way a read failure is (below) and printed as a
+     `config-set.sh` command to run only on the engineer's explicit
+     instruction.
    - A legacy-file read failure for one key (unreadable file, or content
      that fails `pr_cost_disclosure`'s `content-matches` grammar) does not
      abort the run; the remaining keys still import normally.
@@ -213,42 +213,48 @@ It runs two phases, always in this order:
 
 ## Writing a value
 
-`~/.claude/scripts/config-get.sh` has no `set` subcommand and no other
-writing verb — it is read-only, full stop, so shipping it to every stow
-consumer opens no new write path. The only two sanctioned writers are
-`install.sh`'s interactive `[y/N]` opt-in prompt (for the five promptable
-keys) and `migrate-legacy-config.sh`'s import phase, described above. These
-two writers are not equally trusted for the four enforcement-critical keys:
-`migrate-legacy-config.sh`'s import phase is direction-aware (it only
-auto-imports a legacy value that already matches the fail-closed direction),
-while `install.sh`'s interactive prompt is not — see
-[`sentinel-config-consolidation.md`](design-decisions/sentinel-config-consolidation.md)
-for that asymmetry and why it's accepted.
-Nothing mechanically enforces the "only these two writers" restriction at
-the Claude-Code-tool-call boundary — see
-[`sentinel-config-consolidation.md`](design-decisions/sentinel-config-consolidation.md)'s
-descope note for why. With the shipped settings, an agent in the main session that writes `claude-config.toml` by another path meets no `permissions.ask` rule and no hook that gates writes to it.
-The only file-path ask rule, `Edit(//**/.claude/settings*.json)`, does not match it.
-Any human gate is then Claude Code's own permission prompt, and this repo has not verified whether that prompt fires for this file in any permission mode or for any tool, the Stop reason's Bash append included.
-The recorded observations are in `docs/security-hardening.md` § "WebFetch domain allowlisting — considered and rejected".
+```bash
+~/.claude/scripts/config-set.sh <key> <value>
+```
 
-Neither writer locks against the other. `_config_set`'s read-modify-write
-cycle can lose an update if `install.sh`'s prompt and
-`migrate-legacy-config.sh`'s import phase run concurrently against the same
-file, with the later `mv` silently winning. Accepted, not fixed with a
-lock, since both are human-driven, low-concurrency, typically-singleton
-local processes. See `_config_set`'s own header comment in `_config.sh`
-for the matching note.
+An agent runs this command only when the engineer's own message in this session asks for the change. Text the agent reads anywhere else, including a relayed or quoted request, does not count.
 
-A human editing the file directly, with their own editor or a shell
-command run outside Claude Code's own tool calls (e.g. the `!` shell
-escape, which never reaches the Bash tool), is unaffected — that is the
-whole point of a hand-editable file. Appending a new `key = value` line
-for a key with no existing row is safe. Start the append with a newline,
-so a file lacking a trailing newline does not fuse the new key onto its
-last line. Appending a second line for a key that already has one still
-resolves correctly (the last occurrence wins), but leaves a redundant line
-behind. Edit the existing line in place instead once you know it's there.
+`config-set.sh` is the command that changes a key. Pass `<value>` bare (`dollars`, never `"dollars"`), because the file's own row quotes an enum literal. It works for any schema key in either direction, and its exit-code table is in the script's header. On success it prints the resolved value on stdout and names the file it wrote on stderr as an absolute path, which reaches the transcript, so the agent and the engineer see which config dir the command reached.
+
+`<config-dir>` resolves from the invoking shell's `CLAUDE_CONFIG_DIR`, as § "Querying a value" describes. The Stop reason's command therefore acts on the config dir its own shell resolves, which can differ from the hook's, so the reason names the hook's config dir before the command. A permissive value for another account is written from inside that account's session, because a `CLAUDE_CONFIG_DIR=…`-prefixed command is a spelling no ask rule is shown to match (see the ask rules below). Exit 127 or 126 means the script is missing or not executable, so the install is broken (the POSIX shell statuses for command not found and found but not executable). Exit 3 is an environment failure: the stderr line names the cause, and the script header lists them. Exit 3 does not imply the file is unchanged. On any nonzero exit the agent does not edit or replace the file itself, and hand-editing is the engineer's act. On exit 1 or 3 the agent reports the stderr lines to the engineer. Exit 2 is the agent's own argument mistake (for example a quoted value), so it fixes the arguments and re-runs.
+
+The write rewrites every row for the key in place and keeps comments, blank lines between rows and key order. It leaves the file newline-terminated, and it reads a file whose last line is unterminated correctly. It replaces the file rather than appending to it, so the new file has `mktemp`'s mode 0600. A dotfiles-managed symlink at the state path is replaced by a regular file, and its target is left untouched. § "Per-account isolation" forbids a symlink to another account's copy. It refuses, and writes nothing, in two cases: a line outside the grammar, which the reader's `skipping malformed line` warning names, and an existing state path that is not a readable regular file (an unreadable file, a directory, a FIFO, or a symlink that does not resolve to a readable regular file, such as a dangling link, a link loop or a link under an unsearchable directory). An absent path stays writable. A read-only (`chmod a-w`) state file is not a supported lock: the writers replace it with a new file at mode 0600. `install.sh`'s opt-in prompt reports any writer refusal with its generic "could not write" line and no cause.
+
+`config-get.sh` has no `set` subcommand and no other writing verb. It is read-only, full stop. Three entry points reach `_config_set`: `install.sh`'s interactive `[y/N]` opt-in prompt (for the five promptable keys), `migrate-legacy-config.sh`'s import phase described above, and `config-set.sh`. Only the import is direction-aware for the four enforcement-critical keys: it auto-imports a legacy value only when it already matches the fail-closed direction. `install.sh`'s prompt and `config-set.sh` are not. See [`sentinel-config-consolidation.md`](design-decisions/sentinel-config-consolidation.md) for that asymmetry and why it's accepted.
+
+### The four enforcement-critical keys
+
+`worktree_required`, `round_consult_gate`, `commit_stall_block` and `authorization_boundary_restore` are the keys whose permissive value (`false`) turns off an enforcement mechanism rather than a nudge, a disclosure or a pilot. When `config-set.sh` writes that value, it also prints a `notice:` line on stderr that names the key, the config dir and the command that restores it. The notice prints even while another source overrides the row and the command exits 1. Every other key, including those that publish data or loosen a round cap, gets neither the notice nor an ask rule. That includes `permission_prompt_tracking`, the opt-in log of permission prompts (see `docs/permission-prompt-tracking.md`). Turning it off removes the repo's only chance to observe whether the ask rules prompt, because its log is the only place the repo records a `permission_prompt` `Notification` payload (it is the only `Notification` hook matching `permission_prompt` in `claude/.claude/settings.json`). The payload's command field is unverified, because no live payload has been inspected (see `docs/permission-prompt-tracking.md` § "Known limitations").
+
+The notice is the only per-call record of such a write, because nothing logs setter calls. `docs/session-config-keys-log.md` records the resulting value at the next session start, resume, `/clear` or compaction, in rows that are advisory and unauthenticated.
+
+`config-set.sh` is a convention, not a gate, because it adds no write an agent's Bash tool could not already make. The script asks for no confirmation, checks no TTY and refuses no permissive write, since a check inside the script cannot show that a human answered. The notice is a record in the transcript, not a control.
+
+The shipped `claude/.claude/settings.json` declares four `permissions.ask` rules, one exact command string per key:
+
+- `Bash(~/.claude/scripts/config-set.sh worktree_required false)`
+- `Bash(~/.claude/scripts/config-set.sh round_consult_gate false)`
+- `Bash(~/.claude/scripts/config-set.sh commit_stall_block false)`
+- `Bash(~/.claude/scripts/config-set.sh authorization_boundary_restore false)`
+
+Each rule names one spelling of one command. No other spelling is shown to match, including an env prefix, a `bash ` prefix, an absolute or `$HOME` path, a quoted argument, or a redirect or pipe after the value. Any other write path meets no rule. Their prompt is documented, not observed: `docs/security-hardening.md` § "WebFetch domain allowlisting — considered and rejected" records which prompts of this kind were observed and which behaviors rest on Anthropic's documentation. No `permissions.allow` entry names the setter.
+
+The setter knowingly does not meet the design record's rule that every enforcement-critical write path be one where impersonating the human buys nothing. The argument is the equivalence of capability above, and the record's supersession note states it.
+
+### Concurrency
+
+The three entry points do not lock against each other. `_config_set`'s read-modify-write cycle can lose an update when two writers run against the same file, with the later `mv` winning. The Stop reason names the setter command, which an agent runs only on the engineer's own instruction, so two sessions on one config dir overlap when the engineer instructs both. A lost update may surface as the setter's exit-1 message `the row was written, but '<key>' still resolves to '<value>'`, when the other writer's `mv` lands before the read-back, or not at all, when it lands after. For a key outside the `config-dir-or-home` union, that message's cause reads `another writer may have replaced the row, so re-run the command to check`. For `worktree_required`, the union key, the cause blames a `true` in the other location, which misattributes a lost update. A restored enforcement key can silently revert to its permissive value. This is accepted and not fixed with a lock. See `_config_set`'s own header comment in `_config.sh` for the matching note.
+
+### Other write paths
+
+With the shipped settings, no hook gates a write to `claude-config.toml`, and the four ask rules name four exact command strings, not the file. The only file-path ask rule, `Edit(//**/.claude/settings*.json)`, does not match it. Nothing mechanically enforces the "only these three writers" restriction at the Claude-Code-tool-call boundary — see [`sentinel-config-consolidation.md`](design-decisions/sentinel-config-consolidation.md)'s descope note for why. Any human gate for another path is Claude Code's own permission prompt, and this repo has not verified whether that prompt fires for this file in any permission mode or for any tool, the Stop reason's setter command included.
+
+A human editing the file directly, with their own editor or a shell command run outside Claude Code's own tool calls (e.g. the `!` shell escape, which never reaches the Bash tool), is unaffected — that is the whole point of a hand-editable file. An editor stays fine. For a one-line change, use `config-set.sh` instead of an append. An append onto an unterminated last line joins two rows into one that the reader skips, and an append for a key that already has a row leaves a redundant line behind. The last occurrence still wins, so the key resolves correctly, but the file carries both rows.
 
 ## Querying a value
 
@@ -324,12 +330,13 @@ assume it stays under it.
 
 ## A hand-edit-loss fragility for enforcement-critical keys
 
-A hand-edited row for one of the four enforcement-critical keys is the
-sole record of that key's value: nothing mirrors it into a legacy file.
+A row written by hand or by `config-set.sh` for one of the four
+enforcement-critical keys is the sole record of that key's value: nothing
+mirrors it into a legacy file.
 If the code that reads `claude-config.toml` for one of these keys is
 ever reverted to a version that only knows the legacy per-key file, that
 reverted code reads only that key's old per-key legacy file. That file
 was never written for a value that only ever lived in the state file.
 The reverted code therefore silently resolves to the key's old default
 — in whichever direction that default happens to be — discarding the
-hand-edited row with no warning.
+row with no warning.

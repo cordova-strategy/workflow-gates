@@ -374,6 +374,21 @@ The pointer sentence next to each command, "see `docs/config-file.md` for the fi
 
 Projected diff: ~1,330 lines across 26 files (about 960 in tests, 245 in shell scripts and `settings.json`, 125 in docs and the changelog). Row 28's figure was about 670 lines across 21 files, and row 45 records the engineer's acceptance of about 1,200. The rise since then comes from M15's site grammar, ask-match and coverage rules and their controls, the divergent-dir and migrator unreadable-file cases, M13's predicate cases, and the two migrator messages.
 
+Split into two stacked PRs, on the engineer's selected label "Two stacked PRs (Recommended)" after an architect consult on trimming and splitting.
+- PR 1: Dispatch 1 plus `docs/security-hardening.md:552`, `docs/commit-stall-block.md:24`, the `docs/scripts.md` bullet and its two `CHANGELOG.md` bullets, 2,549 changed lines.
+- PR 2: branches from PR 1 with `gh-merge-base` set. It holds M15's drift test, the 14 doc one-liner swaps and its own changelog bullet, about 300 lines.
+
+The PR 1 figure is the staged diff against the merge base `0fdfb29b` (2,261 insertions, 288 deletions, per `git diff --cached --numstat`). 1,596 of those lines are in test files. The code-review rounds widened M13's refusal and the per-cause messages (see "Divergences as built"), which accounts for the rise over the earlier projection. Until PR 2 merges, the 14 swapped-later one-liners still append, and each keeps its leading `\n`, so it stays valid.
+
+## Divergences as built
+
+The code-review rounds changed these plan statements. The code is authoritative.
+- M13: the state-path predicate is positive. The writers proceed only for an absent path or a readable regular file, and return 3 for anything else, a directory, a FIFO and a dangling symlink included. M13's text and Critical files line for the predicate's return values describe the earlier negative shape.
+- M1 step 3: schema status 4 splits into a truncated-row message and an unknown-key message.
+- M1 step 8: the read-back mismatch message names a cause per key class.
+- M5: the qualifier is a shared constant in `_config.sh` of several clauses, not one sentence.
+- Both writers remove their temp file and return 1 when `mv` fails. The plan earlier left that temp-file leak out of scope.
+
 ## Verification
 
 1. Test-first, in Dispatch 1:
@@ -397,7 +412,6 @@ Projected diff: ~1,330 lines across 26 files (about 960 in tests, 245 in shell s
 - Widening M15's corpus to skills, plugins, agents, rules, `claude/.claude/scripts/`, `install.sh` and `CLAUDE.md` files. A skill or plugin-skill change does not select the hooks test tree (row 49), so reading them needs a `select-tests.py` rule change, a mechanism past the drift test the engineer selected. A read-only grep of those trees for a `>>` or `tee -a` that targets a `claude-config` path finds none today.
 - A `docs/hooks.md` edit for the Stop reason's command. Its entry (`:244`) names no command and defers to `docs/commit-stall-block.md`, whose `:24` states the config-dir difference and the script's location (Critical files).
 - An `install.sh`-level unreadable-file case. It would add `test_install_sh_machine_level_opt_ins.py` to the file list. `install.sh`'s prompt reaches `_config_set` only through an `if` (row 42), and M11's `### Fixed` bullet claims the writers' behavior, which the direct cases and the migrator case pin, not an `install.sh` test.
-- Removing `_config_set`'s temp file when its `mv` fails. The leak needs an `mv` failure inside the directory `mktemp` just wrote to, and it loses no state.
 - Writer byte shapes the review traced but no case pins: dropped trailing blank lines, a leading blank line added to an empty file, a CRLF row's `\r` kept on untouched rows, and a stripped BOM. M9 claims only "blank lines between rows".
 - A Python setter (row 9).
 - A `~/.local/bin` wrapper. `config-get.sh` has none, and `install.sh:480` installs only `relocate-claude-config`.

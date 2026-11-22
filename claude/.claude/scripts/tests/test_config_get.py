@@ -1,62 +1,38 @@
 """Tests for config-get.sh's own exit-code contract.
 
-config-get.sh sources _config.sh via a path relative to its own location
-(`$(dirname "$0")/../hooks/_config.sh`), so isolating its schema file needs
-a matching directory layout: a `scripts/` dir holding a config-get.sh
-symlink, and a sibling `hooks/` dir holding the _config.sh and
-config-keys.psv it resolves against.
+config-get.sh sources _config.sh via a path relative to its own location, so
+isolating its schema file needs the matching directory layout that
+`_config_script_helpers.py` builds.
 """
 from __future__ import annotations
 
 import subprocess
 from pathlib import Path
 
-from helpers import HOOKS_DIR, SCRIPTS_DIR, link_bash_into
+from ._config_script_helpers import (
+    CONFIG_KEYS_PSV,
+    CONFIG_SH,
+    isolated_scripts_dir,
+    path_with_caller_bash_first,
+    run_script,
+)
 
-_CONFIG_GET_SH = SCRIPTS_DIR / "config-get.sh"
-_CONFIG_SH = HOOKS_DIR / "_config.sh"
-_CONFIG_KEYS_PSV = HOOKS_DIR / "config-keys.psv"
+_CONFIG_GET_SH_NAME = "config-get.sh"
 
 
 def _isolated_scripts_dir(tmp_path: Path, schema_content: str) -> Path:
-    hooks_dir = tmp_path / "hooks"
-    hooks_dir.mkdir()
-    (hooks_dir / "_config.sh").symlink_to(_CONFIG_SH)
-    (hooks_dir / "config-keys.psv").write_text(schema_content)
-    scripts_dir = tmp_path / "scripts"
-    scripts_dir.mkdir()
-    (scripts_dir / "config-get.sh").symlink_to(_CONFIG_GET_SH)
-    return scripts_dir
-
-
-def _path_with_caller_bash_first(tmp_path: Path) -> str:
-    """A PATH whose `bash` is the caller's, ahead of the system directories that supply the other tools."""
-    bash_dir = tmp_path / "bash-first"
-    bash_dir.mkdir(exist_ok=True)
-    link_bash_into(bash_dir)
-    return f"{bash_dir}:/usr/bin:/bin"
+    return isolated_scripts_dir(tmp_path, _CONFIG_GET_SH_NAME, schema_content)
 
 
 def _run(
     scripts_dir: Path, key: str, tmp_path: Path, claude_config_dir: Path | None = None
 ) -> subprocess.CompletedProcess:
-    home = tmp_path / "home"
-    home.mkdir(exist_ok=True)
-    env = {"HOME": str(home), "PATH": _path_with_caller_bash_first(tmp_path)}
-    if claude_config_dir is not None:
-        env["CLAUDE_CONFIG_DIR"] = str(claude_config_dir)
-    return subprocess.run(
-        [str(scripts_dir / "config-get.sh"), key],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
+    return run_script(scripts_dir, _CONFIG_GET_SH_NAME, [key], tmp_path, claude_config_dir)
 
 
 class TestExitCodeContract:
     def test_known_key_default_resolves_exit_1(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         result = _run(scripts_dir, "worktree_required", tmp_path)
         assert result.returncode == 1
         assert result.stdout == "false\n"
@@ -74,7 +50,7 @@ class TestExitCodeContract:
         exact truncation shape _config.sh's own exit-4 fix guards against."""
         lines = [
             "worktree_required|bool|false|config-dir-or-home" if line.startswith("worktree_required|") else line
-            for line in _CONFIG_KEYS_PSV.read_text().splitlines()
+            for line in CONFIG_KEYS_PSV.read_text().splitlines()
         ]
         scripts_dir = _isolated_scripts_dir(tmp_path, "\n".join(lines) + "\n")
 
@@ -85,9 +61,34 @@ class TestExitCodeContract:
         assert "worktree_required" in result.stderr
 
     def test_unknown_key_returns_exit_2(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         result = _run(scripts_dir, "not_a_real_key", tmp_path)
         assert result.returncode == 2
+
+
+class TestWritePointerNamesTheDocNotTheCommand:
+    """An agent reads these messages whenever it probes for a write verb. They point at the doc, so a
+    relayed setter command always passes through the doc's engineer-only qualifier."""
+
+    def test_usage_message_points_at_the_doc_and_prints_no_setter_command(self, tmp_path: Path) -> None:
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
+
+        result = run_script(scripts_dir, _CONFIG_GET_SH_NAME, [], tmp_path)
+
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert "docs/config-file.md" in result.stderr
+        assert "config-set.sh" not in result.stderr
+
+    def test_set_message_points_at_the_doc_and_prints_no_setter_command(self, tmp_path: Path) -> None:
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
+
+        result = _run(scripts_dir, "set", tmp_path)
+
+        assert result.returncode == 2
+        assert result.stdout == ""
+        assert "docs/config-file.md" in result.stderr
+        assert "config-set.sh" not in result.stderr
 
 
 class TestArchitectFixPlanPilotGate:
@@ -103,28 +104,28 @@ class TestArchitectFixPlanPilotGate:
         return config_dir
 
     def test_fresh_home_with_no_state_file_exits_1(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         result = _run(scripts_dir, self._KEY, tmp_path)
         assert result.returncode == 1
         assert result.stdout == "false\n"
 
     def test_hand_written_true_row_exits_0(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         (self._config_dir(tmp_path) / "claude-config.toml").write_text(f"{self._KEY} = true\n")
         result = _run(scripts_dir, self._KEY, tmp_path)
         assert result.returncode == 0
         assert result.stdout == "true\n"
 
     def test_scaffolded_false_row_exits_1(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         config_dir = self._config_dir(tmp_path)
         # Explicit config-dir argument and a scrubbed env keep the scaffold
         # from writing to the invoking account's own config dir.
         scaffold = subprocess.run(
-            ["bash", "-c", f'set -uo pipefail; . "{_CONFIG_SH}"; _config_scaffold "" "{config_dir}"'],
+            ["bash", "-c", f'set -uo pipefail; . "{CONFIG_SH}"; _config_scaffold "" "{config_dir}"'],
             capture_output=True,
             text=True,
-            env={"HOME": str(tmp_path / "home"), "PATH": _path_with_caller_bash_first(tmp_path)},
+            env={"HOME": str(tmp_path / "home"), "PATH": path_with_caller_bash_first(tmp_path)},
             check=False,
         )
         assert scaffold.returncode == 0, scaffold.stderr
@@ -140,7 +141,7 @@ class TestArchitectFixPlanPilotGate:
     ) -> None:
         """The pilot is per-account: a home-level file must not enable it for an
         account whose CLAUDE_CONFIG_DIR points elsewhere."""
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         (self._config_dir(tmp_path) / "claude-config.toml").write_text(f"{self._KEY} = true\n")
         account_dir = tmp_path / "acct"
         account_dir.mkdir()
@@ -158,7 +159,7 @@ class TestArchitectFixPlanPilotGate:
         adds the empty-stdout assertion on the pilot key's real row. Falling
         through would print an empty VALUE, and "" != "false" would enable the
         pilot on a mis-set environment."""
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         (self._config_dir(tmp_path) / "claude-config.toml").write_text(f"{self._KEY} = true\n")
 
         result = _run(scripts_dir, self._KEY, tmp_path, claude_config_dir=Path("relative/acct"))
@@ -167,7 +168,7 @@ class TestArchitectFixPlanPilotGate:
         assert result.stdout == ""
 
     def test_true_in_claude_config_dir_exits_0(self, tmp_path: Path) -> None:
-        scripts_dir = _isolated_scripts_dir(tmp_path, _CONFIG_KEYS_PSV.read_text())
+        scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         account_dir = tmp_path / "acct"
         account_dir.mkdir()
         (account_dir / "claude-config.toml").write_text(f"{self._KEY} = true\n")

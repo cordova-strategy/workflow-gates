@@ -27,39 +27,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=../hooks/_config.sh
 . "$SCRIPT_DIR/../hooks/_config.sh"
 
-# The same four keys config-keys.psv's own header comment names as
-# enforcement-critical -- a fixed identity list here, not a schema column,
-# since each one requires a claude-hook-review pass on any future change to
-# its resolution, legacy-probe-on-resolution-failure, or
-# legacy-import-locations column.
-_MIGRATE_ENFORCEMENT_CRITICAL_KEYS=" worktree_required round_consult_gate commit_stall_block authorization_boundary_restore "
-
-# _migrate_enforcement_critical_safe_value KEY
-# Populates _MIGRATE_SAFE_VALUE with KEY's fail-closed value and returns 0,
-# or returns 1 for a key outside _MIGRATE_ENFORCEMENT_CRITICAL_KEYS. A case
-# statement. Deliberately not
-# config-keys.psv's own legacy-probe-on-resolution-failure column, which
-# answers a different question (does resolution-failure fall back to
-# $HOME/.claude?) and equals the safe value only for worktree_required; for
-# the other three it is false while the safe value is true. A future edit to
-# that column must not change which value this function treats as safe. Each value
-# below is this key's own enforcement-stays-on
-# direction per config-keys.psv's row-level comments, not simply "matches
-# the default column":
-#   worktree_required=true: enforcement stays on.
-#   round_consult_gate=true, commit_stall_block=true,
-#   authorization_boundary_restore=true: the gate/block/restore stays on.
-_migrate_enforcement_critical_safe_value() {
-  _MIGRATE_SAFE_VALUE=""
-  case "$1" in
-    worktree_required) _MIGRATE_SAFE_VALUE="true" ;;
-    round_consult_gate) _MIGRATE_SAFE_VALUE="true" ;;
-    commit_stall_block) _MIGRATE_SAFE_VALUE="true" ;;
-    authorization_boundary_restore) _MIGRATE_SAFE_VALUE="true" ;;
-    *) return 1 ;;
-  esac
-}
-
 # _migrate_probe_legacy_location TYPE LEGACY_POLARITY PATH
 # Populates _MIGRATE_DERIVED_VALUE and returns 0 (PATH exists, value
 # derived), 1 (PATH does not exist), or 2 (PATH exists but its value could
@@ -280,7 +247,7 @@ _migrate_process_key() {
   fi
 
   local should_import=0
-  case "$_MIGRATE_ENFORCEMENT_CRITICAL_KEYS" in
+  case "$_CONFIG_ENFORCEMENT_CRITICAL_KEYS" in
     *" $key "*)
       # No TTY check: `[ -t 0 ]` is evaluated inside this script's own
       # process, which a caller fully controls and can fabricate a pty
@@ -288,14 +255,21 @@ _migrate_process_key() {
       # script's own header). Importing is safe with no gate at all when
       # the legacy-derived value already matches the fail-closed
       # direction; a permissive-direction value is never written -- it is
-      # deferred below and printed for a human to hand-paste in.
-      if _migrate_enforcement_critical_safe_value "$key" \
-         && [ "$winner_value" = "$_MIGRATE_SAFE_VALUE" ]; then
+      # deferred below and printed as the config-set.sh command that
+      # writes it.
+      if _config_enforcement_critical_safe_value "$key" \
+         && [ "$winner_value" = "$_CONFIG_SAFE_VALUE" ]; then
         should_import=1
       else
-        printf '%s (%s): the legacy value %s is the permissive direction -- not imported automatically. To accept it, add this line to claude-config.toml by hand:\n' \
-          "$human_name" "$key" "$winner_value" >&2
-        printf '  %s = %s\n' "$key" "$winner_value" >&2
+        # Outside the config-dir-or-home union, reads consult only the resolved
+        # config dir's legacy file, so a value found only under $HOME/.claude
+        # is not the one the key resolves to.
+        local still_resolves_clause=""
+        [ "$config_dir_status" -eq 0 ] \
+          && still_resolves_clause=" The key still resolves to $winner_value through $config_dir_path until a row is written."
+        printf "%s (%s): the legacy value %s is the permissive direction -- not imported automatically.%s %s To write it for the config dir %s (the command acts on the config dir its own shell resolves):\n" \
+          "$human_name" "$key" "$winner_value" "$still_resolves_clause" "$_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER" "$_MIGRATE_CONFIG_DIR" >&2
+        printf '  ~/.claude/scripts/config-set.sh %s %s\n' "$key" "$winner_value" >&2
       fi
       ;;
     *) should_import=1 ;;
@@ -317,7 +291,7 @@ _migrate_process_key() {
   fi
 
   if [ "$should_import" -eq 1 ]; then
-    echo "migrate-legacy-config.sh: warning: could not write $key -- claude-config.toml may have malformed content; leaving it for a manual fix" >&2
+    echo "migrate-legacy-config.sh: warning: could not write $key -- claude-config.toml may be unreadable, not a regular file, or have malformed content; leaving it for a manual fix" >&2
   fi
 
   _MIGRATE_SCAFFOLD_EXCLUDE="$_MIGRATE_SCAFFOLD_EXCLUDE $key"
@@ -419,7 +393,7 @@ main() {
   done
 
   if ! _config_scaffold "$_MIGRATE_SCAFFOLD_EXCLUDE"; then
-    echo "migrate-legacy-config.sh: error: could not scaffold claude-config.toml with schema defaults -- it may have malformed content; fix it by hand or delete it, then re-run" >&2
+    echo "migrate-legacy-config.sh: error: could not scaffold claude-config.toml with schema defaults -- it may be unreadable, not a regular file, or have malformed content; fix it by hand, then re-run" >&2
     exit 1
   fi
 
