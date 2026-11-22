@@ -40,13 +40,17 @@
 # a systemMessage telling the engineer the file has no effect and the ledger
 # always records. Marker-status reporting is always on.
 #
+# With timeout or gtimeout on PATH, a 2-second time cap bounds the stdin read, so a pipe the harness never closes
+# cannot stall the hook.
+# Without either, the read is uncapped and the settings timeout is the only bound.
+#
 # Exit 0 always — this hook must not block session startup.
-
-INPUT=$(cat 2>/dev/null)
 
 if ! . "${0%/*}/_lib.sh" 2>/dev/null; then
   exit 0
 fi
+
+INPUT=$(_lib_capped_for 2 cat 2>/dev/null)
 
 SESSION_ID=$(printf '%s\n' "$INPUT" | _lib_jq -r '.session_id // empty' 2>/dev/null)
 if [ -z "$SESSION_ID" ]; then
