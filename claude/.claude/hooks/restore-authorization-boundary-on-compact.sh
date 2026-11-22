@@ -10,7 +10,6 @@
 # The shapes it names are illustrative, not an exhaustive list — see
 # handoff/SKILL.md §3.5 for the categorization rule this hook echoes a subset
 # of.
-# A 2-second time cap bounds the stdin read, so a pipe the harness never closes cannot stall the hook.
 # Deliberately excluded from `clear`: an emptied context asserts no next step,
 # so there is no false authorization to correct.
 #
@@ -27,6 +26,10 @@
 # for this hook defines its semantics.
 # The statement depends only on the root guard, so a relative CLAUDE_CONFIG_DIR
 # skips the boundary text and keeps the statement.
+#
+# With timeout or gtimeout on PATH, a 2-second time cap bounds the stdin read, so a pipe the harness never closes
+# cannot stall the hook.
+# Without either, the read is uncapped and the settings timeout is the only bound.
 #
 # Exit 0 always — a SessionStart hook has no deny path, so erroring here would
 # only block session startup, strictly worse than silently skipping the text.

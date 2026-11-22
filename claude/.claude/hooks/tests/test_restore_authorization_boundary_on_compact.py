@@ -19,6 +19,7 @@ import functools
 import json
 import os
 import re
+import shutil
 from pathlib import Path
 
 import pytest
@@ -235,6 +236,21 @@ class TestRestoreAuthorizationBoundaryOnCompact:
     def test_exit_0_always(self, isolated_home):
         result = _run_hook({"source": "compact"}, isolated_home)
         assert result.returncode == 0
+
+    def test_neither_timeout_nor_gtimeout_on_path_still_emits_the_boundary_text_uncapped(
+        self, isolated_home, tmp_path
+    ):
+        farm_dir = tmp_path / "path_without_timeout_or_gtimeout"
+        farm_dir.mkdir()
+        path_without_either = build_path_without("timeout", farm_dir)
+        (farm_dir / "gtimeout").unlink(missing_ok=True)
+        assert shutil.which("timeout", path=path_without_either) is None
+        assert shutil.which("gtimeout", path=path_without_either) is None
+
+        result = _run_hook({"source": "compact"}, isolated_home, extra_env={"PATH": path_without_either})
+
+        assert result.returncode == 0
+        assert "not engineer authorization" in session_start_additional_context(result)
 
     @pytest.mark.timing
     @requires_timeout
