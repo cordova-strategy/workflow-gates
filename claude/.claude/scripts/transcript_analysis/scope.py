@@ -98,11 +98,11 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
 
     This is the minimization control for any caller (`command_label`) that must
     scope a transcript read to this repo, since transcripts under
-    ~/.claude/projects/ span every project on the machine. It bounds projects,
-    not accounts: a caller that reads every declared account still pools them,
-    so its output is local-only. Scoping the read to
+    ~/.claude/projects/ span every project on the machine. Scoping the read to
     this repository — by *identity*, via `git worktree list`, matched as exact dir
-    names — keeps other projects' own sessions out of the read. A subagent file
+    names — keeps other projects' own sessions out of the read. It bounds
+    projects, not accounts: a caller that reads every declared account still
+    pools them, so its output is local-only. A subagent file
     under an in-repo session is read regardless of the repo the subagent worked
     in, so scoping alone does not bound skill names under `--include-subagents`.
     The scope is deliberately not a path glob: a `<slug>*`-style match scopes by where a dir
