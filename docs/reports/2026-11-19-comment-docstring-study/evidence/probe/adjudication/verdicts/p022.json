@@ -1,0 +1,23 @@
+{
+ "packet_id": "p022",
+ "a": {
+  "pass": true,
+  "evidence": "Accepted risk: a project whose own name contains `--claude-worktrees-` merges"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "Accepted risk: a project whose own name contains `--claude-worktrees-` merges"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "into another family, tolerable at current scale. Re-evaluate if any"
+ },
+ "d": {
+  "pass": true,
+  "evidence": "family-keyed project count shows an unexpected merge."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Accepted risk: a project whose own name contains `--claude-worktrees-` merges"
+ }
+}

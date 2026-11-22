@@ -1,0 +1,16 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -1082,6 +1082,12 @@
+ 
+ 
+ def _attributed_branch(rec: dict, ctx: _SessionBranchContext) -> str | None:
++    """Resolve one record's branch for --branches filtering: the timeline step
++    (_timeline_entry) followed by the pre-branch step (_attribute_pre_branch).
++    Returns None — the "?" sentinel (see cmd_review_trace's docstring for the
++    carry-forward convention this parallels) — for a main-thread record
++    with no gitBranch, and for a sidechain record in a session with no
++    branch-bearing main-thread record."""
+     return _attribute_pre_branch(*_timeline_entry(rec, ctx), ctx.pre_branch_run)
+ 
+ 

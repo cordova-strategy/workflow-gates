@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/redaction.py b/claude/.claude/scripts/transcript_analysis/redaction.py
+--- a/claude/.claude/scripts/transcript_analysis/redaction.py
++++ b/claude/.claude/scripts/transcript_analysis/redaction.py
+@@ -192,6 +192,7 @@
+ 
+ 
+ def _redact_session_id(session_id: str, session_redact_map: dict[str, str]) -> str:
++    """Apply a run-scoped session-id redact map; fails closed to a fixed token on a miss."""
+     return session_redact_map.get(session_id, _REDACT_SESSION_MISS_TOKEN)
+ 
+ 

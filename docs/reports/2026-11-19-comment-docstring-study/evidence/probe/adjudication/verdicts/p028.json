@@ -1,0 +1,23 @@
+{
+ "packet_id": "p028",
+ "a": {
+  "pass": true,
+  "evidence": "Required property: keep the decision and the trigger, and drop the consumer enumeration."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "another family: accepted at current scale. If any consumer's output shows"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "an unexpected family merge, re-evaluate."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "Required property: keep the decision and the trigger, and drop the consumer enumeration."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Required property: keep the decision and the trigger, and drop the consumer enumeration."
+ }
+}

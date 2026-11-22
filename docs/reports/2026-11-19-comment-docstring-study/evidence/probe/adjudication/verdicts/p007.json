@@ -1,0 +1,23 @@
+{
+ "packet_id": "p007",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc`'s message so a propagated scan error cannot"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc`'s message so a propagated scan error cannot"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "leak a raw config-dir path into a --redact run (see the comment in"
+ },
+ "d": {
+  "pass": false,
+  "evidence": "leak a raw config-dir path into a --redact run (see the comment in"
+ },
+ "e": {
+  "pass": false,
+  "evidence": "`_iter_scoped_sessions`). Built from `exc.errno` so the callers'"
+ }
+}

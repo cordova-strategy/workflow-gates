@@ -1,0 +1,17 @@
+diff --git a/claude/.claude/scripts/post-crash-sessions.py b/claude/.claude/scripts/post-crash-sessions.py
+--- a/claude/.claude/scripts/post-crash-sessions.py
++++ b/claude/.claude/scripts/post-crash-sessions.py
+@@ -1909,6 +1909,13 @@
+ 
+ 
+ def _declared_config_dirs() -> list[Path]:
++    """Declared roots from ~/.claude/transcript-config-dirs (or
++    TRANSCRIPT_CONFIG_DIRS_FILE), validated against this script's own looser
++    sessions/-or-projects/ check (main()'s --config-dir validation, below)
++    instead of declared_transcript_roots()'s projects/-only requirement --
++    the latter would silently drop a sessions-only root, the crashed-fresh-
++    account case this tool exists for.
++    """
+     return declared_roots_matching(
+         lambda candidate: (candidate / "sessions").is_dir() or (candidate / "projects").is_dir(),
+         warn_prefix="post-crash-sessions",

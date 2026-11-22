@@ -1,0 +1,23 @@
+{
+ "packet_id": "p029",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Rebuild `exc` with its path dropped from the message, keeping the"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Rebuild `exc` with its path dropped from the message, keeping the"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "subclass the errno selects. Why callers strip: see `_dedup_new_project_dirs`.\"\"\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "(\"The path is stripped because this level, unlike the root level, has no per-account ordinal to label it with\")"
+ },
+ "e": {
+  "pass": false,
+  "evidence": "subclass the errno selects. Why callers strip: see `_dedup_new_project_dirs`.\"\"\""
+ }
+}

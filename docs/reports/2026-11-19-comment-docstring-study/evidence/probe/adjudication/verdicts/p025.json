@@ -1,0 +1,23 @@
+{
+ "packet_id": "p025",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Must match how Claude Code derives a project dir's name from the session's cwd; that scheme is owned by Claude Code, so revisit if it changes.\"\"\""
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Must match how Claude Code derives a project dir's name from the session's cwd; that scheme is owned by Claude Code, so revisit if it changes.\"\"\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"\"\"Must match how Claude Code derives a project dir's name from the session's cwd; that scheme is owned by Claude Code, so revisit if it changes.\"\"\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"\"\"Must match how Claude Code derives a project dir's name from the session's cwd; that scheme is owned by Claude Code, so revisit if it changes.\"\"\""
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Must match how Claude Code derives a project dir's name from the session's cwd; that scheme is owned by Claude Code, so revisit if it changes.\"\"\""
+ }
+}

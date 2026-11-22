@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/render.py b/claude/.claude/scripts/transcript_analysis/render.py
+--- a/claude/.claude/scripts/transcript_analysis/render.py
++++ b/claude/.claude/scripts/transcript_analysis/render.py
+@@ -127,6 +127,7 @@
+ 
+ 
+ def _sanitize_table_cell(value: str) -> str:
++    """Strip ASCII control characters from a --deny-summary table cell value."""
+     return _CONTROL_CHAR_RE.sub("", value)
+ 
+ 

@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/cursor-adapter/cursor-adapter.py b/claude/.claude/scripts/cursor-adapter/cursor-adapter.py
+--- a/claude/.claude/scripts/cursor-adapter/cursor-adapter.py
++++ b/claude/.claude/scripts/cursor-adapter/cursor-adapter.py
+@@ -2263,6 +2263,7 @@
+ 
+ 
+ def report_state_dir_left(state_dir, reason):
++    """`uninstall` removes the install record right after the state directory, so a re-run cannot retry the removal."""
+     print(f"Left {state_dir} in place: {reason} The engineer deletes it by hand.")
+ 
+ 

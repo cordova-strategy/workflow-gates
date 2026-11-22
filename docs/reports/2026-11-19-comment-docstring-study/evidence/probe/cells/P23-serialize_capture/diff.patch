@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/routing_guard.py b/claude/.claude/scripts/transcript_analysis/routing_guard.py
+--- a/claude/.claude/scripts/transcript_analysis/routing_guard.py
++++ b/claude/.claude/scripts/transcript_analysis/routing_guard.py
+@@ -690,6 +690,7 @@
+ 
+ 
+ def _serialize_capture(loops: Sequence[_Loop], states: _KeyStates) -> str:
++    """ASCII-only, so the text encodes the same under any locale."""
+     return json.dumps(
+         {
+             "loops": [
