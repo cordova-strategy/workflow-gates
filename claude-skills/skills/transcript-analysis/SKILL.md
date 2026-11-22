@@ -96,7 +96,7 @@ Use `--corrections-only` to strip initial prompts when you only want the steerin
 
 - The default scope of `fail-seq`, `subagents`, `pr-link` and the other commands that read every declared account union all config dirs in `~/.claude/transcript-config-dirs`. `docs/transcript-analysis.md`'s "Corpus scope: the declared-roots file" section lists the narrowed commands, which read the active account unless `--this-repo` or `--all-accounts` widens them.
 - Most subcommands print the resolved-scope header, even at one root or zero matches; `cost --summary` prints its own `Scope:` line instead — see "Scope confirmation" above.
-- Redaction differs by subcommand. Check a subcommand's section in `docs/transcript-analysis.md` before treating its output as redacted.
+- Redaction differs by subcommand. Read the redaction paragraph in `docs/transcript-analysis.md` before treating any subcommand's output as redacted.
 - `--branches` filters records by `gitBranch` string only, never by project dir or root — under a multi-root scope it pools same-named branches across every declared account into one tally, with no per-account signal.
 - The `N failed` count is a coarse proxy: it matches any `N failed` in tool output, including pre-existing failures and intentional baseline runs. Treat the sequence view as the primary read; the aggregate rate is corroborating.
 - Subagent (`isSidechain`) turns are excluded from `fail-seq` and `struggle` — reviewer, `Explore`, and `code-writer` agents are not the debugging surface these subcommands measure.
