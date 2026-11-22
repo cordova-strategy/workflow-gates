@@ -86,8 +86,8 @@ class TestAPassingSmoke:
         assert output.count("empty final text: the run ended with no text") == 2
         assert "no deliverable" not in output, "each run changed a file, so it has a deliverable"
 
-    def test_a_run_that_ends_with_no_text_and_no_change_is_named_in_the_verdict_but_still_passes(self, world, capsys):
-        """Print-only visibility: the run is `ok`, so smoke passes, but the verdict names the arm that produced nothing."""
+    def test_a_run_that_ends_with_no_text_and_no_change_is_named_before_the_verdict_but_still_passes(self, world, capsys):
+        """Print-only visibility: the run is `ok`, so smoke passes, but a line before the verdict names the silent arm."""
         silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
 
         exit_code, _stub = run_smoke(world, by_call=agent_scenarios(bare=silent_no_op))

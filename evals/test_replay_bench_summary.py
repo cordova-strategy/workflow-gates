@@ -753,6 +753,27 @@ class TestThePairedSecondaryOutcome:
         assert number_after(lines, "  toolkit, paired tasks pooled:") == pytest.approx(100 * (5 + 0) / (20 + 160), abs=1e-4)
         assert number_after(lines, "  bare, paired tasks pooled:") == pytest.approx(100 * 9 / 100)
 
+    def test_a_missing_run_beside_a_valid_run_in_a_paired_tasks_arm_enters_neither_the_pool_nor_the_task_line(self, campaign):
+        """Kills: building an arm's counts from its raw records, which reads `metrics` off a missing run (None) or,
+        if it zeroes that run, halves the task's mean code lines and shifts the pooled rate from 30 to about 36.7."""
+        campaign.add_block(
+            "with-a-missing-run",
+            record("with-a-missing-run", "toolkit", run_metrics=metrics(code=100, docstring=10)),
+            record("with-a-missing-run", "toolkit", run_index=1, ok=False, reason="timeout"),
+            record("with-a-missing-run", "bare", run_metrics=metrics(code=100, docstring=20)),
+        )
+        campaign.add_block(
+            "all-valid",
+            record("all-valid", "toolkit", run_metrics=metrics(code=100, docstring=50)),
+            record("all-valid", "bare", run_metrics=metrics(code=100, docstring=20)),
+        )
+
+        lines = campaign.summarize()
+
+        assert number_after(lines, "  toolkit, paired tasks pooled:") == pytest.approx(100 * (10 + 50) / (100 + 100))
+        assert "  paired task 'with-a-missing-run': toolkit 10.0000, bare 20.0000" in lines
+        assert len([line for line in lines if line.startswith("  paired task ")]) == 2
+
     def test_a_task_with_no_non_test_code_line_in_one_arm_is_excluded_from_every_secondary_line(self, campaign):
         """Both arms have a valid run on `no-code`, but the toolkit arm wrote no code line, so the primary outcome
         drops the task and the secondary outcome must drop it from the pools, the per-task lines and the reference."""
@@ -793,7 +814,6 @@ class TestThePairedSecondaryOutcome:
         assert not any(line.startswith("  paired task ") for line in lines)
 
     def test_a_toolkit_only_campaign_prints_n_a_for_every_rate_and_diagnoses_the_toolkit_arm_alone(self, campaign):
-        """A `--arm toolkit` campaign has no bare record, so no task pairs and every secondary rate reads `n/a`."""
         toolkit_only_tasks = (reference_task(code=40, docstring=10), reference_task(code=40, docstring=30, commit_digit="c"))
         tasks.write_task_set(campaign.local_dir / "tasks", "readable", list(toolkit_only_tasks))
         (campaign.dir / "manifest.json").write_text(json.dumps({

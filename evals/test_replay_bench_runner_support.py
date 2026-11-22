@@ -61,6 +61,7 @@ def write_executable(path: Path, body: str) -> Path:
 
 ENTRY_DENIAL = "entry"
 BLOCK_DENIAL = "block"
+NARRATION_NEEDS_A_TOOL_CALL = "narration rides on the first tool call's entry, so it needs at least one tool call"
 
 
 @dataclass
@@ -101,6 +102,8 @@ class Scenario:
     def __post_init__(self) -> None:
         if self.denial_shape not in (ENTRY_DENIAL, BLOCK_DENIAL):
             raise ValueError(f"unknown denial_shape {self.denial_shape!r}")
+        if self.narration and self.tool_calls == []:
+            raise ValueError(NARRATION_NEEDS_A_TOOL_CALL)
 
 
 @dataclass
@@ -276,6 +279,8 @@ def write_transcripts(
         "input_tokens": 10, "cache_creation_input_tokens": 20, "cache_read_input_tokens": first_turn_size - 30,
         "output_tokens": 1,
     }
+    if scenario.narration and not tool_calls:
+        raise ValueError(NARRATION_NEEDS_A_TOOL_CALL)
     entries: list[dict] = []
     for index, (name, tool_input, denied) in enumerate(tool_calls):
         tool_use_id = f"toolu_{index}"

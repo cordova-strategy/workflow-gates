@@ -73,8 +73,8 @@ def describe(provenance: RunnerProvenance | None) -> str:
     return f"runner commit {provenance.commit}{suffix}"
 
 
-# A reading with neither field says nothing about the runner: git could not produce it, or the manifest or record
-# lacks `runner_commit` and `runner_dirty`.
+# A reading with neither field says nothing about the runner: git could not produce it, or a run record lacks
+# `runner_commit` and `runner_dirty`.
 NO_READING = RunnerProvenance(None, None)
 
 

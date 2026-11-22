@@ -166,6 +166,10 @@ class TestReadRunnerProvenance:
         provenance.read_runner_provenance(runner_repo)
 
         assert index_file.read_bytes() == index_before
+        # The control must run after the probe: a plain status rewrites the index, so running it first would make the
+        # assertion above pass without `--no-optional-locks`.
+        git(runner_repo, "status", "--porcelain")
+        assert index_file.read_bytes() != index_before, "a plain status refreshes the stale stat data into the index"
 
     def test_the_default_root_is_the_review_runners_own_checkout(self, runner_repo, monkeypatch):
         """Kills: probing the config checkout or the process's working directory instead of the checkout the

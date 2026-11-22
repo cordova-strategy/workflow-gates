@@ -1602,9 +1602,8 @@ once the set changes.
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
 - The fixture rule below sets each task's changed paths and reference metrics
   at mining time. Neither the task-set hash nor the manifest records the rule,
-  so a resume does not refuse a task set mined under an earlier rule. Re-mine a
-  task set mined before the rule's last change, which dropped the nested
-  `.claude/scripts/**` paths that the rule now keeps.
+  so a resume does not refuse a task set mined under a different rule. Re-mine
+  a task set after any change to the rule.
 - A task's fixture drops every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`,
   the root `.claude` directory and the root `.mcp.json`, each matched
   case-insensitively. A `.claude` directory below the root keeps its `scripts`
@@ -1822,7 +1821,8 @@ environment and before its first block. `summarize` prints the same clause on it
 - An edit to `evals/` between a start and a resume halts nothing.
 - A manifest that lacks `runner_commit` or `runner_dirty` resumes. The resume
   line names this checkout's reading, because the later blocks run under it.
-  `summarize` prints `runner commit not recorded` for such a manifest.
+  `summarize` prints `runner commit not recorded` for such a manifest when no
+  run record holds a reading either, and otherwise names the records' readings.
 - A reading that git could not produce is null in the manifest and record, and
   prints as unreadable.
 - A stored commit that is not a full hex object name, or a stored flag that is
