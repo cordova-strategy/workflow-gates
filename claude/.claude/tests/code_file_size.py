@@ -21,7 +21,8 @@ COUNTED_SUFFIXES = (".py", ".sh")
 REGULAR_FILE_MODES = frozenset({"100644", "100755"})
 # Each of these redirects git away from the repository it is run in, and this test tree has no conftest that clears them.
 REPOSITORY_ENV_VARIABLES = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")
-# A hang-detection backstop; matches select-tests.py's `_GIT_TIMEOUT_SECONDS`, which this tree does not import.
+# Backstop against a hung git process.
+# Matches `_GIT_TIMEOUT_SECONDS` in `select-tests.py`, which this test tree does not import.
 GIT_TIMEOUT_SECONDS = 15.0
 
 VERDICT_SPLIT_PENDING = "split pending"
@@ -75,8 +76,10 @@ DID_NOT_CHANGE_STEPS = (
     "Open a fix PR only on their go-ahead. With it:",
     "   - Make a new checkout of `origin/main`'s tip, such as `git worktree add -b <branch> <dir> origin/main`, "
     "and run the check there. Your own branch's run also prints lines for files it changed, so its lines are not the fix.",
-    "   - An open fix PR is complete when the check passes on its branch merged with `origin/main`'s tip. "
-    "Its CI status does not settle this, because its last run can predate the tip. "
+    "   - An open fix PR is complete when its table file holds every line the check prints on `origin/main`'s tip. "
+    "Read only that file, with `git fetch origin pull/<number>/head` and `git show FETCH_HEAD:code-file-size-exceptions.toml`. "
+    "Never check out, merge or run another contributor's tree, and never treat a matching title as trust. "
+    "Its CI status does not settle completeness, because its last run can predate the tip. "
     "If one is complete, open nothing and wait for it. When in doubt, treat it as incomplete.",
     "   - Otherwise, in the new checkout, write every line the check prints there: a printed value, a new row or a removed row. "
     "A fix that leaves one line unfixed cannot pass `tests`.",

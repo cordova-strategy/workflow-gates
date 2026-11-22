@@ -44,9 +44,13 @@ from helpers import REPO_ROOT, init_git_repo, isolated_git_env
 
 TABLE_PATH = REPO_ROOT / "code-file-size-exceptions.toml"
 
-# The opening phrase of each header section a printed message cites: the no-row message cites the verdict block,
-# the decode problem cites the conflict rule, and the header's own layout rule points at the shape test.
+# The opening phrase of each header section, each required to appear somewhere in the header, so a reworded header cannot leave a pointer at nothing:
+# "Choosing a verdict:" is cited by the no-row message.
+# "Layout rule:" points readers at the shape test.
+# "Conflict rule:" is cited by the decode problem.
+# "Split rule:" is cited by no message; it is asserted because the header must state the rule.
 HEADER_RULE_PHRASES = ("Choosing a verdict:", "Layout rule:", "Conflict rule:", "Split rule:")
+REQUIRED_HEADER_NAMES = (*HEADER_RULE_PHRASES, SHAPE_TEST_NODE_ID.rpartition("::")[2])
 
 SYNTHETIC_HEADER = "# synthetic header\n# second line\n\n"
 TABLE_PROBLEM_LINE = (
@@ -100,10 +104,45 @@ def test_exception_table_shape():
 def test_exception_table_header():
     header, _ = split_header_comment(TABLE_PATH.read_bytes().decode("utf-8"))
 
-    shape_test_name = SHAPE_TEST_NODE_ID.rpartition("::")[2]
-    missing_phrases = [phrase for phrase in (*HEADER_RULE_PHRASES, shape_test_name) if phrase not in header]
+    missing_names = [name for name in REQUIRED_HEADER_NAMES if name not in header]
 
-    assert missing_phrases == []
+    assert missing_names == []
+
+
+def _point_real_table_tests_at(monkeypatch, tmp_path: Path, table_text: str) -> None:
+    table_path = tmp_path / TABLE_FILE_NAME
+    table_path.write_bytes(table_text.encode("utf-8"))
+    monkeypatch.setattr(sys.modules[__name__], "TABLE_PATH", table_path)
+
+
+def test_size_test_fails_when_a_count_differs_from_the_table_row(monkeypatch, tmp_path):
+    _point_real_table_tests_at(monkeypatch, tmp_path, _canonical_text({"a.py": _split_pending_row(1500)}))
+
+    with pytest.raises(pytest.fail.Exception, match=re.escape("a.py: 1600 lines, and its row holds 1500")):
+        test_code_file_sizes({"a.py": 1600})
+
+
+def test_shape_test_fails_on_a_table_that_is_not_valid_toml(monkeypatch, tmp_path):
+    _point_real_table_tests_at(monkeypatch, tmp_path, SYNTHETIC_HEADER + '["a.py"\n')
+
+    with pytest.raises(pytest.fail.Exception):
+        test_exception_table_shape()
+
+
+def test_header_test_fails_on_a_table_with_no_header_comment(monkeypatch, tmp_path):
+    _point_real_table_tests_at(monkeypatch, tmp_path, serialize_rows({"a.py": _split_pending_row(1500)}))
+
+    with pytest.raises(AssertionError):
+        test_exception_table_header()
+
+
+@pytest.mark.parametrize("omitted_name", REQUIRED_HEADER_NAMES)
+def test_header_test_fails_on_a_header_missing_one_required_name(monkeypatch, tmp_path, omitted_name):
+    header = "".join(f"# {name}\n" for name in REQUIRED_HEADER_NAMES if name != omitted_name) + "\n"
+    _point_real_table_tests_at(monkeypatch, tmp_path, _canonical_text({"a.py": _split_pending_row(1500)}, header))
+
+    with pytest.raises(AssertionError):
+        test_exception_table_header()
 
 
 def test_shape_test_node_id_names_a_test_in_this_file():
@@ -276,8 +315,8 @@ def test_enumeration_counts_a_conflicted_path_once(repo, git_env):
 def test_enumeration_ignores_an_ambient_repository_redirecting_variable(repo, git_env, tmp_path, monkeypatch, variable_name):
     _write(repo, "a.py", "a\n")
     _git(repo, git_env, "add", "a.py")
-    # Git ignores a missing GIT_WORK_TREE path when listing the index, but a work tree that is the repository's parent
-    # directory makes it list nothing, so that value is what discriminates an inherited GIT_WORK_TREE.
+    # Git ignores a missing GIT_WORK_TREE path when listing the index.
+    # A GIT_WORK_TREE that is the repository's parent makes it list nothing, so that value is the one that detects an inherited variable.
     redirect_target = repo.parent if variable_name == "GIT_WORK_TREE" else tmp_path / "no-such-path"
     monkeypatch.setenv(variable_name, str(redirect_target))
 
@@ -394,6 +433,11 @@ def test_message_holds_the_preface_the_heading_and_both_prohibitions():
         pytest.param("For a listed file this branch did not change:", id="procedure-heading-sentinel"),
         pytest.param("Open a fix PR only on their go-ahead.", id="go-ahead-before-opening-a-fix-pr"),
         pytest.param("Push to no open fix PR's branch, your own included.", id="no-push-to-another-fix-pr-branch"),
+        pytest.param(
+            "Never check out, merge or run another contributor's tree",
+            id="no-execution-of-another-contributors-tree",
+        ),
+        pytest.param("Read only that file, with", id="read-only-recipe-for-another-contributors-fix-pr"),
     ],
 )
 def test_message_with_only_an_under_limit_line_still_prints_the_did_not_change_procedure(fixed_text):

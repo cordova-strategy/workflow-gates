@@ -16,11 +16,12 @@
 # Layout rule: copy the layout of the neighbouring rows, and run test_exception_table_shape in
 # claude/.claude/tests/test_code_file_size.py. It prints the canonical form's rules and the diff to apply when this file departs from them.
 #
-# Conflict rule: resolve conflicts in code files first. In this table, keep every row and every field change from both sides,
-# with added rows in sorted order, and where both sides changed one row's ceiling, keep either value.
-# Then run the check and write the values it prints.
-# A PR whose merge with main conflicts on this table gets no pull_request run, so the required tests check stays pending;
-# resolve the conflict by this rule rather than waiting on CI.
+# Conflict rule: resolve a merge conflict in this order.
+#   1. Resolve the conflicts in code files first.
+#   2. In this table, keep every row and every field change from both sides.
+#   3. Insert added rows in sorted order.
+#   4. Where both sides changed one row's ceiling, keep either value.
+#   5. Run the check and write the values it prints.
 #
 # Split rule: each new part of a split returns from one default Read call with no PARTIAL view notice.
 # A part that does not is split further, or the PR says why not.
@@ -235,7 +236,7 @@ seam = "Branch classification (`classify_branch`, `merged_row_by_tip_ancestry`, 
 ["claude/.claude/scripts/cursor-adapter/hook-shim.py"]
 ceiling = 1898
 verdict = "structural exception"
-reason = "Generated commands run it as `python3 -I -S hook-shim.py`, so no neighbouring module reaches it (`docs/scripts.md:580`, `claude/.claude/scripts/cursor-adapter/hook-shim.py:9`)."
+reason = "Generated commands run it as `python3 -I -S hook-shim.py`, so no neighbouring module reaches it (`docs/scripts.md`, the bullet that begins `hook-shim.py` runs one unchanged hook; the `hook-shim.py` module docstring)."
 
 ["claude/.claude/scripts/marker.sh"]
 ceiling = 1187
@@ -363,7 +364,7 @@ verdict = "split pending"
 seam = "Test-class families by check: usage and marker (`TestUsageErrors`, `TestMissingCompletionMarker`, `TestCompletionMarkerSelfConsuming`), hash and identity (`TestBodyHashMismatch`, `TestPrIdentityCrossCheck`), authorship (`TestRequestChangesAuthorshipCheck`), mode and target (`TestModeGating`, `TestTargetArgument`), allowlist (`TestAllowEntryMatcher`, `TestSettingsAllowlistKeepsReviewPrFetchAndPostBehindThePrompt`)"
 
 ["claude/.claude/scripts/tests/test_select_tests.py"]
-ceiling = 4013
+ceiling = 4016
 verdict = "split pending"
 seam = "Test-class families matching the script's parts: selection (`TestSelectPytestTargets`, `TestCursorAdapterSelection`, `TestResolveTargetPaths`), rule-table audits (`TestCrossDomainReadCompleteness`, `TestKnownCrossDomainReadsAudit`, `TestRuleTablePathFidelity`), run and workers (`TestBuildPytestArgv`, `TestComputeWorkerCount`, `TestPytestSubprocessEnv`), git paths (`TestComputeChangedPathsGitSmoke`, `TestComputeChangedPathsFailureModes`), logging (`TestRecordSelection`, `TestRecordSelectionReasonCoverage`), main (`TestMainComposition`)"
 

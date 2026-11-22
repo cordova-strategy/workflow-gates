@@ -3440,6 +3440,9 @@ class TestMainComposition:
                 # SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES's files also
                 # survive: they sit under SCRIPTS_TESTS_DIR, which nothing
                 # else here selects.
+                # This case also pins supplement-before-resolve ordering: the size check
+                # sits inside CLAUDE_TESTS_DIR, so supplementing after resolve_target_paths
+                # would leave both in argv and pytest would collect nothing from the directory.
                 sorted([
                     _mod.HOOKS_TESTS_DIR,
                     *_mod._expand_target(_mod.TRANSCRIPT_ANALYSIS_TEST_GLOB, repo_root=_REPO_ROOT),

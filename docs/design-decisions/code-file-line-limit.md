@@ -61,9 +61,9 @@ reviewed edit forcing a conscious decision.
 
 The existing length gates store no such ceiling. `_lib_staged_length_gate`
 denies when `NEW > LIMIT and NEW > OLD`, where `OLD` is the file's
-previous version, so a shrink leaves them no slack. Adapted here, only a PR
-that grows an exception file would edit its row. That is rejected on four
-grounds:
+previous version, so a shrink leaves them no slack. A growth-receipt variant
+of those gates, where only a PR that grows an exception file edits its row,
+is rejected on four grounds:
 
 - The check would need the PR's base to tell growth from shrinkage.
 - Exact rows make every pair of PRs that change one file's length conflict
@@ -125,10 +125,10 @@ first and forcing an unreviewed guess at every exception row.
 
 **Revisit** if any of:
 
-- The assessment found 112 offenders of 685 tracked files, 89 of them test
-  code, and the limit stands. A later inventory that finds an unreasonable
-  number or shape of exceptions reopens it — the engineer's own stated
-  condition for imposing it.
+- An inventory finds an unreasonable number or shape of exceptions, which
+  reopens the limit — the engineer's own stated condition for imposing it.
+  The assessment found 112 offenders of 685 tracked files, 89 of them test
+  code, and the limit stands.
 - A primary study linking file length to review-defect rates or to LLM
   review effectiveness is found, which would ground the limit in
   something other than linter-default convergence.
