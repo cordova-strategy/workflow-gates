@@ -1839,8 +1839,8 @@ recorded and never compared:
   - It holds no digest of the uncommitted diff.
 
 An older checkout refuses a run record written by this one, because it refuses a
-record with an unknown key, and this one adds `runner_commit`, `runner_dirty`,
-`empty_final_text` and `denied_tool_calls`.
+record with an unknown key, and this one adds `runner_commit`, `runner_dirty`
+and `empty_final_text`.
 
 After each block `run` prints one progress line: the task, each arm's `ok` and
 `missing` counts, the arms with no valid run and their reasons, the runs with

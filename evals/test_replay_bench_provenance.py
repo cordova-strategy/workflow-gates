@@ -334,6 +334,19 @@ class TestDescribeResume:
             f"runner commit {'b' * 40}, with uncommitted changes under evals/"
         )
 
+    @pytest.mark.parametrize(
+        ("pinned", "current"),
+        [
+            pytest.param(RunnerProvenance("a" * 40, False), RunnerProvenance("a" * 40, True), id="only-the-flag-differs"),
+            pytest.param(RunnerProvenance("a" * 40, False), RunnerProvenance("b" * 40, False), id="only-the-commit-differs"),
+        ],
+    )
+    def test_both_readings_when_this_checkout_differs_in_one_field_only(self, pinned, current):
+        """Kills: a resume that compares only the commit, or only the dirty flag."""
+        clause = provenance.describe_resume(pinned, current)
+
+        assert "at the first start; this resume runs" in clause
+
     def test_a_manifest_with_no_reading_names_this_checkouts_reading_alone(self):
         assert provenance.describe_resume(None, RunnerProvenance("b" * 40, False)) == f"runner commit {'b' * 40}"
 
