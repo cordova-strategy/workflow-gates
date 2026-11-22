@@ -106,13 +106,12 @@ def _all_hook_files(*, include_helper_libraries: bool = False) -> list[Path]:
     """Return every .sh hook across claude/.claude/hooks/ and plugins/*/hooks/.
 
     Excludes every helper library by default. Pass include_helper_libraries=True
-    to keep them -- used by the `\\s` and early-exit-grep detectors, which are
-    safe against helper libraries because neither primitive is defined there.
-    The bare-xargs check does not opt in, because _lib.sh holds status-checked
-    `xargs -n1` sites in `_lib_command_words` and
-    `_lib_commit_fragment_has_worktree_target`. The bare-jq and inline-matcher
-    detectors stay off helper libraries because _lib.sh defines the primitive
-    each one detects, a guaranteed self-match.
+    to keep them. The `\\s` and early-exit-grep detectors opt in, because
+    neither primitive is defined in a helper library. The bare-xargs check does
+    not opt in, because _lib.sh holds status-checked `xargs -n1` sites in
+    `_lib_command_words` and `_lib_commit_fragment_has_worktree_target`. The
+    bare-jq and inline-matcher detectors stay off helper libraries because
+    _lib.sh defines the primitive each one detects, a guaranteed self-match.
     """
     hooks: list[Path] = []
     for hooks_dir in [_MAIN_HOOKS_DIR, *_PLUGIN_HOOKS_DIRS]:
@@ -1797,12 +1796,11 @@ def test_bare_xargs_detector_known_false_positives_stay_flagged(tmp_path: Path, 
 
 
 def test_all_hooks_and_libs_includes_every_lib_sh() -> None:
-    """ALL_HOOKS_AND_LIBS must contain exactly one _lib.sh per hooks
-    directory, and exactly every hook plus every helper library. Fails if a
-    hooks directory is added, renamed, or loses its _lib.sh, or if the
-    include-helper-libraries branch drops a hook or adds a non-hook file,
-    catching what would otherwise be a silent drop in the backslash-s and
-    early-exit-grep detectors' parametrized case counts.
+    """ALL_HOOKS_AND_LIBS must contain exactly one _lib.sh per hooks directory.
+
+    It must also contain exactly every hook plus every helper library.
+    Both contracts catch what would otherwise be a silent drop in the
+    backslash-s and early-exit-grep detectors' parametrized case counts.
     """
     expected_lib_count = 1 + len(_PLUGIN_HOOKS_DIRS)  # main dir + each plugin
     lib_files = [h for h in ALL_HOOKS_AND_LIBS if h.name == "_lib.sh"]
@@ -1817,6 +1815,21 @@ def test_all_hooks_and_libs_includes_every_lib_sh() -> None:
     ]
     assert len(ALL_HOOKS_AND_LIBS) == len(set(ALL_HOOKS_AND_LIBS)), "ALL_HOOKS_AND_LIBS lists a path more than once"
     assert set(ALL_HOOKS_AND_LIBS) == set(ALL_HOOKS) | set(every_helper_library)
+
+
+def test_all_hook_files_excludes_every_helper_library_unless_asked_to_keep_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A third helper library beyond `_lib.sh` and `_config.sh` is classified by name shape, not a fixed list."""
+    for file_name in ("hook.sh", "_lib.sh", "_topic-lib.sh"):
+        (tmp_path / file_name).write_text("#!/bin/bash\n")
+    monkeypatch.setitem(globals(), "_MAIN_HOOKS_DIR", tmp_path)
+    monkeypatch.setitem(globals(), "_PLUGIN_HOOKS_DIRS", [])
+
+    assert _all_hook_files() == [tmp_path / "hook.sh"]
+    assert sorted(_all_hook_files(include_helper_libraries=True)) == sorted(
+        [tmp_path / "hook.sh", tmp_path / "_lib.sh", tmp_path / "_topic-lib.sh"]
+    )
 
 
 def test_no_hook_references_the_cumulative_review_value_helpers() -> None:

@@ -24,14 +24,20 @@ spelling and is not being renamed.
 **A `_`-prefixed `.sh` file in a hooks directory is a helper library, not a
 hook.** `is_helper_library` in `claude/.claude/tests/helpers.py` is the one
 rule the hook checks use to tell the two apart. A new `_<topic>-lib.sh` under
-`claude/.claude/hooks/` needs no `docs/hooks.md` entry, no `# hook-class:`
-header, and no edit to the hook checks to register it. A hook that
-sources the library needs nothing further when its tests use the shared
-builders `build_isolated_hook` and `symlink_hooks_lib_chain`. A hook tested
-through a hand-built isolated hooks directory that symlinks or copies
-`_lib.sh` and `_config.sh` by name must also link or copy the library there. Checks that scan the
-content of every `.sh` file there still apply to it, exact-count pins
-included. Two tests in `claude/.claude/hooks/tests/` fail it unless both hold:
+`claude/.claude/hooks/` needs none of these to register it:
+
+- A `docs/hooks.md` entry.
+- A `# hook-class:` header.
+- An edit to the hook checks.
+
+A hook that sources the library needs nothing further when its tests use the
+shared builders `build_isolated_hook` and `symlink_hooks_lib_chain`. When its
+tests instead use a hand-built isolated hooks directory that symlinks or copies
+`_lib.sh` and `_config.sh` by name, also link or copy the library there.
+
+Checks that scan the content of every `.sh` file there still apply to it,
+exact-count pins included. Two tests in `claude/.claude/hooks/tests/` fail it
+unless both hold:
 
 - A hook, script, or other helper library sources it. A test does not count.
 - No `settings.json` or plugin `hooks.json` registers it as a command.

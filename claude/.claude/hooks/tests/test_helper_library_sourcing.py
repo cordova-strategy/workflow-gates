@@ -7,9 +7,15 @@ The registered half of this invariant, that no hook config registers a helper
 library as a command, lives in `test_hook_alignment.py`.
 
 The check is a text match over `_shipped_shell_files()`, so it guards against
-honest mistakes. A heredoc line shaped like a source statement passes it, and so
-do two libraries that source only each other. A sourcer not yet `git add`ed is
-invisible to it, since the corpus comes from `git ls-files`.
+honest mistakes. Its blind spots:
+
+- A heredoc line shaped like a source statement passes it.
+- Two libraries that source only each other pass it.
+- A sourcer not yet `git add`ed is invisible to it, since the corpus comes from
+  `git ls-files`.
+- Any directory part ending in `/hooks` counts as sourcing, whatever precedes
+  it: a wrong depth such as `../../hooks`, an unset variable, or a plugin root
+  in a main-tree hook.
 """
 from __future__ import annotations
 
@@ -44,10 +50,7 @@ def _sources_helper_library(sourcer: str, text: str, library: str) -> bool:
     """True when `text`, the content of repo-relative `sourcer`, has a source statement for repo-relative `library`.
 
     A plugin's hooks source that plugin's own vendored libraries, so the two
-    paths must sit in the same tree. The operand's directory part must end in
-    a `/hooks` segment, or the sourcer must sit beside the library and name its
-    own directory. Another helper library counts as a sourcer. A file under a
-    `tests` segment never does, because `_shipped_shell_files()` excludes it.
+    paths must sit in the same tree. Another helper library counts as a sourcer.
     """
     if sourcer == library or _tree_of(sourcer) != _tree_of(library):
         return False
@@ -154,6 +157,27 @@ _SOURCES_HELPER_LIBRARY_CONTROL_TABLE = [
     pytest.param(
         _MAIN_LIBRARY, '. "${0%/*}/_topic-lib.sh"\n', _MAIN_LIBRARY, False, id="library-sourcing-itself"
     ),
+    pytest.param(
+        _MAIN_HOOK,
+        '. "$(dirname "$0")/_topic-lib.sh"\n',
+        _MAIN_LIBRARY,
+        True,
+        id="same-directory-dirname-dollar-zero",
+    ),
+    pytest.param(
+        _MAIN_HOOK,
+        '. "$(dirname "${BASH_SOURCE[0]}")/_topic-lib.sh"\n',
+        _MAIN_LIBRARY,
+        True,
+        id="same-directory-dirname-bash-source",
+    ),
+    pytest.param(
+        "claude/.claude/hooks/_other-lib.sh",
+        '. "${0%/*}/_topic-lib.sh"\n',
+        _MAIN_LIBRARY,
+        True,
+        id="sourcer-is-a-helper-library",
+    ),
 ]
 
 
@@ -174,6 +198,12 @@ def test_unsourced_helper_libraries_control(hook_text: str, expected_unsourced: 
     texts = {_MAIN_HOOK: hook_text, _MAIN_LIBRARY: "topic_fn() { :; }\n"}
 
     assert _unsourced_helper_libraries([_MAIN_LIBRARY], texts) == expected_unsourced
+
+
+def test_a_helper_library_sourced_only_by_another_helper_library_is_sourced() -> None:
+    texts = {"claude/.claude/hooks/_other-lib.sh": '. "${0%/*}/_topic-lib.sh"\n', _MAIN_LIBRARY: "topic_fn() { :; }\n"}
+
+    assert _unsourced_helper_libraries([_MAIN_LIBRARY], texts) == []
 
 
 def test_helper_libraries_include_lib_sh_and_config_sh() -> None:
