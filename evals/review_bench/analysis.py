@@ -1,8 +1,7 @@
 """Statistics, freeze/invalidation checks, and the import-closure manifest
-for the review bench. Standard library only (`statistics`, `math`, `random`,
-`hashlib`, `ast`) -- no numerical dependency. evals/README.md's "Frozen
-conditions and invalidation" section documents the manifest/precondition
-checks' observable behavior.
+for the review bench. Standard library only -- no numerical dependency.
+evals/README.md's "Frozen conditions and invalidation" section documents the
+manifest/precondition checks' observable behavior.
 
 Every check in this module raises HarnessInvalidatedError rather than
 exiting the process directly, so each one is independently testable;
@@ -13,6 +12,7 @@ reach `main()`'s top-level handler, which does the same.
 from __future__ import annotations
 
 import ast
+import bisect
 import hashlib
 import json
 import math
@@ -44,6 +44,13 @@ DELTA = 0.05  # the margin, 5 percentage points absolute, on both recall and poo
 ALPHA_ONE_SIDED = 0.025  # FDA (2016)'s one-sided convention; paired with a two-sided 95% interval
 BOOTSTRAP_RESAMPLES = 10_000
 BOOTSTRAP_SEED = 0
+SIGN_FLIP_EXACT_MAX_FIXTURES = 20
+SIGN_FLIP_RESAMPLES = 100_000
+SIGN_FLIP_SEED = 0
+# Fraction of the sum of the values' magnitudes, not of the observed sum. A sign pattern whose sum falls short of the
+# observed sum by up to this fraction counts as a tie, so float rounding never hides an exact tie. Flipping one value
+# below about 5e-10 of the sum of magnitudes is therefore a tie, which is harmless for rate-valued inputs.
+_SIGN_FLIP_TIE_TOLERANCE = 1e-9
 KAPPA_SUBSTANTIAL_FLOOR = 0.61  # Landis & Koch 1977's "substantial" threshold
 
 # The planning variance's own two components: mean per-defect detection
@@ -344,6 +351,14 @@ def _percentile(sorted_values: Sequence[float], q: float) -> float:
     return sorted_values[lower_index] + (sorted_values[upper_index] - sorted_values[lower_index]) * fraction
 
 
+def _fixture_groups(defect_ids: Sequence[str], cluster_by_defect: Mapping[str, FixtureKey]) -> list[list[str]]:
+    """defect_ids grouped by fixture key, in order of first appearance."""
+    clusters: dict[FixtureKey, list[str]] = {}
+    for defect_id in defect_ids:
+        clusters.setdefault(cluster_by_defect[defect_id], []).append(defect_id)
+    return list(clusters.values())
+
+
 def bootstrap_interval_with_drops(
     defect_ids: Sequence[str], statistic_fn: Callable[[Sequence[str]], float | None], *,
     cluster_by_defect: Mapping[str, FixtureKey], resamples: int = BOOTSTRAP_RESAMPLES, seed: int = BOOTSTRAP_SEED,
@@ -362,10 +377,7 @@ def bootstrap_interval_with_drops(
     resample whose statistic is None is dropped. The interval is None with
     fewer than two fixtures, because one cluster has zero variance, and when
     every resample drops."""
-    clusters: dict[FixtureKey, list[str]] = {}
-    for defect_id in defect_ids:
-        clusters.setdefault(cluster_by_defect[defect_id], []).append(defect_id)
-    fixtures = list(clusters.values())
+    fixtures = _fixture_groups(defect_ids, cluster_by_defect)
     if len(fixtures) < 2:
         return None, 0
     rng = random.Random(seed)
@@ -396,6 +408,234 @@ def bootstrap_interval(
         defect_ids, statistic_fn, cluster_by_defect=cluster_by_defect, resamples=resamples, seed=seed,
         confidence=confidence,
     )[0]
+
+
+# --- Decision statistics: sign-flip test and fixture-linearized t-interval ----
+
+
+def _student_t_central_probability(t: float, df: int) -> float:
+    """P(|T| < t) for integer df, from the finite trigonometric series for
+    Student's t (Abramowitz and Stegun, Handbook of Mathematical Functions)."""
+    theta = math.atan(t / math.sqrt(df))
+    cos_squared = math.cos(theta) ** 2
+    term, series = 1.0, 0.0
+    if df % 2 == 0:
+        for j in range(df // 2):
+            series += term
+            term *= cos_squared * (2 * j + 1) / (2 * j + 2)
+        return math.sin(theta) * series
+    for j in range((df - 1) // 2):
+        series += term
+        term *= cos_squared * (2 * j + 2) / (2 * j + 3)
+    return (2 / math.pi) * (theta + math.sin(theta) * math.cos(theta) * series)
+
+
+def student_t_upper_quantile(df: int, upper_tail: float) -> float:
+    """The t with P(T_df > t) = upper_tail, for integer df >= 1 and
+    0 < upper_tail < 0.5. Raises ValueError outside that domain, and for a tail
+    so small that 1 - 2 * upper_tail rounds to 1.0.
+
+    Accurate to within about 1e-10 relative for upper_tail >= 1e-6, measured
+    for df 1 against its closed form at 80 digits. Below that, accuracy degrades
+    without raising."""
+    if isinstance(df, bool) or not isinstance(df, int) or df < 1:
+        raise ValueError(f"student_t_upper_quantile: df must be an integer >= 1, got {df!r}")
+    if not 0 < upper_tail < 0.5:
+        raise ValueError(f"student_t_upper_quantile: upper_tail must be in (0, 0.5), got {upper_tail!r}")
+    target_probability = 1 - 2 * upper_tail
+    if target_probability >= 1.0:
+        raise ValueError(f"student_t_upper_quantile: upper_tail {upper_tail!r} is below float resolution")
+    upper_bound = 1.0
+    # 64 doublings reach 2^63, far above any quantile reachable before 1 - 2 * upper_tail rounds to 1.0
+    # (the exact df 1 quantile at the smallest accepted tail is about 1.15e16).
+    for _ in range(64):
+        if _student_t_central_probability(upper_bound, df) >= target_probability:
+            break
+        upper_bound *= 2
+    else:
+        raise ValueError(f"student_t_upper_quantile: no bracket found for df {df} and upper_tail {upper_tail!r}")
+    lower_bound = upper_bound / 2 if upper_bound > 1.0 else 0.0
+    # 200 halvings are a ceiling. The midpoint-equals-a-bound break ends the bisection at float resolution well inside it.
+    for _ in range(200):
+        midpoint = (lower_bound + upper_bound) / 2
+        if midpoint in (lower_bound, upper_bound):
+            break
+        if _student_t_central_probability(midpoint, df) < target_probability:
+            lower_bound = midpoint
+        else:
+            upper_bound = midpoint
+    return (lower_bound + upper_bound) / 2
+
+
+def _exact_sign_flip_count(values: Sequence[float], threshold: float) -> int:
+    """How many of the 2^len(values) sign patterns have a flipped sum >= threshold,
+    by meet in the middle."""
+
+    def partial_sums(half: Sequence[float]) -> list[float]:
+        sums = [0.0]
+        for value in half:
+            sums = [partial + value for partial in sums] + [partial - value for partial in sums]
+        return sums
+
+    midpoint = len(values) // 2
+    first_half_sums = partial_sums(values[:midpoint])
+    second_half_sums = sorted(partial_sums(values[midpoint:]))
+    return sum(
+        len(second_half_sums) - bisect.bisect_left(second_half_sums, threshold - first_half_sum)
+        for first_half_sum in first_half_sums
+    )
+
+
+def sign_flip_p_value(
+    values: Sequence[float], *, resamples: int = SIGN_FLIP_RESAMPLES, seed: int = SIGN_FLIP_SEED,
+) -> float:
+    """The one-sided p-value for H0 "values are symmetric about 0" against a
+    positive mean, from the plain sum under random sign flips.
+
+    Exact up to SIGN_FLIP_EXACT_MAX_FIXTURES values, and then `seed` is
+    unused. Above that, `resamples` seeded flips give a p-value that is never
+    0. A non-finite value raises on both paths: a NaN would otherwise compare
+    false against every flip and look like adoption."""
+    if not values:
+        raise ValueError("sign_flip_p_value: no values")
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("sign_flip_p_value: values must be finite")
+    if resamples < 1:
+        raise ValueError(f"sign_flip_p_value: resamples must be >= 1, got {resamples!r}")
+    threshold = sum(values) - _SIGN_FLIP_TIE_TOLERANCE * sum(abs(value) for value in values)
+    count = len(values)
+    if count <= SIGN_FLIP_EXACT_MAX_FIXTURES:
+        return _exact_sign_flip_count(values, threshold) / 2**count
+    rng = random.Random(seed)
+    at_least_as_extreme = 0
+    for _ in range(resamples):
+        sign_bits = rng.getrandbits(count)
+        flipped_sum = sum(value if (sign_bits >> index) & 1 else -value for index, value in enumerate(values))
+        if flipped_sum >= threshold:
+            at_least_as_extreme += 1
+    return (1 + at_least_as_extreme) / (resamples + 1)
+
+
+@dataclass(frozen=True)
+class FixtureTerms:
+    """A ratio-of-sums difference linearized per fixture, one tuple entry per
+    fixture. `residuals` are the estimate's influence terms and sum to 0.
+    `null_centered` are terms whose mean is the estimate plus delta, so a
+    sign-flip test on them tests H0 "difference = -delta"."""
+
+    estimate: float
+    residuals: tuple[float, ...]
+    null_centered: tuple[float, ...]
+
+    def __post_init__(self) -> None:
+        if len(self.residuals) != len(self.null_centered):
+            raise ValueError(
+                f"FixtureTerms: residuals and null_centered must have one entry per fixture, got "
+                f"{len(self.residuals)} and {len(self.null_centered)}"
+            )
+
+
+def recall_fixture_terms(
+    recall_counts_by_defect: Mapping[str, DefectRecallCounts], defect_ids: Sequence[str], arm_baseline: str,
+    arm_x: str, *, cluster_by_defect: Mapping[str, FixtureKey], delta: float = DELTA,
+) -> FixtureTerms | None:
+    """Recall_x - recall_baseline as a ratio of per-fixture sums, so the
+    estimate equals recall_difference and each fixture weighs by its defect
+    count. `null_centered` is exact, not a plug-in. A defect absent from the
+    recall counts raises KeyError, as recall_difference does and
+    precision_fixture_terms does not."""
+    fixtures = _fixture_groups(defect_ids, cluster_by_defect)
+    if len(fixtures) < 2:
+        return None
+    difference_sums = [
+        sum(
+            recall_counts_by_defect[defect_id].detection_rate(arm_x)
+            - recall_counts_by_defect[defect_id].detection_rate(arm_baseline)
+            for defect_id in fixture
+        )
+        for fixture in fixtures
+    ]
+    defect_counts = [len(fixture) for fixture in fixtures]
+    estimate = sum(difference_sums) / sum(defect_counts)
+    mean_defect_count = sum(defect_counts) / len(fixtures)
+    return FixtureTerms(
+        estimate=estimate,
+        residuals=tuple(
+            (difference_sum - estimate * defect_count) / mean_defect_count
+            for difference_sum, defect_count in zip(difference_sums, defect_counts, strict=True)
+        ),
+        null_centered=tuple(
+            (difference_sum + delta * defect_count) / mean_defect_count
+            for difference_sum, defect_count in zip(difference_sums, defect_counts, strict=True)
+        ),
+    )
+
+
+def precision_fixture_terms(
+    precision_counts_by_defect: Mapping[str, DefectPrecisionCounts], defect_ids: Sequence[str], arm_baseline: str,
+    arm_x: str, *, cluster_by_defect: Mapping[str, FixtureKey], delta: float = DELTA,
+) -> FixtureTerms | None:
+    """Pooled precision_x - precision_baseline linearized per fixture, so the
+    estimate equals precision_difference. `null_centered` is residual +
+    estimate + delta, a plug-in.
+
+    - A defect absent from the counts is skipped, as pooled_precision skips it.
+    - An absent defect still needs a cluster_by_defect entry, else KeyError.
+    - A fixture with no present defect is dropped from the fixture set.
+    - A fixture with present defects but no adjudicated finding stays in the
+      fixture set, so it counts in the degrees of freedom and the mean totals.
+    - When every finding sits in one fixture all residuals are 0 and the
+      interval has zero width.
+    """
+    present_fixtures = [
+        present_ids
+        for fixture in _fixture_groups(defect_ids, cluster_by_defect)
+        if (present_ids := [defect_id for defect_id in fixture if defect_id in precision_counts_by_defect])
+    ]
+    if len(present_fixtures) < 2:
+        return None
+
+    def per_fixture_sums(arm: str) -> tuple[list[int], list[int]]:
+        valid = [
+            sum(precision_counts_by_defect[d].valid_by_arm.get(arm, 0) for d in fixture) for fixture in present_fixtures
+        ]
+        total = [
+            sum(precision_counts_by_defect[d].total_by_arm.get(arm, 0) for d in fixture) for fixture in present_fixtures
+        ]
+        return valid, total
+
+    valid_x, total_x = per_fixture_sums(arm_x)
+    valid_baseline, total_baseline = per_fixture_sums(arm_baseline)
+    if not sum(total_x) or not sum(total_baseline):
+        return None
+    precision_x = sum(valid_x) / sum(total_x)
+    precision_baseline = sum(valid_baseline) / sum(total_baseline)
+    mean_total_x = sum(total_x) / len(present_fixtures)
+    mean_total_baseline = sum(total_baseline) / len(present_fixtures)
+    estimate = precision_x - precision_baseline
+    residuals = tuple(
+        (fixture_valid_x - precision_x * fixture_total_x) / mean_total_x
+        - (fixture_valid_baseline - precision_baseline * fixture_total_baseline) / mean_total_baseline
+        for fixture_valid_x, fixture_total_x, fixture_valid_baseline, fixture_total_baseline in zip(
+            valid_x, total_x, valid_baseline, total_baseline, strict=True,
+        )
+    )
+    return FixtureTerms(
+        estimate=estimate, residuals=residuals,
+        null_centered=tuple(residual + estimate + delta for residual in residuals),
+    )
+
+
+def fixture_t_interval(terms: FixtureTerms, *, alpha_one_sided: float = ALPHA_ONE_SIDED) -> tuple[float, float]:
+    """The two-sided 1 - 2 * alpha_one_sided interval, so a lower limit above
+    -delta is the one-sided test at alpha_one_sided."""
+    fixtures = len(terms.residuals)
+    if fixtures < 2:
+        raise ValueError(f"fixture_t_interval: needs at least two fixtures, got {fixtures}")
+    t_quantile = student_t_upper_quantile(fixtures - 1, alpha_one_sided)
+    standard_error = math.sqrt(sum(residual**2 for residual in terms.residuals) / (fixtures * (fixtures - 1)))
+    half_width = t_quantile * standard_error
+    return terms.estimate - half_width, terms.estimate + half_width
 
 
 # --- Verdicts ----------------------------------------------------------------

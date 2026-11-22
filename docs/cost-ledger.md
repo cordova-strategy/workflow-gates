@@ -38,7 +38,7 @@ widened default scope. A row recorded before that date and one recorded
 after it are not comparable on this column alone.
 
 Every column that reads `--this-repo` scope (`usd`, `context_pct`, `opus_pct`,
-`ge200k_pct`, `denials`, `reviewer_gap_pp`) widened when `--this-repo` began
+`ge200k_pct`, `denials`, and `reviewer_gap_pp`) widened when `--this-repo` began
 reading the project directories of removed worktrees under
 `<main>/.claude/worktrees/`. A row recorded with `--this-repo` before that
 change and one recorded after it are not comparable. The default `--record`

@@ -999,15 +999,13 @@ def session_start_matchers_registering(script_name: str) -> list[str]:
 AUTONOMOUS_SHIPPING_STATEMENT_LEAD = "Autonomous shipping is active for this repository"
 
 
-def run_autonomous_shipping_statement(home: Path, *args: str) -> subprocess.CompletedProcess:
-    """Runs `_lib_autonomous_shipping_statement ARGS` with HOME set to `home` and nothing else inherited but PATH."""
+def run_autonomous_shipping_statement(home: Path) -> subprocess.CompletedProcess:
+    """Runs `_lib_autonomous_shipping_statement` with HOME set to `home` and nothing else inherited but PATH."""
     return subprocess.run(
         [
             "bash",
             "-c",
-            f'. {_LIB_SH}; _lib_autonomous_shipping_statement "$@"',
-            "bash",
-            *args,
+            f". {_LIB_SH}; _lib_autonomous_shipping_statement",
         ],
         capture_output=True,
         text=True,
@@ -2680,13 +2678,14 @@ def install_marker_script(isolated_home: Path) -> Path:
 
 
 def install_review_ledger_scripts(home: Path) -> Path:
-    """Symlink the real review-ledger.sh and _review-ledger-lib.sh into `<home>/.claude/scripts/`,
+    """Symlink the real review-ledger.sh, _review-ledger-lib.sh and _branch-records-lib.sh into `<home>/.claude/scripts/`,
     and the hooks/_lib.sh chain that review-ledger.sh sources through `../hooks/_lib.sh`, so a hook
     invoking `$CONFIG_DIR/scripts/review-ledger.sh` runs the real script. A write onto a linked path
     writes through to the production script. Returns the `review-ledger.sh` link. Idempotent."""
     symlink_hooks_lib_chain(home / ".claude" / "hooks")
     scripts_dir = home / ".claude" / "scripts"
     _symlink_if_absent(scripts_dir / "_review-ledger-lib.sh", SCRIPTS_DIR / "_review-ledger-lib.sh")
+    _symlink_if_absent(scripts_dir / "_branch-records-lib.sh", SCRIPTS_DIR / "_branch-records-lib.sh")
     return _symlink_if_absent(scripts_dir / "review-ledger.sh", SCRIPTS_DIR / "review-ledger.sh")
 
 
@@ -3156,6 +3155,129 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
     return path
 
 
+class UnwarmedStubError(AssertionError):
+    """A launch under the scaled timeout shim could exec an sh-family stub that write_prewarmed_stub did not write."""
+
+
+def _launch_path_entries(env, cwd) -> list[str]:
+    """The launch's PATH entries, with each relative or empty one joined to where the child resolves it.
+
+    Returns [] when the launch's environment has no PATH key.
+    """
+    if env is None:
+        path_value = os.environ.get("PATH")
+    else:
+        path_value = next((os.fsdecode(value) for key, value in env.items() if os.fsdecode(key) == "PATH"), None)
+    if path_value is None:
+        return []
+    relative_base = os.fsdecode(os.fspath(cwd)) if cwd is not None else os.curdir
+    return [entry if os.path.isabs(entry) else os.path.join(relative_base, entry) for entry in path_value.split(os.pathsep)]
+
+
+def _unwarmed_stub_paths(scanned_entry: str) -> list[str]:
+    """The sh-family executables directly in `scanned_entry` whose second line is not the prewarm guard line."""
+    try:
+        children = list(os.scandir(scanned_entry))
+    except OSError:
+        return []
+    guard_line = _PREWARM_GUARD_LINE.encode()
+    shebang_lines = {shebang.encode() for shebang in _PREWARM_SHEBANGS}
+    unwarmed: list[str] = []
+    for child in children:
+        try:
+            if child.is_symlink() or not child.is_file(follow_symlinks=False):
+                continue
+            if not child.stat(follow_symlinks=False).st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+                continue
+            with open(child.path, "rb") as handle:
+                head = handle.read(_SHEBANG_READ_BYTE_LIMIT)
+        except OSError:
+            continue
+        first_line, _, remainder = head.partition(b"\n")
+        second_line = remainder.partition(b"\n")[0] if remainder else None
+        if first_line in shebang_lines and second_line != guard_line:
+            unwarmed.append(child.path)
+    return unwarmed
+
+
+def check_scaled_path_stubs_warm(env, cwd, basetemp: Path) -> None:
+    """Raise UnwarmedStubError when the launch's PATH reaches the scaled timeout shim
+    and an sh-family executable in a scanned entry lacks the prewarm guard line.
+
+    Symlinks and files with another shebang are not flagged because `write_prewarmed_stub` cannot write them.
+    Entries outside `basetemp` that hold no marker are never listed, because the run does not own them.
+    """
+    entries = _launch_path_entries(env, cwd)
+    marker_entries = dict.fromkeys(
+        entry for entry in entries if os.path.isdir(os.path.join(entry, _SCALED_TIMEOUT_MARKER_DIRNAME))
+    )
+    if not marker_entries:
+        return
+    owned_root = os.path.realpath(basetemp)
+    scanned_entries = [
+        entry for entry in entries if entry in marker_entries or Path(os.path.realpath(entry)).is_relative_to(owned_root)
+    ]
+    unwarmed_paths = [
+        stub_path for scanned_entry in dict.fromkeys(scanned_entries) for stub_path in _unwarmed_stub_paths(scanned_entry)
+    ]
+    if unwarmed_paths:
+        raise UnwarmedStubError(
+            f"This launch's PATH reaches the scaled timeout shim (marker directory in {', '.join(marker_entries)}), "
+            f"and these sh-family files lack the prewarm guard line: {', '.join(unwarmed_paths)}. "
+            "Write each with helpers.write_prewarmed_stub. "
+            "A file that cannot carry the guard line, because it copies a tracked file or a test reads its text back, "
+            "belongs in a directory that is not on this launch's PATH."
+        )
+
+
+def install_unwarmed_stub_guard(monkeypatch: pytest.MonkeyPatch, basetemp: Path) -> None:
+    """Wrap `subprocess.Popen.__init__` for the test so each launch runs `check_scaled_path_stubs_warm` before its child starts.
+
+    Every launch through `subprocess` or asyncio is checked, `shell=True` included.
+    `os.system`, `os.posix_spawn`, `os.exec*` and `pty` launches, and an `env` or `cwd` passed positionally, are not checked.
+    """
+    real_init = subprocess.Popen.__init__
+
+    @functools.wraps(real_init)
+    def guarded_init(self, *args, **kwargs):
+        check_scaled_path_stubs_warm(kwargs.get("env"), kwargs.get("cwd"), basetemp)
+        return real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(subprocess.Popen, "__init__", guarded_init)
+
+
+# Prefix for a `cp` shim body that reads its operands by position and applies only to ledger archive copies.
+# Any other `cp` (such as the capped copy of the git index) runs the real binary untouched.
+CP_OPERANDS_NOTE = (
+    "# The lib calls cp -- SRC DST, so $2 is the source and $3 the copy.\n"
+    'case "$3" in */review-narrative-ledger/*) ;; *) exec "$REAL" "$@" ;; esac\n'
+)
+
+
+def real_binary_shim_env(shim_dir: Path, tool_bodies: dict[str, str]) -> dict[str, str]:
+    """`{"PATH": ...}` with `shim_dir` first, holding one prewarmed shim per tool in `tool_bodies`.
+
+    Each body runs with `$REAL` bound to the binary PATH resolves for that tool before `shim_dir`.
+    """
+    shim_dir.mkdir(exist_ok=True)
+    for tool, body in tool_bodies.items():
+        real_binary = shutil.which(tool)
+        assert real_binary is not None, f"cannot shim {tool!r}: no such binary on PATH={os.environ['PATH']}"
+        write_prewarmed_stub(shim_dir / tool, f"#!/bin/bash\nREAL={shlex.quote(real_binary)}\n{body}\n")
+    return {"PATH": f"{shim_dir}{os.pathsep}{os.environ['PATH']}"}
+
+
+def skip_without_timeout_binary() -> None:
+    """Skips the calling test when neither `timeout` nor `gtimeout` is on PATH.
+
+    `_lib_capped_for` then runs the command bare, so a PATH shim for a shell builtin such as `test` is never reached.
+    """
+    import pytest  # imported here because the module header keeps pytest out of the runtime imports
+
+    if shutil.which("timeout") is None and shutil.which("gtimeout") is None:
+        pytest.skip("neither timeout(1) nor gtimeout(1) available — BSD/macOS without coreutils")
+
+
 def record_subprocess_runs(monkeypatch: pytest.MonkeyPatch) -> list[tuple[tuple, dict]]:
     """Wrap `subprocess.run` for the test and return the list it fills with each call's `(args, kwargs)`.
 
@@ -3487,6 +3609,90 @@ def git_isolation_env(tmp_path: Path) -> dict:
         "GIT_CONFIG_GLOBAL": "/dev/null",
         "GIT_CONFIG_SYSTEM": "/dev/null",
     }
+
+
+def check_ignore(env: dict[str, str], repo_relative_path: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "check-ignore", "-v", repo_relative_path],
+        capture_output=True,
+        text=True,
+        env=env,
+        check=False,
+    )
+
+
+def assert_ignored_by_repo_gitignore(result: subprocess.CompletedProcess[str]) -> None:
+    assert result.returncode == 0, repr(result)
+    # `-v` prints `<source>:<line>:<pattern><TAB><path>`; the source must be the repo's own .gitignore.
+    matched_rule, _, _ = result.stdout.partition("\t")
+    assert matched_rule.split(":")[0] == ".gitignore", repr(result)
+
+
+GIT_SUBCOMMAND_LOG_NAME = "git-subcommands.log"
+GIT_ARGV_LOG_NAME = "git-argv.log"
+
+# The git shim's shell loop that finds the subcommand: it skips the global options that precede it,
+# and `-C`/`-c` consume the following argument. It then records the whole argv on its own line.
+_GIT_SUBCOMMAND_RECORDING_SHELL = """\
+skip_next=false
+for arg in "$@"; do
+  if $skip_next; then skip_next=false; continue; fi
+  case "$arg" in
+    -C|-c) skip_next=true ;;
+    -*) ;;
+    *) printf "%s\\n" "$arg" >> "{subcommand_log}"; break ;;
+  esac
+done
+printf "%s\\n" "$*" >> "{argv_log}"
+"""
+
+
+def install_recording_shims(tmp_path: Path) -> tuple[str, Path]:
+    """Returns a PATH whose git and jq shims append their name to the returned log, then exec the real tool.
+
+    The git shim also appends each call's subcommand and its space-joined argv to sibling logs, read through
+    `recorded_git_subcommands` and `recorded_git_argvs`.
+    Creates `tmp_path/recording-shims` with a bare `mkdir()`, so call it once per `tmp_path`.
+    """
+    shim_dir = tmp_path / "recording-shims"
+    shim_dir.mkdir()
+    invocation_log = tmp_path / "invocations.log"
+    subcommand_log = invocation_log.with_name(GIT_SUBCOMMAND_LOG_NAME)
+    argv_log = invocation_log.with_name(GIT_ARGV_LOG_NAME)
+    for tool in ("git", "jq"):
+        real_tool = shutil.which(tool)
+        assert real_tool is not None, f"{tool} not found in PATH"
+        subcommand_recording = (
+            _GIT_SUBCOMMAND_RECORDING_SHELL.replace("{subcommand_log}", str(subcommand_log)).replace(
+                "{argv_log}", str(argv_log)
+            )
+            if tool == "git"
+            else ""
+        )
+        shim = shim_dir / tool
+        shim.write_text(
+            "#!/bin/bash\n"
+            f'printf "%s\\n" "{tool}" >> "{invocation_log}"\n'
+            f"{subcommand_recording}"
+            f'exec "{real_tool}" "$@"\n'
+        )
+        shim.chmod(shim.stat().st_mode | stat.S_IXUSR)
+    return f"{shim_dir}{os.pathsep}{os.environ['PATH']}", invocation_log
+
+
+def recorded_git_subcommands(invocation_log: Path) -> list[str]:
+    """The git subcommands the shims from `install_recording_shims` saw, in call order."""
+    subcommand_log = invocation_log.with_name(GIT_SUBCOMMAND_LOG_NAME)
+    return subcommand_log.read_text().split() if subcommand_log.exists() else []
+
+
+def recorded_git_argvs(invocation_log: Path) -> list[list[str]]:
+    """The argv (after `git`) of each git call the shims from `install_recording_shims` saw, in call order.
+
+    Arguments are split on whitespace, so an argument containing a space reads as several.
+    """
+    argv_log = invocation_log.with_name(GIT_ARGV_LOG_NAME)
+    return [line.split() for line in argv_log.read_text().splitlines()] if argv_log.exists() else []
 
 
 def init_reconciler_repo(repo: Path, *, enabled_plugins: dict, gitignore_settings_local: bool = True) -> None:

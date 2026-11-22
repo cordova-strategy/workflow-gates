@@ -24,8 +24,10 @@ from helpers import (
     HOOKS_DIR,
     REPO_ROOT,
     _build_subprocess_env,
+    assert_ignored_by_repo_gitignore,
     build_isolated_hook,
     build_path_without,
+    check_ignore,
     git_isolation_env,
     installed_locale_where,
 )
@@ -550,23 +552,6 @@ def git_work_tree_env(tmp_path):
     return {**os.environ, **git_isolation_env(tmp_path)}
 
 
-def check_ignore(env: dict[str, str], repo_relative_path: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "check-ignore", "-v", repo_relative_path],
-        capture_output=True,
-        text=True,
-        env=env,
-        check=False,
-    )
-
-
-def assert_ignored_by_repo_gitignore(result: subprocess.CompletedProcess[str]) -> None:
-    assert result.returncode == 0, repr(result)
-    # `-v` prints `<source>:<line>:<pattern><TAB><path>`; the source must be the repo's own .gitignore.
-    matched_rule, _, _ = result.stdout.partition("\t")
-    assert matched_rule.split(":")[0] == ".gitignore", repr(result)
-
-
 class TestLogStaysOutOfGit:
     def test_the_log_written_into_the_checkout_is_gitignored(self, git_work_tree_env):
         result = check_ignore(git_work_tree_env, f"claude/.claude/{LOG_FILENAME}")
@@ -611,6 +596,19 @@ class TestHookWrittenStateStaysOutOfGit:
         self, git_work_tree_env, representative_path
     ):
         result = check_ignore(git_work_tree_env, f"claude/.claude/{representative_path}")
+
+        assert_ignored_by_repo_gitignore(result)
+
+    @pytest.mark.parametrize(
+        "legacy_filename",
+        [
+            pytest.param(row["legacy_filename"], id=row["key"])
+            for row in schema_rows(SHIPPED_SCHEMA_TEXT)
+            if row["legacy_filename"]
+        ],
+    )
+    def test_a_legacy_sentinel_file_written_into_the_checkout_is_gitignored(self, git_work_tree_env, legacy_filename):
+        result = check_ignore(git_work_tree_env, f"claude/.claude/{legacy_filename}")
 
         assert_ignored_by_repo_gitignore(result)
 

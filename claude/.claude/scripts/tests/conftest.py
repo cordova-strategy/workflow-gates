@@ -17,6 +17,7 @@ a worktree is identical regardless of which script is under test.
 """
 from __future__ import annotations
 
+import argparse
 import contextlib
 import json
 import os
@@ -32,12 +33,21 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from helpers import CLAUDE_DIR, HOOKS_DIR, SCRIPTS_DIR, SKILLS_DIR, head_sha, init_git_repo, install_shell_exec_guard
+from helpers import (
+    CLAUDE_DIR,
+    HOOKS_DIR,
+    SCRIPTS_DIR,
+    SKILLS_DIR,
+    head_sha,
+    init_git_repo,
+    install_shell_exec_guard,
+    install_unwarmed_stub_guard,
+)
 from helpers import TASK_NOTIFICATION_TEXT as _TASK_NOTIFICATION_TEXT
 from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, pricing, redaction, scope
 from transcript_analysis.corpus import SUBAGENT_SUBDIR
 
-# claude/.claude/ itself, so `hooks.tests...` below resolves, as in test_cursor_adapter_shim.py.
+# claude/.claude/ itself, so `hooks.tests...` below resolves, as in _cursor_shim_helpers.py.
 sys.path.insert(0, str(CLAUDE_DIR))
 from hooks.tests._cursor_identity_fixtures import clear_adapter_environment  # noqa: E402
 
@@ -1329,6 +1339,11 @@ def _two_declared_roots(tmp_path, monkeypatch) -> list[Path]:
     return [acct_a / "projects", acct_b / "projects"]
 
 
+def _option_help(parser: argparse.ArgumentParser, option_string: str) -> str:
+    """The option's own help string, which no terminal width wraps."""
+    return parser._option_string_actions[option_string].help
+
+
 def _cost_trend_args(
     *, projects: str = "*", this_repo: bool = False, extra_config_dirs: list[str] | None = None,
 ) -> object:
@@ -1633,11 +1648,13 @@ def cost_ledger_enabled(tmp_path, monkeypatch, fake_projects):
 
 
 @pytest.fixture(autouse=True)
-def _guard_shell_exec(monkeypatch):
+def _guard_shell_exec(monkeypatch, tmp_path_factory):
     """Fail a test that execs a shell file in a way that can pass without the file running.
     The wrapper lives in helpers.install_shell_exec_guard; each test tree defines its own
-    fixture because importing one into a conftest trips ruff F401."""
+    fixture because importing one into a conftest trips ruff F401.
+    It also fails a launch under the scaled timeout shim whose PATH holds a stub write_prewarmed_stub did not write."""
     install_shell_exec_guard(monkeypatch)
+    install_unwarmed_stub_guard(monkeypatch, tmp_path_factory.getbasetemp())
 
 
 @pytest.fixture(autouse=True)
@@ -1651,11 +1668,11 @@ def _clear_adapter_env(monkeypatch):
     clear_adapter_environment(monkeypatch)
 
 
-@pytest.fixture(autouse=True)
-def _isolate_transcript_corpus_lookups(tmp_path, monkeypatch):
+def _pin_transcript_corpus_lookups(tmp_path, monkeypatch):
     """Pin both env vars transcript-analysis.py's root resolution reads, so no
     test in this suite can accidentally scan or declare against this
-    workstation's real ~/.claude.
+    workstation's real ~/.claude. Also unset PR_COST_LEDGER_PATH and COST_LEDGER_PATH, each of which replaces
+    a ledger's path and so would send a ledger reader or writer to a workstation's exported ledger.
 
     Pinning only TRANSCRIPT_CONFIG_DIRS_FILE is insufficient:
     _resolve_scan_roots/_resolve_cost_roots' base is PROJECTS_DIR/config_dir()
@@ -1678,6 +1695,14 @@ def _isolate_transcript_corpus_lookups(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "isolated-claude-config"))
     monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(tmp_path / "nonexistent-transcript-config-dirs"))
+    monkeypatch.delenv("PR_COST_LEDGER_PATH", raising=False)
+    monkeypatch.delenv("COST_LEDGER_PATH", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_transcript_corpus_lookups(tmp_path, monkeypatch):
+    """The helper's docstring owns the rationale."""
+    _pin_transcript_corpus_lookups(tmp_path, monkeypatch)
 
 
 @pytest.fixture(autouse=True)

@@ -12,7 +12,7 @@ import pytest
 from helpers import worktree_porcelain
 from transcript_analysis import buckets, corpus, cost, scope, skill_invocation
 
-from .conftest import _asst, _cost_args, _priced, _write_cost_root, _write_jsonl
+from .conftest import _asst, _cost_args, _option_help, _priced, _write_cost_root, _write_jsonl
 
 
 def test_projects_dir_honors_claude_config_dir(monkeypatch, tmp_path):
@@ -849,8 +849,8 @@ class TestResolvedScopeHeaderDirectUnit:
             tmp_path / "acct-b" / "projects",
             tmp_path / "acct-c" / "projects",
         ]
-        header = scope._resolved_scope_header("cost", "this repo (2 project dirs)", roots)
-        assert header == "COST SOURCES (this repo (2 project dirs); 3 roots)"
+        header = scope._resolved_scope_header("cost", "this repo (2 project dirs: 2 live, 0 unlisted)", roots)
+        assert header == "COST SOURCES (this repo (2 project dirs: 2 live, 0 unlisted); 3 roots)"
 
 
 class TestRootCountDescDirectUnit:
@@ -898,3 +898,19 @@ class TestRootCountDescDirectUnit:
         roots = [tmp_path / "acct-a" / "projects", tmp_path / "acct-b" / "projects"]
         assert scope._root_count_desc(roots) == "2 roots"
         assert "transcript-config-dirs" not in scope._root_count_desc(roots)
+
+
+class TestAddProjectScopeArgsThisRepoHelp:
+    def test_a_caller_that_omits_this_repo_help_keeps_the_shared_worktree_wording(self):
+        parser = argparse.ArgumentParser()
+        scope._add_project_scope_args(parser)
+        assert _option_help(parser, "--this-repo") == f"Scope to {scope._THIS_REPO_SCOPE_HELP}."
+
+    def test_the_shared_scope_statement_names_live_and_removed_worktrees(self):
+        for fact in ("live worktrees", "removed worktrees", ".claude/worktrees/"):
+            assert fact in scope._THIS_REPO_SCOPE_HELP
+
+    def test_this_repo_help_keyword_replaces_the_shared_wording(self):
+        parser = argparse.ArgumentParser()
+        scope._add_project_scope_args(parser, this_repo_help="Select a caller-specific scope.")
+        assert _option_help(parser, "--this-repo") == "Select a caller-specific scope."

@@ -31,7 +31,7 @@ Every stop in the protocol fails closed. The parent runs no `check` before the f
 
 **The protocol lives in the skill, and the agent description stays a thin shell.** The description says what the agent does, when it fires, and where the dispatching session's protocol lives. It carries no protocol. The `subagent-delegation` skill's own `TRIGGER` already covers delegating a multi-step gate/review loop, and its exception section already prescribes separate bounded per-step dispatches that the orchestrator sequences between. Two tripwires pin the contract's ends and nothing else:
 - `test_agent_roster.py` pins the description's explicit-request `TRIGGER`, its `subagent-delegation` pointer, and that no second `TRIGGER` clause stands outside `DO NOT TRIGGER`.
-- `test_skills.py` pins these properties:
+- `test_review_orchestrator_and_review_pr.py` pins these properties:
   - The protocol section carries the exact allowlisted marker-check command as a whole code span.
   - The protocol section carries `:(top,literal)`.
   - The protocol section carries `no single or double quote`.
@@ -56,7 +56,7 @@ Every other rule in the protocol is deliberately unpinned. Under the bar above, 
 - Running `/code-review` inline in every session: this is the cost the agent removes.
 - A closed `Bash` allowlist hook, a dispatch-target allowlist hook and a checkpoint store: each would make the agent stricter than a `general-purpose` dispatch. With one round per dispatch, the parent is how a run resumes, so nothing reads a checkpoint.
 - `general-purpose` with `model: sonnet`: a dispatch prompt cannot impose a tools cap or a model pin that holds when the parent runs on another model.
-- `context: fork` on `code-review`: it applies to every call and forfeits `AskUserQuestion`. It would also reverse the `_FORKED_SKILLS` pin in `claude-skills/skills/tests/test_skills.py`.
+- `context: fork` on `code-review`: it applies to every call and forfeits `AskUserQuestion`. It would also reverse the `_FORKED_SKILLS` pin in `claude-skills/skills/tests/test_forked_skills.py`.
 - A marker written by the parent, with the agent added to `_LIB_NO_GATE_RELEASE_AGENTS`: `claude-skills/skills/code-review/SKILL.md` § "Step — Record review completion" says the marker is written only by the skill, and the parent would write it for a round it did not run. The roster's grounding is that its members can neither run a review nor dispatch an agent that can, and this agent does both. Adding it would also narrow nothing, for the reason the gate-release paragraph above gives.
 - A script that fingerprints the tree before and after each dispatch: it catches changes the return leaves out, but needs a model-copied token that no exact `permissions.allow` rule matches.
 - The parent's protocol in the agent description: the description loads into every session, and the protocol is the dispatcher's concern.
@@ -98,4 +98,4 @@ If the dogfood fails, a forward change removes the agent, the test entries that 
 - `claude/.claude/agents/review-orchestrator.md`, the agent this decision describes.
 - `claude-skills/skills/subagent-delegation/SKILL.md`, whose gate/review-loop exception holds the dispatching session's protocol.
 - `claude/.claude/hooks/_lib.sh` and `claude/.claude/hooks/enforce-marker-script-shape.sh`, for `_LIB_NO_GATE_RELEASE_AGENTS` and the hook whose roster this decision deliberately does not add the agent to.
-- `claude/.claude/hooks/tests/test_agent_roster.py` and `claude-skills/skills/tests/test_skills.py`, for the two contract-end tripwires.
+- `claude/.claude/hooks/tests/test_agent_roster.py` and `claude-skills/skills/tests/test_review_orchestrator_and_review_pr.py`, for the two contract-end tripwires.

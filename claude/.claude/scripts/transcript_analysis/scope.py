@@ -601,18 +601,19 @@ _THIS_REPO_SCOPE_HELP = (
 )
 
 
-def _add_project_scope_args(parser: argparse.ArgumentParser) -> None:
+def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: str | None = None) -> None:
     """Add the shared --projects/--this-repo scope flags to a subparser.
 
-    The flags are mutually exclusive. --this-repo routes through
-    _RepoProjectDirMatcher, a minimization control built from
+    The flags are mutually exclusive. For a caller that routes through _resolve_project_scope,
+    --this-repo is bounded by _RepoProjectDirMatcher, a minimization control built from
     _repo_scoped_project_slugs(). --projects defaults to the machine-wide glob "*".
+    this_repo_help replaces the --this-repo help for a caller whose --this-repo means something else.
     """
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--projects", default="*", metavar="GLOB")
     group.add_argument(
         "--this-repo", action="store_true",
-        help=f"Scope to {_THIS_REPO_SCOPE_HELP}.",
+        help=this_repo_help or f"Scope to {_THIS_REPO_SCOPE_HELP}.",
     )
 
 

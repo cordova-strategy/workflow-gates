@@ -71,8 +71,9 @@ The README below is organized by feature surface (hooks, skills, plugins, script
 
 - **Content-addressed review markers** — a marker's content is a hash of exactly the state that was reviewed (staged diff, plan set, or HEAD sha), and that content is the whole authorization: a re-staged line auto-invalidates the gate without timers or manual reset, while a review still covering the current state keeps counting even from a different session. The `<repo-hash>.<session-id>` filename is a write-side key only, so parallel sessions can't clobber each other's markers. See [`docs/hooks.md`](docs/hooks.md) (`require-code-review.sh`) and [`docs/design-decisions/content-addressed-review-markers.md`](docs/design-decisions/content-addressed-review-markers.md).
 - **Compaction-aware marker re-injection** — `session-marker-dashboard.sh` matches `startup|clear|compact|resume`, restoring active-bypass marker visibility after auto-compact fires. See [Context management](#context-management).
-- **Post-compaction authorization boundary restatement** — `restore-authorization-boundary-on-compact.sh` matches `compact` only, re-injecting the irreversible-action confirmation boundary the harness-generated compact summary's "Optional Next Step" section carries no trace of. The `.authorization-boundary-disabled` opt-out silences only the boundary text, not the shipping statement it carries when autonomous shipping is active. See [Context management](#context-management).
+- **Post-compaction authorization boundary restatement** — `restore-authorization-boundary-on-compact.sh` matches `compact` only, re-injecting the irreversible-action confirmation boundary the harness-generated compact summary's "Optional Next Step" section carries no trace of. The `authorization_boundary_restore` key in `<config-dir>/claude-config.toml` is its opt-out and silences only the boundary text, so the shipping statement is still emitted; see [`docs/hooks.md`](docs/hooks.md). See [Context management](#context-management).
 - **Post-compaction state block** — `restore-session-state-on-compact.sh` matches `compact` only, re-injecting the skills loaded this session with their SKILL.md paths, the branch's plan file, and the newest quoted prompts, after every manual and automatic compaction. It does not steer the summary itself. See [Context management](#context-management) and [`docs/hooks.md`](docs/hooks.md) for what it omits and its limits.
+- **Compaction summary steering** — `steer-compaction-summary.sh` is a `PreCompact` hook that prints a constant instruction text, asking the compaction summary, automatic or manual, to end with a `Continuity` section: goal, status, task list, next step, pending engineer authorization and open questions, under attribution rules for quoted and untrusted text. It is advisory model behavior, not a guarantee. Its next-step heading tells the resuming agent it may take a reversible step without asking. `docs/hooks.md`'s entry for `steer-compaction-summary.sh` gives where that step may come from, what the section does not authorize and the known limits. The only kill switch is the rollback in [`docs/hooks.md`](docs/hooks.md), which also gives the recovery when automatic compaction ends in "Autocompact is thrashing" and the registration names a missing hook file. See [Context management](#context-management).
 - **Read-before-dispatch routing gate** — `require-routing-read.sh` blocks subagent spawn during `/plan-review` until `ROUTING.md` is read; a PostToolUse companion records the read per session. See [`docs/hooks.md`](docs/hooks.md).
 - **Self-consuming continuity files** — `/handoff`/`/brief` write to a durable `~/.claude/` directory, not `/tmp`, so they survive a reboot. Three paths consume the file: a `PostToolUse` `Read` hook mechanically consumes it the moment it's read directly (the backstop for a plain `Read` after `/clear`), `resume-context.sh` consumes it on the fresh-process path, and `/resume-context` consumes it through `resume-context.sh --consume-only` before reading it in the current session. Every consume also lands in a per-uid `/tmp` index a different session can query via `find-consumed-continuity-file.sh`, rather than grepping every moved file by content. Owner-only permissions come from `./install.sh`'s one-time hardening, not a per-skill chmod. See [`docs/hooks.md`](docs/hooks.md) (`consume-durable-continuity-file-on-read.sh`), [`docs/design-decisions.md`](docs/design-decisions.md), and [Context management](#context-management).
 - **Post-crash session recovery** — `post-crash-sessions` cross-references five session-liveness sources, including a never-swept lookup corpus that survives a same-day crash with no reboot, to find and resume crash-orphaned sessions, with a versioned `--json` mode for programmatic consumers. See [`docs/scripts.md`](docs/scripts.md).
@@ -102,7 +103,7 @@ What only the installer produces needs it too: the `~/.local/bin` copy of `reloc
 
 To check a new file, run `ls "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/<path under claude/.claude/>"`, which assumes no same-named local file of yours sits there. "No such file or directory" means re-run the installer once the change is in the checkout.
 
-If you installed the Cursor adapter, run `python3 ~/.claude/scripts/cursor-adapter/cursor-adapter.py check` after a pull: it compares the entries in `~/.cursor/hooks.json` with what the checkout now generates. A changed registration, tool map or contract version is reported with its fix: quit Cursor, re-run `install` with the arguments [`docs/cursor-adapter.md`](docs/cursor-adapter.md) § "Commands" gives, and relaunch.
+If you installed the Cursor adapter, run `python3 ~/.claude/scripts/cursor-adapter/cursor-adapter.py check` after a pull: it compares the entries in `~/.cursor/hooks.json` with what the checkout now generates. An added, changed or removed registration, or a changed tool map or contract version, is reported with its fix: quit Cursor, re-run `install` with the arguments [`docs/cursor-adapter.md`](docs/cursor-adapter.md) § "Commands" gives, and relaunch.
 
 ## Requirements
 
@@ -201,7 +202,7 @@ flowchart LR
 | `require-ready-for-review.sh` | `git push`, `gh pr ready`, `gh pr create` | `/ready-for-review` run since last commit |
 | `deny-default-branch-push.sh` | `Bash` push whose destination is a protected branch or cannot be resolved, and a mutating `gh api` call to a ref-moving endpoint | No clear — push a feature branch and open a PR, or ask the engineer to run the push with the `!` prefix. Best-effort command-text parsing: the hook header lists the Known gaps and the accepted over-denials, `docs/hooks.md` covers how to react to the over-denials, and `docs/security-hardening.md` covers the required server-side branch protection |
 | `require-respond-pr.sh` | `gh api` PR comment reads/posts | `/respond-pr` active bypass marker |
-| `advance-past-commit-stall.sh` | — (Stop, `turn-gate`, opt-in) | Forces the turn to continue past a commit/push/PR-open permission question when autonomous shipping is active; see [Autonomous shipping](#autonomous-shipping) |
+| `advance-past-commit-stall.sh` | — (Stop, `turn-gate`) | Forces the turn to continue past a commit/push/PR-open permission question; see [Autonomous shipping](#autonomous-shipping) |
 | `send-back-skipped-self-review.sh` | — (PreToolUse `SubagentHandback` + SubagentStop, `turn-gate`) | Sends a `code-writer` subagent back once when its return lacks reviewer-file Reads, a ledger line or a diff re-read; see [`docs/hooks.md`](docs/hooks.md) |
 | `capture-session-id.sh` | — (SessionStart, no gate) | Writes session-id so marker filenames are per-session |
 | `nudge-handoff-near-context-cap.sh` | — (PostToolBatch + Stop, advisory) | Injects a one-shot reminder near the context cap; see [`docs/handoff-nudge.md`](docs/handoff-nudge.md) |
@@ -343,7 +344,7 @@ To opt out, delete `.claude/worktree-required`.
 If you work across many repos and want enforcement everywhere without adding a marker to each, set the `worktree_required` config key:
 
 ```bash
-printf 'worktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\nworktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 See [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract. This activates enforcement for every git repo on your machine. Any repo that already has a committed `.claude/worktree-required` is unaffected (it was already enforcing). To exempt a specific repo from machine-level enforcement:
@@ -366,34 +367,21 @@ Without this, a `git add -A` in a repo that never got the per-repo `.gitignore` 
 
 ### Autonomous shipping
 
-If the agent ends its turn asking whether you want to review the diff before it commits — even after finishing the work you asked for — this is the setting that removes that pause. `advance-past-commit-stall.sh` (a `Stop` hook) force-continues the turn through `/code-review` → commit → `/ready-for-review` → PR-open, stopping only before merge, whenever the machine-level `autonomous_shipping` config key resolves true and the current repo carries no `.claude/autonomous-shipping-optout`. A repo cannot grant this by committing anything — only this machine-level key can; see [`claude/.claude/hooks/_lib.sh`](claude/.claude/hooks/_lib.sh)'s `_lib_autonomous_shipping_active`.
+If the agent ends its turn asking whether you want to review the diff before it commits — even after finishing the work you asked for — the Shipping rule in `claude/.claude/CLAUDE.md` removes that pause. The agent commits, pushes the feature branch and opens the PR without pausing, and stops before merge. The diff-size gate, `require-diff-size-prompt.sh`, denies a large commit until you answer `Proceed anyway`; its row in the [Workflow](#workflow) hook table gives the threshold and what the count excludes. It is a cooperative-tier size prompt, not a security control (see its `cooperative` row in [`docs/hooks.md`](docs/hooks.md#threat-model-tiers)). It does not verify your answer. It allows the commit when it cannot measure the diff. Autonomous shipping applies to every stow consumer, in every repository.
 
-On an active machine, `announce-autonomous-shipping.sh` states the resolved state to the agent at startup, resume and `/clear`, and `restore-authorization-boundary-on-compact.sh` repeats it after compaction.
+`advance-past-commit-stall.sh` (a `Stop` hook) force-continues a permission-question stall in an eligible repo on a non-default branch. `restore-authorization-boundary-on-compact.sh` restates the shipping statement after compaction.
 
-`./install.sh` now offers this interactively on every run — the snippet below is the non-interactive/scripted alternative, not the only path.
-
-```bash
-printf 'autonomous_shipping = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
-```
-
-See [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract.
-
-To exempt a specific repo:
-
-```bash
-mkdir -p .claude && touch .claude/autonomous-shipping-optout
-```
-
-The optout lives in the checked-out tree, so any branch, fresh worktree or fresh clone can revoke it: an untracked file is absent from a new worktree, and a tracked file is gone once the checked-out branch deletes it. It is not a guard against untrusted checkouts.
-
-See [`docs/commit-stall-block.md`](docs/commit-stall-block.md) for the fire predicate, in-session recovery, log format, and known limitations.
+- `commit_stall_block = false` in `claude-config.toml` turns off the Stop hook for the config dir the session resolves (one per account). There is no per-repo exemption. It is not honored while `config-keys.psv` is unreadable or lacks its row; see [`docs/commit-stall-block.md`](docs/commit-stall-block.md).
+- No setting turns off the CLAUDE.md rule. CLAUDE.md tells the agent that a hold you state in-session wins, and the Stop reason carves a stated hold out. Whether the agent honors a hold under the Stop hook is not measured; see [`docs/commit-stall-block.md`](docs/commit-stall-block.md).
+- A session open during a `git pull` of this repo needs a restart to read an updated rule.
+- See [`docs/security-hardening.md`](docs/security-hardening.md)'s "What unconditional autonomous shipping leaves unchecked" for what the remaining guards do not check, and [`docs/commit-stall-block.md`](docs/commit-stall-block.md) for the fire predicate, in-session recovery, log format and known limitations.
 
 ### PR cost disclosure
 
 `pr-description` can embed the PR body's cost block — branch-scoped session count, token volume, and list-price dollars from `transcript-analysis.py cost --summary`. Off by default; gated by the `pr_cost_disclosure` config key, scoped to the Claude account, not to the repo.
 
 ```bash
-printf 'pr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\npr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 The key resolves to exactly one config dir (`$CLAUDE_CONFIG_DIR` if set and absolute, else `$HOME/.claude`) and its value (`dollars` vs. anything else) toggles the mode account-wide, so one account's opt-in never activates disclosure under another — see [`docs/config-file.md`](docs/config-file.md) for the file format and resolution precedence.
@@ -456,7 +444,34 @@ Moving or renaming this checkout (`mv ~/current-location/claude-config ~/somewhe
    relocate-claude-config --repair <new-path> # repo already moved outside a Claude Code session
    ```
 
-   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation) — it quarantines (never deletes) any `~/.claude` or `~/.local/bin` entry left as a dangling symlink into the old location, then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
+   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation). It quarantines every dangling symlink directly under `~/.claude` or `~/.local/bin`, plus a dangling tree-folded `~/.claude`. It never deletes a file or directory. Names that start with a dot are skipped. Same-named links from the two directories share one backup name, so the later move replaces the earlier backup. It then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
+
+   - Run `./install.sh` after pulling and before relocating, because the installed copy is the one that runs.
+   - Both modes also re-link the `claude-skills` package at `~/.claude/skills`, with a stow that passes no `--adopt`. A link at one of its top-level paths that no longer resolves moves to `~/.claude-config-relocate-backup/<name>.<pid>` first, and the output names each move. A real directory at `~/.claude/skills` is left alone and reported, as `install.sh` does.
+   - Exit 3 means the checkout has already moved, or `--repair` already linked the `claude` package, and re-linking a package named on stderr failed.
+     - The common causes are:
+       - Something in the way at `~/.claude/skills`, such as a real file or directory, or a live symlink that is not this checkout's `claude-skills` link. Move it aside.
+       - A checkout with no `claude-skills/` directory. Update the checkout to a commit that has it, then run `./install.sh` from it. The failed run already replaced the installed script with the checkout's own, so a retry before then links nothing.
+       - `--repair` run while `~/.claude` is a live symlink into the checkout. Replace the symlink as the output describes.
+     - The output names the cause and, for the symlinked `~/.claude`, the fix.
+     - Fix the cause, then run the `--repair` command the output ends with. That run moves every dangling entry `--repair` finds, as described above, not only those the move broke. The primary form must not be re-run.
+   - Exit 1 from the primary form depends on the last of the `unstowing <old>`, `moving <old> -> <new>` and `mv failed` lines it printed, since an error line or Stow's own output always follows one:
+     - With none of them, a precondition failed and nothing changed.
+     - With `unstowing <old>` and no `moving <old> -> <new>`, the unstow itself failed, so some `claude` links may be absent. The exit status is Stow's own, which can be 2. Fix the error and re-run the primary form.
+     - With `mv failed`, nothing moved. Fix the cause and re-run the primary form. The restore stow after that line can itself fail. It then exits with Stow's own status, which need not be 1, and the `claude` links may be absent. Re-running the primary form still recovers.
+     - With `moving <old> -> <new>` and no `mv failed` line, the checkout moved. That covers a failed `mkdir` before `re-stowing at <new-path>` and any failure after it, with the exit status the failing command's own, as the status bullet below says. Fix the error, then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when the primary run passed it.
+   - After an exit 1 from `--repair`, fix the error and re-run the same command. When the cause is a failed move of a dangling link into `~/.claude-config-relocate-backup` (`could not move ... into ...`), entries moved before the failure stay in that directory, and the output names each.
+   - After a failed `claude` stow, or a failed manifest or installed-copy write, whatever the exit status, read the last `re-stowing at` or `stowing at` line the run printed.
+     - After `re-stowing at`, the checkout moved and the arguments were not bad, so the retry is the `--repair` command above.
+     - After `--repair`'s `stowing at`, the retry is re-running the same command, since only the primary form prints `re-stowing at`.
+     - The exit status is the failing command's own, so it can be 1 or 2, or any other the command returns, 3 included. It does not identify the cause, and the output lines are the contract.
+     - Stow 2.4.1 was observed to return 1 for a conflict and 2 for a missing package directory.
+     - Neither code is defined by this script or documented by Stow, whose error is a bare die.
+   - Both modes exit 1 before changing anything when `~/.claude-config-relocate-backup` exists and is a symlink or is not a directory, a symlink made on purpose to another volume included.
+   - The script does not do the following, which stay manual:
+     - Other accounts' config dirs, including any listed in `~/.claude/transcript-config-dirs`, keep their links into the old location. Until one is re-linked, a session under that account loads none of this repo's settings, hooks or skills. `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points its marketplace registration. `register-marketplace` takes effect only once that account's `settings.json` resolves, and exits 0 with "nothing to register" otherwise.
+     - Every linked worktree, wherever it lives, still records the old location. Run `git worktree repair <path>…` in the moved checkout, naming each linked worktree's current path. One that lived under the checkout is now at the same relative path under `<new-path>`, usually `<new-path>/.claude/worktrees/<name>`, which is where this repo's worktree convention puts it.
+     - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
 
    A one-line manifest, `~/.claude-config-source`, records the checkout's current absolute path — `install.sh` writes it, and `relocate-claude-config` reads and rewrites it — so the command can find the checkout even when the `~/.claude` symlinks it depends on for everything else are the very thing it's asked to fix. `relocate-claude-config` is installed as a **real file copy** (`install -m 755`), not a stow symlink, since a stow-managed wrapper would inherit the exact failure it exists to repair.
 
@@ -511,15 +526,16 @@ To flip the default itself rather than opting back in per session, set `disableW
 
 ## Context management
 
-Claude Code compresses conversation history when the context window fills up. This config adds four layers to keep that process reliable.
+Claude Code compresses conversation history when the context window fills up. This config adds five layers to keep that process reliable.
 
 ### How it works
 
 1. **Marker re-injection (automatic).** `session-marker-dashboard.sh` is registered with matcher `startup|clear|compact|resume`, so it fires on session start, after `/clear`, after compaction, and on resume. It emits `hookSpecificOutput.additionalContext` with the current state of all active review-skill gate markers, restoring marker knowledge in the resumed context automatically. You don't need to do anything for this to work.
 
 2. **`/handoff` slash command (user-invoked).** When the task will continue in a fresh session, run `/handoff` to write a structured resume file at `<config-dir>/handoffs/<slug>-handoff.md` — durable, so it survives a reboot. The §1–§7 shape is defined inline in `claude-skills/skills/handoff/SKILL.md`. Claude recommends `/handoff` or `/compact` (which one: [`docs/handoff-nudge.md`](docs/handoff-nudge.md) "Compaction as an alternative to /handoff") once context crosses `nudge-handoff-near-context-cap.sh`'s computed threshold — 40% of the model's context window, capped at 150000 tokens (`HANDOFF_NUDGE_ABS_CAP` overrides it) — because cleaner context produces a higher-quality `/handoff` resume file, and every turn spent past a 150000-token prefix on the largest context window is waste. Resume with `resume-context --cwd <worktree-path> <config-dir>/handoffs/<slug>-handoff.md` when the handoff named a worktree, or `resume-context <config-dir>/handoffs/<slug>-handoff.md` alone from the main checkout — either form moves the file to a temp path and launches a new session with it loaded, consumption mechanical rather than dependent on the resuming session remembering to read or delete the file. `--cwd` launches the session in that directory outright, rather than depending on the invoker separately `cd`-ing there first. To resume inside the current process instead, after `/clear` or in a new session started in the same worktree, run `/resume-context`; it prints the shell command in place of loading when it cannot confirm the file belongs to this worktree. See [`docs/skills.md`](docs/skills.md) for when each path applies.
-3. **Post-compaction authorization boundary restatement (automatic).** `restore-authorization-boundary-on-compact.sh` fires only on `compact`, re-injecting `hookSpecificOutput.additionalContext` that restates the irreversible-action confirmation boundary — advisory, not a gate. Opt out of the boundary text via `~/.claude/.authorization-boundary-disabled`, which does not silence the autonomous-shipping statement the same message carries when shipping is active.
+3. **Post-compaction authorization boundary restatement (automatic).** `restore-authorization-boundary-on-compact.sh` fires only on `compact`, re-injecting `hookSpecificOutput.additionalContext` that restates the irreversible-action confirmation boundary — advisory, not a gate. The opt-out is the `authorization_boundary_restore` key in `<config-dir>/claude-config.toml`. It silences only the boundary text, so the shipping statement is still emitted; see [`docs/hooks.md`](docs/hooks.md).
 4. **Post-compaction state block (automatic).** `restore-session-state-on-compact.sh` fires only on `compact`, re-injecting `hookSpecificOutput.additionalContext` built by `compaction-context.py state` from the session transcript: the skills loaded this session with their SKILL.md paths, the branch's plan file, and the newest quoted prompts. It does not steer the summary itself. The only kill switch is removing the hook's `settings.json` entry. The omissions, ceilings and the `python3` requirement are in [`docs/hooks.md`](docs/hooks.md).
+5. **Compaction summary steering (automatic).** `steer-compaction-summary.sh` fires on a main-session `PreCompact`, manual or automatic, and prints a constant instruction text as plain stdout asking the summary to end with a `Continuity` section that reuses six of `/handoff`'s resume-file headings. It is advisory and built from no transcript or prompt text. Its next-step heading tells the resuming agent it may take a reversible step without asking. `docs/hooks.md`'s entry for `steer-compaction-summary.sh` gives where that step may come from, what the section does not authorize and the known limits. The only kill switch is the rollback in [`docs/hooks.md`](docs/hooks.md), which also lists its limits, the check order for a summary with no `Continuity` section, and the recovery when automatic compaction ends in "Autocompact is thrashing".
 
 ### When to use which
 
@@ -528,7 +544,7 @@ Claude Code compresses conversation history when the context window fills up. Th
 | Switching to an unrelated task | `/clear` (intent-driven, no percentage threshold) |
 | Ending a session, will resume later | `/handoff` (produces resume file; the announce message after the write names the resume route) |
 | Continuing the same task in the same session | `/compact [instructions]` (manual; the handoff nudge recommends it only when the criteria in [`docs/handoff-nudge.md`](docs/handoff-nudge.md) "Compaction as an alternative to /handoff" all hold, otherwise `/handoff` into a fresh session) |
-| Context >83.5%: auto-compact fires | Happens automatically; marker state is restored by the hook, and the post-compaction state block re-injects skill paths, the plan file and the newest prompts (the hook does not steer the summary itself; omissions: [`docs/hooks.md`](docs/hooks.md)) |
+| Context >83.5%: auto-compact fires | Happens automatically; marker state is restored by the hook, the summary is asked to end with a `Continuity` section, and the post-compaction state block re-injects skill paths, the plan file and the newest prompts (the state hook does not steer the summary itself; omissions: [`docs/hooks.md`](docs/hooks.md)) |
 
 ### Threshold reference
 
