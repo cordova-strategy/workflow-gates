@@ -182,6 +182,14 @@ TRANSCRIPT_REVIEW_TRACE_SPAWN_ROUNDS_TEST_PATH = "claude/.claude/scripts/tests/t
 # than its containing domain.
 TICKET_REFERENCE_DISCIPLINE_TEST_PATH = "claude/.claude/hooks/tests/test_ticket_reference_discipline.py"
 
+# test_code_file_size.py counts every tracked .py and .sh file and reads
+# CODE_FILE_SIZE_EXCEPTIONS_TOML, so a change to any such file or to the table
+# selects it. SUPPLEMENTARY_RULES adds it for the former and
+# CROSS_DOMAIN_EXCEPTIONS for the latter.
+CODE_FILE_SIZE_TEST_PATH = "claude/.claude/tests/test_code_file_size.py"
+CODE_FILE_SIZE_EXCEPTIONS_TOML = "code-file-size-exceptions.toml"
+CODE_FILE_SIZE_MODULE_PATH = "claude/.claude/tests/code_file_size.py"
+
 SELECT_TESTS_SCRIPT = "claude/.claude/scripts/select-tests.py"
 
 # test_select_tests.py's own TestCrossDomainReadCompleteness parses every
@@ -1059,6 +1067,24 @@ CROSS_DOMAIN_EXCEPTIONS: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ..
     (_is_py_source_under_claude_or_plugins, (TICKET_REFERENCE_DISCIPLINE_TEST_PATH,)),
     (_is_test_tree_packaging_change, (CLAUDE_TESTS_DIR,)),
     (_is_test_source_change, (SELECT_TESTS_TEST_PATH,)),
+    (lambda p: p == CODE_FILE_SIZE_EXCEPTIONS_TOML, (CODE_FILE_SIZE_TEST_PATH,)),
+)
+
+
+def _is_code_file_change(path: str) -> bool:
+    return path.endswith((".py", ".sh"))
+
+
+# Same shape as the rule tables above, but a match here adds targets without
+# marking the path matched. A root-level .py or .sh path therefore still falls
+# open to the full suite, and a domain-selected one also runs the size check.
+# Two blind spots remain, and the full run in CI catches both:
+# - A new unstaged file selects the size check, but the check counts only staged files.
+# - A rename lists only the new path, so renaming a row's file out of .py/.sh goes unselected.
+SUPPLEMENTARY_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
+    (_is_code_file_change, (CODE_FILE_SIZE_TEST_PATH,)),
+    # test_select_tests.py imports this module for its COUNTED_SUFFIXES contract test.
+    (lambda p: p == CODE_FILE_SIZE_MODULE_PATH, (SELECT_TESTS_TEST_PATH,)),
 )
 
 
@@ -1079,6 +1105,8 @@ def select_pytest_targets(changed_paths: Iterable[str]) -> SelectionResult:
     - the diff is empty
     - a global-trigger path is present (a domain match can never suppress it)
     - any changed path matches no rule at all
+
+    main adds SUPPLEMENTARY_RULES' targets to this result through add_supplementary_targets.
     """
     changed = list(changed_paths)
     if not changed:
@@ -1106,6 +1134,21 @@ def select_pytest_targets(changed_paths: Iterable[str]) -> SelectionResult:
         return SelectionResult(FULL_SUITE_TARGETS, True, "unmatched-path", tuple(unmatched_paths))
 
     return SelectionResult(tuple(sorted(targets)), False, "domain-selected")
+
+
+def add_supplementary_targets(selection: SelectionResult, changed_paths: Iterable[str]) -> SelectionResult:
+    """Add the targets of every SUPPLEMENTARY_RULES row that matches a changed path.
+
+    A full-suite selection passes through unchanged, since every rule-table target sits under a full-suite root.
+    """
+    if selection.is_full_suite:
+        return selection
+    targets = set(selection.target_paths)
+    for path in changed_paths:
+        for predicate, supplementary_targets in SUPPLEMENTARY_RULES:
+            if predicate(path):
+                targets.update(supplementary_targets)
+    return selection._replace(target_paths=tuple(sorted(targets)))
 
 
 # --- Git plumbing -------------------------------------------------------
@@ -1388,7 +1431,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"select-tests: {exc}; falling back to the full suite", file=sys.stderr)
         selection = SelectionResult(FULL_SUITE_TARGETS, True, "git-unavailable")
     else:
-        selection = select_pytest_targets(changed_paths)
+        selection = add_supplementary_targets(select_pytest_targets(changed_paths), changed_paths)
 
     resolved_targets = resolve_target_paths(selection.target_paths, repo_root=repo_root)
 

@@ -21,6 +21,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
+import code_file_size
 import pytest
 from helpers import ci_test_slice_job
 
@@ -2229,7 +2230,7 @@ class TestResolveTargetPaths:
         ever actually returns: its fail-open result is FULL_SUITE_TARGETS
         alone."""
         universe: set[str] = set()
-        for _predicate, targets in (*_mod.DOMAIN_RULES, *_mod.CROSS_DOMAIN_EXCEPTIONS):
+        for _predicate, targets in (*_mod.DOMAIN_RULES, *_mod.CROSS_DOMAIN_EXCEPTIONS, *_mod.SUPPLEMENTARY_RULES):
             universe.update(targets)
         assert not (set(_mod.FULL_SUITE_TARGETS) & universe)
 
@@ -2509,7 +2510,8 @@ class TestPytestSubprocessEnv:
 
 
 # Every constant backing an exact-match predicate (`p == CONSTANT`, or
-# membership in a tuple of constants) in DOMAIN_RULES/CROSS_DOMAIN_EXCEPTIONS.
+# membership in a tuple of constants) in
+# DOMAIN_RULES/CROSS_DOMAIN_EXCEPTIONS/SUPPLEMENTARY_RULES.
 # A rename that drifts one of these from its
 # real on-disk path leaves that predicate silently dead -- it matches
 # nothing, and no test fails.
@@ -2560,6 +2562,8 @@ _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
     _mod.TRANSCRIPT_ANALYSIS_SCRIPT,
     _mod.COMPACTION_CONTEXT_SCRIPT,
     _mod.COMPACTION_CONTEXT_TEST_HELPERS,
+    _mod.CODE_FILE_SIZE_EXCEPTIONS_TOML,
+    _mod.CODE_FILE_SIZE_MODULE_PATH,
 )
 
 # The CROSS_DOMAIN_EXCEPTIONS/DOMAIN_RULES targets that name a file rather
@@ -2568,6 +2572,7 @@ _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
 # use for this distinction, so it stays a test-only constant.
 _FILE_TARGETS: frozenset[str] = frozenset({
     _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH,
+    _mod.CODE_FILE_SIZE_TEST_PATH,
     _mod.SELECT_TESTS_TEST_PATH,
     _mod.TRANSCRIPT_DENIALS_TEST_PATH,
     _mod.TRANSCRIPT_REVIEW_ROUNDS_TEST_PATH,
@@ -2729,6 +2734,91 @@ def _targets_outside_roots(targets: set[str], roots: tuple[str, ...]) -> list[st
     )
 
 
+class TestSupplementaryTargets:
+    """SUPPLEMENTARY_RULES adds the size check to a domain selection through add_supplementary_targets,
+    which `main` applies after select_pytest_targets, so the rule-table assertions elsewhere stay unchanged."""
+
+    @staticmethod
+    def _selection_with_supplements(paths: list[str]):
+        return _mod.add_supplementary_targets(_mod.select_pytest_targets(paths), paths)
+
+    @pytest.mark.parametrize(
+        "changed_path",
+        [
+            "claude/.claude/scripts/mark-terminal.py",
+            _mod.INSTALL_SH,
+            "scripts/list-shell-files.sh",
+            _mod.SKILL_EVALS_RUNNER,
+        ],
+    )
+    def test_domain_selected_py_or_sh_path_gains_the_size_check(self, changed_path):
+        base_selection = _mod.select_pytest_targets([changed_path])
+        assert base_selection.is_full_suite is False
+        assert _mod.CODE_FILE_SIZE_TEST_PATH not in base_selection.target_paths
+
+        result = self._selection_with_supplements([changed_path])
+
+        assert result.is_full_suite is False
+        assert result.reason == "domain-selected"
+        assert result.target_paths == tuple(sorted({*base_selection.target_paths, _mod.CODE_FILE_SIZE_TEST_PATH}))
+
+    def test_domain_selected_md_path_does_not_gain_the_size_check(self):
+        result = self._selection_with_supplements(["docs/design-decisions/code-file-line-limit.md"])
+
+        assert result.is_full_suite is False
+        assert _mod.CODE_FILE_SIZE_TEST_PATH not in result.target_paths
+
+    def test_unmapped_evals_py_path_falls_open_and_gains_nothing(self):
+        result = self._selection_with_supplements(["evals/unmapped_tool.py"])
+
+        assert result.is_full_suite is True
+        assert result.target_paths == _mod.FULL_SUITE_TARGETS
+
+    def test_full_suite_selection_passes_through_unchanged(self):
+        paths = ["tool.py"]
+        base_selection = _mod.select_pytest_targets(paths)
+
+        result = _mod.add_supplementary_targets(base_selection, paths)
+
+        assert result == base_selection
+        assert result.reason == "unmatched-path"
+
+    def test_plans_dir_py_path_selects_nothing_from_domain_rules_and_gains_exactly_the_size_check(self):
+        plans_dir_py_path = f"{_mod.PLANS_DIR}/some-plan.py"
+        base_selection = _mod.select_pytest_targets([plans_dir_py_path])
+        assert base_selection.is_full_suite is False
+        assert base_selection.target_paths == ()
+
+        result = _mod.add_supplementary_targets(base_selection, [plans_dir_py_path])
+
+        assert result.is_full_suite is False
+        assert result.target_paths == (_mod.CODE_FILE_SIZE_TEST_PATH,)
+
+    def test_exception_table_path_selects_exactly_the_size_check(self):
+        """The CROSS_DOMAIN_EXCEPTIONS row is guarded only here: the read-completeness scan skips a path that falls open."""
+        result = _mod.select_pytest_targets([_mod.CODE_FILE_SIZE_EXCEPTIONS_TOML])
+
+        assert result.is_full_suite is False
+        assert result.target_paths == (_mod.CODE_FILE_SIZE_TEST_PATH,)
+
+    def test_size_check_module_path_gains_the_select_tests_test_and_the_size_check(self):
+        result = self._selection_with_supplements([_mod.CODE_FILE_SIZE_MODULE_PATH])
+
+        assert result.is_full_suite is False
+        assert _mod.SELECT_TESTS_TEST_PATH in result.target_paths
+        assert _mod.CODE_FILE_SIZE_TEST_PATH in result.target_paths
+
+    def test_code_file_change_predicate_matches_py_and_sh_only(self):
+        assert _mod._is_code_file_change("install.sh")
+        assert _mod._is_code_file_change("tool.py")
+        assert not _mod._is_code_file_change("README.md")
+        assert not _mod._is_code_file_change("code-file-size-exceptions.toml")
+
+    @pytest.mark.parametrize("counted_suffix", code_file_size.COUNTED_SUFFIXES)
+    def test_code_file_change_predicate_accepts_every_suffix_the_size_check_counts(self, counted_suffix):
+        assert _mod._is_code_file_change(f"some/path/tool{counted_suffix}")
+
+
 class TestRuleTablePathFidelity:
     """Catches silent drift if a rule-table target directory is later
     renamed or a glob pattern stops matching anything."""
@@ -2739,6 +2829,8 @@ class TestRuleTablePathFidelity:
             targets.update(domain_targets)
         for _, exception_targets in _mod.CROSS_DOMAIN_EXCEPTIONS:
             targets.update(exception_targets)
+        for _, supplementary_targets in _mod.SUPPLEMENTARY_RULES:
+            targets.update(supplementary_targets)
         return targets
 
     def test_worktrees_dir_name_is_pruned_by_norecursedirs(self):
@@ -2759,7 +2851,7 @@ class TestRuleTablePathFidelity:
         by a fail-open fallback."""
         # Checks root membership only, not norecursedirs pruning: no domain target sits under a pruned directory.
         domain_targets: set[str] = set()
-        for _, targets in (*_mod.DOMAIN_RULES, *_mod.CROSS_DOMAIN_EXCEPTIONS):
+        for _, targets in (*_mod.DOMAIN_RULES, *_mod.CROSS_DOMAIN_EXCEPTIONS, *_mod.SUPPLEMENTARY_RULES):
             domain_targets.update(targets)
         assert _targets_outside_roots(domain_targets, _mod.FULL_SUITE_TARGETS) == []
 
@@ -3190,7 +3282,8 @@ class TestMainComposition:
 
         assert exit_code == 0
         assert recorded["pytest_argv"] == [
-            _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR, "-k", "foo",
+            _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR, _mod.CODE_FILE_SIZE_TEST_PATH,
+            "-k", "foo",
         ]
         assert recorded["repo_root_passed_to_compute"] == fake_repo_root
         assert recorded["cwd"] == fake_repo_root
@@ -3233,6 +3326,27 @@ class TestMainComposition:
         assert record["reason"] == "domain-selected"
         assert "worker_count" not in record
         assert "load_average" not in record
+
+    def test_plans_dir_py_path_runs_the_size_check_instead_of_taking_the_nothing_to_run_return(self, monkeypatch):
+        fake_repo_root = Path("/fake/repo/root")
+        recorded = {}
+
+        def fake_run_pytest(pytest_argv, *, cwd, env):
+            recorded["pytest_argv"] = pytest_argv
+            recorded["cwd"] = cwd
+            return 0
+
+        monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: fake_repo_root)
+        monkeypatch.setattr(
+            _mod, "compute_changed_paths", lambda repo_root: [f"{_mod.PLANS_DIR}/some-plan.py"],
+        )
+        monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+
+        exit_code = _mod.main([])
+
+        assert exit_code == 0
+        assert recorded["pytest_argv"] == [_mod.CODE_FILE_SIZE_TEST_PATH]
+        assert recorded["cwd"] == fake_repo_root
 
     def test_empty_target_selection_with_passthrough_args_still_skips_run_pytest(
         self, monkeypatch,
@@ -3279,7 +3393,8 @@ class TestMainComposition:
 
         assert exit_code == 0
         assert recorded["pytest_argv"] == [
-            _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR, "-k", "bar",
+            _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR, _mod.CODE_FILE_SIZE_TEST_PATH,
+            "-k", "bar",
         ]
 
     def test_unmatched_path_prints_offending_paths_to_stderr(self, monkeypatch, capsys):
