@@ -7,6 +7,7 @@ import subprocess
 import pytest
 from _skill_md_helpers import (
     _AGENTS_DIR,
+    _CODE_REVIEW_STEP_0_1_HEADING,
     _GLOBAL_CLAUDE_MD,
     _heading_section_text,
     _skill_body,
@@ -48,6 +49,37 @@ class TestReviewLedgerAuthoringEffortLiteral:
             "main finding append, main-flow CLEAN append) -- found "
             f"{skill_body.count(literal)}"
         )
+
+
+class TestReviewLedgerPassKindLiteral:
+    """Each of code-review's four append templates carries `--pass-kind` once. The
+    Step 0.1 short-circuit template passes `staged`, and the other three pass the
+    `<kind>` Step 0.1 fixes."""
+
+    @staticmethod
+    def _append_template_spans(text: str) -> list[str]:
+        spans = re.findall(r"`([^`\n]*)`", text)
+        return [span for span in spans if "review-ledger.sh append" in span and "--disposition" in span]
+
+    def test_four_append_templates_each_carry_the_flag_once(self):
+        template_spans = self._append_template_spans(_skill_body("code-review"))
+
+        assert len(template_spans) == 4
+        for span in template_spans:
+            assert span.count("--pass-kind ") == 1, span
+
+    def test_the_step_0_1_template_passes_staged_and_the_others_pass_the_kind_placeholder(self):
+        step_0_1_text = _heading_section_text(_skill_file("code-review"), _CODE_REVIEW_STEP_0_1_HEADING)
+        step_0_1_spans = self._append_template_spans(step_0_1_text)
+        other_spans = [
+            span for span in self._append_template_spans(_skill_body("code-review")) if span not in step_0_1_spans
+        ]
+
+        assert len(step_0_1_spans) == 1
+        assert "--pass-kind staged" in step_0_1_spans[0]
+        assert len(other_spans) == 3
+        for span in other_spans:
+            assert "--pass-kind <kind>" in span, span
 
 
 class TestReviewLedgerReviewerLaneLiteral:

@@ -167,8 +167,8 @@ def _row_envelope_bytes(session_id: str, *, object_id_digits: int, **row_overrid
     replace fields, for a row of another disposition. The two reviewed-state
     ids are as wide as the repository's object ids."""
     row = {
-        "schema_version": 6, "round": 1, "finding": "", "disposition": "ADDRESS", "rationale": "",
-        "source": "", "authoring_agent": "", "authoring_effort": "", "reviewers": ["staff-sdet"],
+        "schema_version": 7, "round": 1, "pass_kind": "staged", "finding": "", "disposition": "ADDRESS",
+        "rationale": "", "source": "", "authoring_agent": "", "authoring_effort": "", "reviewers": ["staff-sdet"],
         "session_id": session_id,
         "decided_by": "", "engineer_quote": "", "enforcement_invariant": False, "carry_forward": False,
         "defer_criterion": "", "ref": "", "cited_line": "", "site_hash": "",
@@ -212,6 +212,7 @@ def _append_args(
     rationale: str = "fixed inline",
     source: str | None = None,
     round: str | None = "1",
+    pass_kind: str | None = "staged",
     authoring_agent: str | None = None,
     authoring_effort: str | None = None,
     decided_by: str | None = None,
@@ -239,6 +240,7 @@ def _append_args(
     optional_valued_flags = [
         ("--source", source),
         ("--round", round),
+        ("--pass-kind", pass_kind),
         ("--authoring-agent", authoring_agent),
         ("--authoring-effort", authoring_effort),
         ("--decided-by", decided_by),
@@ -261,9 +263,13 @@ def _append_args(
     return args
 
 
+def _flag_removed(args: list[str], flag: str) -> list[str]:
+    flag_index = args.index(flag)
+    return args[:flag_index] + args[flag_index + 2:]
+
+
 def _without_source(args: list[str]) -> list[str]:
-    source_index = args.index("--source")
-    return args[:source_index] + args[source_index + 2:]
+    return _flag_removed(args, "--source")
 
 
 # A DEFER criterion and a range-form source are required, so every DEFER append
@@ -349,8 +355,9 @@ class TestReviewLedgerAppendHappyPath:
         reviewed_head = record.pop("reviewed_head")
         reviewed_tree = record.pop("reviewed_tree")
         assert record == {
-            "schema_version": 6,
+            "schema_version": 7,
             "round": 1,
+            "pass_kind": "staged",
             "finding": "Missing error handling in foo()",
             "disposition": "ADDRESS",
             "rationale": "fixed inline",
@@ -547,9 +554,10 @@ class TestReviewLedgerAppendHappyPath:
 
     def test_missing_finding_rejected(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "ADDRESS", "--rationale", "r"]
+        args = _flag_removed(_append_args(), "--finding")
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
+        assert "--finding is required" in result.stderr
         assert not _ledger_path(isolated_home, git_repo).exists()
 
     def test_empty_rationale_rejected(self, isolated_home, git_repo):
@@ -560,9 +568,10 @@ class TestReviewLedgerAppendHappyPath:
 
     def test_missing_rationale_rejected(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--finding", "x", "--disposition", "ADDRESS"]
+        args = _flag_removed(_append_args(), "--rationale")
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
+        assert "--rationale is required" in result.stderr
         assert not _ledger_path(isolated_home, git_repo).exists()
 
 
@@ -592,7 +601,10 @@ class TestReviewLedgerReviewedState:
     def test_a_clean_row_records_the_head_and_the_staged_index_tree(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
 
-        result = _run(["append", "code-review", "--disposition", "CLEAN", "--round", "1"], cwd=git_repo, home=isolated_home)
+        result = _run(
+            ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"],
+            cwd=git_repo, home=isolated_home,
+        )
 
         assert result.returncode == 0, result.stderr
         (row,) = _ledger_rows(_ledger_path(isolated_home, git_repo))
@@ -624,7 +636,10 @@ class TestReviewLedgerReviewedState:
         _git(unborn_repo, "add", "staged.txt")
         _seed_session(isolated_home, SID)
 
-        result = _run(["append", "code-review", "--disposition", "CLEAN", "--round", "1"], cwd=unborn_repo, home=isolated_home)
+        result = _run(
+            ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"],
+            cwd=unborn_repo, home=isolated_home,
+        )
 
         assert result.returncode == 0, result.stderr
         (row,) = _ledger_rows(_ledger_path(isolated_home, unborn_repo))
@@ -874,7 +889,7 @@ class TestReviewLedgerRoundValidation:
 class TestReviewLedgerCleanDisposition:
     def test_clean_disposition_accepted_without_finding_or_rationale(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1"]
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"]
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 0, result.stderr
         record = json.loads(_ledger_path(isolated_home, git_repo).read_text().splitlines()[0])
@@ -884,14 +899,14 @@ class TestReviewLedgerCleanDisposition:
 
     def test_clean_disposition_rejects_a_present_finding(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--finding", "x"]
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--finding", "x", "--pass-kind", "staged"]
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
         assert not _ledger_path(isolated_home, git_repo).exists()
 
     def test_clean_disposition_rejects_a_present_rationale(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--rationale", "why"]
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--rationale", "why", "--pass-kind", "staged"]
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
         assert not _ledger_path(isolated_home, git_repo).exists()
@@ -900,7 +915,10 @@ class TestReviewLedgerCleanDisposition:
         """CLEAN carries no per-finding location, so --source must be
         rejected the same way --finding/--rationale are."""
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--source", "foo.py:12"]
+        args = [
+            "append", "code-review", "--disposition", "CLEAN", "--round", "1", "--source", "foo.py:12",
+            "--pass-kind", "staged",
+        ]
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
         assert not _ledger_path(isolated_home, git_repo).exists()
@@ -908,7 +926,7 @@ class TestReviewLedgerCleanDisposition:
     def test_address_disposition_still_requires_finding_and_rationale(self, isolated_home, git_repo):
         """CLEAN's relaxed requirements must not leak into ADDRESS|DEFER."""
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "ADDRESS", "--round", "1"]
+        args = ["append", "code-review", "--disposition", "ADDRESS", "--round", "1", "--pass-kind", "staged"]
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
         assert not _ledger_path(isolated_home, git_repo).exists()
@@ -933,6 +951,8 @@ class TestReviewLedgerCleanDisposition:
             "CLEAN",
             "--round",
             "1",
+            "--pass-kind",
+            "staged",
             "--authoring-agent",
             "code-writer",
             "--authoring-effort",
@@ -980,7 +1000,7 @@ class TestReviewLedgerRoundScopedDedup:
 
         assert result.returncode == 0, result.stderr
         rows = [json.loads(line) for line in ledger.read_text().splitlines()]
-        assert [row["schema_version"] for row in rows] == [2, 6]
+        assert [row["schema_version"] for row in rows] == [2, 7]
 
     def test_clean_row_matching_an_existing_v4_row_on_every_other_field_lands_as_a_second_row(
         self, isolated_home, git_repo
@@ -988,7 +1008,7 @@ class TestReviewLedgerRoundScopedDedup:
         """A v4 row carries a session_id but no reviewers key, so the reviewers
         field in the dedup key keeps a current-schema CLEAN from collapsing into it."""
         _seed_session(isolated_home, SID)
-        clean_args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1"]
+        clean_args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"]
         assert _run(clean_args, cwd=git_repo, home=isolated_home).returncode == 0
         ledger = _ledger_path(isolated_home, git_repo)
         (row,) = _ledger_rows(ledger)
@@ -999,7 +1019,7 @@ class TestReviewLedgerRoundScopedDedup:
         result = _run(clean_args, cwd=git_repo, home=isolated_home)
 
         assert result.returncode == 0, result.stderr
-        assert [stored.get("schema_version") for stored in _ledger_rows(ledger)] == [4, 6]
+        assert [stored.get("schema_version") for stored in _ledger_rows(ledger)] == [4, 7]
 
     def test_retried_identical_call_within_same_round_still_dedups(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
@@ -1011,7 +1031,7 @@ class TestReviewLedgerRoundScopedDedup:
 
     def test_retried_identical_clean_call_within_same_round_still_dedups(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1"]
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"]
         _run(args, cwd=git_repo, home=isolated_home)
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 0, result.stderr
@@ -1522,9 +1542,14 @@ def _consult_args(**overrides) -> list[str]:
 _ENGINEER_SETTLED_ROW_OVERRIDES = {**_ENGINEER_SETTLED_ROW_FIELDS, "site_hash": "0" * 12}
 
 
-def _round_cap_verdict_args(verdict: str = "noise", round: str = "2", **extra_flags: str) -> list[str]:
+def _round_cap_verdict_args(
+    verdict: str = "noise", round: str = "2", pass_kind: str = "staged", **extra_flags: str
+) -> list[str]:
     """A CONSULT append: the verdict is the rationale, and no finding, source or lane is passed."""
-    args = ["append", "code-review", "--disposition", "CONSULT", "--rationale", verdict, "--round", round]
+    args = [
+        "append", "code-review", "--disposition", "CONSULT", "--rationale", verdict, "--round", round,
+        "--pass-kind", pass_kind,
+    ]
     for flag, value in extra_flags.items():
         args += [f"--{flag.replace('_', '-')}", value]
     return args
@@ -1537,13 +1562,14 @@ class TestReviewLedgerRoundCapVerdictAppend:
     def test_a_noise_verdict_is_stored_with_no_finding_source_lanes_or_hash(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
 
-        result = _run(_round_cap_verdict_args("noise"), cwd=git_repo, home=isolated_home)
+        result = _run(_round_cap_verdict_args("noise", pass_kind="review-pr"), cwd=git_repo, home=isolated_home)
 
         assert result.returncode == 0, result.stderr
         (row,) = _ledger_rows(_ledger_path(isolated_home, git_repo))
         assert (row["disposition"], row["rationale"], row["round"]) == ("CONSULT", "noise", 2)
         assert (row["finding"], row["source"], row["reviewers"], row["site_hash"]) == ("", "n/a", [], "")
-        assert row["schema_version"] == 6
+        assert row["schema_version"] == 7
+        assert row["pass_kind"] == "review-pr"
 
     def test_show_counts_the_verdicts_round_in_max_round(self, isolated_home, git_repo):
         _git(git_repo, "checkout", "-q", "-b", "feature")
@@ -2082,6 +2108,119 @@ class TestRoundCapVerdictSkillParity:
 
         assert result.returncode == 0, result.stderr
         assert literal in out_path.read_text()
+
+
+def _skill_pass_kind_words() -> list[str]:
+    """The backticked words of Step 0.1's "Where `<kind>` is ..." sentence that name a pass kind.
+    The pattern drops the skill names and the git command the sentence also backticks."""
+    sentence = re.search(r"Where `<kind>` is ([^.]*)\.", _code_review_skill_text())
+    tokens = re.findall(r"`([^`]+)`", sentence.group(1)) if sentence else []
+    return [token for token in tokens if re.fullmatch(r"[a-z][a-z-]*", token)]
+
+
+_PASS_KIND_WORDS = _skill_pass_kind_words()
+
+
+class TestReviewLedgerPassKind:
+    """One subprocess case per branch of the --pass-kind check. The value matrix lives in
+    scripts/tests/test_review_ledger_lib.py."""
+
+    def test_an_append_without_pass_kind_exits_2_prints_the_missing_reason_and_writes_no_row(
+        self, isolated_home, git_repo
+    ):
+        _seed_session(isolated_home, SID)
+
+        result = _run(_append_args(pass_kind=None), cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 2
+        assert "--pass-kind is required and missing" in result.stderr
+        assert not _ledger_path(isolated_home, git_repo).exists()
+
+    def test_a_clean_append_without_pass_kind_exits_2_prints_the_missing_reason_and_writes_no_row(
+        self, isolated_home, git_repo
+    ):
+        _seed_session(isolated_home, SID)
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1"]
+
+        result = _run(args, cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 2
+        assert "--pass-kind is required and missing" in result.stderr
+        assert not _ledger_path(isolated_home, git_repo).exists()
+
+    def test_a_value_outside_the_four_exits_2_prints_the_unknown_reason_and_writes_no_row(
+        self, isolated_home, git_repo
+    ):
+        _seed_session(isolated_home, SID)
+
+        result = _run(_append_args(pass_kind="cumulative-pass"), cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 2
+        assert "--pass-kind 'cumulative-pass' is not a pass kind" in result.stderr
+        assert not _ledger_path(isolated_home, git_repo).exists()
+
+    def test_a_clean_row_with_cumulative_lands_with_that_pass_kind_at_schema_7(self, isolated_home, git_repo):
+        _seed_session(isolated_home, SID)
+        args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "cumulative"]
+
+        result = _run(args, cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 0, result.stderr
+        (row,) = _ledger_rows(_ledger_path(isolated_home, git_repo))
+        assert (row["pass_kind"], row["schema_version"]) == ("cumulative", 7)
+
+    def test_skill_md_names_exactly_four_pass_kinds(self):
+        assert len(_PASS_KIND_WORDS) == 4
+
+    @pytest.mark.parametrize("pass_kind", _PASS_KIND_WORDS)
+    def test_each_skill_md_pass_kind_is_accepted(self, isolated_home, git_repo, pass_kind):
+        _seed_session(isolated_home, SID)
+
+        result = _run(_append_args(pass_kind=pass_kind), cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 0, result.stderr
+        (row,) = _ledger_rows(_ledger_path(isolated_home, git_repo))
+        assert row["pass_kind"] == pass_kind
+
+    def test_the_pass_kinds_the_script_lists_are_exactly_the_skill_md_pass_kinds(self, isolated_home, git_repo):
+        """Both directions: a fifth word in the script, or a stale old one, fails here."""
+        _seed_session(isolated_home, SID)
+
+        result = _run(_append_args(pass_kind="not-a-pass-kind"), cwd=git_repo, home=isolated_home)
+
+        listing = result.stderr.split("Pass one of: ", 1)[1].splitlines()[0]
+        assert {word.strip() for word in listing.split(",")} == set(_PASS_KIND_WORDS)
+
+    def test_the_usage_synopsis_lists_the_same_pass_kinds_the_script_accepts(self, isolated_home, git_repo):
+        usage = " ".join(_run(["--help"], cwd=git_repo, home=isolated_home).stderr.split())
+
+        synopsis = re.search(r"--pass-kind ([a-z-]+(?:\|[a-z-]+)+)", usage)
+
+        assert synopsis is not None
+        assert set(synopsis.group(1).split("|")) == set(_PASS_KIND_WORDS)
+
+    @pytest.mark.parametrize("successor", ["relog", "carry"])
+    def test_a_relog_or_carry_row_stores_its_own_pass_kind_not_the_decisions(self, isolated_home, git_repo, successor):
+        """A staged round's decision re-met by a cumulative round must count under cumulative."""
+        if successor == "carry":
+            result, _decision_id = _decide_then_carry_as_another_session(
+                isolated_home, git_repo, _defer_args(pass_kind="staged"), {"pass_kind": "cumulative"},
+            )
+        else:
+            _git(git_repo, "checkout", "-q", "-b", "feature")
+            _seed_session(isolated_home, SID)
+            assert _run(_defer_args(pass_kind="staged"), cwd=git_repo, home=isolated_home).returncode == 0
+            result = _run(
+                _append_args(
+                    ref=_logged_id(isolated_home, git_repo), round="2", reviewers=(), relog=True,
+                    pass_kind="cumulative",
+                ),
+                cwd=git_repo, home=isolated_home,
+            )
+
+        assert result.returncode == 0, result.stderr
+        decision, successor_row = _ledger_rows(_ledger_path(isolated_home, git_repo))
+        assert (decision["pass_kind"], successor_row["pass_kind"]) == ("staged", "cumulative")
 
 
 _LONG_FLAG_PATTERN = re.compile(r"(?<![\w-])--[a-z][a-z-]*")
@@ -2743,7 +2882,8 @@ class TestReviewLedgerLanes:
         _seed_session(isolated_home, SID)
 
         result = _run(
-            ["append", "code-review", "--disposition", "CLEAN", "--round", "1"], cwd=git_repo, home=isolated_home,
+            ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"],
+            cwd=git_repo, home=isolated_home,
         )
 
         assert result.returncode == 0, result.stderr
@@ -3050,8 +3190,8 @@ class TestReviewLedgerLanes:
 # The fields the append's dedup key names, and a value for each that differs from
 # the engineer SETTLED row _engineer_args logs.
 _DEDUP_KEY_CHANGES = {
-    "round": 99, "finding": "other", "disposition": "DEFER", "rationale": "other", "source": "other.txt:1",
-    "authoring_agent": "mixed", "authoring_effort": "high", "reviewers": ["ciso-reviewer"],
+    "round": 99, "pass_kind": "cumulative", "finding": "other", "disposition": "DEFER", "rationale": "other",
+    "source": "other.txt:1", "authoring_agent": "mixed", "authoring_effort": "high", "reviewers": ["ciso-reviewer"],
     "session_id": "other-session",
     "decided_by": "plan-architect", "engineer_quote": "other quote", "enforcement_invariant": True,
     "carry_forward": False, "defer_criterion": _DEFER_CRITERION, "ref": "f" * 12, "cited_line": "file.txt:1",
@@ -3216,19 +3356,19 @@ class TestReviewLedgerRefRetry:
         assert result.returncode == 0, result.stderr
         assert len(_ledger_rows(ledger)) == 3
 
-    def test_a_retry_against_a_pre_schema_6_retirer_that_has_no_reviewed_state_adds_no_row(
+    def test_a_retry_against_a_schema_6_retirer_is_rejected_as_no_longer_live_and_adds_no_row(
         self, isolated_home, git_repo
     ):
-        """A retirer landed before the upgrade carries neither reviewed-state key, and the retry's own two keys
-        must pass both the retry check's deny-list and the dedup key."""
+        """A schema 6 retirer has the reviewed_* fields but no pass_kind, so the retry's pass_kind makes it a different row."""
 
-        def as_schema_5_row(retirer: dict) -> dict:
-            pre_upgrade = {key: value for key, value in retirer.items() if not key.startswith("reviewed_")}
-            return {**pre_upgrade, "schema_version": 5}
+        def as_schema_6_row(retirer: dict) -> dict:
+            pre_upgrade = {key: value for key, value in retirer.items() if key != "pass_kind"}
+            return {**pre_upgrade, "schema_version": 6}
 
-        result, ledger = self._retry_against_rewritten_retirer(isolated_home, git_repo, as_schema_5_row)
+        result, ledger = self._retry_against_rewritten_retirer(isolated_home, git_repo, as_schema_6_row)
 
-        assert result.returncode == 0, result.stderr
+        assert result.returncode == 2
+        assert "no longer live" in result.stderr
         assert len(_ledger_rows(ledger)) == 3
 
 
@@ -3346,6 +3486,25 @@ class TestReviewLedgerDedupKey:
         rows = self._append_after_changing_one_field(isolated_home, git_repo, field, _DEDUP_KEY_EXEMPT_CHANGES[field])
 
         assert len(rows) == 1, f"{field} varies on every attempt, so it must not be part of the dedup key"
+
+    def test_clean_row_matching_an_existing_v6_row_without_pass_kind_lands_as_a_second_row(
+        self, isolated_home, git_repo
+    ):
+        """A v6 row carries no pass_kind key, so the pass_kind field in the dedup key
+        keeps a current-schema CLEAN from collapsing into it."""
+        _seed_session(isolated_home, SID)
+        clean_args = ["append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged"]
+        assert _run(clean_args, cwd=git_repo, home=isolated_home).returncode == 0
+        ledger = _ledger_path(isolated_home, git_repo)
+        (row,) = _ledger_rows(ledger)
+        del row["pass_kind"]
+        row["schema_version"] = 6
+        ledger.write_text(json.dumps(row) + "\n")
+
+        result = _run(clean_args, cwd=git_repo, home=isolated_home)
+
+        assert result.returncode == 0, result.stderr
+        assert [stored["schema_version"] for stored in _ledger_rows(ledger)] == [6, 7]
 
 
 def _decide_then_carry_as_another_session(isolated_home, git_repo, decision_args, carry_overrides):
@@ -3886,9 +4045,11 @@ class TestReviewLedgerShow:
         result = _run(["show"], cwd=git_repo, home=isolated_home)
 
         rows = _shown_rows(result)
-        assert [(row["schema_version"], row["finding"]) for row in rows] == [(2, "v2 row"), (6, "current row")]
+        assert [(row["schema_version"], row["finding"]) for row in rows] == [(2, "v2 row"), (7, "current row")]
         assert "session_id" not in rows[0]
+        assert "pass_kind" not in rows[0]
         assert rows[1]["session_id"] == SID
+        assert rows[1]["pass_kind"] == "staged"
         assert _show_header(result)["rows"] == "2"
 
     def test_show_merges_the_branch_and_session_files_in_event_time_order(self, isolated_home, git_repo):

@@ -139,7 +139,7 @@ class TestArchiveWorktree:
         writer = subprocess.run(
             [
                 "bash", str(SCRIPTS_DIR / "review-ledger.sh"), "append", "code-review",
-                "--disposition", "CLEAN", "--round", "1",
+                "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged",
             ],
             cwd=archive_worktree.worktree, env=env, capture_output=True, text=True, check=False,
         )

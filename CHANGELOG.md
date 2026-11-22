@@ -24,6 +24,13 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Pre-flight item 1 ran `git log` with no range, so it also walked the base branch's history and reported almost any branch in a multi-contributor repo as shared. It now runs `git fetch origin`, then `git log --format='%ae %ce' origin/main..origin/<branch>`.
   - **Migration:** pre-flight item 1 can establish a branch as solo-contributor from that log, so the engineer no longer needs to say so.
   - The skill's word "personal" becomes "solo-contributor" throughout. The change is live on `git pull`.
+- **`review-ledger.sh append` now requires `--pass-kind` and records it on each row.**
+  - Each new row stores `pass_kind` (`staged`, `cumulative`, `review-pr` or `other`), and `schema_version` is now 7. `docs/scripts.md`'s `review-ledger.sh` entry says how to read rows written before schema 7.
+  - `/code-review` passes the value on every append, and `/ready-for-review`'s disposition record is no longer the home of a pass's kind.
+  - **Migration:** an `append` without a valid `--pass-kind` now exits 2 and writes nothing, and the rejection says what each value means. Any caller outside the stowed `/code-review` skill must pass the flag.
+  - A session that loaded `/code-review` before the pull may keep its old skill text, so each of its appends is rejected (exit 2, nothing written) until the call carries `--pass-kind`, and a value picked from the rejection hint is that session's own reading of the round. Restart any session that loaded `/code-review` before the pull: a restart avoids a rejected first call and a pass kind guessed from the rejection hint.
+  - The change is live on `git pull`.
+  - Reverting it needs no data change, because the reverted script's readers that read rows by named key ignore the added field. The exception is the retry check: a `--ref` append that landed at schema 7 and is retried after the revert is rejected as no longer live. After a revert, restart any session that loaded `/code-review` since the pull, because the reverted script rejects `--pass-kind` as an unknown argument.
 - **`select-tests.py` now runs `timing`-marked tests in a second, serial pytest pass that collects the selection and filters it with `-m`, as CI's split does, when the selection contains them and the run starts two or more workers (README's Tests section lists the other cases that run one pass).**
   - A split run never runs the one `timing` test that starts a busy process per core, which now carries the `saturates_cpu` marker, and the README's Tests section states the rest of the split-run contract and how to run that test locally.
   - **Migration:** a split run prints two pytest summaries and a closing stderr line.

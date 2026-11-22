@@ -2875,7 +2875,7 @@ class TestReviewLedgerStatePaths:
         subprocess.run(
             [
                 "bash", str(SCRIPTS_DIR / "review-ledger.sh"),
-                "append", "code-review", "--disposition", "CLEAN", "--round", "1",
+                "append", "code-review", "--disposition", "CLEAN", "--round", "1", "--pass-kind", "staged",
             ],
             cwd=git_repo, env=env, check=True, capture_output=True,
         )

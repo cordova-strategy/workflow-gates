@@ -42,8 +42,8 @@ _LEDGER_ROUND_MAX_DIGITS=4
 # That lock fails open after _LIB_APPEND_LOCK_RETRIES failed acquisitions.
 _LEDGER_LINE_MAX_BYTES=4095
 # Ledger row schema version. The reader rule in docs/scripts.md reads it to
-# take a round's state only from rows with schema_version 6 or more.
-_LEDGER_SCHEMA_VERSION=6
+# take a round's state only from rows with schema_version 6 or more, and its pass kind only from rows with 7 or more.
+_LEDGER_SCHEMA_VERSION=7
 
 usage() {
   cat >&2 <<'EOF'
@@ -51,6 +51,7 @@ Usage: ~/.claude/scripts/review-ledger.sh <subcommand> [args]
 
 Subcommands:
   append code-review --disposition ADDRESS|DEFER|SETTLED|CLEAN|CONSULT --round <N> \
+      --pass-kind staged|cumulative|review-pr|other \
       [--finding <text> --rationale <text>] [--source <path>[:<start>[-<end>]]] \
       [--decided-by engineer|plan-architect|carry] [--engineer-quote <text>] \
       [--enforcement-invariant] [--carry-forward] [--defer-criterion <name>] \
@@ -67,6 +68,7 @@ Subcommands:
              --source, --reviewer and --relog must be omitted.
              --round is the 1-based review round number for this
              /code-review run on this branch.
+             --pass-kind is required and names the kind of pass the round ran; code-review/SKILL.md's Step 0.1 says which value a round passes.
              ADDRESS, DEFER and SETTLED require --source as <repo-relative path> with an
              optional :<start>[-<end>] line range (1 to 9 digits, no leading
              zero, start <= end). A path-only source never carries. An
@@ -121,7 +123,7 @@ Subcommands:
              withdrawal are such rows. --relog copies the --ref decision's lanes. It
              needs --ref and is rejected on a carry. The row stores its lanes
              sorted and duplicate-free as reviewers.
-             No-ops (exit 0) if the identical line (by round, finding,
+             No-ops (exit 0) if the identical line (by round, pass_kind, finding,
              disposition, rationale, source, authoring_agent,
              authoring_effort, reviewers, session_id and every field above)
              already exists.
@@ -463,6 +465,7 @@ case "$SUBCOMMAND" in
     RATIONALE=""
     SOURCE="n/a"
     ROUND=""
+    PASS_KIND=""
     # Empty means the caller omitted --authoring-agent/--authoring-effort ("not declared"), not that it declared and confirmed empty.
     AUTHORING_AGENT=""
     AUTHORING_EFFORT=""
@@ -481,7 +484,7 @@ case "$SUBCOMMAND" in
     EMPTY_VALUE_FLAGS=""
     while [ $# -gt 0 ]; do
       case "$1" in
-        --finding|--disposition|--rationale|--source|--round|--authoring-agent|--authoring-effort|--decided-by|--engineer-quote|--defer-criterion|--ref|--cited-line|--reviewer)
+        --finding|--disposition|--rationale|--source|--round|--pass-kind|--authoring-agent|--authoring-effort|--decided-by|--engineer-quote|--defer-criterion|--ref|--cited-line|--reviewer)
           if [ $# -lt 2 ]; then
             printf "review-ledger.sh: %s requires a value\n" "$1" >&2
             exit 2
@@ -499,6 +502,7 @@ case "$SUBCOMMAND" in
         --rationale) RATIONALE="$2"; shift 2 ;;
         --source) SOURCE="$2"; shift 2 ;;
         --round) ROUND="$2"; shift 2 ;;
+        --pass-kind) PASS_KIND="$2"; shift 2 ;;
         --authoring-agent) AUTHORING_AGENT="$2"; shift 2 ;;
         --authoring-effort) AUTHORING_EFFORT="$2"; shift 2 ;;
         --reviewer) REVIEWERS+=("$2"); shift 2 ;;
@@ -595,6 +599,7 @@ case "$SUBCOMMAND" in
     _review_ledger_validate_flags "$DISPOSITION" "$DECIDED_BY" "$ENGINEER_QUOTE" "$ENFORCEMENT_INVARIANT" \
       "$CARRY_FORWARD" "$DEFER_CRITERION" "$REF" "$CITED_LINE" "$SOURCE" "$EMPTY_VALUE_FLAGS" || exit 2
     _review_ledger_validate_lanes "$DISPOSITION" "$DECIDED_BY" "$REF" "$RELOG" "${REVIEWERS[@]}" || exit 2
+    _review_ledger_validate_pass_kind "$PASS_KIND" || exit 2
 
     SESSION_ID=$(_resolve_session_id) || exit 2
     REPO_ROOT=$(_resolve_repo_root) || exit 2
@@ -690,8 +695,8 @@ case "$SUBCOMMAND" in
       --arg site_hash "$SITE_HASH" --arg reviewed_head "$REVIEWED_HEAD" --arg reviewed_tree "$REVIEWED_TREE" \
       --arg reviewers_text "$REVIEWERS_TEXT" \
       --argjson copied_reviewers "$COPIED_REVIEWERS_JSON" \
-      --argjson round "$ROUND" --argjson schema_version "$_LEDGER_SCHEMA_VERSION" --arg event_time "$EVENT_TIME" \
-      '{schema_version: $schema_version, round: $round, finding: $finding, disposition: $disposition,
+      --argjson round "$ROUND" --arg pass_kind "$PASS_KIND" --argjson schema_version "$_LEDGER_SCHEMA_VERSION" --arg event_time "$EVENT_TIME" \
+      '{schema_version: $schema_version, round: $round, pass_kind: $pass_kind, finding: $finding, disposition: $disposition,
         rationale: $rationale, source: $source, authoring_agent: $authoring_agent,
         authoring_effort: $authoring_effort,
         reviewers: (if $copied_reviewers != null then $copied_reviewers
@@ -742,8 +747,7 @@ case "$SUBCOMMAND" in
     # A retry after HEAD or the index moved is therefore still a no-op, and the landed row keeps the first attempt's state.
     # The dedup key includes session_id, so two sessions on one branch file each
     # keep their own copy.
-    # A row written before schema 5 has no reviewers key, so it never dedups
-    # against a schema-5 row.
+    # A row written before schema 5 has no reviewers key, and one before schema 7 no pass_kind key, so neither dedups against a newer row.
 
     # Call tally: the calls that can run without a timeout, which are the points where an append can hang.
     # Hashing is an in-memory pipe that cannot hang, so the sha256sum and awk
@@ -769,7 +773,7 @@ case "$SUBCOMMAND" in
     # The primitive returns nonzero only when the row was neither written nor
     # deduplicated, so the row is lost unless the caller retries.
     _lib_append_json_line_locked "$LEDGER_FILE" "$LOCK_FILE" "$LINE" \
-      '{round, finding, disposition, rationale, source, authoring_agent, authoring_effort, reviewers, session_id, decided_by, engineer_quote, enforcement_invariant, carry_forward, defer_criterion, ref, cited_line, site_hash}'
+      '{round, pass_kind, finding, disposition, rationale, source, authoring_agent, authoring_effort, reviewers, session_id, decided_by, engineer_quote, enforcement_invariant, carry_forward, defer_criterion, ref, cited_line, site_hash}'
     APPEND_STATUS=$?
     if [ "$APPEND_STATUS" -ne 0 ]; then
       printf 'review-ledger.sh: could not write the ledger row to %s. The row was not recorded.\n' "$LEDGER_FILE" >&2

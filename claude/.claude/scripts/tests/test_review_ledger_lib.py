@@ -345,6 +345,42 @@ class TestValidateRoundCapVerdict:
         assert "--source must be omitted for --disposition CONSULT" in result.stderr
 
 
+_PASS_KINDS = ("staged", "cumulative", "review-pr", "other")
+_PASS_KIND_LISTING = "Pass one of: staged, cumulative, review-pr, other\n"
+
+
+class TestValidatePassKind:
+    @pytest.mark.parametrize("pass_kind", _PASS_KINDS)
+    def test_each_pass_kind_is_accepted(self, pass_kind):
+        result = _call("_review_ledger_validate_pass_kind", pass_kind)
+
+        assert result.returncode == 0, result.stderr
+
+    def test_an_empty_value_is_rejected_with_the_missing_line(self):
+        result = _call("_review_ledger_validate_pass_kind", "")
+
+        assert result.returncode == 1
+        assert "--pass-kind is required and missing" in result.stderr
+        assert result.stderr.endswith(_PASS_KIND_LISTING)
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("Staged", id="wrong case"),
+            pytest.param(" staged", id="leading space"),
+            pytest.param("staged ", id="trailing space"),
+            pytest.param("review_pr", id="underscore"),
+            pytest.param("cumulative-pass", id="extra word"),
+        ],
+    )
+    def test_a_value_outside_the_four_is_rejected_with_the_unknown_line_listing_all_four(self, value):
+        result = _call("_review_ledger_validate_pass_kind", value)
+
+        assert result.returncode == 1
+        assert f"--pass-kind '{value}' is not a pass kind" in result.stderr
+        assert result.stderr.endswith(_PASS_KIND_LISTING)
+
+
 # ---------------------------------------------------------------------------
 # Source and cited-line grammar
 # ---------------------------------------------------------------------------
@@ -615,8 +651,8 @@ class TestSiteHash:
 
 def _row(**fields) -> dict:
     row = {
-        "schema_version": 6, "round": 1, "finding": "a finding", "disposition": "DEFER", "rationale": "why",
-        "source": "a.py:1-2", "authoring_agent": "", "authoring_effort": "", "reviewers": ["staff-sdet"],
+        "schema_version": 7, "round": 1, "pass_kind": "staged", "finding": "a finding", "disposition": "DEFER",
+        "rationale": "why", "source": "a.py:1-2", "authoring_agent": "", "authoring_effort": "", "reviewers": ["staff-sdet"],
         "session_id": _SESSION_ID_LIKE,
         "decided_by": "", "engineer_quote": "", "enforcement_invariant": False, "carry_forward": False,
         "defer_criterion": "", "ref": "", "cited_line": "", "site_hash": "",
@@ -1960,8 +1996,9 @@ class TestCheckRefDefersRetiredDecisions:
 
 # A value for each dedup-key field that differs from the ADDRESS retirer the tests below build.
 _RETIRER_KEY_FIELD_CHANGES = {
-    "round": 2, "finding": "another finding", "disposition": "DEFER", "rationale": "a different reason",
-    "source": "b.py:1", "authoring_agent": "mixed", "authoring_effort": "high", "reviewers": ["ciso-reviewer"],
+    "round": 2, "pass_kind": "cumulative", "finding": "another finding", "disposition": "DEFER",
+    "rationale": "a different reason", "source": "b.py:1", "authoring_agent": "mixed", "authoring_effort": "high",
+    "reviewers": ["ciso-reviewer"],
     "session_id": "another-session",
     "decided_by": "plan-architect", "engineer_quote": "a quote", "enforcement_invariant": True,
     "carry_forward": True, "defer_criterion": _CRITERION, "ref": "f" * 12, "cited_line": "a.py:1",
@@ -1984,13 +2021,29 @@ class TestCheckNotRetired:
 
         assert _retry_check(ledger, retry).returncode == 0
 
-    def test_a_retry_carrying_reviewed_state_matches_a_retirer_written_before_schema_6(self, ledger):
-        retirer = _address(_SUCCESSOR_ID, ref=_DECISION_ID, schema_version=5)
-        del retirer["reviewed_head"], retirer["reviewed_tree"]
+    @pytest.mark.parametrize(
+        ("schema_version", "keys_added_since"),
+        [
+            pytest.param(5, ("reviewed_head", "reviewed_tree", "pass_kind"), id="schema 5"),
+            pytest.param(6, ("pass_kind",), id="schema 6"),
+        ],
+    )
+    def test_a_retry_is_rejected_against_a_retirer_written_before_schema_7(
+        self, ledger, schema_version, keys_added_since
+    ):
+        retirer = _address(_SUCCESSOR_ID, ref=_DECISION_ID, schema_version=schema_version)
+        for key in keys_added_since:
+            del retirer[key]
         _write_ledger(ledger, [_defer(_DECISION_ID), retirer])
-        retry = {**retirer, "id": "dddddddddddd", "schema_version": 6, "reviewed_head": "6" * 40, "reviewed_tree": "7" * 40}
+        retry = {
+            **retirer, "id": "dddddddddddd", "schema_version": 7, "pass_kind": "staged",
+            "reviewed_head": "6" * 40, "reviewed_tree": "7" * 40,
+        }
 
-        assert _retry_check(ledger, retry).returncode == 0
+        result = _retry_check(ledger, retry)
+
+        assert result.returncode == 1
+        assert "no longer live" in result.stderr
 
     @pytest.mark.parametrize(("field", "value"), sorted(_RETIRER_KEY_FIELD_CHANGES.items()))
     def test_a_row_differing_from_the_retirer_in_one_key_field_is_rejected_naming_the_retirer(

@@ -116,7 +116,7 @@ def _append_branch_row(home: Path, worktree: Path) -> None:
             str(home / ".claude" / "scripts" / "review-ledger.sh"), "append", "code-review",
             "--finding", SEEDED_FINDING, "--disposition", "ADDRESS",
             "--rationale", "fixed in round 1", "--source", "file.txt:1", "--round", "1",
-            "--reviewer", "staff-sdet",
+            "--pass-kind", "staged", "--reviewer", "staff-sdet",
         ],
         cwd=worktree,
         env=env,
