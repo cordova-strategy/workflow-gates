@@ -414,7 +414,7 @@ class TestPooledModesKeepReadingEveryDeclaredRoot:
 
 class TestSampleCommandsBannerAboveOneRoot:
     """audit-routing-samples and handoff-signal-response --sample print the DO NOT PUBLISH line on stderr above one
-    root, and leave their stdout a parseable JSON document."""
+    root, and keep it off their stdout."""
 
     @staticmethod
     def _audit_routing_samples_session_ids(stdout: str) -> set[str]:
