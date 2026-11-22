@@ -49,3 +49,13 @@ def _scan(records: list[dict], seen_tool_use_ids: set[str] | None = None) -> rea
 
 def _read_exchange(message_id: str, tool_id: str, path: str, *, text: str = _HUNDRED_TOKEN_TEXT) -> list[dict]:
     return [_turn(message_id, [_read_use(tool_id, file_path=path)]), _read_result(tool_id, text)]
+
+
+def _file_record(
+    path: str, *, start_line=1, num_lines=100, total_lines=100, truncated_by_token_cap=None,
+) -> dict:
+    """A Read result's `toolUseResult`, in the shape the harness writes beside the result text."""
+    file_fields = {"filePath": path, "startLine": start_line, "numLines": num_lines, "totalLines": total_lines}
+    if truncated_by_token_cap is not None:
+        file_fields["truncatedByTokenCap"] = truncated_by_token_cap
+    return {"type": "text", "file": file_fields}
