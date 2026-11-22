@@ -519,8 +519,7 @@ _warn_unusable_declared_line() {
 # _config_dir.py's declared_roots_matching owns the line grammar, and
 # test_reader_matches_config_dir_parser compares the two on a fixed set of lines.
 # That test does not cover a lone CR, VT, FF or U+2028, which split lines differently.
-# It also does not cover the whitespace trim, which follows the locale's [:space:]
-# where the Python parser trims a fixed ASCII set.
+# It also does not cover non-ASCII whitespace, which the locale's [:space:] may trim and the Python parser does not.
 read_declared_config_dirs() {
   DECLARED_CONFIG_DIRS=()
   [ -f "$DECLARED_DIRS_FILE" ] && [ -r "$DECLARED_DIRS_FILE" ] || return 0
@@ -577,9 +576,9 @@ _relative_path() {
   printf '%s' "${rest:-.}"
 }
 
-# The next three helpers run inside _repoint_declared_dir and share its locals
-# (new_real, dir_real, line_number, roots and the counters) through bash's
-# dynamic scope. They sit above it so shellcheck reports no SC2030 or SC2031.
+# _fail_declared_link, _repoint_declared_link and _walk_declared_position run inside
+# _repoint_declared_dir and share its locals (new_real, dir_real, line_number, roots
+# and the counters) through bash's dynamic scope.
 
 # Count position $1 as a link that could not be re-pointed, for the cause $2.
 _fail_declared_link() {
@@ -796,7 +795,8 @@ print_manual_steps() {
 Not done by this command:
   - Config dirs not listed in ~/.claude/transcript-config-dirs, or listed there and reported above as not re-linked, keep their links into the old location.
     A session under such an account loads none of this repo's settings, hooks or skills until its dir is re-linked.
-    To have this command re-link one, list its absolute path in that file (which also adds it to the transcript tools' scan when it holds `projects/`), or correct the line a warning above names, or make its dir reachable.
+    To have this command re-link one, list its absolute path in that file, or correct the line a warning above names, or make its dir reachable.
+    Listing a dir there also adds it to the transcript tools' scan when it holds `projects/`.
     Then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when this run passed it.
     Listing a dir there gives this command write access to its links, whether or not the transcript tools scan it, so list one only if you want that.
     This command did not touch a link reported above as left alone, so re-link or remove it yourself.

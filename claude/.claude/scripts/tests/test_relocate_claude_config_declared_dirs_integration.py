@@ -107,11 +107,11 @@ def test_both_modes_repoint_listed_dirs_and_report_each(tmp_path: Path, mode: st
     assert sorted(entry.name for entry in scene.accounts["acct-b"].iterdir()) == scene.listing_of_b
     assert _outcomes(result.stdout) == [(3, 2, 0, 0, 0), (5, 0, 0, 1, 0), (6, 0, 0, 0, 0)]
     assert _left_alone(result.stdout) == ["scripts"]
+    assert "This command did not touch a link reported above as left alone" in result.stdout
     assert scene.old_texts["b-scripts"] not in result.stdout and scene.old_texts["b-scripts"] not in result.stderr
     last_outcome = result.stdout.index(f"the dir on line 6 of {_ROOTS_LABEL}: re-pointed")
     assert last_outcome < result.stdout.index("Done.")
     assert last_outcome < result.stdout.index("relocate-claude-config --repair [--allow-outside-home]")
-    # The notice that listing a dir grants write access to its links is required in the closing text.
     assert "gives this command write access to its links" in result.stdout
 
 
