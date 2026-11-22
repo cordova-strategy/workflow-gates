@@ -1,13 +1,18 @@
 # Reviewer whole-file reads: the A-field baseline
 
-How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. It is the A-field baseline GH-1529 asks for: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
+How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. It is the A-field baseline GH-1529 asks for: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The report's terms (reviewer window, whole-file call, outcome classes, diff handoff) are defined in `docs/transcript-analysis.md` § "reviewer-reads". The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
 
 The figures come from transcripts and ledger files selected by this checkout's path identity, on one account (see Limitations for what that selection does not exclude). The command refuses any wider scope, which is what makes them publishable under `docs/private-project-redaction.md` § "Publishing a tooling measurement". It reads this clone's live worktrees only.
 
 ## Headline answers
 
-- **Partial or refused:** 100.0% (65/65) of whole-file calls on reviewed files that were partial, refused, complete on a file over 2,000 lines, or flagged `allow_large` at an estimated 25,000 tokens or more. All 65 are `partial_token_cap`, none is refused, and all 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in that denominator.
-- **Read share:** 12.7% of modeled billed weight in reviewer windows goes to Reads. Of the Read weight, 18.0% is files over 1,000 lines. Of the Read weight too, 7.0% is code and other reviewed files over 1,000 lines and 10.4% is diff handoffs over 1,000 lines, and these two do not sum to the 18.0%. This is a share of modeled billed weight, not of tokens or dollars.
+- **Partial or refused:** all 65 whole-file calls in the denominator came back partial (`partial_token_cap`), none was refused, and all 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in the denominator. That is 100.0% (65/65).
+  - The denominator is whole-file calls on reviewed files that were partial, refused, complete on a file over 2,000 lines, or flagged `allow_large` at an estimated 25,000 tokens or more.
+- **Read share:** 12.7% of modeled billed weight in reviewer windows goes to Reads. This is a share of modeled billed weight, not of tokens or dollars. Of the Read weight:
+  - 18.0% is files over 1,000 lines.
+  - 7.0% is code and other reviewed files over 1,000 lines.
+  - 10.4% is diff handoffs over 1,000 lines.
+  - The 7.0% and 10.4% do not sum to the 18.0%.
 
 ## The run
 
@@ -15,7 +20,7 @@ The figures come from transcripts and ledger files selected by this checkout's p
 - **Run at:** 2026-11-22T11:44:30Z.
 - **Window:** 2026-10-25 to 2026-11-21, both days included, 28 days.
 - **`cleanupPeriodDays`:** absent from the account's settings, so the 30-day default applies. At that default, records from about 2026-10-23 onward were still kept at the run, so the window's first day, 2026-10-25, falls inside the retained span.
-- **Instrument commit:** `e5e1f34f573a`, the commit the capture's worktree was cut from. The module files the plan lists, plus the ledger reader in `author_outcome.py`, show no diff against the commit the instrument was last dry-run at.
+- **Instrument commit:** `e5e1f34f573a`, the commit the capture's worktree was cut from. The `claude/.claude/scripts/transcript_analysis/` package, which holds the instrument and the ledger reader in `author_outcome.py`, shows no diff between `daeeae4fbd4a`, #1575's head commit and the commit the instrument was last run against before this capture, and `e5e1f34f573a`.
 - **Self-checks:** five checks passed before this page was written, as `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines them.
   - Reviewer-window floor: the reviewer-window count is above zero.
   - Ledger floor: a report that counts any `code-review` round window also counts at least one ledger file read.
