@@ -478,9 +478,6 @@ def _iter_glob_scoped_sessions(
 def _narrows_to_active_account(args: argparse.Namespace) -> bool:
     """True when none of --this-repo, --all-accounts and the top-level --config-dir
     is set, so a narrowed command reads the active account alone.
-
-    All three are read via getattr, so a namespace missing an attribute counts
-    as not passed.
     """
     return not (
         getattr(args, "this_repo", False)
@@ -995,7 +992,6 @@ def _refuse_absolute_projects_glob(projects_glob: str, subcommand: str) -> None:
     Path.glob raises NotImplementedError on an absolute pattern, and
     corpus.iter_sessions is a generator, so that raise would surface on the
     caller's first next(), after any scan or redact-map build it had started.
-    The check is syntactic only: no resolve, expanduser or stat call.
     """
     if Path(projects_glob).anchor:
         print(
