@@ -658,7 +658,7 @@ Good catch. I'll add IP-range validation before trusting that header.
 - `--all-accounts` — read every account `~/.claude/transcript-config-dirs` declares, not the active account's alone. The output is not for publication (see "Corpus scope: the declared-roots file" above).
 - `--since Nd` — limit to the last N days (e.g. `35d`)
 - `--top N` — maximum per-session rows to emit (default: 20)
-- `--redact` — replace project dir names with anonymized labels (`private-project-1`, `private-project-2`, …); `claude-config` is preserved. This makes labels safe, not figures; `docs/private-project-redaction.md` § "Publishing a tooling measurement" governs which figures reach a public issue.
+- `--redact` — replace project dir names with anonymized labels (`private-project-1`, `private-project-2`, …); `claude-config` is preserved. Session IDs become `session-N`. The scope header (root count, raw `--projects` value) and all figures are not redacted, so this makes labels safe, not figures; `docs/private-project-redaction.md` § "Publishing a tooling measurement" governs which figures reach a public issue.
 
 **Sample output.**
 ```

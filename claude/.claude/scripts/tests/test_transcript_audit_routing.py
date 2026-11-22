@@ -135,6 +135,20 @@ class TestAuditRouting:
         # We just verify that private-project labels appear in the output
         assert "private-project-" in out
 
+    def test_redact_flag_keeps_raw_project_label_and_session_id_out_of_stdout(self, fake_projects, capsys):
+        """--redact leaves neither the raw project-dir label nor the raw session-id stem in stdout."""
+        proj_distinctive = fake_projects.parent / "-home-user-zxqvproj"
+        proj_distinctive.mkdir(parents=True)
+        _write_jsonl(proj_distinctive / "rawsid-9c3e7.jsonl", [
+            _opus([_agent_use("a1", "code-writer")], out=100),
+        ])
+        audit_routing.cmd_audit_routing(_audit_routing_args(redact=True))
+        out = capsys.readouterr().out
+        assert "zxqvproj" not in out
+        assert "rawsid-9c3e7" not in out
+        assert "private-project-" in out
+        assert "session-1" in out
+
     def test_since_filter_excludes_out_of_window_turns(self, fake_projects, capsys):
         """--since filter: turn outside window excluded; only in-window turn appears in aggregate."""
         old_ts = "2020-01-01T00:00:00.000Z"   # far in the past — always out-of-window

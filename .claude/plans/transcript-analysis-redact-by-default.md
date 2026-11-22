@@ -21,7 +21,7 @@ Ask: "GH-1157: close the unredacted multi-root output paths in transcript-analys
 - On agent-type and hook names this repo does not track, above one root: selected labels "Hide untracked names (Recommended)" and "One label per name (Recommended)".
 - On whether the branch, session and project labelers move into one shared helper: selected label "Keep the refactor (Recommended)".
 - On two earlier answers (that `sessions --paths` would need `--no-redact`, and that `user-input` would lose `--redact`): selected label "Withdraw both (Recommended)".
-- On the same branch worked from several accounts: "Sometimes for my own repos, I will use multiple claude accounts for the same branch - it does happen, so we should consider this case. But I want to know if including it would cause overengineering." Then, on whether the text listings keep pooling every account under `--this-repo` and narrow to the active account only at `--projects` scope: selected label "Pool under --this-repo (Recommended)".
+- On a branch worked from more than one account, the engineer asked whether including that case would cause overengineering. Then, on whether the text listings keep pooling every account under `--this-repo` and narrow to the active account only at `--projects` scope: selected label "Pool under --this-repo (Recommended)".
 - On whether to add an `--all-accounts` flag that pools the text listings raw: selected label "Drop the flag (Recommended)".
 - On whether `audit-routing` keeps `--redact`: selected label "Keep --redact there (Recommended)".
 - On whether `skill-invocation --projects GLOB` narrows to the active account or relabels its skill names above one account: selected label "Narrow to active account (Recommended)".
@@ -230,7 +230,7 @@ Alternatives weighed:
 8. [engineer-verified: "Tests use synthetic fixtures only. No output from a real multi-root run goes into the plan, a test, or a PR body."]
 9. [engineer-verified: "re-resolve every cited site by symbol, and audit each sibling subcommand for the same unredacted-output shape instead of trusting the list."] Line numbers here are at `b7129175`, and every dispatch re-resolves them by symbol. Rows 30 and 31 are the audit.
 10. [engineer-verified: "transcript-analysis should NOT redact free text because it's useful for analysis and experimentation."] An identifier inside free text prints as recorded, so no listing is publish-safe as printed.
-11. [engineer-verified: "Pool under --this-repo (Recommended)"] Selected after the engineer wrote "Sometimes for my own repos, I will use multiple claude accounts for the same branch".
+11. [engineer-verified: "Pool under --this-repo (Recommended)"] Selected after the engineer asked whether handling a branch that can be worked from more than one account would cause overengineering.
 12. [engineer-verified: "One rule with --all-accounts (Recommended)"] The question named the seven earlier commands plus `audit-routing` and the four sample commands, and said the rule drops all new relabelling.
 13. [engineer-verified: "Narrow the three (Recommended)"] `buckets`, `duration` and `struggle` join the narrowed commands.
 14. [engineer-verified: "Narrow to active account (Recommended)"] `skill-invocation --projects GLOB` narrows instead of relabelling its skill names.

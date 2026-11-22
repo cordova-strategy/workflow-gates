@@ -811,8 +811,9 @@ def _add_audit_routing_subparser(subparsers: argparse._SubParsersAction) -> None
     p_audit.add_argument(
         "--redact", action="store_true",
         help=(
-            "Replace project dir names with anonymized labels (private-project-1, private-project-2, …)."
-            " Figures are not redacted. 'claude-config' is preserved as-is."
+            "Replace project dir names with anonymized labels (private-project-1, private-project-2, …)"
+            " and session IDs with session-N. The scope header (root count, raw --projects value)"
+            " and all figures are not redacted. 'claude-config' is preserved as-is."
         ),
     )
     p_audit.set_defaults(func=cmd_audit_routing)
