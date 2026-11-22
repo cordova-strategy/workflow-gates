@@ -2,7 +2,7 @@
 
 How often does a reviewer subagent's whole-file `Read` of a file larger than one Read call come back partial or refused, and what share of reviewer spend goes to Reads? This page records one run of `transcript-analysis.py reviewer-reads` as the before-state for #1115's change to the reviewer read instruction. It is the A-field baseline GH-1529 asks for: the before-value measured from real review transcripts, as opposed to the bench-measured baseline #1114 tracks. The report's terms (reviewer window, whole-file call, outcome classes, diff handoff) are defined in `docs/transcript-analysis.md` § "reviewer-reads". The design and the evidence behind each choice are in [`.claude/plans/reviewer-read-telemetry.md`](../../.claude/plans/reviewer-read-telemetry.md).
 
-The figures come from transcripts and ledger files selected by this checkout's path identity, on one account (see Limitations for what that selection does not exclude). The command refuses any wider scope, which is what makes them publishable under `docs/private-project-redaction.md` § "Publishing a tooling measurement". It reads this clone's live worktrees only.
+The figures come from transcripts and ledger files selected by this checkout's path identity, on one account (see Limitations for what that selection does not exclude). The command refuses any wider scope, which is what makes them publishable under `docs/private-project-redaction.md` § "Publishing a tooling measurement".
 
 ## Headline answers
 
@@ -20,17 +20,17 @@ The figures come from transcripts and ledger files selected by this checkout's p
 - **Run at:** 2026-11-22T11:44:30Z.
 - **Window:** 2026-10-25 to 2026-11-21, both days included, 28 days.
 - **`cleanupPeriodDays`:** absent from the account's settings, so the 30-day default applies. At that default, records from about 2026-10-23 onward were still kept at the run, so the window's first day, 2026-10-25, falls inside the retained span.
-- **Instrument commit:** `e5e1f34f573a`, the commit the capture's worktree was cut from. The `claude/.claude/scripts/transcript_analysis/` package, which holds the instrument and the ledger reader in `author_outcome.py`, shows no diff between `daeeae4fbd4a`, #1575's head commit and the commit the instrument was last run against before this capture, and `e5e1f34f573a`.
+- **Instrument commit:** `e5e1f34f573a`, the commit the capture's worktree was cut from. `daeeae4fbd4a` is #1575's head commit, and the same commit the instrument was last dry-run against before this capture. The `claude/.claude/scripts/transcript_analysis/` package shows no diff between `daeeae4fbd4a` and `e5e1f34f573a`.
 - **Self-checks:** five checks passed before this page was written, as `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines them.
   - Reviewer-window floor: the reviewer-window count is above zero.
   - Ledger floor: a report that counts any `code-review` round window also counts at least one ledger file read.
   - Yield-completed floor: the report holds no line starting `reviewer-yield pass: not completed`.
   - Sample check: neither the pooled headline nor the Read share prints `insufficient` or `no data`.
-  - Output scan: no output file holds a run of 32 or more hex digits, a UUID shape, or a path under a home or config directory.
+  - Output scan: no output file holds a run of 32 or more hex digits, a UUID shape, or an absolute path under a home or config directory. The fixed label `~/.claude/transcript-config-dirs` in the report header is expected.
 
 ## The report as printed
 
-Two edits to the output. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's gap counter, and the ledger section's directory-scan diagnostic lines. One placeholder stands in for each, and the capture's self-checks passed.
+Two edits to the output. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's gap counter, and the three ledger-section lines that follow its sessions line. Of those three, one reports the ledger-file directory scan and two count ledger rows. One placeholder stands in for each group.
 
 ```text
 REVIEWER READS SOURCES (this repo (33 worktrees listed); reads one account (the active account), the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)
@@ -149,7 +149,7 @@ terminal rows: ADDRESS=430 DEFER=79 SETTLED=19 total=528
 ADDRESS share of terminal rows: 81.4% (430/528)
 DEFER share of terminal rows: 15.0% (79/528)
 sessions with a disposition row=32 covered by the transcript scan=32
-[the ledger section's directory-scan diagnostic lines are withheld; the capture's self-checks passed]
+[the ledger section's last three lines, one ledger-file directory scan and two ledger-row counters, are withheld; the capture's self-checks passed]
 
 ## Comparability: reviewer windows by harness version and by model
 harness version: 2.1.328=14 2.1.329=389 2.1.330=15
@@ -173,7 +173,7 @@ Rerun this the same way after #1115 and compare like with like.
 
 - **Harness versions and models:** reviewer windows ran on three harness versions (2.1.328 for 14 windows, 2.1.329 for 389, 2.1.330 for 15) and one model label (`claude-sonnet-5-5`, 418 windows).
 - **Model labels:** they follow `pricing._MODEL_BASE_INPUT_RATES` at instrument commit `e5e1f34f573a`. A model priced after that commit prints `other` here and by name in a later run, so that move alone is not a model shift. `other` can also stand for a window whose first assistant record is the harness's `<synthetic>` error record, in which case no rate moves.
-- **Re-run recipe:** this clone, from a worktree cut from the default branch, the same window length, the same pinned account, and a run before any worktree cleanup.
+- **Re-run recipe:** the window length, account and checkout follow `docs/transcript-analysis.md` § "reviewer-reads". Run it from a worktree cut from the default branch, and before any worktree cleanup.
 - **Edits that void a comparison:** later edits to `read_cost`'s scanner and weights, to `reviewer_reads`, `ledger_dispositions`, `publication_scope`, `reviewer_yield._is_reviewer_subagent_type`, or to the ledger reader in `author_outcome` (`_read_ledger_rows_from_file` and `_SESSION_ID_PATTERN`). A run after such an edit measures a different instrument.
 - **Review-skill mix behind the figures:** main-thread round windows in the window were 74 for `code-review`, 24 for `plan-review` and 36 for `ready-for-review`. This is the only indicator of that mix on this page.
 
@@ -208,7 +208,7 @@ de63e992 clarify defer invariant diff reading (#1349)
 01c8bde0 GH-1006: prose density reviewer gaps (#1338)
 ```
 
-The agent files for the reviewer types in the report (`ciso-reviewer`, `comment-discipline-reviewer`, `skill-fidelity-reviewer` and the four `staff-*` types it lists):
+The agent files for the reviewer types in the report (`ciso-reviewer`, `comment-discipline-reviewer`, `skill-fidelity-reviewer` and the five `staff-*` types it lists):
 
 ```text
 ccab57e5 comment rule false angle fix (#1493)
@@ -240,7 +240,7 @@ d246e014 prose granularity rule (#1354)
   - ledger rows appended from this checkout about work elsewhere;
   - a checkout of any repository whose path maps to the same project-directory slug as one of this checkout's worktrees;
   - a subagent file under an in-scope session, whatever repository the subagent worked in.
-- **Ledger file check.** The ledger reader's regular-file check is point-in-time. It does not exclude a hard link named for this checkout, or a swap between its `lstat` and the open.
+- **Ledger file check.** The regular-file check in `ledger_dispositions._read_file_rows` is point-in-time. It does not exclude a hard link named for this checkout, or a swap between its `lstat` and the open.
 - **Whole-file counts per round skill.** They can exceed the outcome counts plus the diff-handoff counts. The join counts each Read `tool_use` block in a round window once by id, while the outcome counts skip an id already seen earlier in the run and a call with no usable result. The gap is not a defect.
 - **Plan-review windows.** Reviewer windows include `plan-review` dispatches, whose reads of code files stay in `code/other`, so the per-type rows do not isolate the review skill.
 - **Prose.** It is `instruction` plus `other_prose`. `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`. Only its markdown part lies outside #1115's change for every reviewer. `other_prose` lies outside it for `comment-discipline-reviewer` alone.
