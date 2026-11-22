@@ -7,11 +7,13 @@
 # figure_ms is the smallest of an arm's per-repetition minimums.
 # cost_ms is an arm's figure_ms minus its reference's, and saving_ms is the reference's minus the arm's.
 # floor_ms is the applied floor, and verdict is above when the delta's absolute value reaches it.
+# The header's dirname= and commit= print local values as resolved, so read both before posting a report publicly.
 #
 # Reading a before/after pair taken from two runs that no loop interleaves:
 #   Compare full's cost_ms across the two runs, never its figure_ms.
 #   Count the change as a saving only when it exceeds the larger of the two full rows' floor_ms.
 #   The before run's minus-<cluster> or param-expansion row is the interleaved estimate of the same change, so cite it when the cross-run change misses it by more than that floor.
+#   The param-expansion saving is the price at a small parent shell, and a lower bound for call sites that run after the lib loads.
 set -euo pipefail
 checkout_root=$(git rev-parse --show-toplevel) || exit 1
 # Sourcing the checkout's _config.sh is the bash floor gate: a below-floor bash stops here with its fix text.
@@ -31,7 +33,7 @@ iterations=$default_iterations
 repetitions=$default_repetitions
 
 print_usage_and_exit() {
-  printf 'usage: lib-source-cost.sh [--iterations N] [--repetitions N]  (defaults %d and %d, repetitions at least 2; run time is about arms x iterations x repetitions x one child bash)\n' \
+  printf 'usage: lib-source-cost.sh [--iterations N] [--repetitions N]  (defaults %d and %d, repetitions at least 2; run time is about arms x iterations x repetitions x one child bash, on the order of minutes at the defaults, so run it in the background)\n' \
     "$default_iterations" "$default_repetitions" >&2
   exit 2
 }
@@ -61,7 +63,6 @@ hooks_dir="$checkout_root/claude/.claude/hooks"
 cluster_file="$checkout_root/scripts/dev/lib-source-cost-clusters.psv"
 # shellcheck disable=SC2016  # Each child bash expands "$1", not this shell, and double quotes would expand it here.
 child_command='. "$1"'
-# Each child reads stdin from /dev/null, so a source that reads it ends instead of waiting on a terminal.
 
 for measured_file in _lib.sh config-keys.psv; do
   if [[ ! -r $hooks_dir/$measured_file ]]; then
@@ -101,6 +102,7 @@ preflight_stdout="$scratch_root/preflight.stdout"
 preflight_stderr="$scratch_root/preflight.stderr"
 for index in "${!arm_labels[@]}"; do
   child_status=0
+  # Each child reads stdin from /dev/null, so a source that reads it ends instead of waiting on a terminal.
   "$BASH" -c "$child_command" "${arm_labels[index]}" "${arm_entry_paths[index]}" \
     </dev/null >"$preflight_stdout" 2>"$preflight_stderr" || child_status=$?
   if (( child_status != 0 )) || [[ -s $preflight_stdout || -s $preflight_stderr ]]; then
@@ -128,7 +130,7 @@ for (( round = 0; round < total_rounds; round++ )); do
     started_micros=${EPOCHREALTIME//[!0-9]/}
     "$BASH" -c "$child_command" "${arm_labels[index]}" "${arm_entry_paths[index]}" </dev/null >/dev/null 2>&1 || child_status=$?
     finished_micros=${EPOCHREALTIME//[!0-9]/}
-    # A failure here follows a clean pre-flight, so it is environmental, such as fork exhaustion.
+    # The source passed once, so a failure here comes from the environment (for example fork exhaustion) or from state the source leaves behind.
     # It prints only the stop line, and no samples are kept.
     if (( child_status != 0 )); then
       lsc_stop timed "arm ${arm_labels[index]}, repetition $repetition, round $round: exit status $child_status" || exit 1

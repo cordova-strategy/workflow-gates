@@ -149,7 +149,14 @@ The scratch root is one `mktemp -d "${TMPDIR:-/tmp}/lib-source-cost.XXXXXX"`, re
 
 The four kinds of line:
 
-- `header`: `bash=` (`$BASH_VERSION`), `system=` and `machine=` (`uname -s` and `uname -m`), `commit=` (`git describe --always --dirty`, or `none` when that fails), `lib_blob=` and `config_blob=`, then `iterations=` and `repetitions=`. It carries no hostname, load average or other machine state.
+- `header`, with these keys in order:
+  - `bash=` is `$BASH_VERSION`.
+  - `system=` and `machine=` are `uname -s` and `uname -m`.
+  - `dirname=` is the `dirname` the PATH resolves, the one the `dirname-fork` arm priced.
+    - The value is `none` when the PATH has none.
+  - `commit=` is `git describe --always --dirty`, or `none` when that fails.
+  - `lib_blob=` and `config_blob=`, then `iterations=` and `repetitions=`.
+  - The line carries no hostname or load average. The `dirname=` path is its one machine-specific value.
 - `span`, one per PSV row in PSV order: `cluster=`, `file=`, `lines=<start>-<end>`, `line_count=`, and `functions=`, the number of definition lines inside the span. A function added inside a span shows as a changed count in a rerun.
 - `arm`, one per arm in list order: `label=`, `mins_ms=` (the per-repetition minimums, comma-separated), `figure_ms=` and `spread_ms=`. Every arm but `baseline` then adds:
   - `ref=`;
@@ -184,7 +191,7 @@ A cost is the arm's figure minus its reference's. A saving is the reference's fi
 
 The script keeps flag parsing, the gate, the scratch root, copying, the pre-flight, the timing loop, progress lines and the `header` and `noise-floor` lines.
 
-**Lib tests**, `claude/.claude/scripts/tests/test_lib_source_cost_lib.py`. Each case sources the lib under `set -euo pipefail` in `bash -c`, as `test_worktree_lib.py:42-62` does, and feeds it fixed input. None times anything. The lib's path is built from `helpers`' `REPO_ROOT` (row 14).
+**Lib tests**, `claude/.claude/scripts/tests/test_lib_source_cost_lib.py`. Each case sources the lib under `set -euo pipefail` in `bash -c`, as `test_worktree_lib.py:42-62` does, and feeds it fixed input. None times anything. The lib's path is built from `helpers`' `REPO_ROOT` (row 14). The tests' shared `bash -c` helper also drops `BASH_ENV` and `ENV` through `_clean_env`, so an inherited startup file that prints cannot reach an exact-output assertion.
 
 - Flag values: `0`, `01`, `x` and an empty value fail, and `1` fails only as a repetition count.
 - Cluster-file parsing: a valid file with a comment, a blank line and a non-contiguous cluster yields its rows in order. One invalid row per parse stop (three fields, five fields, an empty field, an unknown `file`, a bad label) returns 1 with `cluster-file` and the line number on stderr.
@@ -195,7 +202,11 @@ The script keeps flag parsing, the gate, the scratch root, copying, the pre-flig
   - an undefined anchor, and an anchor in the other file, each stop with `lookup`;
   - a syntax error after the first anchor, in either file, stops with `syntax` naming that file, and no `lookup` line follows.
 - Span resolution, on a synthetic file of a few dozen lines holding a two-span cluster and a `(` body: exact ranges, line counts and definition counts, plus one case per `span` stop.
-- Arm edits: the exact output of deleting a non-contiguous cluster, and of the tail cut, whose `return 0` precedes the moved spans in file order. The exact text of both one-line `dirname` files.
+- Arm edits: the exact output of deleting a non-contiguous cluster, and of the tail cut, whose `return 0` precedes the moved spans in file order. The exact text of both one-line `dirname` files, and the empty bytes of `baseline`'s file, each written by the lib's light-arm writer.
+- Light arms, executed. The test has the lib's writer produce each of the three light-arm files, `baseline`'s included, then sources each one in a child bash.
+  - The child's PATH leads with a `dirname` stub that logs each call and then runs the real `dirname`.
+  - The log records one call for `dirname-fork` and none for `param-expansion` or `baseline`.
+  - `dirname-fork` and `param-expansion` leave the same value in the variable they assign, the arm file's directory, and `baseline` leaves it unset.
 - Arithmetic:
   - millisecond formatting of -848, -1000, 0, 1 and 123456 microseconds, signed and unsigned;
   - the sign of a cost and of a saving;
@@ -208,9 +219,13 @@ The script keeps flag parsing, the gate, the scratch root, copying, the pre-flig
 **Script tests**, `claude/.claude/scripts/tests/test_lib_source_cost.py`, one case per script branch:
 
 - Each run invokes the real script by a path built from `helpers`' `REPO_ROOT`, so `TestCrossDomainReadCompleteness` sees it (row 14).
-- Each run passes `env=_clean_env(...)`, so an inherited `GIT_DIR` cannot aim it at another checkout (row 18).
+- Each run passes an environment built by `_clean_env`:
+  - It drops an inherited `GIT_DIR`, so the script cannot be aimed at another checkout (row 18).
+  - It also drops `BASH_ENV` and `ENV`, so an inherited startup file that prints cannot reach an exact-output assertion.
+  - A case that wants a startup file sets its own.
 - A fixture checkout is `_init_repo` on a temp directory, which makes no commit (`conftest.py:1730`). It holds a synthetic `_lib.sh` that sources a synthetic `_config.sh` and an empty `config-keys.psv`, all under `claude/.claude/hooks/`, plus a synthetic PSV under `scripts/dev/`.
-- No case covers the `config-keys.psv` copy. Sourcing reads no file (row 9), so an omitted copy changes no figure today. The copy stays because row 6 puts all three files in every arm directory.
+- The plain fixture holds one function in each measured file, each in its own cluster: `solo` in `_lib.sh` and `other` in `_config.sh`.
+- No script case covers the `config-keys.psv` copy into the arm directories, and the lib tests' copy cases do. Sourcing reads no file (row 9), so an omitted copy changes no figure today. The copy stays because row 6 puts all three files in every arm directory.
 - Synthetic files keep every case but the smoke run independent of the real files' size and floor check.
 
 Cases:
@@ -223,22 +238,44 @@ Cases:
    - every other `_ms` value, and the `noise-floor` line's `ms` value, matching the same form without the sign, with `mins_ms` first split on commas into exactly two values.
 
    This is the single pin that every anchor resolves at HEAD, and any `_lib.sh` edit selects it (row 14).
-2. Planted cost, marked `timing` because it bounds measured costs and savings (rows 22, 34). Its docstring says that a red under `-n auto` is rerun with `-m timing -n0` before it counts. Its fixture:
-   - The PSV lists a two-span `_lib.sh` cluster `split` before a one-span `_config.sh` cluster `cfg`, and one span ends in a `(` body.
-   - Each of the three spans holds a top-level `sleep 0.1` between its functions.
-   - The `_lib.sh` opens with a line, outside every span, that appends `$0` and the last component of `${BASH_SOURCE[0]%/*}` to a log file. The log sits in the test's temp directory, outside the per-test `TMPDIR`.
-   - Neither fixture file calls `dirname`. A `dirname` shim first on `PATH`, passed through `_clean_env(PATH=...)`, sleeps 0.1 s and then runs the real `dirname`.
+2. Planted cost, marked `timing` because it bounds a measured saving (rows 22, 34). Its docstring says that a red under `-n auto` is rerun with `-m timing -n0` before it counts. Its fixture:
+   - The PSV lists one `_lib.sh` cluster `slow`, spanning two functions.
+   - The `_lib.sh` holds a top-level `sleep 0.1` between those two functions, inside the span.
 
-   It runs with `--iterations 2 --repetitions 2`, so four rounds, and with `TMPDIR` set to an empty per-test directory. Its arm list is `full`, `minus-split`, `minus-cfg`, `total-deletion`, `tail-cut`, `control`, `baseline`, `dirname-fork` and `param-expansion`, in directories `0` to `8`. It checks exit 0 first, then expects:
-   - `full`'s cost over 250 ms;
-   - savings over 150 ms for `minus-split`, between 50 and 150 ms for `minus-cfg`, and over 250 ms for `total-deletion` and `tail-cut`;
-   - `control`'s saving under 50 ms in absolute value;
-   - `dirname-fork`'s cost and `param-expansion`'s saving each over 50 ms;
-   - the three `span` lines exactly;
-   - `lib_blob` and `config_blob` equal to `git hash-object` of the fixture's `_lib.sh` and `_config.sh`;
-   - the `noise-floor` line's `ms` equal to `baseline`'s `spread_ms` and no greater than any arm's `floor_ms`;
+   It runs with `--iterations 2 --repetitions 2`. It expects exit 0 and a `minus-slow` saving above 50 ms and below 1,000 ms, which is half and ten times the planted 100 ms. The bounds pin the timer's sign and its unit.
+3. Source failure, over four lines appended to the fixture's `_lib.sh`, outside every span. Three run as one parametrized case and the guard runs as its own case, all with `--iterations 1 --repetitions 2`. Each sets a per-test `TMPDIR` and expects exit 1, empty stdout and that directory empty after exit:
+   - `return 1`: a stderr line starting `lib-source-cost: pre-flight:` names `full`, and no line starts `lib-source-cost: timed:`;
+   - a write to stderr: the same expectation;
+   - a write to stdout: the same expectation, where the empty stdout also pins that the pre-flight captures the child's stdout;
+   - a guard that returns 1 when a marker file exists in `${BASH_SOURCE[0]%/*}`, and otherwise creates that file as its last command.
+
+   The guard's pre-flight source therefore ends 0, and a later timed source returns 1. The case expects a stderr line starting `lib-source-cost: timed: arm full, repetition 1, round 0:` and no `pre-flight:` line.
+
+   The lookup ignores source health and runs on its own copy, so none of the four stops there.
+4. Floor gate: a fixture whose only file is a stub `_config.sh` that prints a marker to stderr and returns 1, as `test_bash_floor.py:461-505` does for other scripts. It expects exit 1, stderr exactly the marker, and empty stdout, on any host bash.
+5. Spec error: the fixture PSV names a function the fixture never defines. It expects exit 1, a stderr line starting `lib-source-cost: lookup:` naming that function, and empty stdout. Only the fixture's PSV holds that name, so the case also pins that the PSV is read from the checkout root.
+6. Usage, parametrized over four rows: `--repetitions 1`, `--iterations 0`, `--iterations` with no value, and an unknown flag. Each exits 2 with empty stdout and a stderr that starts with the usage line.
+7. Arm contents, on a fixture whose spans hold top-level marker writes and no sleeps. It runs with `--iterations 2 --repetitions 2` and `TMPDIR` set to an empty per-test directory. Its fixture:
+   - The PSV lists a two-span `_lib.sh` cluster `split` before a one-span `_config.sh` cluster `cfg`, and one span ends in a `(` body.
+   - Each span holds a top-level line that appends `$0` and a span marker to a log file. The log sits in the test's temp directory, outside the per-test `TMPDIR`.
+   - The `_lib.sh` opens with a line, outside every span, that appends `$0` and the last component of `${BASH_SOURCE[0]%/*}` to the log.
+   - The `_lib.sh` ends with a line, outside every span, that appends a stderr write to the live `_lib.sh` itself.
+
+   The arm list is `full`, `minus-split`, `minus-cfg`, `total-deletion`, `tail-cut`, `control`, `baseline`, `dirname-fork` and `param-expansion`, in directories `0` to `8`. The case expects:
+   - exit 0, because an arm built from the live file would print the appended stderr write and stop the pre-flight;
+   - the live `_lib.sh`'s blob changed by the run, and `lib_blob` equal to the blob before it;
+   - `config_blob` equal to `git hash-object` of the fixture's `_config.sh`, in a fixture with no commit;
+   - the arm labels in list order and the three `span` lines exactly;
+   - the `noise-floor` line's `ms` equal to `baseline`'s `spread_ms` and no greater than any other arm's `floor_ms`;
    - the per-test `TMPDIR` empty after exit;
-   - the log equal to the 31 entries below, one per line in the file. The block shows one source pass per row: the lookup, the pre-flight, then rounds 0 to 3. The test writes them out rather than deriving them from the lib's rotation.
+   - the log equal to the expected log:
+     - The floor gate's own entry comes first.
+     - Each source pass below follows, each entry followed by the markers its spans wrote.
+     - The block shows one source pass per row: the lookup, the pre-flight, then rounds 0 to 3.
+     - The test writes the passes out rather than deriving them from the lib's rotation.
+     - `full`, `control` and the lookup write every marker.
+     - `minus-split` and `minus-cfg` write only the markers of the spans they keep.
+     - `total-deletion` and `tail-cut` write none.
 
    ```text
    lookup lookup
@@ -249,23 +286,25 @@ Cases:
    total-deletion 3, tail-cut 4, control 5, full 0, minus-split 1, minus-cfg 2
    ```
 
-   Each bound sits 50 ms from its planted value. The lower bounds hold at any host speed. The two upper bounds, `minus-cfg` under 150 ms and `control` under 50 ms, assume scheduler jitter under 50 ms, which the serial timing leg gives. The bounds pin sign, unit, the spans each arm removes, the tail cut's placement and which file each `dirname` arm sources. The log pins the rotation, `control`'s own copy and the separate `lookup` copy.
-3. Source failure, parametrized over four lines appended to the fixture's `_lib.sh`, outside every span. Each expects exit 1 and empty stdout:
-   - `return 1`: a stderr line starting `lib-source-cost: pre-flight:` names `full`, and no line starts `lib-source-cost: timed:`;
-   - a write to stderr: the same expectation;
-   - a write to stdout: the same expectation, where the empty stdout also pins that the pre-flight captures the child's stdout;
-   - a guard that returns 1 when a marker file exists in `${BASH_SOURCE[0]%/*}` and otherwise creates it as its last command, so that source ends with status 0: a stderr line starting `lib-source-cost: timed:` names `full` and repetition 1. This row also sets a per-test `TMPDIR` and expects it empty after exit.
-
-   The lookup ignores source health and runs on its own copy, so none of the four stops there.
-4. Floor gate: a fixture whose only file is a stub `_config.sh` that prints a marker to stderr and returns 1, as `test_bash_floor.py:461-505` does for other scripts. It expects exit 1, stderr exactly the marker, and empty stdout, on any host bash.
-5. Spec error: the fixture PSV names a function the fixture never defines. It expects exit 1, a stderr line starting `lib-source-cost: lookup:` naming that function, and empty stdout. Only the fixture's PSV holds that name, so the case also pins that the PSV is read from the checkout root.
-6. Usage, parametrized over four rows: `--repetitions 1`, `--iterations 0`, `--iterations` with no value, and an unknown flag. Each exits 2 with empty stdout.
+   The log pins the rotation, `control`'s own copy, the separate `lookup` copy, and which spans each arm removes or moves. The `dirname` arms write no log entry, so the lib tests pin them.
+8. Progress lines, on the plain fixture with `--iterations 2 --repetitions 2`. Stderr is exactly `lib-source-cost: repetition 1 of 2` and `lib-source-cost: repetition 2 of 2`, so a line per round or a wrong repetition number would show.
+9. Header, on the plain fixture with `--iterations 1 --repetitions 2` and a `dirname` stub that runs the real one first on the PATH. The header's `bash`, `system` and `machine` equal what the test computes independently, `dirname` is the stub's absolute path, and `commit` is `none` because the fixture has no commit.
+10. Comma-decimal locale, on the plain fixture with `--iterations 1 --repetitions 2`, `LC_ALL` set to an installed UTF-8 locale that prints `EPOCHREALTIME` with a comma. Every arm's figures keep the same millisecond format as in Case 1. The case fails under `CI` when no such locale is installed and skips otherwise.
+11. Inherited `BASH_ENV`, on the plain fixture with `--iterations 1 --repetitions 2`. `BASH_ENV` names a file that appends a line to a log, and the case expects the log to hold exactly one line, the script's own startup. The children that execute the file are the lookup, the pre-flight and the timed children, and none of them adds a line. Row 23 is verified for `bash -c` only, so that the script file's own startup reads `BASH_ENV` rests on this case.
+12. Child stdin, on the plain fixture with `--iterations 1 --repetitions 2`. The script's own stdin carries one line, and a line appended to the fixture's `_lib.sh` records any line a source reads from stdin. The case expects exit 0 and no record, which pins that every child reads `/dev/null`.
+13. Checkout path with a space, on the plain fixture under a directory named `check out`, with `--iterations 1 --repetitions 2`. The case expects exit 0 and a first `arm` line labeled `full`.
+14. Missing measured file, parametrized over `_lib.sh` and `config-keys.psv` removed from the plain fixture, with default flags. The case expects exit 1, empty stdout and one stderr line starting `lib-source-cost: input:` that names the missing file.
+15. Pre-flight output with a zero status, on the plain fixture with `--iterations 1 --repetitions 2` and a per-test `TMPDIR`. Two lines are appended to `_lib.sh`: a call to the function the `minus-solo` arm deletes, then a harmless line. The case expects:
+    - exit 1 and empty stdout;
+    - the single stop line `lib-source-cost: pre-flight: arm minus-solo: exit status 0, output below`;
+    - no `timed:` line;
+    - the `TMPDIR` empty after exit.
 
 Every run shares one timeout, a module constant of 120 s, whose comment calls it a hang backstop.
 
 - The smoke run starts about 45 child bashes: one lookup, two `bash -n`, 14 pre-flight and 28 timed. At up to the 70 ms per-source minimum the platform review measured under heavy load, that is about 3 s.
-- The planted-cost run sleeps about 5.5 s: 0.1 s in the gate, 0.3 s in the lookup, 1 s per pass over the pre-flight and four rounds, and at most 0.1 s for the script's own `dirname`. The test review estimated its children add 0.7 to 3 s.
-- The margin of at least 14-fold over the slower case covers a loaded `-n auto` full-suite run.
+- The planted-cost run starts 43 child bashes: one lookup, two `bash -n`, 8 pre-flight and 32 timed. That is about 3 s at the same per-source minimum. It also sleeps 1.1 s, which is 0.1 s in each of 11 sources that keep the span: the lookup, 2 pre-flight sources and 8 timed ones, from `full` and `control` over four rounds. It is the slowest case, at about 4.1 s.
+- The margin of at least 29-fold over the 120 s timeout covers a loaded `-n auto` full-suite run.
 
 **Posting.** After the branch passes review, the session runs the script with defaults from the worktree root as a background Bash call. A foreground call's timeout can kill a run of several minutes, and a killed run skips the `EXIT` trap. The session checks Verification step 6's relations, then shows the engineer the output. Only on the engineer's yes does it post a #1117 comment (rows 3, 4). The comment gives:
 
@@ -342,7 +381,7 @@ Every run shares one timeout, a module constant of 120 s, whose comment calls it
 | 25 | The change adds `scripts/dev/lib-source-cost-clusters.psv` beside the script, a file #1433 does not name | `[engineer-verified: "Accept the PSV file (Recommended)"]` |
 | 26 | The plan stays one PR at its projected diff of about 420 changed lines | `[engineer-verified: "Proceed anyway"]` — superseded by row 40, which answers the later projection |
 | 27 | The change adds a sourceable lib beside the script and deterministic tests for it | `[engineer-verified: "I'm inclined to do deterministic tests and a sourceable lib."]` |
-| 28 | The lib holds the flag-value check, cluster-file parsing, span resolution, the arm edits, the arm list with its rotation and references, the per-repetition minimum fold, the arithmetic and the line formatting. The tests are fixed-input lib tests, one subprocess case that plants deterministic costs inside known spans and in `dirname`, the real-file smoke run as the single anchor-resolution pin, and failure and spec-error cases on small synthetic fixtures | `[unverified]` — the dispatching session's reading of row 27, adopted here as design; not the engineer's words |
+| 28 | The lib holds the flag-value check, cluster-file parsing, span resolution, the arm edits, the arm list with its rotation and references, the per-repetition minimum fold, the arithmetic and the line formatting. The tests are fixed-input lib tests, one subprocess case that plants a cost inside a known span, one that logs which spans each arm sources, the real-file smoke run as the single anchor-resolution pin, and failure and spec-error cases on small synthetic fixtures | `[unverified]` — the dispatching session's reading of row 27, adopted here as design; not the engineer's words |
 | 29 | Span lookup combines the text rule with bash's `declare -F` | `[engineer-verified: "Text rule plus declare -F (Recommended)"]` |
 | 30 | `declare -F` under `extdebug` supplies each start line, and the closer rule stays for end lines, guarded by the overlap and overrun stops and the pre-flight | `[unverified]` — the dispatching session's description under row 29's label, not the engineer's words. That description named a `bash -n` check on the arm files, which the pre-flight replaces (row 42) |
 | 31 | Under `shopt -s extdebug`, `declare -F <name>` after sourcing `_lib.sh` prints the name, its definition line and the file path. For `_lib_validate_plugin_id` and `_lib_sanitize_for_terminal` it printed 4338 and 6221, matching the definition-line Grep. For all 18 anchors it printed row 11's definition lines, with the `_config.sh` path for both `_config.sh` anchors | `[verified: the dispatching session's run of bash -c 'shopt -s extdebug; . claude/.claude/hooks/_lib.sh; declare -F ...' in this worktree, for two anchors; the platform review's run of all 18 on bash 5.3.20, round 2 Answers Q2]` |
@@ -352,7 +391,7 @@ Every run shares one timeout, a module constant of 120 s, whose comment calls it
 | 35 | In a file that sources `_config.sh`, the code above the floor check must parse on bash 3.2 | `[verified: .claude/rules/shell-floor.md:14]` |
 | 36 | A `# shellcheck source=` directive resolves relative to the sourcing script's own directory | `[verified: .shellcheckrc:21 source-path=SCRIPTDIR; config-get.sh:38's ../hooks/_config.sh form]` |
 | 37 | The prior record prices `$(dirname "$0")` against parameter expansion at a 1.01 ms min and a 1.15 ms median | `[verified: .claude/plans/hook-bootstrap-cost.md:17]` |
-| 38 | `git hash-object <path>` prints a file's blob id in a repository with no commit | `[unverified]` — the planted-cost case reaches the header in a fixture with no commit, so it settles this |
+| 38 | `git hash-object <path>` prints a file's blob id in a repository with no commit | `[unverified]` — the arm-contents case checks `lib_blob` and `config_blob` in a fixture with no commit, so it settles this |
 | 39 | Pure bash in a `.sh` file goes into a sourceable `_<topic>-lib.sh`, unit-tested by sourcing it, and the subprocess test keeps one case per branch | `[verified: claude/.claude/rules/shell-script-conventions.md:53-56, whose paths: cover `**/*.sh`; .claude/rules/bash-unit-test-seams.md:21 for the name form]` |
 | 40 | The plan stays one PR at its projected diff of about 1,200 changed lines | `[engineer-verified: "Proceed anyway"]` — the second such answer, given for this projection |
 | 41 | `mapfile` then `printf '%s\n'` rewrites a newline-terminated file byte for byte. It adds a newline to a last line that lacks one and turns an empty file into one byte | `[verified: the platform review's runs on the real _lib.sh and _config.sh and on synthetic files, bash 5.3.20, round 2 Answers Q2]` |
@@ -375,7 +414,8 @@ Every run shares one timeout, a module constant of 120 s, whose comment calls it
 - The key-value report with blob ids, printed only after the last round. `anchors: root, row1, row38`
 - The before/after reading rule in the script header. `anchors: root`
 - Fixed-input lib tests, and script cases on synthetic fixtures plus one real-file smoke run. `anchors: row13, row14, row16, row18, row27, row28, row39`
-- The planted-cost case under the `timing` marker, with a `dirname` shim and a log of each source's label and directory. `anchors: row18, row22, row34`
+- The planted-cost case under the `timing` marker. `anchors: row18, row22, row34`
+- The arm-contents case, which logs each source's label, directory and span markers. `anchors: row18, row38`
 - Sanity relations checked before posting, with one rerun and an order-term discount when `control` or a negative saving misses. `anchors: row1, row21, row37, row43`
 - Posting to #1117 gated on the engineer's yes, from a background run. `anchors: row3, row4`
 - **Over-powered-primitive check on the timing mechanism:** the `time` keyword (1 ms resolution), `hyperfine` (new dependency, sequential blocks) and a Python `perf_counter_ns` harness (departs from the prescribed design, heavier spawner) each fail on the ground given in the Approach. `anchors: row1, row19, row20`
@@ -409,7 +449,7 @@ Both prompts also carry two warnings:
   - that several rows make a non-contiguous cluster;
   - that a renamed function stops the script until its row is updated.
 - `claude/.claude/scripts/tests/test_lib_source_cost_lib.py`: the lib tests in the Approach.
-- `claude/.claude/scripts/tests/test_lib_source_cost.py`: the six script cases in the Approach.
+- `claude/.claude/scripts/tests/test_lib_source_cost.py`: the script cases in the Approach.
 
 **Reuse:**
 
@@ -457,7 +497,11 @@ Run from the worktree root. First stage the five new files by path with `git add
 
       No prior record is a reference for `full`'s cost, since Context notes both were taken on a much smaller `_lib.sh`.
    4. Where a below-floor bash exists (macOS `/bin/bash` is 3.2), `/bin/bash scripts/dev/lib-source-cost.sh` must exit 1 with `_config.sh`'s floor text and empty stdout.
-7. Show the engineer step 6's output, and post to #1117 with `gh issue comment 1117 --body-file <file>` only after their yes. The figures are synthetic-loop timings of this repo's own code, which root `CLAUDE.md` places outside the provenance class: "Content derived only from this repo's own history, from public sources, or from synthetic fixtures is not in this class". The comment still carries no machine state beyond the header's bash version, system and machine.
+7. Write the comment to a body file, show the engineer that file, and post to #1117 with `gh issue comment 1117 --body-file <file>` only after their yes.
+   - The file posted is the exact file the engineer was shown.
+   - The engineer reads the header's `dirname=` and `commit=` values before saying yes, because the script prints both as they resolve locally.
+
+   The figures are synthetic-loop timings of this repo's own code, which root `CLAUDE.md` places outside the provenance class: "Content derived only from this repo's own history, from public sources, or from synthetic fixtures is not in this class". The comment carries no machine state beyond the header's bash version, system, machine, `dirname` and `commit=`.
 
 ## Out of scope
 
@@ -467,7 +511,7 @@ Run from the worktree root. First stage the five new files by path with `git add
 - Pricing #1117's `_LIB_CORE_ONLY` guard form separately from the bare `return 0`. The guard adds one `[ -n ]` test, and #1433 prices the bare form.
 - Deleting each span's leading comment block. Leaving it in makes the savings understate a real move slightly, which errs against moving a cluster.
 - Balancing each arm's predecessor with a Williams-design order or a seeded shuffle. Rotation balances position, the list order decides which comparisons share a predecessor class, and `control` measures the offset the savings against `full` carry.
-- A case for the `BASH_ENV` unset. An omitted unset sources a contributor's file into every child, which adds the same cost to every arm and cancels in the deltas. A file that prints stops the pre-flight.
 - A pointer to the script from README or `docs/`. No doc mentions anything under `scripts/dev/`, and the existing probe sets that precedent. The header comment is the usage doc, and #1435 and #1436 cite the path directly.
 - `plugins/skill-management/hooks/_lib.sh`, a separate file that sources nothing.
 - Running the children under a different bash from the one running the script, and keeping the scratch copies after a run.
+- A script-level count of `dirname` calls per light arm. The script's wiring of the three light arms is pinned only by the smoke run's exit status and report format, and the lib test pins the arm files' content.

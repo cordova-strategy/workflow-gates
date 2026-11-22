@@ -7,6 +7,7 @@ contents are synthetic: no case names a function of the real shell libraries.
 from __future__ import annotations
 
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -30,7 +31,7 @@ def _run_bash(script_body: str) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         check=False,
-        env=_clean_env(),
+        env=_clean_env(BASH_ENV=None, ENV=None),
     )
 
 
@@ -632,6 +633,35 @@ def test_write_light_arm_writes_the_exact_one_line_dirname_files(tmp_path):
     assert (tmp_path / "baseline").read_bytes() == b""
     assert (tmp_path / "dirname-fork").read_text() == 'arm_directory="$(dirname "${BASH_SOURCE[0]}")"\n'
     assert (tmp_path / "param-expansion").read_text() == 'arm_directory="${BASH_SOURCE[0]%/*}"\n'
+
+
+def test_sourcing_each_dirname_arm_forks_dirname_only_for_dirname_fork_and_assigns_the_same_directory(tmp_path):
+    real_dirname = shutil.which("dirname")
+    assert real_dirname is not None
+    arm_dir = tmp_path / "arms"
+    arm_dir.mkdir()
+    stub_dir = tmp_path / "stub"
+    stub_dir.mkdir()
+    call_log = tmp_path / "dirname-calls.log"
+    logging_dirname = stub_dir / "dirname"
+    logging_dirname.write_text(f'#!/bin/sh\necho called >> {shlex.quote(str(call_log))}\nexec {shlex.quote(real_dirname)} "$@"\n')
+    logging_dirname.chmod(0o755)
+
+    assigned_directory = {}
+    call_counts = {}
+    for label in ("baseline", "dirname-fork", "param-expansion"):
+        arm_file = shlex.quote(str(arm_dir / label))
+        call_log.write_text("")
+        result = _run_bash(
+            f'lsc_write_light_arm {label} {arm_file}; PATH={shlex.quote(str(stub_dir))}:"$PATH"; '
+            f'. {arm_file}; printf "%s" "${{arm_directory-}}"'
+        )
+        assert result.returncode == 0, result.stderr
+        assigned_directory[label] = result.stdout
+        call_counts[label] = len(call_log.read_text().splitlines())
+
+    assert call_counts == {"baseline": 0, "dirname-fork": 1, "param-expansion": 0}
+    assert assigned_directory == {"baseline": "", "dirname-fork": str(arm_dir), "param-expansion": str(arm_dir)}
 
 
 def test_write_light_arm_stops_on_a_heavy_label(tmp_path):

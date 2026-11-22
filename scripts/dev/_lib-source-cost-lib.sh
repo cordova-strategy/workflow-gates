@@ -15,13 +15,15 @@
 # lsc_index_definitions, lsc_resolve_span, lsc_partition_lines, lsc_fold_sample
 # and lsc_arm_minimums take a caller's array by name through a nameref.
 # lsc_noise_floor_micros and lsc_report_arm_lines pass a name on to
-# lsc_arm_minimums. A caller's array must not share a name with any local or
-# nameref of the functions its name reaches. The nameref would read that local
-# instead, and bash warns of a circular name reference when it is the nameref
-# itself. No lsc_ function declares sample_minimums. Only lsc_resolve_spans
-# declares lib_lines, config_lines, lib_definitions, config_definitions,
-# lib_definition_lines and config_definition_lines, and it takes no array by name.
-# A caller's array may therefore use any of those seven names.
+# lsc_arm_minimums.
+# A caller's array must not share a name with any local or nameref of the functions its name reaches.
+# The nameref would read that local instead.
+# Bash warns of a circular name reference when the local is the nameref itself.
+# A caller's array may use any of these names:
+#   sample_minimums, which no lsc_ function declares
+#   lib_lines, config_lines, lib_definitions, config_definitions,
+#   lib_definition_lines and config_definition_lines, which only
+#   lsc_resolve_spans declares (it takes no array by name)
 
 lsc_stop() {
   printf 'lib-source-cost: %s: %s\n' "$1" "$2" >&2
@@ -106,7 +108,7 @@ lsc_check_syntax() {
 # lsc_lookup_starts <dir> <rows> — prints `<name> <start-line> <file>` once per
 # distinct anchor, in first-appearance order. dir holds _lib.sh, which sources
 # _config.sh beside it, so one child reports both files' anchors.
-# The child's `$0` is `lookup`, its stdin is /dev/null, and it ignores the source's exit status and output.
+# Source health is judged by the pre-flight, not here.
 lsc_lookup_starts() {
   local source_dir=$1 rows=$2
   local line_number file first last name start path reported lookup_script
@@ -316,9 +318,7 @@ lsc_resolve_spans() {
 # Arms
 # ---------------------------------------------------------------------------
 
-# lsc_arm_labels <spans> — full, one minus-<cluster> per cluster in order of
-# its first row, total-deletion, tail-cut, control, baseline, dirname-fork,
-# param-expansion.
+# lsc_arm_labels <spans> — a minus- arm appears once per cluster, in order of its first row.
 lsc_arm_labels() {
   local spans=$1
   local cluster
@@ -461,8 +461,7 @@ lsc_tail_cut_spans() {
   lsc_write_lines "$dest_file" "${kept[@]}" 'return 0' "${moved[@]}"
 }
 
-# lsc_write_light_arm <label> <dest-file> — baseline is empty, and each dirname
-# arm is one line assigning the directory of the sourced file to a variable.
+# lsc_write_light_arm <label> <dest-file>
 lsc_write_light_arm() {
   local label=$1 dest_file=$2
   case $label in

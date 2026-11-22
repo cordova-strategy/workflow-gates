@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -37,19 +38,39 @@ _GUARD_THAT_FAILS_ON_THE_SECOND_SOURCE = (
 )
 
 
+def _script_env(**overrides: str | None) -> dict[str, str]:
+    """_clean_env without any inherited startup file, so one that prints cannot reach an exact-output assertion."""
+    return _clean_env(**{"BASH_ENV": None, "ENV": None, **overrides})
+
+
 def _run_script(
     checkout: Path, *args: str, env: dict[str, str] | None = None, stdin_text: str | None = None
 ) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(_SCRIPT), *args],
         cwd=checkout,
-        env=_clean_env() if env is None else env,
+        env=_script_env() if env is None else env,
         input=stdin_text,
         capture_output=True,
         text=True,
         check=False,
         timeout=_RUN_TIMEOUT_SECONDS,
     )
+
+
+def _install_dirname_stub(stub_dir: Path) -> Path:
+    """A `dirname` in stub_dir that runs the real one, so the header names a path the test controls."""
+    real_dirname = shutil.which("dirname")
+    assert real_dirname is not None
+    stub_dir.mkdir(parents=True)
+    stub = stub_dir / "dirname"
+    stub.write_text(f'#!/bin/sh\nexec {shlex.quote(real_dirname)} "$@"\n')
+    stub.chmod(0o755)
+    return stub
+
+
+def _path_led_by(directory: Path) -> str:
+    return f"{directory}{os.pathsep}{os.environ['PATH']}"
 
 
 def _hooks_dir(checkout: Path) -> Path:
@@ -183,22 +204,30 @@ def test_progress_line_marks_the_start_of_each_repetition_once(tmp_path):
 
 def test_header_names_the_toolchain_and_dirname_and_reports_none_for_a_checkout_with_no_commit(tmp_path):
     checkout = _make_plain_fixture(tmp_path / "checkout")
-    expected_bash_version, expected_dirname = subprocess.run(
-        ["bash", "-c", 'printf "%s\\n%s" "$BASH_VERSION" "$(command -v dirname)"'],
-        env=_clean_env(),
+    expected_bash_version = subprocess.run(
+        ["bash", "-c", 'printf "%s" "$BASH_VERSION"'],
+        env=_script_env(),
         capture_output=True,
         text=True,
         check=True,
-    ).stdout.split("\n")
+    ).stdout
+    dirname_stub = _install_dirname_stub(tmp_path / "tools")
 
-    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2")
+    result = _run_script(
+        checkout,
+        "--iterations",
+        "1",
+        "--repetitions",
+        "2",
+        env=_script_env(PATH=_path_led_by(dirname_stub.parent)),
+    )
 
     assert result.returncode == 0, result.stderr
     header = _lines_of_kind(_parse_report(result.stdout), "header")[0]
     assert header["bash"] == expected_bash_version
     assert header["system"] == os.uname().sysname
     assert header["machine"] == os.uname().machine
-    assert header["dirname"] == expected_dirname
+    assert header["dirname"] == str(dirname_stub)
     assert header["commit"] == "none"
 
 
@@ -210,7 +239,7 @@ def test_timestamps_stay_integer_microseconds_under_a_comma_decimal_locale(tmp_p
     )
     checkout = _make_plain_fixture(tmp_path / "checkout")
 
-    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(LC_ALL=comma_locale))
+    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2", env=_script_env(LC_ALL=comma_locale))
 
     assert result.returncode == 0, result.stderr
     for arm in _lines_of_kind(_parse_report(result.stdout), "arm"):
@@ -320,7 +349,7 @@ def test_each_arm_sources_the_spans_it_keeps_in_rotated_order_from_one_snapshot(
     blob_before_the_run = _git(checkout, "hash-object", "--", str(live_lib)).strip()
 
     result = _run_script(
-        checkout, "--iterations", "2", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+        checkout, "--iterations", "2", "--repetitions", "2", env=_script_env(TMPDIR=str(scratch_parent))
     )
 
     # The live-edit line appends a stderr write to the live file, and any arm built from the live
@@ -391,7 +420,7 @@ def test_source_failure_stops_the_pre_flight_naming_the_arm_and_printing_its_out
     checkout = _make_plain_fixture(tmp_path / "checkout", [failing_line])
 
     result = _run_script(
-        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+        checkout, "--iterations", "1", "--repetitions", "2", env=_script_env(TMPDIR=str(scratch_parent))
     )
 
     assert result.returncode == 1
@@ -410,7 +439,7 @@ def test_source_that_fails_only_on_a_later_pass_stops_the_first_timed_round(tmp_
     checkout = _make_plain_fixture(tmp_path / "checkout", [_GUARD_THAT_FAILS_ON_THE_SECOND_SOURCE])
 
     result = _run_script(
-        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+        checkout, "--iterations", "1", "--repetitions", "2", env=_script_env(TMPDIR=str(scratch_parent))
     )
 
     assert result.returncode == 1
@@ -429,7 +458,7 @@ def test_pre_flight_stops_on_the_first_arm_that_prints_an_error_though_its_sourc
     checkout = _make_plain_fixture(tmp_path / "checkout", ["plain_one", ":"])
 
     result = _run_script(
-        checkout, "--iterations", "1", "--repetitions", "2", env=_clean_env(TMPDIR=str(scratch_parent))
+        checkout, "--iterations", "1", "--repetitions", "2", env=_script_env(TMPDIR=str(scratch_parent))
     )
 
     assert result.returncode == 1
@@ -454,6 +483,21 @@ def test_every_child_bash_reads_stdin_from_dev_null(tmp_path):
 
     assert result.returncode == 0, result.stderr
     assert not stdin_log.exists()
+
+
+def test_no_child_bash_runs_the_inherited_bash_env_file(tmp_path):
+    """BASH_ENV is sourced by the script's own startup and, unless the script unsets it, by every child bash."""
+    startup_log = tmp_path / "startup.log"
+    startup_file = tmp_path / "startup.sh"
+    startup_file.write_text(f"echo started >> {shlex.quote(str(startup_log))}\n")
+    checkout = _make_plain_fixture(tmp_path / "checkout")
+
+    result = _run_script(
+        checkout, "--iterations", "1", "--repetitions", "2", env=_script_env(BASH_ENV=str(startup_file))
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert startup_log.read_text().splitlines() == ["started"]
 
 
 def test_checkout_under_a_directory_name_with_a_space_runs_to_a_report(tmp_path):
