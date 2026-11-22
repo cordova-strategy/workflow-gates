@@ -323,10 +323,12 @@ class TestPrDescriptionTicketReference:
     """Pin the clauses of pr-description's ticket-reference bullet (GH-1528).
 
     The first four pins are plain `in` checks, because the bullet is one line
-    and `_assert_pinned_clause_right_bounded` passes only at a line or bullet
-    boundary. Each fails only when a clause it pins is deleted or reworded.
-    A contradicting clause inserted after a pinned clause does not fail it, and
-    no pin catches one inserted mid-bullet, so the diff review is that check.
+    and `_assert_pinned_clause_right_bounded` passes only at the end of the
+    section, a blank line, or a following bullet or heading line. Each fails
+    only when a clause it pins is deleted or reworded.
+    A contradicting clause inserted after a pinned clause does not fail it.
+    No pin catches one inserted mid-bullet.
+    The diff review is that check.
     The tail pin runs to the bullet's end and is right-bounded, so a sentence
     appended at the end fails it.
     """
