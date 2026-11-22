@@ -263,9 +263,13 @@ def _append_args(
     return args
 
 
+def _flag_removed(args: list[str], flag: str) -> list[str]:
+    flag_index = args.index(flag)
+    return args[:flag_index] + args[flag_index + 2:]
+
+
 def _without_source(args: list[str]) -> list[str]:
-    source_index = args.index("--source")
-    return args[:source_index] + args[source_index + 2:]
+    return _flag_removed(args, "--source")
 
 
 # A DEFER criterion and a range-form source are required, so every DEFER append
@@ -550,9 +554,10 @@ class TestReviewLedgerAppendHappyPath:
 
     def test_missing_finding_rejected(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--disposition", "ADDRESS", "--rationale", "r"]
+        args = _flag_removed(_append_args(), "--finding")
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
+        assert "--finding is required" in result.stderr
         assert not _ledger_path(isolated_home, git_repo).exists()
 
     def test_empty_rationale_rejected(self, isolated_home, git_repo):
@@ -563,9 +568,10 @@ class TestReviewLedgerAppendHappyPath:
 
     def test_missing_rationale_rejected(self, isolated_home, git_repo):
         _seed_session(isolated_home, SID)
-        args = ["append", "code-review", "--finding", "x", "--disposition", "ADDRESS"]
+        args = _flag_removed(_append_args(), "--rationale")
         result = _run(args, cwd=git_repo, home=isolated_home)
         assert result.returncode == 2
+        assert "--rationale is required" in result.stderr
         assert not _ledger_path(isolated_home, git_repo).exists()
 
 
@@ -2105,9 +2111,9 @@ class TestRoundCapVerdictSkillParity:
 
 
 def _skill_pass_kind_words() -> list[str]:
-    """The backticked words of Step 0.1's "where `<kind>` is ..." sentence that name a pass kind.
+    """The backticked words of Step 0.1's "Where `<kind>` is ..." sentence that name a pass kind.
     The pattern drops the skill names and the git command the sentence also backticks."""
-    sentence = re.search(r"where `<kind>` is ([^.]*)\.", _code_review_skill_text())
+    sentence = re.search(r"Where `<kind>` is ([^.]*)\.", _code_review_skill_text())
     tokens = re.findall(r"`([^`]+)`", sentence.group(1)) if sentence else []
     return [token for token in tokens if re.fullmatch(r"[a-z][a-z-]*", token)]
 
@@ -2192,6 +2198,29 @@ class TestReviewLedgerPassKind:
 
         assert synopsis is not None
         assert set(synopsis.group(1).split("|")) == set(_PASS_KIND_WORDS)
+
+    @pytest.mark.parametrize("successor", ["relog", "carry"])
+    def test_a_relog_or_carry_row_stores_its_own_pass_kind_not_the_decisions(self, isolated_home, git_repo, successor):
+        """A staged round's decision re-met by a cumulative round must count under cumulative."""
+        if successor == "carry":
+            result, _decision_id = _decide_then_carry_as_another_session(
+                isolated_home, git_repo, _defer_args(pass_kind="staged"), {"pass_kind": "cumulative"},
+            )
+        else:
+            _git(git_repo, "checkout", "-q", "-b", "feature")
+            _seed_session(isolated_home, SID)
+            assert _run(_defer_args(pass_kind="staged"), cwd=git_repo, home=isolated_home).returncode == 0
+            result = _run(
+                _append_args(
+                    ref=_logged_id(isolated_home, git_repo), round="2", reviewers=(), relog=True,
+                    pass_kind="cumulative",
+                ),
+                cwd=git_repo, home=isolated_home,
+            )
+
+        assert result.returncode == 0, result.stderr
+        decision, successor_row = _ledger_rows(_ledger_path(isolated_home, git_repo))
+        assert (decision["pass_kind"], successor_row["pass_kind"]) == ("staged", "cumulative")
 
 
 _LONG_FLAG_PATTERN = re.compile(r"(?<![\w-])--[a-z][a-z-]*")
@@ -3327,18 +3356,16 @@ class TestReviewLedgerRefRetry:
         assert result.returncode == 0, result.stderr
         assert len(_ledger_rows(ledger)) == 3
 
-    def test_a_retry_against_a_pre_schema_7_retirer_is_rejected_as_no_longer_live_and_adds_no_row(
+    def test_a_retry_against_a_schema_6_retirer_is_rejected_as_no_longer_live_and_adds_no_row(
         self, isolated_home, git_repo
     ):
-        """A retirer landed before schema 7 has no pass_kind, so the retry's pass_kind makes it a different row."""
+        """A schema 6 retirer has the reviewed_* fields but no pass_kind, so the retry's pass_kind makes it a different row."""
 
-        def as_schema_5_row(retirer: dict) -> dict:
-            pre_upgrade = {
-                key: value for key, value in retirer.items() if not key.startswith("reviewed_") and key != "pass_kind"
-            }
-            return {**pre_upgrade, "schema_version": 5}
+        def as_schema_6_row(retirer: dict) -> dict:
+            pre_upgrade = {key: value for key, value in retirer.items() if key != "pass_kind"}
+            return {**pre_upgrade, "schema_version": 6}
 
-        result, ledger = self._retry_against_rewritten_retirer(isolated_home, git_repo, as_schema_5_row)
+        result, ledger = self._retry_against_rewritten_retirer(isolated_home, git_repo, as_schema_6_row)
 
         assert result.returncode == 2
         assert "no longer live" in result.stderr

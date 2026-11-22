@@ -54,7 +54,7 @@ class TestReviewLedgerAuthoringEffortLiteral:
 class TestReviewLedgerPassKindLiteral:
     """Each of code-review's four append templates carries `--pass-kind` once. The
     Step 0.1 short-circuit template passes `staged`, and the other three pass the
-    `<kind>` Step 0.1 fixes, so a span that drops or doubles the flag fails."""
+    `<kind>` Step 0.1 fixes."""
 
     @staticmethod
     def _append_template_spans(text: str) -> list[str]:
