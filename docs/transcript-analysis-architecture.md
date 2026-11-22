@@ -279,7 +279,7 @@ miner's round filter and `routing_guard.py`'s per-round `spawn_open` flag are it
 `_round_skill_name` for its `REVIEW_TRACE_SKILLS` membership test and `--skill` filter comparison, and
 `_SLASH_COMMAND_RE` to extract a `/slash`-invoked skill name before `_round_skill_name` normalizes it.
 `_SLASH_COMMAND_RE` is also `skill_invocation.py`'s `/slash` pattern, and this is its one definition.
-`period_cost.py` and `compaction-context.py` (see "Sibling scripts") read it as well.
+`period_cost.py`, `correction_candidates.py` and `compaction-context.py` (see "Sibling scripts") read it as well.
 `detect_round_windows` is public (no leading
 underscore) for a separate reason: `author_outcome.py` is a second consumer, reading only each
 window's own `open_idx`/`skill`. `review_trace.py` and `routing_guard.py` are further ones.
@@ -700,8 +700,8 @@ The skill-invocation command: `cmd_skill_invocation`, the per-skill tally of top
 `/slash` invocations, `_normalize_skill_name`, the display-label helper that strips a directory
 qualifier from a skill name, and the `_add_skill_invocation_subparser` registration. Imports
 `corpus`, `render`, `review_rounds`, and `scope` all by module (attribute access), matching
-`cost.py`'s convention. `_normalize_skill_name` has its one definition here, and `review_trace.py`
-reads it. The `/slash` pattern is `review_rounds._SLASH_COMMAND_RE`.
+`cost.py`'s convention. `_normalize_skill_name` has its one definition here, and `review_trace.py` and
+`correction_candidates.py` read it. The `/slash` pattern is `review_rounds._SLASH_COMMAND_RE`.
 `_add_skill_invocation_subparser` is the one name `build_parser()` reaches bare.
 
 ### `skill_pair.py`
@@ -757,8 +757,9 @@ The user-input command: `cmd_user_input`, the per-session narrative of fresh use
 initial, follow-up, or explicit correction, the prompt-classification helpers
 (`_is_fresh_user_prompt_for_narrative`, `_is_unrecognized_user_list_record`, `_classify_prompt`,
 `_attribute_model_to_prompt`, `_truncate_prompt_text`), and the `_add_user_input_subparser`
-registration. Of those helpers, only `_is_fresh_user_prompt_for_narrative` has a production caller outside the
-module (see "Sibling scripts"). Imports `corpus`, `redaction`, `render`, `scope`, and `struggle` all by
+registration. Of those helpers, only `_is_fresh_user_prompt_for_narrative` and `_truncate_prompt_text` have a
+production caller outside the module: `correction_candidates.py` reads both, and `compaction-context.py` reads
+the first (see "Sibling scripts"). Imports `corpus`, `redaction`, `render`, `scope`, and `struggle` all by
 module (attribute access), matching `cost.py`'s convention; `_classify_prompt` reads
 `struggle.STRUGGLE_PHRASES`. It scans `scope.PROJECTS_DIR` only, ignoring declared roots. Its
 `--redact` map comes from `redaction._build_redact_map`'s default root. `_add_user_input_subparser`
@@ -896,7 +897,8 @@ these underscore-prefixed names:
 - `review_rounds._SLASH_COMMAND_RE`.
 
 A rename of any of them breaks that script when it runs, so grep `compaction-context.py` before
-changing one. Tightening `_is_fresh_user_prompt_for_narrative` also narrows the prompts that script quotes.
+changing one. Tightening `_is_fresh_user_prompt_for_narrative` also narrows the prompts that script quotes and the
+prompts `correction_candidates.py` emits.
 
 ## Tests
 
@@ -1110,8 +1112,8 @@ relations, and robustness under field mutation, and
 `tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the
 written file through `main()`. `tests/_correction_candidates_helpers.py`, a plain module, not a test file
 itself, holds their shared builders. It imports the record builders from `tests/_compaction_context_helpers.py`,
-which executes `compaction-context.py`, so `tests/test_transcript_analysis_multi_root_scope.py` builds its
-`correction-candidates` row inline instead of importing it.
+which executes `compaction-context.py`, so the `correction-candidates` args builder lives in `tests/conftest.py`,
+where `tests/test_transcript_analysis_multi_root_scope.py` imports it without importing this module.
 
 The session-signal command group splits at command seams, one test file per module:
 `tests/test_transcript_buckets.py`, `tests/test_transcript_fail_seq.py`,

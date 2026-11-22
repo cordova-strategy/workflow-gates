@@ -451,6 +451,47 @@ class TestWindow:
 
         assert only_line([record])["timestamp"] is None
 
+    @pytest.mark.parametrize(
+        ("window", "expected_texts"),
+        [({"since": "2026-05-20"}, ["offset"]), ({"until": "2026-05-19"}, [])],
+        ids=["since-the-utc-day", "until-the-local-day"],
+    )
+    def test_a_non_z_offset_timestamp_is_windowed_by_its_utc_day_and_emitted_in_utc(self, window, expected_texts):
+        local_evening_is_the_next_utc_day = "2026-05-19T23:30:00-05:00"
+        record = with_fields(user_prompt("offset"), timestamp=local_evening_is_the_next_utc_day, uuid="u")
+
+        lines = emitted([record], **window)
+
+        assert [line["text"] for line in lines] == expected_texts
+        assert [line["timestamp"] for line in emitted([record])] == ["2026-05-20T04:30:00+00:00"]
+
+    @pytest.mark.parametrize("converter_error", [OverflowError, OSError], ids=["overflow-error", "os-error"])
+    def test_a_prompt_or_asking_record_whose_timestamp_conversion_raises_reads_as_undated_and_the_run_continues(
+        self, monkeypatch, converter_error,
+    ):
+        def failing_converter(_timestamp):
+            raise converter_error("out of range")
+
+        monkeypatch.setattr(correction_candidates.corpus, "_parse_ts", failing_converter)
+        two_blocks = assistant_record([
+            ask_user_question_block([question_spec("A?")], tool_use_id="toolu_a"),
+            ask_user_question_block([question_spec("B?")], tool_use_id="toolu_b"),
+        ])
+        records = [
+            prompt("first", 1, uuid="u1"), prompt("second", 2, uuid="u2"), two_blocks,
+            ask_answer_record(tool_use_id="toolu_a", answers={"A?": "Yes"}),
+            ask_answer_record(tool_use_id="toolu_b", answers={"B?": "No"}),
+        ]
+
+        windowed_candidates, windowed_counts = scan(records, since="2026-05-01")
+        lines = emitted(records)
+
+        assert windowed_candidates == []
+        assert (windowed_counts["undated"], windowed_counts["ask_user_question_calls"]) == (4, 0)
+        assert [(line["kind"], line["timestamp"]) for line in lines] == [
+            ("prompt", None), ("prompt", None), ("question", None), ("question", None),
+        ]
+
     def test_surviving_candidates_keep_the_exchange_and_id_they_have_without_a_window(self):
         records = scripted_session()
         records[2] = with_fields(records[2], timestamp=ts(1, day=18))
@@ -951,6 +992,7 @@ class TestKeySets:
         )
 
         assert set(record) == {
-            "schema_version", "kind", "header", "generated_at", "since", "until", "truncate_chars", "families",
-            "counts", "checks",
+            "schema_version", "kind", "header", "do_not_publish", "generated_at", "since", "until", "truncate_chars",
+            "families", "counts", "checks",
         }
+        assert set(record["counts"]) == {"prompts", "slash_prompts", "questions", "ask_user_question_calls", "skipped"}

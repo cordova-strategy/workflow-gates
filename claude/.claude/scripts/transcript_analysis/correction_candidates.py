@@ -5,8 +5,7 @@ to one owner-only file, and its subparser registration.
 The typed-prompt definition is docs/transcript-analysis.md's "Terms" entry, and the record schema is
 that doc's correction-candidates section.
 
-Imports corpus, ledger_common, pricing, redaction, render, review_rounds, scope, skill_invocation, and
-user_input by module (attribute access, not by name) -- see scope.py's own top-of-file comment for why.
+Reaches every `transcript_analysis` module by attribute access, not by name; see `scope.py`'s top-of-file comment.
 """
 from __future__ import annotations
 
@@ -78,6 +77,7 @@ _SLASH_COMMAND_OPENINGS = tuple(
 # An interrupt marker, local-command output and a bash-mode record are harness echoes, so none starts an exchange.
 _NON_OPENING_VERDICTS = frozenset({SKIP_INTERRUPT, SKIP_LOCAL_COMMAND, SKIP_BASH_MODE})
 _INTERRUPT_TEXT_PREFIX = "[Request interrupted by user"
+# compaction-context.py's `_is_prompt_candidate` applies the same literal inline to the same class of record.
 _TASK_NOTIFICATION_CLOSER_FRAGMENT = "task-notification>"
 
 _ABSENT_RESULT_TYPE = "absent"
@@ -173,9 +173,20 @@ def _message_content(rec: dict) -> object:
 
 
 def _record_epoch(rec: dict) -> float | None:
-    """The record's `timestamp` as epoch seconds, or None when it is absent, not a string, or unparseable."""
+    """The record's `timestamp` as epoch seconds, or None when it is absent, not a string, or cannot be converted.
+
+    `corpus._parse_ts` catches `ValueError` and `TypeError`, and this function adds `OverflowError` and `OSError`.
+    A record whose conversion raises any of them reads as undated, so it never aborts the run. A timestamp the
+    conversion accepts but `_iso_utc` cannot format (a UTC year beyond 9999) emits `timestamp: null` and is not
+    counted undated.
+    """
     timestamp = rec.get("timestamp")
-    return corpus._parse_ts(timestamp) if isinstance(timestamp, str) else None
+    if not isinstance(timestamp, str):
+        return None
+    try:
+        return corpus._parse_ts(timestamp)
+    except (OverflowError, OSError):
+        return None
 
 
 def _iso_utc(epoch: float | None) -> str | None:
@@ -599,7 +610,6 @@ def _counts_and_checks(kept: Sequence[_Candidate], scan_counts: Mapping[str, int
     all_entries = [entry for candidate in questions for entry in candidate.record["questions"]]
     counts = {
         "prompts": len(prompts),
-        "initial": sum(1 for candidate in prompts if candidate.record["initial"]),
         "slash_prompts": sum(1 for candidate in prompts if candidate.record["command"] is not None),
         "questions": len(questions),
         _CALLS_COUNT: scan_counts[_CALLS_COUNT],
@@ -635,6 +645,7 @@ def _scope_record(
         "schema_version": SCHEMA_VERSION,
         "kind": KIND_SCOPE,
         "header": header,
+        "do_not_publish": scope._DO_NOT_PUBLISH_BANNER,
         "generated_at": generated_at.astimezone(UTC).isoformat(timespec="seconds"),
         "since": since,
         "until": until,
@@ -654,6 +665,12 @@ def _stderr_json_line(label: str, payload: Mapping) -> None:
     print(f"{_COMMAND}: {label} {json.dumps(payload, ensure_ascii=True, sort_keys=True)}", file=sys.stderr)
 
 
+def _stderr_families_line(families: Mapping[str, int]) -> None:
+    """Print the do-not-publish banner, then the families line, which names raw project directories."""
+    print(scope._DO_NOT_PUBLISH_BANNER, file=sys.stderr)
+    _stderr_json_line("families", families)
+
+
 def _sessions_or_abort(session_iter: Iterator[tuple[Path, list[dict]]]) -> Iterator[tuple[Path, list[dict]]]:
     """Yield the corpus reader's sessions, turning its abort into exit 1 without echoing the exception's text."""
     while True:
@@ -668,10 +685,11 @@ def _sessions_or_abort(session_iter: Iterator[tuple[Path, list[dict]]]) -> Itera
 
 
 def _window_bounds_or_refuse(args: argparse.Namespace) -> tuple[float | None, float | None]:
-    """The window's `(since_ts, until_epoch)`, exiting 2 when a supplied bound does not apply.
+    """The window's `(since_ts, until_epoch)`, exiting 2 when a supplied bound does not apply or the window is reversed.
 
     `scope._iso_date` accepts an unpadded month or day and `_parse_absolute_window_args` then yields no bound for it,
-    which would write the whole history under a scope record that names a window. The message never echoes the value.
+    which would write the whole history under a scope record that names a window. A reversed window would write an
+    empty file under a scope record that names an impossible window. Neither message echoes a value.
     """
     since_ts, until_epoch = scope._parse_absolute_window_args(args, _COMMAND)
     unapplied = [
@@ -681,6 +699,10 @@ def _window_bounds_or_refuse(args: argparse.Namespace) -> tuple[float | None, fl
     ]
     if unapplied:
         print(f"{_COMMAND}: {' and '.join(unapplied)} must be a zero-padded YYYY-MM-DD date", file=sys.stderr)
+        sys.exit(2)
+    # `until_epoch` is the start of the day after `--until`, so a one-day window has `since_ts` below it.
+    if since_ts is not None and until_epoch is not None and since_ts >= until_epoch:
+        print(f"{_COMMAND}: --since must not be after --until", file=sys.stderr)
         sys.exit(2)
     return since_ts, until_epoch
 
@@ -737,7 +759,7 @@ def cmd_correction_candidates(args: argparse.Namespace) -> None:
         scan_counts.update(session_counts)
 
     if args.preview:
-        _stderr_json_line("families", families)
+        _stderr_families_line(families)
         _warn_when_no_session_matched(families)
         return
 
@@ -755,7 +777,7 @@ def cmd_correction_candidates(args: argparse.Namespace) -> None:
     )
 
     print(args.out)
-    _stderr_json_line("families", families)
+    _stderr_families_line(families)
     _stderr_json_line("counts", {"counts": counts, "checks": checks})
     _warn_when_no_session_matched(families)
 
@@ -779,6 +801,9 @@ def _add_correction_candidates_subparser(subparsers: argparse._SubParsersAction)
         help=(
             "Write every main-session AskUserQuestion exchange and typed prompt, with the agent text around it,"
             " as JSON Lines to a new file named by --out."
+        ),
+        epilog=(
+            "Scope is required: pass --projects GLOB ('*' reads every project on this machine) or --this-repo."
         ),
     )
     scope._add_project_scope_args(p_cc)

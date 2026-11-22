@@ -193,6 +193,7 @@ def _is_prompt_candidate(rec: dict) -> bool:
         return False
     if not _passes_origin_rule(rec):
         return False
+    # correction_candidates.py's `_TASK_NOTIFICATION_CLOSER_FRAGMENT` is the twin of this literal.
     if rec.get("origin") is None and "task-notification>" in _prompt_text(rec):
         return False
     return not render._is_interrupt_marker(rec)

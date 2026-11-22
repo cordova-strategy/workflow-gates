@@ -57,6 +57,7 @@ from ._turn_shape_helpers import _turn_shape_args
 from .conftest import (
     _audit_routing_args,
     _context_distribution_args,
+    _correction_candidates_args,
     _cost_args,
     _cost_ledger_args,
     _cost_trend_args,
@@ -126,10 +127,7 @@ _UNCONDITIONAL_HEADER_CASES: list[tuple[str, str, object, object, bool]] = [
      _audit_routing_samples_args, True),
     ("judgment-pair", "JUDGMENT PAIR", judgment_pair.cmd_judgment_pair, _judgment_pair_args, True),
     ("correction-candidates", "CORRECTION CANDIDATES", correction_candidates.cmd_correction_candidates,
-     lambda: type("A", (), {
-         "projects": "*", "this_repo": False, "since": None, "until": None, "truncate_chars": 2000,
-         "out": None, "preview": True,
-     })(), False),
+     lambda: _correction_candidates_args(preview=True), False),
     ("edit-format", "EDIT FORMAT", edit_format.cmd_edit_format,
      lambda: type("A", (), {"projects": "*", "this_repo": False, "no_redact": False, "extra_config_dirs": None})(), False),
     ("read-scope", "READ SCOPE", read_scope.cmd_read_scope,

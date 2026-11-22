@@ -3,7 +3,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from transcript_analysis import corpus, correction_candidates, render
+from transcript_analysis import corpus, correction_candidates, render, scope
 
 from ._compaction_context_helpers import (
     ABSENT,
@@ -184,7 +184,6 @@ class TestCountersAndChecks:
 
         assert counts == {
             "prompts": 11,
-            "initial": 4,
             "slash_prompts": 2,
             "questions": 3,
             "ask_user_question_calls": 94,
@@ -197,7 +196,6 @@ class TestCountersAndChecks:
 
         assert counts == {
             "prompts": 44,
-            "initial": 4,
             "slash_prompts": 2,
             "questions": 3,
             "ask_user_question_calls": 97,
@@ -242,7 +240,7 @@ class TestCountersAndChecks:
 
         _kept, counts, _checks = run_files({"sess-a": records})
 
-        assert (counts["prompts"], counts["initial"], counts["slash_prompts"]) == (2, 1, 1)
+        assert (counts["prompts"], counts["slash_prompts"]) == (2, 1)
 
 
 class TestCommandScopeRecord:
@@ -301,6 +299,7 @@ class TestScopeRecord:
             "schema_version": 1,
             "kind": "scope",
             "header": "HEADER",
+            "do_not_publish": scope._DO_NOT_PUBLISH_BANNER,
             "generated_at": "2026-05-19T10:00:07+00:00",
             "since": "2026-05-01",
             "until": "2026-05-19",

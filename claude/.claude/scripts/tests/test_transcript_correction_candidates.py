@@ -32,6 +32,10 @@ _OUT_ERROR = "correction-candidates: pass --out PATH (a new file outside any git
 _ZERO_PADDED = "must be a zero-padded YYYY-MM-DD date\n"
 _HEADER_PREFIX = "CORRECTION CANDIDATES SOURCES ("
 _FAMILIES_PREFIX = "correction-candidates: families "
+_BANNER = scope._DO_NOT_PUBLISH_BANNER
+_REVERSED_WINDOW_ARGS = ["--since", "2026-05-02", "--until", "2026-05-01"]
+_FAR_REVERSED_WINDOW_ARGS = ["--since", "2026-05-10", "--until", "2026-05-01"]
+_REVERSED_WINDOW_ERROR = "correction-candidates: --since must not be after --until\n"
 _COUNTS_PREFIX = "correction-candidates: counts "
 _REPO_FAMILY = "-home-example-src-workflow-gates"
 _ABORT_LINE = "correction-candidates: the transcript scan aborted ({name}); no file was written\n"
@@ -92,6 +96,12 @@ class TestCliWiring:
         with pytest.raises(SystemExit):
             cli.build_parser().parse_args(["correction-candidates", "--this-repo", "--projects", "x"])
 
+    def test_help_states_that_a_scope_flag_is_required(self, monkeypatch, capsys):
+        status, stdout, _stderr = run_main(monkeypatch, capsys, "--help")
+
+        assert status == 0
+        assert "Scope is required" in stdout
+
     def test_zero_truncate_chars_parses(self):
         assert cli.build_parser().parse_args(["correction-candidates", "--truncate-chars", "0"]).truncate_chars == 0
 
@@ -135,6 +145,17 @@ class TestAllowPaths:
         assert scope_record[flag.removeprefix("--")] == date
         assert scope_record["counts"]["prompts"] == 1
 
+    def test_a_one_day_window_with_equal_since_and_until_runs(self, fake_projects, out_dir, monkeypatch, capsys):
+        seed(fake_projects, question_session())
+        out = out_dir / "run.jsonl"
+
+        status, _stdout, _stderr = run_main(
+            monkeypatch, capsys, "--projects", "*", "--since", "2026-05-19", "--until", "2026-05-19", "--out", str(out),
+        )
+
+        assert status == 0
+        assert written_lines(out)[0]["counts"]["prompts"] == 1
+
 
 class TestRefusals:
     @pytest.fixture(params=[(), ("--preview",)], ids=["run", "preview"])
@@ -146,6 +167,7 @@ class TestRefusals:
         assert stdout == ""
         assert _HEADER_PREFIX not in stderr
         assert _FAMILIES_PREFIX not in stderr
+        assert _BANNER not in stderr
         if expected_stderr is not None:
             assert stderr == expected_stderr
 
@@ -216,6 +238,34 @@ class TestRefusals:
         self._assert_refused(*result, expected_stderr=f"correction-candidates: {expected_flags} {_ZERO_PADDED}")
         assert not out.exists()
 
+    @pytest.mark.parametrize(
+        "reversed_window_args", [_REVERSED_WINDOW_ARGS, _FAR_REVERSED_WINDOW_ARGS], ids=["adjacent-day", "multi-day"],
+    )
+    def test_a_since_after_until_exits_2_with_one_line_that_echoes_no_date(
+        self, fake_projects, out_dir, monkeypatch, capsys, mode_flags, reversed_window_args,
+    ):
+        seed(fake_projects, question_session())
+        out = out_dir / "run.jsonl"
+
+        result = run_main(monkeypatch, capsys, "--projects", "*", *reversed_window_args, "--out", str(out), *mode_flags)
+
+        self._assert_refused(*result, expected_stderr=_REVERSED_WINDOW_ERROR)
+        assert not out.exists()
+
+    def test_a_non_integer_truncate_chars_exits_2_with_argparses_usage_and_error(
+        self, fake_projects, out_dir, monkeypatch, capsys, mode_flags,
+    ):
+        out = out_dir / "run.jsonl"
+
+        status, stdout, stderr = run_main(
+            monkeypatch, capsys, "--projects", "*", "--truncate-chars", "abc", "--out", str(out), *mode_flags,
+        )
+
+        self._assert_refused(status, stdout, stderr)
+        assert "usage:" in stderr
+        assert "argument --truncate-chars: not an integer: 'abc'" in stderr
+        assert not out.exists()
+
     def test_an_argparse_error_prints_instead_of_the_scope_refusal(self, fake_projects, monkeypatch, capsys, mode_flags):
         status, stdout, stderr = run_main(monkeypatch, capsys, "--truncate-chars", "-1", *mode_flags)
 
@@ -236,6 +286,15 @@ class TestRefusals:
             pytest.param(
                 ["--projects", "*"], True, _UNPADDED_SINCE, _UNPADDED_SINCE_ERROR, id="unapplied-window-before-an-existing-out",
             ),
+            pytest.param(
+                ["--projects", "*"], False, _REVERSED_WINDOW_ARGS, _REVERSED_WINDOW_ERROR,
+                id="reversed-window-before-neither-out-nor-preview",
+            ),
+            pytest.param(
+                ["--projects", "*"], True, _REVERSED_WINDOW_ARGS, _REVERSED_WINDOW_ERROR,
+                id="reversed-window-before-an-existing-out",
+            ),
+            pytest.param([], False, _REVERSED_WINDOW_ARGS, _SCOPE_ERROR, id="no-scope-before-a-reversed-window"),
         ],
     )
     def test_two_refusals_that_apply_print_only_the_earlier_ones_line(
@@ -395,8 +454,9 @@ class TestPreview:
 
         assert status == 0
         assert stdout == ""
-        header, families_line = stderr.splitlines()
+        header, banner, families_line = stderr.splitlines()
         assert header.startswith(_HEADER_PREFIX)
+        assert banner == _BANNER
         assert families_line.startswith(_FAMILIES_PREFIX)
         assert families_of(stderr) == {"-home-user-testrepo": 1}
         assert sorted(tmp_path.rglob("*")) == before
@@ -464,13 +524,17 @@ class TestRun:
         cli.main()
 
         def label(stream: str, text: str) -> str:
-            prefixes = {"stderr": ((_HEADER_PREFIX, "header"), (_FAMILIES_PREFIX, "families"), (_COUNTS_PREFIX, "counts"))}
+            prefixes = {
+                "stderr": (
+                    (_HEADER_PREFIX, "header"), (_BANNER, "banner"), (_FAMILIES_PREFIX, "families"), (_COUNTS_PREFIX, "counts"),
+                ),
+            }
             return next((name for prefix, name in prefixes.get(stream, ()) if text.startswith(prefix)), stream)
 
         events = [label(stream, text) for stream, text in writes if text != "\n"]
-        assert events == ["header", "publish", "stdout", "families", "counts"]
+        assert events == ["header", "publish", "stdout", "banner", "families", "counts"]
 
-    def test_stderr_holds_the_header_the_families_line_and_the_counts_line_at_one_root(
+    def test_stderr_holds_the_header_the_banner_the_families_line_and_the_counts_line_at_one_root(
         self, fake_projects, out_dir, monkeypatch, capsys,
     ):
         seed(fake_projects, question_session())
@@ -478,16 +542,17 @@ class TestRun:
 
         _status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
 
-        header, families_line, counts_line = stderr.splitlines()
+        header, banner, families_line, counts_line = stderr.splitlines()
         assert header.startswith(_HEADER_PREFIX)
-        assert stderr.isascii()
+        assert banner == _BANNER
         assert families_line.startswith(_FAMILIES_PREFIX)
         record = written_lines(out)[0]
         assert record["header"] == header
+        assert record["do_not_publish"] == _BANNER
         counts_payload = json.loads(counts_line.removeprefix(_COUNTS_PREFIX))
         assert counts_payload == {"counts": record["counts"], "checks": record["checks"]}
 
-    def test_stderr_at_two_roots_holds_the_header_a_scanning_line_per_root_then_families_and_counts(
+    def test_stderr_at_two_roots_holds_the_header_a_scanning_line_per_root_then_banner_families_and_counts(
         self, tmp_path, out_dir, monkeypatch, capsys,
     ):
         _first_root, second_root = _two_declared_roots(tmp_path, monkeypatch)
@@ -497,9 +562,10 @@ class TestRun:
         status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*-workflow-gates*", "--out", str(out))
 
         assert status == 0
-        header, first_root_line, second_root_line, families_line, counts_line = stderr.splitlines()
+        header, first_root_line, second_root_line, banner, families_line, counts_line = stderr.splitlines()
         assert "2 roots" in header
         assert (first_root_line, second_root_line) == ("scanning root 1/2...", "scanning root 2/2...")
+        assert banner == _BANNER
         assert families_line.startswith(_FAMILIES_PREFIX)
         assert counts_line.startswith(_COUNTS_PREFIX)
         lines = written_lines(out)
@@ -603,7 +669,7 @@ class TestRun:
         _status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
 
         assert out.read_bytes().isascii()
-        assert stderr.isascii()
+        assert stderr.replace(_BANNER, "").isascii()
         scope_record, prompt_line, question_line = written_lines(out)
         assert prompt_line["text"] == "café ☕ please"
         assert question_line["questions"][0]["answer"] == "Ünïcode answer"
@@ -661,6 +727,53 @@ class TestSubagentFiles:
         assert question_line["questions"][0]["answer"] == "Alpha"
         assert (scope_record["counts"]["prompts"], scope_record["counts"]["questions"]) == (1, 1)
         assert scope_record["families"] == {"-home-user-testrepo": 1}
+
+
+_OUT_OF_SCOPE_FAMILY = "-home-user-unrelated"
+_OUT_OF_SCOPE_PROMPT = "CANARY-OUT-OF-SCOPE-PROMPT"
+
+
+class TestScopeNarrowing:
+    """A narrowed scope reads only its own families: the out-of-scope family stays out of the file and the counts."""
+
+    @pytest.fixture(params=["this-repo", "narrow-glob"])
+    def narrowed_scope_args(self, request, fake_projects, monkeypatch) -> list[str]:
+        if request.param == "narrow-glob":
+            return ["--projects", "*testrepo*"]
+        monkeypatch.setattr(scope, "_repo_scoped_project_slugs", lambda *args, **kwargs: [fake_projects.name])
+        return ["--this-repo"]
+
+    @pytest.fixture()
+    def in_and_out_of_scope_families(self, fake_projects):
+        seed(fake_projects, question_session())
+        seed(fake_projects.parent / _OUT_OF_SCOPE_FAMILY, [
+            prompt(_OUT_OF_SCOPE_PROMPT, 1, uuid="unrelated-prompt"),
+            ask_record([question_spec("Unrelated?")], tool_use_id="toolu_unrelated", minute=2),
+            ask_answer_record(tool_use_id="toolu_unrelated", answers={"Unrelated?": "Yes"}, timestamp=ts(3)),
+        ])
+
+    def test_a_run_leaves_the_out_of_scope_family_out_of_the_families_the_lines_and_the_counts(
+        self, in_and_out_of_scope_families, narrowed_scope_args, out_dir, monkeypatch, capsys,
+    ):
+        out = out_dir / "run.jsonl"
+
+        status, _stdout, stderr = run_main(monkeypatch, capsys, *narrowed_scope_args, "--out", str(out))
+
+        scope_record, *lines = written_lines(out)
+        assert status == 0
+        assert scope_record["families"] == families_of(stderr) == {"-home-user-testrepo": 1}
+        assert {line["family"] for line in lines} == {"-home-user-testrepo"}
+        assert _OUT_OF_SCOPE_PROMPT not in out.read_text(encoding="ascii")
+        assert (scope_record["counts"]["prompts"], scope_record["counts"]["questions"]) == (1, 1)
+
+    def test_a_preview_lists_only_the_in_scope_family(
+        self, in_and_out_of_scope_families, narrowed_scope_args, monkeypatch, capsys,
+    ):
+        status, _stdout, stderr = run_main(monkeypatch, capsys, *narrowed_scope_args, "--preview")
+
+        assert status == 0
+        assert families_of(stderr) == {"-home-user-testrepo": 1}
+        assert _OUT_OF_SCOPE_FAMILY not in stderr
 
 
 _CANARIES = {
@@ -760,10 +873,10 @@ class TestCanaries:
         status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--preview")
 
         assert status == 0
-        assert stderr.isascii()
+        assert stderr.replace(_BANNER, "").isascii()
         assert "\x1b" not in stderr
         assert [line.startswith(_FAMILIES_PREFIX) for line in stderr.splitlines()].count(True) == 1
-        assert len(stderr.splitlines()) == 2
+        assert len(stderr.splitlines()) == 3
 
 
 class TestCorpusAbort:

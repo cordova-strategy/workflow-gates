@@ -6,7 +6,9 @@ from transcript_analysis import render
 
 from .conftest import _TASK_NOTIFICATION_TEXT, _asst, _task_notification_msg, _tool_result, _user_msg
 
-# Roughly 5 s for a lazy regex at the test's input size against microseconds for str.find, so 1 s leaves slow-CI headroom.
+# A lazy regex rescans to the end of the text from every opener with no closer, so its cost is quadratic in the opener count.
+# About 5 s at the test's input size is a one-off local measurement, against microseconds for str.find.
+# 1 s leaves slow-CI headroom.
 _UNCLOSED_OPENERS_BOUND_SECONDS = 1
 
 
@@ -384,7 +386,6 @@ class TestFirstCommandArgs:
 
     def test_a_long_run_of_unclosed_openers_finishes_instead_of_rescanning_per_opener(self):
         # Elapsed time is checked after the call returns: a join timeout cannot preempt a GIL-holding regex search.
-        # A lazy regex takes seconds at this size (quadratic); str.find takes microseconds.
         text = "<command-args>" * 5_000
 
         started = time.perf_counter()

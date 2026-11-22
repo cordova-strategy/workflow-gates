@@ -2,6 +2,7 @@
 
 The record builders come from _compaction_context_helpers, whose shapes follow docs/precompact-hook-behavior.md.
 Importing that module executes compaction-context.py, so test_transcript_analysis_multi_root_scope.py must not import this one.
+The args-namespace builder lives in conftest.py for that reason.
 """
 import copy
 import json
@@ -25,7 +26,7 @@ from ._compaction_context_helpers import (
     slash_invocation,
     user_prompt,
 )
-from .conftest import _write_jsonl
+from .conftest import _correction_candidates_args, _write_jsonl
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_TIMESTAMP = "2026-05-19T10:00:00.000Z"
@@ -153,27 +154,6 @@ def field_mutations(record: dict) -> Iterator[tuple[tuple, dict]]:
             yield path, mutated
 
 
-def correction_candidates_args(
-    *,
-    projects: str | None = "*",
-    this_repo: bool = False,
-    since: str | None = None,
-    until: str | None = None,
-    truncate_chars: int = 2000,
-    out: str | None = None,
-    preview: bool = False,
-) -> object:
-    return type("A", (), {
-        "projects": projects,
-        "this_repo": this_repo,
-        "since": since,
-        "until": until,
-        "truncate_chars": truncate_chars,
-        "out": out,
-        "preview": preview,
-    })()
-
-
 FAMILY = "-home-example-src-workflow-gates"
 SESSION = "sess-a"
 SONNET = "claude-sonnet-4-6"
@@ -234,7 +214,7 @@ def slash_prompt_session() -> list:
 
 def scan(records, *, session=SESSION, family=FAMILY, truncate_chars=2000, since=None, until=None):
     since_ts, until_epoch = scope._parse_absolute_window_args(
-        correction_candidates_args(since=since, until=until), "correction-candidates",
+        _correction_candidates_args(since=since, until=until), "correction-candidates",
     )
     return correction_candidates._session_candidates(
         records, session, family, truncate_chars=truncate_chars, since_ts=since_ts, until_epoch=until_epoch,
