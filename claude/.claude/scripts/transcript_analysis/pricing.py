@@ -9,15 +9,19 @@ return values of _dedup_session and the _warn_if_* functions.
 from __future__ import annotations
 
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from typing import NamedTuple
 
 from transcript_analysis.corpus import SUBAGENT_SUBDIR
 
 # Labels persist in pr-cost ledger model_breakdown and review_rounds cells; never rename or remove one.
-# Older checkouts read an added label, because the ledger parser checks labels for key shape only.
-# A new class also needs a mapping in _token_counts, _price_turn and _usage_for_token_group.
+# A new label needs a routing_guard._CAPTURE_REVISION decision and a CHANGELOG Migration line,
+# because older checkouts do not tolerate it:
+# - the routing-guard capture validator rejects it and the whole sample reports NOT RUN;
+# - pr-cost-export drops it from review_rounds;
+# - review-cost-by-size cannot price its group.
+# A new class also needs a mapping in _token_counts and a rate in _rates_from_base.
 _TOKEN_CLASSES: tuple[str, ...] = ("cache_read", "cache_write_5m", "cache_write_1h", "output", "input")
 
 _PRICING_SOURCE_URL = "https://platform.claude.com/docs/en/about-claude/pricing"
@@ -31,7 +35,7 @@ _CACHE_READ_MULTIPLIER = 0.1
 
 # Cache-read multiplier for the model IDs the pricing page states a reduced
 # cache-hit rate for, overriding _CACHE_READ_MULTIPLIER -- every other class
-# still derives from its own sibling multiplier above via _model_rates.
+# still derives from its own sibling multiplier above via _rates_from_base.
 # Claude Mythos 5.1 shares the fable-5-1 exception on the pricing page too
 # but has no row in _MODEL_BASE_INPUT_RATES, so it stays unpriced rather
 # than gaining a cache-read-only entry here.
@@ -44,23 +48,42 @@ _CACHE_READ_MULTIPLIER_OVERRIDES: dict[str, float] = {
 # Multipliers applied to every dollar class when usage.speed/usage.inference_geo
 # report that outcome, per platform.claude.com/docs/en/build-with-claude/fast-mode
 # and .../about-claude/pricing's data-residency section.
-# A new multiplier condition in _price_turn also needs:
-# - A _pricing_variant outcome and a _PRICING_VARIANTS label, or pr-cost ledger cells file the condition's turns
-#   under the wrong variant.
-# - A _USAGE_FIELDS_BY_PRICING_VARIANT entry, or _usage_for_token_group cannot rebuild the variant and re-pricing
-#   excludes the PR.
+# A new multiplier condition needs a _VariantTerms field and a _PRICING_VARIANT_TERMS label for every combination,
+# or pr-cost ledger cells file its turns under the wrong variant.
+# context_composition._context_composition_turn_rate_scale reads speed and inference_geo itself and needs the same condition.
 _FAST_MODE_RATE_MULTIPLIER = 2
 _INFERENCE_GEO_US_RATE_MULTIPLIER = 1.1
 
+
+class _VariantTerms(NamedTuple):
+    """The three conditions a pricing-variant label names."""
+
+    fast: bool
+    us_geo: bool
+    long_prompt: bool
+
+
 # Same persistence rule as _TOKEN_CLASSES.
-_PRICING_VARIANTS: tuple[str, ...] = ("standard", "fast", "us_geo", "fast_us_geo")
+_PRICING_VARIANT_TERMS: dict[str, _VariantTerms] = {
+    "standard": _VariantTerms(fast=False, us_geo=False, long_prompt=False),
+    "fast": _VariantTerms(fast=True, us_geo=False, long_prompt=False),
+    "us_geo": _VariantTerms(fast=False, us_geo=True, long_prompt=False),
+    "fast_us_geo": _VariantTerms(fast=True, us_geo=True, long_prompt=False),
+    "long_prompt": _VariantTerms(fast=False, us_geo=False, long_prompt=True),
+    "fast_long_prompt": _VariantTerms(fast=True, us_geo=False, long_prompt=True),
+    "us_geo_long_prompt": _VariantTerms(fast=False, us_geo=True, long_prompt=True),
+    "fast_us_geo_long_prompt": _VariantTerms(fast=True, us_geo=True, long_prompt=True),
+}
+_PRICING_VARIANTS: tuple[str, ...] = tuple(_PRICING_VARIANT_TERMS)
+_VARIANT_BY_TERMS: dict[_VariantTerms, str] = {terms: label for label, terms in _PRICING_VARIANT_TERMS.items()}
 
 _DEFAULT_REVERIFY_BY = _PRICING_FETCH_DATE + timedelta(days=90)
 
 # Base input $/MTok per model ID, keyed on the exact string Claude Code writes
 # to message.model. Source: _PRICING_SOURCE_URL, fetched _PRICING_FETCH_DATE.
 # Output/cache-write/cache-read rates are derived from this one base rate per
-# model by _model_rates, so each model needs only its base rate kept current.
+# model by _rates_from_base, so each model needs only its base rate kept current,
+# plus a _LONG_PROMPT_TIERS row when the pricing page prices it by prompt length.
 # Key rules, each with its consequence:
 # - Keys persist verbatim in pr-cost ledger rows and exports, so add vendor-published model IDs only.
 # - A key must match pr_cost_ledger._MODEL_BREAKDOWN_KEY_RE, or the ledger cannot read back any row that carries it.
@@ -73,6 +96,8 @@ _MODEL_BASE_INPUT_RATES: dict[str, float] = {
     "claude-sonnet-5-5": 2.00,
     "claude-sonnet-5": 2.00,
     "claude-sonnet-4-6": 3.00,
+    # Claude Haiku 5.5's up-to-100,000-token row, fetched 2026-11-20; its higher tier is in _LONG_PROMPT_TIERS.
+    "claude-haiku-5-5": 0.10,
     "claude-haiku-4-5-20251001": 1.00,
     # Exact-match only, unlike _context_window_for_model's prefix match on
     # this same string -- a dated-snapshot variant like
@@ -91,6 +116,25 @@ _MODEL_BASE_INPUT_RATES: dict[str, float] = {
     "claude-fable-5-1": 10.00,
     # Fable 5.2 base input $8 per the pricing page's Fable 5.2 row.
     "claude-fable-5-2": 8.00,
+}
+
+
+class _LongPromptTier(NamedTuple):
+    threshold_tokens: int
+    base_input_rate: float
+
+
+# A turn whose _context_at_turn is over threshold_tokens pays base_input_rate in place of its _MODEL_BASE_INPUT_RATES row.
+# Remove a model's _LONG_PROMPT_TIERS row only together with its _MODEL_BASE_INPUT_RATES row. Removing only the tier row:
+# - leaves its stored long-prompt groups unpriceable;
+# - prices its over-threshold turns at the lower tier with no notice.
+# Adding a tier row for a model that already has captured groups leaves those groups under non-long-prompt labels,
+# repriced at the lower tier with no notice.
+# A new row therefore needs a routing_guard._CAPTURE_REVISION decision
+# or the remedy in "Known gaps" of the routing-guard section of docs/transcript-analysis.md.
+_LONG_PROMPT_TIERS: dict[str, _LongPromptTier] = {
+    # Claude Haiku 5.5's over-100,000-token row, fetched 2026-11-20.
+    "claude-haiku-5-5": _LongPromptTier(threshold_tokens=100_000, base_input_rate=0.50),
 }
 
 # Re-verify-by date per model ID: fetch-date+90d for every model, since none
@@ -160,25 +204,58 @@ def _context_window_for_model(model: str) -> int:
     return _DEFAULT_CONTEXT_WINDOW
 
 
-def _model_rates(model: str) -> dict[str, float] | None:
-    """Return per-MTok dollar rates for one model ID, or None if unpriced.
+def _rates_from_base(model: str, base_input: float) -> dict[str, float]:
+    """Return per-MTok dollar rates for one model ID at one base input rate.
 
-    Every class but cache_read derives from one base rate for every model.
+    Every class but cache_read derives from the base rate for every model.
     cache_read uses _CACHE_READ_MULTIPLIER_OVERRIDES' per-model value instead
     of _CACHE_READ_MULTIPLIER when the model has one -- the one class the
     pricing page states per-model exceptions for.
     """
-    base = _MODEL_BASE_INPUT_RATES.get(model)
-    if base is None:
-        return None
     cache_read_multiplier = _CACHE_READ_MULTIPLIER_OVERRIDES.get(model, _CACHE_READ_MULTIPLIER)
     return {
-        "input": base,
-        "output": base * _OUTPUT_RATE_MULTIPLIER,
-        "cache_write_5m": base * _CACHE_WRITE_5M_MULTIPLIER,
-        "cache_write_1h": base * _CACHE_WRITE_1H_MULTIPLIER,
-        "cache_read": base * cache_read_multiplier,
+        "input": base_input,
+        "output": base_input * _OUTPUT_RATE_MULTIPLIER,
+        "cache_write_5m": base_input * _CACHE_WRITE_5M_MULTIPLIER,
+        "cache_write_1h": base_input * _CACHE_WRITE_1H_MULTIPLIER,
+        "cache_read": base_input * cache_read_multiplier,
     }
+
+
+def _model_rates(model: str) -> dict[str, float] | None:
+    """Return per-MTok dollar rates for one model ID, or None if unpriced or priced by prompt length.
+
+    A model in _LONG_PROMPT_TIERS has no single rate set, so a caller holding a usage uses _turn_rates.
+    """
+    base = _MODEL_BASE_INPUT_RATES.get(model)
+    if base is None or model in _LONG_PROMPT_TIERS:
+        return None
+    return _rates_from_base(model, base)
+
+
+def _rates_for_variant(model: str, variant: str) -> dict[str, float] | None:
+    """Return per-MTok dollar rates for one model ID under one _PRICING_VARIANTS label.
+
+    None for an unpriced model, an unknown label, or a long-prompt label on a model with no tier.
+    """
+    terms = _PRICING_VARIANT_TERMS.get(variant)
+    base = _MODEL_BASE_INPUT_RATES.get(model)
+    if terms is None or base is None:
+        return None
+    if terms.long_prompt:
+        tier = _LONG_PROMPT_TIERS.get(model)
+        if tier is None:
+            return None
+        base = tier.base_input_rate
+    multiplier = (_FAST_MODE_RATE_MULTIPLIER if terms.fast else 1) * (
+        _INFERENCE_GEO_US_RATE_MULTIPLIER if terms.us_geo else 1
+    )
+    return {cls: rate * multiplier for cls, rate in _rates_from_base(model, base).items()}
+
+
+def _turn_rates(model: str, usage: dict) -> dict[str, float] | None:
+    """Return the per-MTok dollar rates _price_turn applies to one turn's usage, or None when the turn is unpriced."""
+    return _rates_for_variant(model, _pricing_variant(model, usage))
 
 
 def _cache_read_equivalent_weights() -> dict[str, float]:
@@ -586,7 +663,7 @@ def _rate_expired(model: str, as_of: date) -> bool:
 
 
 def _price_turn(model: str, usage: dict) -> tuple[dict[str, float] | None, int, int]:
-    """Price one assistant turn's usage against _MODEL_BASE_INPUT_RATES.
+    """Price one assistant turn's usage at the rates _pricing_variant's label implies.
 
     Returns (dollars_by_class, context_at_turn, unpriced_tokens):
     - dollars_by_class holds one raw (unrounded) dollar amount per
@@ -599,57 +676,42 @@ def _price_turn(model: str, usage: dict) -> tuple[dict[str, float] | None, int, 
       cache_read + ephemeral_1h + ephemeral_5m) when the model is unpriced,
       else 0.
     """
-    input_t = int(usage.get("input_tokens", 0))
-    output_t = int(usage.get("output_tokens", 0))
-    cache_read_t = int(usage.get("cache_read_input_tokens", 0))
-    eph_1h, eph_5m = _cache_write_split(usage)
-    # _cache_write_split runs twice for this turn (here and inside
-    # _context_at_turn). It is pure, and the per-class splits below need the two
-    # halves separately, so sharing the sum is the only deduplication available.
+    token_counts = _token_counts(usage)
     context_at_turn = _context_at_turn(usage)
-
-    rates = _model_rates(model)
-    if rates is None:
-        return None, context_at_turn, input_t + output_t + cache_read_t + eph_1h + eph_5m
-
-    dollars = {
-        "input": input_t / 1_000_000 * rates["input"],
-        "output": output_t / 1_000_000 * rates["output"],
-        "cache_read": cache_read_t / 1_000_000 * rates["cache_read"],
-        "cache_write_1h": eph_1h / 1_000_000 * rates["cache_write_1h"],
-        "cache_write_5m": eph_5m / 1_000_000 * rates["cache_write_5m"],
-    }
-    # usage.speed/usage.inference_geo report the API's settled outcome, not an
-    # echo of the request, so no per-model eligibility list is needed here.
-    # Neither field is in _USAGE_DRIFT_INVARIANT_KEYS, so a non-run-invariant
-    # value on either gets no runtime drift canary today -- a known, accepted gap.
-    if usage.get("speed") == "fast":
-        dollars = {cls: val * _FAST_MODE_RATE_MULTIPLIER for cls, val in dollars.items()}
-    if usage.get("inference_geo") == "us":
-        dollars = {cls: val * _INFERENCE_GEO_US_RATE_MULTIPLIER for cls, val in dollars.items()}
+    dollars = _price_token_counts(model, _pricing_variant(model, usage), token_counts)
+    if dollars is None:
+        return None, context_at_turn, sum(token_counts.values())
     return dollars, context_at_turn, 0
 
 
-def _pricing_variant(usage: dict) -> str:
-    """The _PRICING_VARIANTS label for the multipliers _price_turn applies to
-    this usage: exact "fast" speed and exact "us" inference_geo, no case-folding."""
-    is_fast = usage.get("speed") == "fast"
-    is_us_geo = usage.get("inference_geo") == "us"
-    if is_fast and is_us_geo:
-        return "fast_us_geo"
-    if is_fast:
-        return "fast"
-    if is_us_geo:
-        return "us_geo"
-    return "standard"
+def _pricing_variant(model: str, usage: dict) -> str:
+    """The _PRICING_VARIANTS label for the rates _price_turn applies to this usage.
+
+    usage.speed and usage.inference_geo report the API's settled outcome, not an echo of the request,
+    so no per-model eligibility list is needed.
+    The match is exact: "fast" speed and "us" inference_geo, with no case-folding.
+    Neither field is in _USAGE_DRIFT_INVARIANT_KEYS, so a non-run-invariant value on either gets no runtime drift canary,
+    a known and accepted gap.
+    The long-prompt condition reads the record's top-level fields.
+    When usage.iterations is present, the top-level input_tokens sums the non-compaction iterations,
+    and whether the cache fields do is unconfirmed. The vendor's compaction page states the input sum:
+    https://platform.claude.com/docs/en/build-with-claude/compaction-threshold
+    """
+    tier = _LONG_PROMPT_TIERS.get(model)
+    return _VARIANT_BY_TERMS[
+        _VariantTerms(
+            fast=usage.get("speed") == "fast",
+            us_geo=usage.get("inference_geo") == "us",
+            long_prompt=tier is not None and _context_at_turn(usage) > tier.threshold_tokens,
+        )
+    ]
 
 
 def _token_counts(usage: dict) -> dict[str, int]:
     """Per-class raw token counts for one turn's usage, keyed like _TOKEN_CLASSES.
 
-    Mirrors _price_turn's own class breakdown (same fields, same
-    _cache_write_split reuse) so cost's Tokens column sums the same fields
-    its $ column already prices.
+    _price_turn prices these same counts, so cost's Tokens column sums the
+    same fields its $ column prices.
     """
     eph_1h, eph_5m = _cache_write_split(usage)
     return {
@@ -661,30 +723,15 @@ def _token_counts(usage: dict) -> dict[str, int]:
     }
 
 
-_USAGE_FIELDS_BY_PRICING_VARIANT: dict[str, dict[str, str]] = {
-    "standard": {},
-    "fast": {"speed": "fast"},
-    "us_geo": {"inference_geo": "us"},
-    "fast_us_geo": {"speed": "fast", "inference_geo": "us"},
-}
+def _price_token_counts(model: str, variant: str, counts_by_class: Mapping[str, int]) -> dict[str, float] | None:
+    """Raw dollars per _TOKEN_CLASSES entry for `counts_by_class` under `variant`, a missing class counting as 0.
 
-
-def _usage_for_token_group(variant: str, counts_by_class: dict[str, int]) -> dict | None:
-    """A usage dict that _price_turn prices as `counts_by_class` under `variant` -- the inverse of
-    _pricing_variant and _token_counts. None for a variant or class label this checkout does not know."""
-    variant_fields = _USAGE_FIELDS_BY_PRICING_VARIANT.get(variant)
-    if variant_fields is None or not set(counts_by_class) <= set(_TOKEN_CLASSES):
+    None when _rates_for_variant is None or a class label is one this checkout does not know.
+    """
+    rates = _rates_for_variant(model, variant)
+    if rates is None or not set(counts_by_class) <= set(_TOKEN_CLASSES):
         return None
-    return {
-        "input_tokens": counts_by_class.get("input", 0),
-        "output_tokens": counts_by_class.get("output", 0),
-        "cache_read_input_tokens": counts_by_class.get("cache_read", 0),
-        "cache_creation": {
-            "ephemeral_1h_input_tokens": counts_by_class.get("cache_write_1h", 0),
-            "ephemeral_5m_input_tokens": counts_by_class.get("cache_write_5m", 0),
-        },
-        **variant_fields,
-    }
+    return {cls: counts_by_class.get(cls, 0) / 1_000_000 * rates[cls] for cls in _TOKEN_CLASSES}
 
 
 def _reprice_token_splits(token_splits: dict[str, dict[str, dict[str, int]]]) -> float | None:
@@ -693,10 +740,7 @@ def _reprice_token_splits(token_splits: dict[str, dict[str, dict[str, int]]]) ->
     total_dollars = 0.0
     for model, counts_by_variant in token_splits.items():
         for variant, counts_by_class in counts_by_variant.items():
-            usage = _usage_for_token_group(variant, counts_by_class)
-            if usage is None:
-                return None
-            dollars_by_class, _context_at_turn, _unpriced_tokens = _price_turn(model, usage)
+            dollars_by_class = _price_token_counts(model, variant, counts_by_class)
             if dollars_by_class is None:
                 return None
             total_dollars += sum(dollars_by_class.values())

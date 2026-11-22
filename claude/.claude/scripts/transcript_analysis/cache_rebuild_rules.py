@@ -291,15 +291,8 @@ def _cache_rebuild_excess_dollars(model: str, usage: dict) -> tuple[float | None
         return None, unpriced_tokens
     write_dollars = dollars_by_class["cache_write_1h"] + dollars_by_class["cache_write_5m"]
     eph_1h, eph_5m = pricing._cache_write_split(usage)
-    rates = pricing._model_rates(model)
+    rates = pricing._turn_rates(model, usage)
     warm_read_dollars = (eph_1h + eph_5m) / 1_000_000 * rates["cache_read"]
-    # Mirrors _price_turn's own fast/geo multiplier application so the
-    # counterfactual warm read is priced under the same settled infra
-    # conditions as the actual write.
-    if usage.get("speed") == "fast":
-        warm_read_dollars *= pricing._FAST_MODE_RATE_MULTIPLIER
-    if usage.get("inference_geo") == "us":
-        warm_read_dollars *= pricing._INFERENCE_GEO_US_RATE_MULTIPLIER
     return write_dollars - warm_read_dollars, 0
 
 
@@ -309,7 +302,7 @@ def _cache_rebuild_switch_delta_dollars(
     """One call's signed contribution to the pooled 5m-to-1h cacheTtl switch
     delta -- see .claude/plans/subagent-idle-gap-cache-rebuild-split.md's
     Approach section for the derivation. (2 - r) must be resolved per call
-    via _model_rates, never hardcoded as 1.9, since a corpus mixing model
+    via _turn_rates, never hardcoded as 1.9, since a corpus mixing model
     rates needs the true per-call coefficient. Positive is
     switch-cost-positive; the report negates the accumulated sum before
     printing it as a savings-positive net. Returns (None, unpriced_tokens)
@@ -319,20 +312,13 @@ def _cache_rebuild_switch_delta_dollars(
     dollars_by_class, _context_at_turn, unpriced_tokens = pricing._price_turn(model, usage)
     if dollars_by_class is None:
         return None, unpriced_tokens
-    rates = pricing._model_rates(model)
+    rates = pricing._turn_rates(model, usage)
     _eph_1h, eph_5m = pricing._cache_write_split(usage)
     switch_cost_per_token = rates["cache_write_1h"] - rates["cache_write_5m"]
     delta_dollars = eph_5m / 1_000_000 * switch_cost_per_token
     if is_idle_5m_1h_cause:
         rescue_per_token = rates["cache_write_1h"] - rates["cache_read"]
         delta_dollars -= eph_5m / 1_000_000 * rescue_per_token
-    # Mirrors _price_turn's own fast/geo multiplier application -- neither
-    # leg above goes through _price_turn's own dollars_by_class, so both
-    # need the same multiplier applied here instead.
-    if usage.get("speed") == "fast":
-        delta_dollars *= pricing._FAST_MODE_RATE_MULTIPLIER
-    if usage.get("inference_geo") == "us":
-        delta_dollars *= pricing._INFERENCE_GEO_US_RATE_MULTIPLIER
     return delta_dollars, 0
 
 
@@ -343,7 +329,7 @@ def _cache_rebuild_1h_to_5m_delta_dollars(
     delta -- the algebraic mirror of _cache_rebuild_switch_delta_dollars for
     the opposite direction (see .claude/plans/cache-ttl-tuning-analysis.md's
     Approach section for the derivation). The 5m/1h-write rate difference
-    must be resolved per call via _model_rates, never hardcoded, for the
+    must be resolved per call via _turn_rates, never hardcoded, for the
     same mixed-rate-corpus reason as the sibling. Positive is
     switch-cost-positive, matching the sibling's own convention: the report
     negates the accumulated sum before printing it as a savings-positive
@@ -358,7 +344,7 @@ def _cache_rebuild_1h_to_5m_delta_dollars(
     dollars_by_class, _context_at_turn, unpriced_tokens = pricing._price_turn(model, usage)
     if dollars_by_class is None:
         return None, unpriced_tokens
-    rates = pricing._model_rates(model)
+    rates = pricing._turn_rates(model, usage)
     eph_1h, _eph_5m = pricing._cache_write_split(usage)
     tier_savings_per_token = rates["cache_write_1h"] - rates["cache_write_5m"]
     delta_dollars = -(eph_1h / 1_000_000 * tier_savings_per_token)
@@ -366,13 +352,6 @@ def _cache_rebuild_1h_to_5m_delta_dollars(
         read_tokens = int(usage.get("cache_read_input_tokens", 0))
         expiry_cost_per_token = rates["cache_write_5m"] - rates["cache_read"]
         delta_dollars += read_tokens / 1_000_000 * expiry_cost_per_token
-    # Mirrors _price_turn's own fast/geo multiplier application -- neither
-    # leg above goes through _price_turn's own dollars_by_class, so both
-    # need the same multiplier applied here instead.
-    if usage.get("speed") == "fast":
-        delta_dollars *= pricing._FAST_MODE_RATE_MULTIPLIER
-    if usage.get("inference_geo") == "us":
-        delta_dollars *= pricing._INFERENCE_GEO_US_RATE_MULTIPLIER
     return delta_dollars, 0
 
 
