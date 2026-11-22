@@ -139,7 +139,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/session-marker-dashboard.sh"
+            "command": "~/.claude/hooks/session-marker-dashboard.sh",
+            "timeout": 10
           }
         ]
       },
