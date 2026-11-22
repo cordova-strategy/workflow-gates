@@ -12,15 +12,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import statistics
-import sys
 from collections import Counter
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from transcript_analysis import corpus, pricing, redaction, render, scope, session_pricing, subagent_mix
+from transcript_analysis import corpus, pricing, publication_scope, redaction, render, scope, session_pricing, subagent_mix
 
 # ~4 chars/token, the estimate read-scope uses. A deliberate second pin rather than a shared constant, so
 # recalibrating one report's figures does not silently move the other's.
@@ -46,6 +46,28 @@ _GAP_SUBAGENT_META = "subagent-meta"
 
 _UNKNOWN_AGENT_TYPE = "unknown"
 
+_COMMAND_LABEL = "read-cost"
+
+# Why a Read's structured fields are absent, in the order the checks run. `ok` means every field was read.
+_STRUCTURED_OK = "ok"
+_STRUCTURED_MULTI_RESULT_RECORD = "multi_result_record"
+_STRUCTURED_TOOL_USE_RESULT_NOT_A_DICT = "tool_use_result_not_a_dict"
+_STRUCTURED_FILE_NOT_A_DICT = "file_not_a_dict"
+_STRUCTURED_FILE_PATH_MISMATCH = "file_path_mismatch"
+_STRUCTURED_LINE_FIELD_INVALID = "line_field_invalid"
+_STRUCTURED_TRUNCATION_FLAG_INVALID = "truncation_flag_invalid"
+
+_LIMIT_REFUSAL_RECOGNISED = "recognised"
+_LIMIT_REFUSAL_UNRECOGNISED = "unrecognised"
+_LIMIT_REFUSAL_NONE = "none"
+# The phrase both known size-refusal wordings share. It matches case-sensitively, so a recased copy is unrecognised.
+_LIMIT_REFUSAL_PATTERN = re.compile(r"exceeds maximum allowed")
+# A refusal-shaped text the phrase above misses. Only the `File content (` opening matches case-sensitively.
+# It is a heuristic: a path or other text inside an error can trip it.
+_UNRECOGNISED_LIMIT_PATTERN = re.compile(r"File content \(|(?i:exceed|maximum|too large)")
+
+_TRUNCATION_NOTICE_ATTACHMENT_TYPE = "read_truncation_notice"
+
 _SCOPE_MAIN = "main"
 _SCOPE_SUBAGENT = "subagent"
 
@@ -57,7 +79,17 @@ _INSTRUCTION_PATH_FRAGMENTS = ("/skills/", "/agents/", "/rules/")
 
 
 class _ReadEvent(NamedTuple):
-    """`path` is blanked before an event is kept in the report totals."""
+    """`path` and `tool_use_id` are blanked before an event is kept in the report totals. Every other field
+    survives. A kept event is always whole-file, so its `offset` is None.
+
+    `offset` is the call's `offset` when that is a non-negative integer and None otherwise, while `whole_file` is
+    decided from the raw input. A None `offset` with `whole_file` False is therefore either a limit-only call or an
+    `offset` that was not a non-negative integer, and a consumer cannot tell the two apart.
+
+    The line fields and the flag come from the result record's structured `toolUseResult.file`, and are None
+    exactly when `structured_status` is not `_STRUCTURED_OK`. `call_order` numbers the window's Read calls in the
+    order their first `tool_use` blocks appear.
+    """
 
     path: str
     whole_file: bool
@@ -65,6 +97,37 @@ class _ReadEvent(NamedTuple):
     lines: int
     remaining_turns: int
     edited_later: bool
+    tool_use_id: str = ""
+    offset: int | None = None
+    allow_large: bool = False
+    start_line: int | None = None
+    num_lines: int | None = None
+    total_lines: int | None = None
+    truncated_by_token_cap: bool | None = None
+    structured_status: str = _STRUCTURED_TOOL_USE_RESULT_NOT_A_DICT
+    call_order: int = -1
+
+
+class _FailedRead(NamedTuple):
+    """A Read call whose result was an error. `limit_refusal` classifies the error text, which is not kept.
+
+    `offset` follows `_ReadEvent.offset`.
+    """
+
+    path: str
+    tool_use_id: str
+    whole_file: bool
+    offset: int | None
+    limit_refusal: str
+    call_order: int
+
+
+class _StructuredRead(NamedTuple):
+    status: str
+    start_line: int | None = None
+    num_lines: int | None = None
+    total_lines: int | None = None
+    truncated_by_token_cap: bool | None = None
 
 
 class _WindowScan(NamedTuple):
@@ -73,6 +136,8 @@ class _WindowScan(NamedTuple):
     usage_by_message: dict[str, dict]
     repeated_reads: int
     invalid_usage_message_ids: frozenset[str]
+    failed_reads: tuple[_FailedRead, ...] = ()
+    truncation_notice_tool_use_ids: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -82,6 +147,7 @@ class _SeenIds:
     """
 
     tool_use_ids: set[str] = field(default_factory=set)
+    failed_tool_use_ids: set[str] = field(default_factory=set)
     message_ids: set[str] = field(default_factory=set)
     invalid_usage_message_ids: set[str] = field(default_factory=set)
     turn_message_ids: set[str] = field(default_factory=set)
@@ -169,9 +235,102 @@ def _read_weight(event: _ReadEvent, weights: dict[str, float]) -> float:
     return event.tokens * (weights["cache_write_5m"] + event.remaining_turns * weights["cache_read"])
 
 
-def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _WindowScan:
+def _is_line_count(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _stored_offset(raw_offset: object) -> int | None:
+    return raw_offset if _is_line_count(raw_offset) else None
+
+
+def _structured_read(record: dict, tool_result_count: int, call_path: str) -> _StructuredRead:
+    """Names the first failed check. A record batching several results carries one `toolUseResult` for none of them."""
+    if tool_result_count != 1:
+        return _StructuredRead(_STRUCTURED_MULTI_RESULT_RECORD)
+    tool_use_result = record.get("toolUseResult")
+    if not isinstance(tool_use_result, dict):
+        return _StructuredRead(_STRUCTURED_TOOL_USE_RESULT_NOT_A_DICT)
+    file_record = tool_use_result.get("file")
+    if not isinstance(file_record, dict):
+        return _StructuredRead(_STRUCTURED_FILE_NOT_A_DICT)
+    if file_record.get("filePath") != call_path:
+        return _StructuredRead(_STRUCTURED_FILE_PATH_MISMATCH)
+    start_line, num_lines, total_lines = (file_record.get(key) for key in ("startLine", "numLines", "totalLines"))
+    if not all(_is_line_count(value) for value in (start_line, num_lines, total_lines)):
+        return _StructuredRead(_STRUCTURED_LINE_FIELD_INVALID)
+    truncated_by_token_cap = file_record.get("truncatedByTokenCap", False)
+    if not isinstance(truncated_by_token_cap, bool):
+        return _StructuredRead(_STRUCTURED_TRUNCATION_FLAG_INVALID)
+    return _StructuredRead(_STRUCTURED_OK, start_line, num_lines, total_lines, truncated_by_token_cap)
+
+
+def _limit_refusal(result: object) -> str:
+    """Classifies an error result's text without keeping it."""
+    if isinstance(result, list):
+        text = "\n".join(
+            block["text"] for block in result
+            if isinstance(block, dict) and block.get("type") == "text" and isinstance(block.get("text"), str)
+        )
+    else:
+        text = result if isinstance(result, str) else ""
+    if _LIMIT_REFUSAL_PATTERN.search(text):
+        return _LIMIT_REFUSAL_RECOGNISED
+    return _LIMIT_REFUSAL_UNRECOGNISED if _UNRECOGNISED_LIMIT_PATTERN.search(text) else _LIMIT_REFUSAL_NONE
+
+
+def _truncation_notice_tool_use_id(rec: dict) -> str | None:
+    attachment = rec.get("attachment")
+    if rec.get("type") != "attachment" or not isinstance(attachment, dict):
+        return None
+    if attachment.get("type") != _TRUNCATION_NOTICE_ATTACHMENT_TYPE:
+        return None
+    tool_use_id = attachment.get("toolUseID")
+    return tool_use_id if isinstance(tool_use_id, str) and tool_use_id else None
+
+
+class _ReadCall(NamedTuple):
+    tool_use_id: str
+    path: str
+    tool_input: dict
+    whole_file: bool
+
+
+def _tool_use_path(block: dict) -> str:
+    """The `file_path` or `notebook_path` of a `tool_use` block's input, or "" when it holds neither as a string."""
+    tool_input = block.get("input")
+    raw_path = (tool_input.get("file_path") or tool_input.get("notebook_path")) if isinstance(tool_input, dict) else None
+    return raw_path if isinstance(raw_path, str) else ""
+
+
+def _read_call(block: dict) -> _ReadCall | None:
+    """The Read call a `tool_use` block makes, or None unless it is a Read with a non-empty path and a non-empty id.
+
+    A call is whole-file when it passes neither `offset` nor `limit`.
+    """
+    if block.get("type") != "tool_use" or block.get("name") != "Read":
+        return None
+    path = _tool_use_path(block)
+    tool_use_id = block.get("id")
+    if not path or not isinstance(tool_use_id, str) or not tool_use_id:
+        return None
+    tool_input = block["input"]
+    return _ReadCall(tool_use_id, path, tool_input, tool_input.get("offset") is None and tool_input.get("limit") is None)
+
+
+def _scan_window(
+    records: Sequence[dict], seen_tool_use_ids: set[str], seen_failed_tool_use_ids: set[str] | None = None,
+) -> _WindowScan:
+    """A failed call's id enters `seen_failed_tool_use_ids` at its first failure, so a replay of it is skipped.
+
+    Pass one set across windows to skip a replay in a later window. Omitted, the set spans this window alone.
+    """
+    if seen_failed_tool_use_ids is None:
+        seen_failed_tool_use_ids = set()
     pending: dict[str, dict] = {}
     reads: list[dict] = []
+    failed_reads: list[_FailedRead] = []
+    call_order_by_tool_id: dict[str, int] = {}
+    truncation_notice_ids: set[str] = set()
     edited_at_turn: dict[str, int] = {}
     boundary_turns: list[int] = []
     usage_by_message: dict[str, dict] = {}
@@ -184,6 +343,10 @@ def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _Windo
         if rec.get("type") == "system" and rec.get("subtype") == "compact_boundary":
             boundary_turns.append(turn_index)
             continue
+        # Attachment records are not conversation records, so the filter below would drop them.
+        notice_tool_id = _truncation_notice_tool_use_id(rec)
+        if notice_tool_id is not None:
+            truncation_notice_ids.add(notice_tool_id)
         if rec.get("type") not in corpus.CONVERSATION_RECORD_TYPES:
             continue
         msg = rec.get("message") or {}
@@ -203,32 +366,49 @@ def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _Windo
         content = msg.get("content")
         if not isinstance(content, list):
             continue
+        tool_result_count = sum(1 for block in content if isinstance(block, dict) and block.get("type") == "tool_result")
         for block in content:
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "tool_use":
-                tool_input = block.get("input")
-                if not isinstance(tool_input, dict):
-                    tool_input = {}
-                path = tool_input.get("file_path") or tool_input.get("notebook_path") or ""
-                tool_id = block.get("id")
-                if block.get("name") in _EDIT_TOOLS and path:
-                    edited_at_turn[path] = turn_index
-                elif block.get("name") == "Read" and path and isinstance(tool_id, str) and tool_id:
+                read_call = _read_call(block)
+                if read_call is not None:
+                    tool_id = read_call.tool_use_id
                     if tool_id in seen_tool_use_ids:
                         repeated_reads += 1
-                    else:
+                    elif tool_id not in seen_failed_tool_use_ids:
                         pending[tool_id] = {
-                            "path": path,
+                            "path": read_call.path,
                             "turn": turn_index,
-                            "whole_file": tool_input.get("offset") is None and tool_input.get("limit") is None,
+                            "whole_file": read_call.whole_file,
+                            "tool_use_id": tool_id,
+                            "offset": _stored_offset(read_call.tool_input.get("offset")),
+                            "allow_large": read_call.tool_input.get("allow_large") is True,
+                            "call_order": call_order_by_tool_id.setdefault(tool_id, len(call_order_by_tool_id)),
                         }
+                elif block.get("name") in _EDIT_TOOLS and (edited_path := _tool_use_path(block)):
+                    edited_at_turn[edited_path] = turn_index
             elif block.get("type") == "tool_result":
                 result_tool_id = block.get("tool_use_id")
                 owner = pending.pop(result_tool_id, None) if isinstance(result_tool_id, str) else None
                 result = block.get("content")
-                if owner is not None and not block.get("is_error") and isinstance(result, str):
+                # A Read with no result record, or a non-error result whose content is not a string, enters no event
+                # and no failed read, so it appears in no count.
+                # `is_error` is read by truthiness, which matches the harness's boolean. A truthy non-boolean
+                # would also count as a failure, and that case is not handled.
+                if owner is not None and block.get("is_error"):
+                    seen_failed_tool_use_ids.add(result_tool_id)
+                    failed_reads.append(_FailedRead(
+                        path=owner["path"],
+                        tool_use_id=result_tool_id,
+                        whole_file=owner["whole_file"],
+                        offset=owner["offset"],
+                        limit_refusal=_limit_refusal(result),
+                        call_order=owner["call_order"],
+                    ))
+                elif owner is not None and isinstance(result, str):
                     seen_tool_use_ids.add(result_tool_id)
+                    owner["structured"] = _structured_read(rec, tool_result_count, owner["path"])
                     owner["tokens"] = len(result) // _READ_COST_CHARS_PER_TOKEN
                     # A real Read result's last numbered row has no trailing newline, so the count adds one.
                     # The empty-file case is a one-line warning with no numbered row, which scores 1.
@@ -239,6 +419,7 @@ def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _Windo
     events = []
     for read in reads:
         window_end = next((turn for turn in boundary_turns if turn >= read["turn"]), turn_index)
+        structured = read["structured"]
         events.append(_ReadEvent(
             path=read["path"],
             whole_file=read["whole_file"],
@@ -246,6 +427,15 @@ def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _Windo
             lines=read["lines"],
             remaining_turns=max(window_end - read["turn"], 0),
             edited_later=edited_at_turn.get(read["path"], -1) >= read["turn"],
+            tool_use_id=read["tool_use_id"],
+            offset=read["offset"],
+            allow_large=read["allow_large"],
+            start_line=structured.start_line,
+            num_lines=structured.num_lines,
+            total_lines=structured.total_lines,
+            truncated_by_token_cap=structured.truncated_by_token_cap,
+            structured_status=structured.status,
+            call_order=read["call_order"],
         ))
     return _WindowScan(
         events=events,
@@ -253,6 +443,8 @@ def _scan_window(records: Sequence[dict], seen_tool_use_ids: set[str]) -> _Windo
         usage_by_message=usage_by_message,
         repeated_reads=repeated_reads,
         invalid_usage_message_ids=frozenset(invalid_usage_ids.difference(usage_by_message)),
+        failed_reads=tuple(failed_reads),
+        truncation_notice_tool_use_ids=frozenset(truncation_notice_ids),
     )
 
 
@@ -268,11 +460,16 @@ def _new_billed_weight(scan: _WindowScan, seen_message_ids: set[str], weights: d
     return billed, calls
 
 
+def _count_invalid_usage_turns(seen: _SeenIds, scan: _WindowScan) -> int:
+    """Call after `_new_billed_weight`, which adds this window's billed turns to `seen.message_ids`."""
+    seen.invalid_usage_message_ids |= scan.invalid_usage_message_ids
+    return len(seen.invalid_usage_message_ids - seen.message_ids)
+
+
 def _count_window_diagnostics(totals: _ReadCostTotals, seen: _SeenIds, scan: _WindowScan) -> None:
     """Call after `_new_billed_weight`."""
     totals.repeated_reads += scan.repeated_reads
-    seen.invalid_usage_message_ids |= scan.invalid_usage_message_ids
-    totals.invalid_usage_turns = len(seen.invalid_usage_message_ids - seen.message_ids)
+    totals.invalid_usage_turns = _count_invalid_usage_turns(seen, scan)
 
 
 def _agent_type_row(
@@ -310,7 +507,9 @@ def _accumulate_session(
 ) -> None:
     """Subagent windows are consumed lazily, so at most two parsed subagent files are in memory beside the main records."""
     totals.sessions += 1
-    main_scan = _scan_window([rec for rec in main_records if not rec.get("isSidechain")], seen.tool_use_ids)
+    main_scan = _scan_window(
+        [rec for rec in main_records if not rec.get("isSidechain")], seen.tool_use_ids, seen.failed_tool_use_ids,
+    )
     main_billed, main_calls = _new_billed_weight(main_scan, seen.message_ids, weights)
     totals.billed_main += main_billed
     totals.api_calls += main_calls
@@ -322,13 +521,13 @@ def _accumulate_session(
         if not event.whole_file:
             continue
         session_whole_file_paths.add(event.path)
-        totals.main_whole_file_events.append(event._replace(path=""))
+        totals.main_whole_file_events.append(event._replace(path="", tool_use_id=""))
         bucket_key = (_SCOPE_MAIN, _size_bucket(event.tokens))
         totals.bucket_calls[bucket_key] += 1
         totals.bucket_tokens[bucket_key] += event.tokens
 
     for agent_type, agent_records in subagent_windows:
-        scan = _scan_window(agent_records, seen.tool_use_ids)
+        scan = _scan_window(agent_records, seen.tool_use_ids, seen.failed_tool_use_ids)
         billed, calls = _new_billed_weight(scan, seen.message_ids, weights)
         totals.billed_subagent += billed
         totals.api_calls += calls
@@ -350,7 +549,7 @@ def _agent_type_for(agent_file: Path, scan_gaps: Counter | None = None) -> str:
         meta = json.loads(agent_file.with_suffix(".meta.json").read_text(encoding="utf-8"))
     except FileNotFoundError:
         return _UNKNOWN_AGENT_TYPE
-    except (OSError, ValueError):
+    except (OSError, ValueError, RecursionError):
         if scan_gaps is not None:
             scan_gaps[_GAP_SUBAGENT_META] += 1
         return _UNKNOWN_AGENT_TYPE
@@ -363,6 +562,7 @@ def _read_subagent_windows(main_jsonl: Path, scan_gaps: Counter) -> Iterator[tup
     for agent_file in scope._list_dir_recording_gaps(subagent_dir, scan_gaps, _GAP_SUBAGENT_DIR):
         if agent_file.suffix != ".jsonl":
             continue
+        # Each transcript is parsed before its agent type is read, so a caller that discards a type still pays the parse.
         records = corpus._parse_jsonl_records(agent_file)
         if records is None:
             scan_gaps[_GAP_SUBAGENT_FILE] += 1
@@ -385,52 +585,20 @@ def _fold_untracked_agent_types(
     return named, withheld
 
 
-def _read_cost_roots() -> list[Path]:
-    try:
-        return [scope.config_dir() / "projects"]
-    except ValueError as exc:
-        print(f"read-cost: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-
-def _refuse_wider_scope(args: argparse.Namespace, roots: Sequence[Path]) -> None:
-    """Exit 2 unless the scan covers the working directory's repository on exactly one account."""
-    if not bool(getattr(args, "this_repo", False)) or getattr(args, "projects", None) not in (None, "*"):
-        print(
-            "read-cost: requires --this-repo and refuses any --projects scope -- see docs/transcript-analysis.md",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-    # Defense-in-depth: _read_cost_roots yields one root, but a direct caller of _read_cost_report bypasses it.
-    if len(roots) != 1:
-        print(
-            "read-cost: resolved to more than one root -- refusing to report a multi-account figure",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
-
 def cmd_read_cost(args: argparse.Namespace) -> None:
     """See docs/transcript-analysis.md's `read-cost` section for the flags, the unit, and the publication scope."""
-    _read_cost_report(args, _read_cost_roots())
-
-
-def _scope_header(scope_label: str) -> str:
-    return (
-        f"READ COST SOURCES ({scope_label}; reads one account (the active account), the working directory's repository only;"
-        f" {scope.TRANSCRIPT_CONFIG_DIRS_LABEL} not consulted)"
-    )
+    _read_cost_report(args, publication_scope._single_account_roots(_COMMAND_LABEL))
 
 
 def _read_cost_report(args: argparse.Namespace, roots: Sequence[Path]) -> None:
-    _refuse_wider_scope(args, roots)
+    publication_scope._refuse_wider_scope(args, roots, _COMMAND_LABEL)
     weights = pricing._cache_read_equivalent_weights()
 
     totals = _ReadCostTotals()
     session_iter, scope_label = scope._resolve_project_scope(
-        args, "read-cost", roots=roots, scan_gaps=totals.scan_gaps,
+        args, _COMMAND_LABEL, roots=roots, scan_gaps=totals.scan_gaps,
     )
-    print(_scope_header(scope_label))
+    print(publication_scope._scope_header(scope_label, _COMMAND_LABEL))
 
     seen = _SeenIds()
     for main_jsonl, main_records in session_iter:
@@ -508,9 +676,7 @@ def _agent_type_figures(row: _AgentTypeRow, billed_total: float) -> _AgentTypeFi
     )
 
 
-def _print_read_cost_report(
-    totals: _ReadCostTotals, weights: dict[str, float], tracked_agent_types: frozenset[str],
-) -> None:
+def _print_unit_caption(weights: dict[str, float]) -> None:
     write_weight = weights["cache_write_5m"]
     print(
         "\nUnit: cache-read-token equivalents. A read's weight is its estimated tokens"
@@ -526,12 +692,18 @@ def _print_read_cost_report(
         "Class weights: " + ", ".join(f"{cls}={weight:g}" for cls, weight in weights.items()) + "."
     )
 
+
+def _print_read_cost_report(
+    totals: _ReadCostTotals, weights: dict[str, float], tracked_agent_types: frozenset[str],
+) -> None:
+    _print_unit_caption(weights)
+
     total_billed = totals.billed_total
     print(
         f"\nsessions={totals.sessions:,} api_calls={totals.api_calls:,}"
         f" repeated_reads_skipped={totals.repeated_reads:,}"
     )
-    print(_skipped_input_line(totals))
+    print(_skipped_input_line(totals.scan_gaps, totals.invalid_usage_turns))
     print(
         f"billed share: main={render._pct_of(totals.billed_main, total_billed)}"
         f" subagent={render._pct_of(totals.billed_subagent, total_billed)}"
@@ -580,8 +752,7 @@ def _print_read_cost_report(
             )
 
 
-def _skipped_input_line(totals: _ReadCostTotals) -> str:
-    gaps = totals.scan_gaps
+def _skipped_input_line(gaps: Counter, invalid_usage_turns: int) -> str:
     return (
         "skipped input:"
         f" unreadable_roots={gaps[scope._SCAN_GAP_ROOT]:,}"
@@ -590,7 +761,7 @@ def _skipped_input_line(totals: _ReadCostTotals) -> str:
         f" unreadable_subagent_dirs={gaps[_GAP_SUBAGENT_DIR]:,}"
         f" unreadable_subagent_files={gaps[_GAP_SUBAGENT_FILE]:,}"
         f" unreadable_subagent_meta={gaps[_GAP_SUBAGENT_META]:,}"
-        f" invalid_usage_turns={totals.invalid_usage_turns:,}"
+        f" invalid_usage_turns={invalid_usage_turns:,}"
     )
 
 

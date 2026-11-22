@@ -154,7 +154,7 @@ class TestConfigDirFlag:
 
 
 _REFUSING_SUBCOMMANDS_WITHOUT_THEIR_OWN_CONFIG_DIR_FLAG = (
-    "cost-counts", "period-cost", "review-cost-by-size", "read-cost",
+    "cost-counts", "period-cost", "review-cost-by-size", "read-cost", "reviewer-reads",
 )
 _SUBCOMMANDS_WITH_THEIR_OWN_CONFIG_DIR_FLAG = tuple(
     name for name in scope._SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR

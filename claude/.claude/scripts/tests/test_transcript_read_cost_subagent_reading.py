@@ -38,6 +38,12 @@ class TestAgentTypeFor:
         assert read_cost._agent_type_for(tmp_path / "agent-a.jsonl", scan_gaps) == read_cost._UNKNOWN_AGENT_TYPE
         assert scan_gaps == Counter({read_cost._GAP_SUBAGENT_META: 1})
 
+    def test_meta_nested_past_the_json_decoders_stack_is_a_scan_gap(self, tmp_path):
+        (tmp_path / "agent-a.meta.json").write_text("[" * 3_000_000 + "]" * 3_000_000)
+        scan_gaps: Counter = Counter()
+        assert read_cost._agent_type_for(tmp_path / "agent-a.jsonl", scan_gaps) == read_cost._UNKNOWN_AGENT_TYPE
+        assert scan_gaps == Counter({read_cost._GAP_SUBAGENT_META: 1})
+
     def test_meta_that_is_not_utf8_is_a_scan_gap(self, tmp_path):
         (tmp_path / "agent-a.meta.json").write_bytes(b"\xff\xfe")
         scan_gaps: Counter = Counter()
