@@ -267,7 +267,7 @@ _migrate_process_key() {
         local still_resolves_clause=""
         [ "$config_dir_status" -eq 0 ] \
           && still_resolves_clause=" The key still resolves to $winner_value through $config_dir_path until a row is written."
-        printf "%s (%s): the legacy value %s is the permissive direction -- not imported automatically.%s %s To write it for the config dir %s (the command acts on the config dir its own shell resolves):\n" \
+        printf "%s (%s): the legacy value %s is the permissive direction -- not imported automatically.%s If you are an agent: %s To write it for the config dir %s (the command acts on the config dir its own shell resolves):\n" \
           "$human_name" "$key" "$winner_value" "$still_resolves_clause" "$_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER" "$_MIGRATE_CONFIG_DIR" >&2
         printf '  ~/.claude/scripts/config-set.sh %s %s\n' "$key" "$winner_value" >&2
       fi

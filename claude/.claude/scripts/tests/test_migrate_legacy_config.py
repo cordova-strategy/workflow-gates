@@ -19,6 +19,7 @@ constants (not inline strings) so TestCrossDomainReadCompleteness
 """
 from __future__ import annotations
 
+import functools
 import os
 import pty
 import re
@@ -44,7 +45,8 @@ CONFIG_KEYS_PSV = HOOKS_DIR / "config-keys.psv"
 
 _ENFORCEMENT_CRITICAL_KEYS = frozenset(ENFORCEMENT_CRITICAL_SAFE_VALUES)
 
-_ENGINEER_ONLY_QUALIFIER = engineer_only_qualifier()
+# Read on first use, so a failure names the test that needs the qualifier, not module collection.
+_engineer_only_qualifier = functools.cache(engineer_only_qualifier)
 
 _SCHEMA = schema()
 _ALL_KEYS = sorted(_SCHEMA)
@@ -806,7 +808,7 @@ class TestEnforcementCriticalDirectionAwareImport:
         result = _run(_env(home, config_dir=config_dir))
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert _read_state(config_dir)["worktree_required"] == "true"
-        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
+        assert _engineer_only_qualifier() not in result.stderr
         assert "config-set.sh" not in result.stderr
 
     def test_non_critical_key_legacy_import_prints_no_setter_hint(self, tmp_path: Path) -> None:
@@ -820,7 +822,7 @@ class TestEnforcementCriticalDirectionAwareImport:
 
         assert result.returncode == 0, f"stderr={result.stderr!r}"
         assert _read_state(config_dir)[key] == _legacy_derived_value(row)
-        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
+        assert _engineer_only_qualifier() not in result.stderr
         assert "config-set.sh" not in result.stderr
 
     @pytest.mark.parametrize("key", _PERMISSIVE_VIA_LEGACY_FILE_KEYS)
@@ -847,14 +849,27 @@ class TestEnforcementCriticalDirectionAwareImport:
             f"To write it for the config dir {config_dir} "
             "(the command acts on the config dir its own shell resolves):"
         )
+        qualifier_with_agent_lead_in = f"If you are an agent: {_engineer_only_qualifier()}"
+        assert still_resolves_clause in result.stderr
+        assert qualifier_with_agent_lead_in in result.stderr
+        assert config_dir_clause in result.stderr
+        assert f"\n  {setter_command}\n" in result.stderr
         assert (
-            f"not imported automatically. {still_resolves_clause} {_ENGINEER_ONLY_QUALIFIER} {config_dir_clause}"
-            f"\n  {setter_command}\n"
-        ) in result.stderr, (
-            "the permissive value must be printed as a qualified setter command naming the config dir, "
-            "after the legacy source the key still resolves through"
+            result.stderr.index(still_resolves_clause)
+            < result.stderr.index(qualifier_with_agent_lead_in)
+            < result.stderr.index(config_dir_clause)
+            < result.stderr.index(f"\n  {setter_command}")
+        ), (
+            "the hint must read: the legacy source the key still resolves through, the qualifier, "
+            "the config-dir clause, then the setter command"
         )
-        assert f"Bash({setter_command})" in stow_source_ask_rules(),"the printed command must be one a permissions.ask rule names"
+        qualifier_end = result.stderr.index(qualifier_with_agent_lead_in) + len(qualifier_with_agent_lead_in)
+        assert result.stderr[qualifier_end : result.stderr.index(config_dir_clause)] == " ", (
+            "nothing may sit between the qualifier and the config-dir clause but one space"
+        )
+        assert f"Bash({setter_command})" in stow_source_ask_rules(), (
+            "the printed command must be one a permissions.ask rule names"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1000,7 +1015,7 @@ class TestRetiredAutonomousShippingSentinelIgnored:
         assert state.items() >= _scaffolded_default_rows().items(), "migration must still scaffold"
         assert "autonomous_shipping" not in state
         assert "autonomous" not in (result.stdout + result.stderr).lower()
-        assert _ENGINEER_ONLY_QUALIFIER not in result.stderr
+        assert _engineer_only_qualifier() not in result.stderr
 
     def test_leftover_state_row_survives_migration_alongside_the_legacy_file(self, tmp_path: Path) -> None:
         """A state file still holding `autonomous_shipping = true` and a

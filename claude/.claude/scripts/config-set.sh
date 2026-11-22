@@ -7,24 +7,25 @@ set -uo pipefail
 # quotes an enum literal. See docs/config-file.md § "Writing a value".
 #
 # Exit 0 = the key now resolves to VALUE. Prints the resolved value on stdout.
-# Exit 1 = the arguments were valid, but the key does not resolve to VALUE:
-# either nothing was written, so the script could not confirm that the key
-# resolves to VALUE (a line outside the grammar, or a failed write), or the
-# row was written and the key still resolves to another value.
+# Exit 1 = the arguments were valid, but the script could not confirm the key
+# resolves to VALUE:
+#   - nothing was written: a line outside the grammar, or a failed write.
+#   - the row was written, but the key still resolves to another value.
 # Exit 2 = usage, a key absent from a populated config-keys.psv, or a value
 # the key's type rejects.
-# Exit 3 = environment failure: _config.sh fails to source, the config dir is
-# unresolvable (a relative CLAUDE_CONFIG_DIR, the filesystem root, or an
-# empty HOME), config-keys.psv is missing, unreadable or has no key rows,
-# KEY's row has an empty `type` column, the state path exists and is not a
-# readable regular file (or is a symlink that does not resolve to one,
-# including a dangling one), or KEY's row is truncated after the `type`
-# column.
-# That last truncation writes the row first and exits 3 at the read-back.
+# Exit 3 = environment failure:
+#   - _config.sh fails to source.
+#   - the config dir is unresolvable (a relative CLAUDE_CONFIG_DIR, the
+#     filesystem root, or an empty HOME).
+#   - config-keys.psv is missing, unreadable or has no key rows.
+#   - KEY's row has an empty `type` column.
+#   - the state path exists and is not a readable regular file, or is a
+#     symlink that does not resolve to one (including a dangling one).
+#   - KEY's row is truncated after the `type` column. The script writes the
+#     row first and exits 3 at the read-back.
 #
 # Exits 1 and 3 do not imply an unchanged file. The stderr `wrote` line marks
 # every run that replaced the file. No nonzero exit prints anything on stdout.
-# 2 and 3 keep config-get.sh's meanings.
 #
 # The write goes through _config.sh's _config_set, the only writer, so this
 # script adds only argument checks, the written-path line, a read-back and
@@ -115,12 +116,12 @@ case "$SET_STATUS" in
   1)
     # The reader prints its `skipping malformed line` warning naming the line.
     _config_value "$KEY" >/dev/null
-    echo "config-set.sh: nothing was written; $STATE_FILE is unchanged. The cause is the \`skipping malformed line\` warning above, or a failed-write error. One malformed line in that file blocks every write, whichever key it names. Report this to the engineer, and do not edit or replace $STATE_FILE" >&2
+    echo "config-set.sh: nothing was written. The cause is the \`skipping malformed line\` warning above, or a failed-write error. One malformed line in $STATE_FILE blocks every write, whichever key it names. An agent reports this to the engineer and does not edit or replace $STATE_FILE. The engineer fixes the line the warning names, or the write error, by hand, then re-runs the command." >&2
     exit 1
     ;;
   2) _exit_unresolvable_config_dir ;;
   3)
-    echo "config-set.sh: $STATE_FILE exists but is not a readable regular file, or is a symlink that does not resolve to one (including a dangling link); nothing was written. Report this to the engineer, and leave $STATE_FILE alone" >&2
+    echo "config-set.sh: $STATE_FILE exists but is not a readable regular file, or is a symlink that does not resolve to one (including a dangling link); nothing was written. An agent reports this to the engineer and leaves $STATE_FILE alone. The engineer fixes the path by hand, then re-runs" >&2
     exit 3
     ;;
   *)
@@ -166,7 +167,7 @@ if [ "$RESOLVED" != "$VALUE" ]; then
       if [ -n "$LEGACY_FILENAME" ]; then
         OVERRIDE_CAUSE="$OVERRIDE_CAUSE, or for the legacy file $HOME_CLAUDE_DIR/$LEGACY_FILENAME, which counts only while that $_CONFIG_STATE_FILENAME has no row for '$KEY'"
       fi
-      OVERRIDE_CAUSE="$OVERRIDE_CAUSE. Report this to the engineer, and do not edit or remove either file"
+      OVERRIDE_CAUSE="$OVERRIDE_CAUSE. An agent reports this to the engineer and does not edit or remove either file"
       ;;
     *) OVERRIDE_CAUSE="another writer may have replaced the row, so re-run the command to check" ;;
   esac

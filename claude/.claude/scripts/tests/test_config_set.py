@@ -35,7 +35,7 @@ from _config import SchemaRow, schema  # noqa: E402
 _CONFIG_SET_SH_NAME = "config-set.sh"
 _WROTE_LINE_PREFIX = "config-set.sh: wrote "
 _FIFO_TIMEOUT_SECONDS = 10
-_REPORT_TO_ENGINEER = "Report this to the engineer, and "
+_AGENT_REPORTS_TO_ENGINEER = "An agent reports this to the engineer and "
 
 # config-keys.psv's column order, as SchemaRow declares it. The coerced bool duplicates the raw
 # legacy-probe column, so only the raw field stands for a column.
@@ -47,7 +47,7 @@ _ADJACENT_SCHEMA_KEYS = " ".join(list(schema())[:2])
 
 
 def _enforcement_critical_keys() -> list[str]:
-    """Reads the key list from _config.sh's bash variable, not a Python copy that could drift from it."""
+    """Reads the key list from _config.sh's bash variable, the oracle for test_critical_key_list_matches_the_library_variable."""
     result = subprocess.run(
         ["bash", "-c", '. "$1" && printf "%s" "$_CONFIG_ENFORCEMENT_CRITICAL_KEYS"', "bash", str(CONFIG_SH)],
         capture_output=True,
@@ -59,7 +59,7 @@ def _enforcement_critical_keys() -> list[str]:
     return keys
 
 
-_ENFORCEMENT_CRITICAL_KEYS = _enforcement_critical_keys()
+_ENFORCEMENT_CRITICAL_KEYS = sorted(ENFORCEMENT_CRITICAL_SAFE_VALUES)
 
 
 def _schema_lines_with_row_replaced(key: str, replacement_row: str) -> str:
@@ -158,7 +158,7 @@ class TestWritesAndExitsZero:
         assert state_file.read_bytes() == b"# a leading comment\ncommit_stall_block = true\n\nhandoff_nudge = true\n"
         assert result.stdout == "true\n"
 
-    def test_duplicate_rows_left_by_the_old_append_one_liner_are_all_rewritten(self, tmp_path: Path) -> None:
+    def test_duplicate_rows_for_the_key_are_all_rewritten(self, tmp_path: Path) -> None:
         state_file = _write_state(
             tmp_path,
             "handoff_nudge = false\n\ncommit_stall_block = false\n\ncommit_stall_block = true\n",
@@ -276,9 +276,10 @@ class TestWriteRefusedExitsOne:
         assert f"warning: skipping malformed line in {state_file}" in result.stderr
         assert _WROTE_LINE_PREFIX not in result.stderr
         assert "notice:" not in result.stderr
-        assert f"nothing was written; {state_file} is unchanged" in result.stderr
-        assert "One malformed line in that file blocks every write, whichever key it names" in result.stderr
-        assert f"{_REPORT_TO_ENGINEER}do not edit or replace {state_file}" in result.stderr
+        assert "nothing was written" in result.stderr
+        assert f"One malformed line in {state_file} blocks every write, whichever key it names" in result.stderr
+        assert f"{_AGENT_REPORTS_TO_ENGINEER}does not edit or replace {state_file}" in result.stderr
+        assert "The engineer fixes the line the warning names, or the write error, by hand, then re-runs" in result.stderr
 
     def test_failed_mktemp_leaves_the_file_byte_identical_with_no_malformed_line_warning(
         self, tmp_path: Path
@@ -306,7 +307,7 @@ class TestWriteRefusedExitsOne:
         assert _WROTE_LINE_PREFIX not in result.stderr
         assert "notice:" not in result.stderr
         assert "failed-write error" in result.stderr
-        assert f"{_REPORT_TO_ENGINEER}do not edit or replace {state_file}" in result.stderr
+        assert f"{_AGENT_REPORTS_TO_ENGINEER}does not edit or replace {state_file}" in result.stderr
 
     def test_row_written_but_overridden_by_a_home_toml_row_names_that_file_and_resolution_precedence(
         self, tmp_path: Path
@@ -330,7 +331,7 @@ class TestWriteRefusedExitsOne:
             f"so check for a `true` row in {home_claude / 'claude-config.toml'}"
         ) in result.stderr
         assert "another writer" not in result.stderr
-        assert f"{_REPORT_TO_ENGINEER}do not edit or remove either file" in result.stderr
+        assert f"{_AGENT_REPORTS_TO_ENGINEER}does not edit or remove either file" in result.stderr
         assert "Resolution precedence" in result.stderr
         assert "notice:" in result.stderr
 
@@ -357,7 +358,7 @@ class TestWriteRefusedExitsOne:
             "has no row for 'worktree_required'"
         ) in result.stderr
         assert "another writer" not in result.stderr
-        assert f"{_REPORT_TO_ENGINEER}do not edit or remove either file" in result.stderr
+        assert f"{_AGENT_REPORTS_TO_ENGINEER}does not edit or remove either file" in result.stderr
         assert "Resolution precedence" in result.stderr
         assert "notice:" in result.stderr
 
@@ -479,7 +480,8 @@ class TestEnvironmentFailuresExitThree:
         assert result.stdout == ""
         assert str(state_file) in result.stderr
         assert "not a readable regular file" in result.stderr
-        assert f"{_REPORT_TO_ENGINEER}leave {state_file} alone" in result.stderr
+        assert f"{_AGENT_REPORTS_TO_ENGINEER}leaves {state_file} alone" in result.stderr
+        assert "The engineer fixes the path by hand, then re-runs" in result.stderr
         assert _WROTE_LINE_PREFIX not in result.stderr
         assert "notice:" not in result.stderr
         assert state_file.read_bytes() == original
@@ -538,6 +540,9 @@ class TestEnvironmentFailuresExitThree:
 
 
 class TestEnforcementCriticalNotice:
+    def test_critical_key_list_matches_the_library_variable(self) -> None:
+        assert _enforcement_critical_keys() == _ENFORCEMENT_CRITICAL_KEYS
+
     @pytest.mark.parametrize("key", _ENFORCEMENT_CRITICAL_KEYS)
     def test_permissive_value_prints_the_notice_with_the_restore_command(self, tmp_path: Path, key: str) -> None:
         scripts_dir = _scripts_dir(tmp_path)

@@ -11,6 +11,7 @@ exit 0 with empty stdout — this is a fail-silent Stop hook, never a gate.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -823,8 +824,10 @@ _DISABLE_COMMAND = "~/.claude/scripts/config-set.sh commit_stall_block false"
 _STOW_SOURCE_SETTINGS_PATH = REPO_ROOT / "claude" / ".claude" / "settings.json"
 
 
+@functools.cache
 def _engineer_only_qualifier() -> str:
-    """The qualifier text as `_config.sh` defines it, the one wording the reason must carry."""
+    """The qualifier text as `_config.sh` defines it, the one wording the reason must carry.
+    Read on first use, so a failure names the test that needs it, not module collection."""
     result = subprocess.run(
         ["bash", "-c", f'. "$1"; printf "%s" "${_QUALIFIER_VARIABLE}"', "bash", str(HOOKS_DIR / "_config.sh")],
         capture_output=True,
@@ -833,9 +836,6 @@ def _engineer_only_qualifier() -> str:
     )
     assert result.stdout, f"_config.sh defines no {_QUALIFIER_VARIABLE}"
     return result.stdout
-
-
-_ENGINEER_ONLY_QUALIFIER = _engineer_only_qualifier()
 
 
 def _link_config_set_script(isolated_home: Path) -> None:
@@ -850,7 +850,7 @@ def _disable_command_from(reason: str, hook_config_dir: Path) -> str:
     config dir the hook blocks from, and not an append."""
     lead = f"{_REASON_LEAD_BEFORE_CONFIG_DIR}{hook_config_dir}{_REASON_LEAD_AFTER_CONFIG_DIR}"
     qualifier_and_lead, disable_command = reason.split(lead, 1)
-    assert qualifier_and_lead.endswith(f"{_ENGINEER_ONLY_QUALIFIER} ")
+    assert qualifier_and_lead.endswith(f"{_engineer_only_qualifier()} ")
     assert disable_command == _DISABLE_COMMAND
     ask_rules = json.loads(_STOW_SOURCE_SETTINGS_PATH.read_text())["permissions"]["ask"]
     assert f"Bash({disable_command})" in ask_rules
@@ -913,8 +913,7 @@ def test_reason_disable_instruction_disables_the_hook_when_run_beside_a_scaffold
 def test_reason_disable_instruction_keeps_the_new_row_on_its_own_line_when_the_last_line_is_unterminated(
     isolated_home, dirty_repo
 ):
-    """The new row lands on its own line after an unterminated last line.
-    The old append joined the two into one row the reader skips."""
+    """The new row lands on its own line after an unterminated last line."""
     _link_config_set_script(isolated_home)
     config_toml = isolated_home / ".claude" / "claude-config.toml"
     config_toml.write_text("handoff_nudge = false")

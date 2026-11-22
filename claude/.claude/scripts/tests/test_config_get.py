@@ -77,7 +77,7 @@ class TestWritePointerNamesTheDocNotTheCommand:
 
         assert result.returncode == 2
         assert result.stdout == ""
-        assert "docs/config-file.md" in result.stderr
+        assert 'docs/config-file.md "Writing a value"' in result.stderr
         assert "config-set.sh" not in result.stderr
 
     def test_set_message_points_at_the_doc_and_prints_no_setter_command(self, tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ class TestWritePointerNamesTheDocNotTheCommand:
 
         assert result.returncode == 2
         assert result.stdout == ""
-        assert "docs/config-file.md" in result.stderr
+        assert 'docs/config-file.md "Writing a value"' in result.stderr
         assert "config-set.sh" not in result.stderr
 
 

@@ -1084,10 +1084,8 @@ _config_quote_value_for_write() {
 }
 
 # _config_type_accepts KEY_TYPE VALUE
-# Returns 0 when VALUE is a legal write for a key of KEY_TYPE, else 1: a
-# `bool` key accepts `true` or `false`, an `enum:X` key accepts `false` or
-# the literal `X`, and any other type accepts nothing. VALUE is bare, never
-# quoted. Shared by _config_set and config-set.sh.
+# Returns 0 when VALUE is a legal write for a key of KEY_TYPE, else 1. VALUE
+# is bare, never quoted. Shared by _config_set and config-set.sh.
 _config_type_accepts() {
   local key_type="$1" value="$2"
   case "$key_type" in
@@ -1213,19 +1211,15 @@ _config_state_file_unreadable() {
 # whole file, rebuild its content, atomic mktemp+mv install) has no lock
 # across the three sanctioned callers above.
 # Two overlapping writers can silently lose an update -- last `mv` wins, no
-# error. config-set.sh's read-back sees the lost value only when the other
-# writer's `mv` lands before it, and then exits 1 with its override message.
-# For a key outside the config-dir-or-home union that message names another
-# writer. For the union key it blames the other location, which
-# misattributes the loss. When the other `mv` lands after the read-back,
-# config-set.sh exits 0.
+# error. config-set.sh's read-back may report a lost update as an override or
+# miss it; see docs/config-file.md § "Concurrency".
 # A lost update can silently revert an enforcement-critical key to its
 # permissive value.
 # Accepted because the callers are low-concurrency, typically-singleton
 # local processes, not a service with concurrent writers. The Stop hook's
 # reason names the config-set.sh command, which an agent runs only on the
 # engineer's own instruction, so two sessions on one config dir overlap when
-# the engineer instructs both. See docs/config-file.md for the matching note.
+# the engineer instructs both.
 _config_set() {
   local key="$1" value="$2" config_dir_override="${3:-}"
   local key_type

@@ -113,7 +113,7 @@ Alternatives weighed:
   - that exit 127, 126 or 3 from the Stop reason's command means fixing the install, or hand-editing per the hand-edit contract;
   - the notice for the four enforcement-critical keys, which prints whenever one of their permissive values is written, even while another source overrides the row;
   - that the notice is the only per-call record of such a write, because nothing logs setter calls. `docs/session-config-keys-log.md` records the resulting value at the next session start, resume, `/clear` or compaction, in rows that are advisory and unauthenticated (row 48);
-  - that the notice's key set is exactly the schema header's four, the keys whose permissive value turns off an enforcement mechanism rather than a nudge, a disclosure or a pilot, so every other key, including those that publish data or loosen a round cap, gets neither the notice nor an ask rule;
+  - that the notice's key set is exactly the schema header's four, the keys whose permissive value turns off an enforcement mechanism rather than a nudge, a disclosure or a pilot, so every other key, including those that publish data or whose `true` tightens a round cap, gets neither the notice nor an ask rule;
   - the four ask rules (M10):
     - their prompt is documented, not observed, as `docs/hooks.md:189` states the diff-size ack's;
     - the section links to `docs/security-hardening.md` for the documented behavior rather than restating it (row 33);
@@ -387,6 +387,8 @@ The code-review rounds changed these plan statements. The code is authoritative.
 - M1 step 3: schema status 4 splits into a truncated-row message and an unknown-key message.
 - M1 step 8: the read-back mismatch message names a cause per key class.
 - M5: the qualifier is a shared constant in `_config.sh` of several clauses, not one sentence.
+- M5: the Stop reason prints `To disable this for the config dir <dir> (...): ` before the command, where M5 and row 12 keep `To disable this on this machine: `. The reason names the hook's config dir because the command resolves its own.
+- M8: `config-get.sh`'s usage message and its `set` rejection point at `docs/config-file.md` and omit the script name by design (`TestWritePointerNamesTheDocNotTheCommand`), where M8 has them name `config-set.sh`.
 - Both writers remove their temp file and return 1 when `mv` fails. The plan earlier left that temp-file leak out of scope.
 
 ## Verification
