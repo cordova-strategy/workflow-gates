@@ -485,7 +485,8 @@ def _review_rounds_force_refusal(
     if new_cell["rule"] < prior_cell["rule"]:
         return "this checkout's round rule is older than the captured row's"
     # A move to the repo class may shrink the series, because the prior row's rounds can hold another repository's
-    # sessions. This also passes a shrink from aged-out transcripts.
+    # sessions. The guard cannot tell that cause from aged-out transcripts or from main-checkout subdirectory
+    # sessions the repo scope does not read, so it passes all of them.
     if (
         prior_capture_scope != pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO
         and new_capture_scope == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO

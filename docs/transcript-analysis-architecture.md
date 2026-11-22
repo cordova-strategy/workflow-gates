@@ -440,8 +440,8 @@ cost command group, not the reverse. `_add_pr_cost_subparser` is the one name `b
 
 The pr-cost-export command family: `cmd_pr_cost_export` and every helper used only by it —
 collapsing every declared account's pr-cost ledger to current rows, redacting them, and publishing
-one TSV. Makes no gh call and scans no transcript corpus. Imports `ledger_common`, `pr_cost_ledger`,
-`pricing`, `redaction`, `review_rounds`, and `scope` all by module. `_add_pr_cost_export_subparser` is the one name `build_parser()` reaches
+one TSV. Makes no gh call and scans no transcript corpus. Imports `ledger_common`, `pr_cost`,
+`pr_cost_ledger`, `pricing`, `redaction`, `review_rounds`, and `scope` all by module. `_add_pr_cost_export_subparser` is the one name `build_parser()` reaches
 bare.
 
 ### `ledger_rounds.py`
@@ -824,15 +824,17 @@ per-leaf) test file: `cost.py`'s in `tests/test_transcript_cost.py`, `denials.py
 `read_scope.py`'s in
 `tests/test_transcript_read_scope.py`, `ledger_common.py`'s (`TestMachineIdentity`) in
 `tests/test_transcript_ledger_common.py`, `pr_cost_ledger.py`'s in
-`tests/test_transcript_pr_cost_ledger.py`, and `pr_cost_export.py`'s per-account gating, ordinals,
+`tests/test_transcript_pr_cost_ledger.py` (its capture-scope columns and short-row hint in
+`tests/test_transcript_pr_cost_ledger_capture_scope.py`), and `pr_cost_export.py`'s per-account gating, ordinals,
 and provenance in `tests/test_transcript_pr_cost_export_accounts.py`. The pr-cost family splits
 further along module seams rather than one file per module: `gh_cli.py`'s own unit coverage lives
 in `tests/test_transcript_gh_cli.py`; `pr_cost.py`'s local-mechanics coverage lives in
 `tests/test_transcript_pr_cost.py`, its gh-integration coverage (exercised end to end through
 `cmd_pr_cost`) in `tests/test_transcript_pr_cost_gh.py`, its read-mode table (including the per-skill
-round-count columns) in `tests/test_transcript_pr_cost_read_mode.py`; and `pr_cost_export.py`'s remaining
-coverage (redaction, timestamps, refusals) lives in `tests/test_transcript_pr_cost_export.py`. All
-eight pr-cost-family test files, plus `tests/_pr_cost_helpers.py` (a plain module, not a test file
+round-count columns) in `tests/test_transcript_pr_cost_read_mode.py`, its repo-scope default, recorded
+`capture_scope` and branch-join guard in `tests/test_transcript_pr_cost_capture_scope.py`; and `pr_cost_export.py`'s remaining
+coverage (redaction, timestamps, refusals) lives in `tests/test_transcript_pr_cost_export.py`. Every
+pr-cost-family test file named above, plus `tests/_pr_cost_helpers.py` (a plain module, not a test file
 itself — see `.claude/rules/test-tree-packaging.md` for why its own consumers import it as
 `from ._pr_cost_helpers import ...`), share the family-only fixtures the legacy pr-cost tests used:
 `_enable_pr_cost`, `_pr_cost_args`, `_pr_cost_export_args`, `_fake_pr_cost_subprocess_run`,

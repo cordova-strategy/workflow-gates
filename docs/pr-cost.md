@@ -33,15 +33,18 @@ Columns, in ledger order (`_PR_COST_LEDGER_COLUMNS` in `claude/.claude/scripts/t
 | `model_breakdown` | The per-model split behind the per-class columns, as one canonical-JSON cell: `{model: {variant: {class: {"tokens": int, "usd_micros": int}}}}`. An empty cell means not recorded, and `{}` means recorded with no priced turns. The rules are in "The `model_breakdown` cell" below. |
 | `invalid_usage_records` | Usage-bearing turns excluded because their token fields were non-numeric or negative (`session_pricing._usage_is_invalid`) — a nonzero value here means the dollar and token columns exclude those turns entirely, not price them at $0. A cross-row sum or trend over this column is only meaningful for rows captured after it existed — a legacy-default `0` on an older row is not a measured zero. |
 | `review_rounds` | The PR's code-review, plan-review and ready-for-review rounds with per-round dollars and tokens, as one canonical-JSON cell: `{"rule": int, "rounds": {skill: [round, ...]}}`. An empty cell means not captured. The rules are in "The `review_rounds` cell" below. |
+| `review_rounds_absence` | Why `review_rounds` is empty, as a reason code. Empty when the cell is present, the row predates the column, or the cell was blanked by hand. See "Capture scope, rounds absence and earliest activity" below. |
+| `earliest_surviving_activity_at` | The earliest first valid-usage turn among the sessions the dollar pass attributed to the branch, as `YYYY-MM-DDTHH:MM:SSZ`. Empty when the scan found none. See "Capture scope, rounds absence and earliest activity" below. |
+| `capture_scope` | `repo` or `glob`: the scope class of the run that wrote the row. An empty cell means the row predates the column. See "Capture scope, rounds absence and earliest activity" below. |
 
-The row parser is strict on column count (fails rather than shifting cells). It recognizes five header lines, listed in `_PR_COST_LEDGER_COLUMNS_BY_HEADER_LINE`: the current one, the pre-`review_rounds` header (`_PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS`), the pre-`invalid_usage_records` header (`_PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS`), the pre-`model_breakdown` header (`_PR_COST_LEDGER_PRE_MODEL_COLUMNS`), and the pre-`host` header (`_PR_COST_LEDGER_LEGACY_COLUMNS`). Each row's width is checked against its own file's header (in `_current_cells_from_file_row`), then every column that header lacks is filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS`: `host` reads `github.com`, `model_breakdown` reads empty (not recorded), `invalid_usage_records` reads `0` (not verified zero, just unchecked by that row's checkout), and `review_rounds` reads empty (not captured). Frozen headers are kept indefinitely, so a ledger whose owner never records again keeps parsing.
+The row parser is strict on column count (fails rather than shifting cells). It recognizes six header lines, listed in `_PR_COST_LEDGER_COLUMNS_BY_HEADER_LINE`: the current one, the pre-`capture_scope` header (`_PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS`), the pre-`review_rounds` header (`_PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS`), the pre-`invalid_usage_records` header (`_PR_COST_LEDGER_PRE_INVALID_USAGE_COLUMNS`), the pre-`model_breakdown` header (`_PR_COST_LEDGER_PRE_MODEL_COLUMNS`), and the pre-`host` header (`_PR_COST_LEDGER_LEGACY_COLUMNS`). Each row's width is checked against its own file's header (in `_current_cells_from_file_row`), then every column that header lacks is filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS`: `host` reads `github.com`, `model_breakdown` reads empty (not recorded), `invalid_usage_records` reads `0` (not verified zero, just unchecked by that row's checkout), `review_rounds` reads empty (not captured), and `review_rounds_absence`, `earliest_surviving_activity_at` and `capture_scope` read empty. Frozen headers are kept indefinitely, so a ledger whose owner never records again keeps parsing.
 
 The upgrade to the current header, the write refusals, and recovery for older checkouts are in "Upgrading an existing ledger" below.
 
-- **A row one cell short under its file's header** fails as `line N: expected <W> columns, got <W-1>`, where `<W>` is that header's column count. The parser adds a hint chosen by that header's last column:
-  - A JSON column (`review_rounds` under the current header, `model_breakdown` under the pre-`invalid_usage_records` header): `(if an editor trimmed trailing whitespace, append a tab to this line)`. The hint assumes the row's true last cell was blank, which is routine for either column. An editor that trims trailing whitespace breaks every such row at once, and the parser reports them one line at a time; restore the trailing tab on each.
-  - A column whose default is non-empty (`invalid_usage_records` under the pre-`review_rounds` header): `(restore the column's correct value instead of a bare tab)`, because that column is never legitimately blank.
-  - Any other last column (the pre-`model_breakdown` and pre-`host` headers): no hint.
+- **A row short under its file's header** fails as `line N: expected <W> columns, got <W-K>`, where `<W>` is that header's column count and K is the shortfall. The parser adds a hint chosen by the file header's last K columns:
+  - Every one of them has an empty default in `_PR_COST_LEDGER_COLUMN_DEFAULTS` (for example `capture_scope` under the current header, or `model_breakdown` under the pre-`invalid_usage_records` header): `(if an editor trimmed trailing whitespace, append a tab to this line)` for a K of 1, and `append K tabs` in place of `append a tab` above 1. The hint assumes the row's true trailing cells were blank, which is routine for these columns. An editor that trims trailing whitespace breaks every such row at once, and the parser reports them one line at a time; restore the trailing tabs on each.
+  - K is 1 and the missing column's default is non-empty (`invalid_usage_records` under the pre-`review_rounds` header): `(restore the column's correct value instead of a bare tab)`, because that column is never legitimately blank.
+  - Otherwise no hint. A column absent from the defaults map, such as `risk_surface_flag` (the pre-`model_breakdown` and pre-`host` headers), has no empty default.
 - **A `model_breakdown` or `review_rounds` cell that fails to parse** fails as `line N: malformed <column> (<rule>)`, with a fixed rule name and no cell text. Parsing preserves values and accepts whitespace and key-order variants, and the next write re-encodes them canonically. Blank the cell, keeping its tab, to recover (see "Data").
 
 A later column follows the same shape: freeze the outgoing header and document the new column's default.
@@ -77,16 +80,18 @@ A later column follows the same shape: freeze the outgoing header and document t
   - a row recorded before the column existed
   - a failed review-round pass
   - a cell that failed its write-time check
-  - a branch with no local transcript activity
+  - a branch with no local transcript activity in the run's scope
   - a checkout that does not record rounds
+
+  For the last four causes, the row's `review_rounds_absence` names which applies; an empty reason means unknown (see "Capture scope, rounds absence and earliest activity").
 
   Other states:
   - A cell whose every skill list is empty means captured with zero rounds.
   - A skill key absent from `rounds` was not tracked by the writer.
   - "Captured" and "recorded zero" mean among the records the pass could parse. An unreadable main transcript, or a non-UTF-8 or non-JSON line, is dropped without a count, so the cell does not claim completeness.
-  - A session older than `cleanupPeriodDays` at capture time makes the figure an undercount on the retention axis, because the pass reads only the sessions that survive. This holds even when every round list is empty. No field marks that case.
+  - A session older than `cleanupPeriodDays` at capture time makes the figure an undercount on the retention axis, because the pass reads only the sessions that survive. This holds even when every round list is empty. The row's `earliest_surviving_activity_at` is the one field that bears on it (see "Capture scope, rounds absence and earliest activity").
   - A literal `null` cell is malformed.
-- **Trailing cell.** `review_rounds` is the current header's last column, so a row with an empty cell ends in a tab. Readers must not whitespace-strip lines.
+- **Trailing cell.** `capture_scope` is the current header's last column and is never empty on a row this checkout writes, so such a row does not end in a tab. A row recorded before that column ends in three empty cells, or four when its `review_rounds` cell is also empty, so it ends in tabs. Readers must not whitespace-strip lines.
 - **Round fields.** Every round holds these keys:
   - `main_usd_micros` and `agent_usd_micros`: the round's main-thread and subagent dollars as integer micro-dollars, as-priced under the row's `rate_stamp`.
   - `main_tokens` and `agent_tokens`: raw token counts for each thread as `{model: {variant: {class: int}}}`, with `model_breakdown`'s variant and class labels, over priced turns only. Each group holds all five classes, and an empty object means the thread priced no turn. An unpriced turn's model ID is never recorded.
@@ -111,6 +116,57 @@ A later column follows the same shape: freeze the outgoing header and document t
   - A cell grows linearly with its round count. Every write re-parses the whole ledger under the lock, so a cell near the read bound is slow and memory-heavy to parse.
 - **A record outside the transcript format empties the account's cells.** The review-round pass reads more of each session than the scalar pass, in every session that opens a round. A record outside the transcript format there, such as a non-string timestamp, or a `*.meta.json` that is not a JSON object, fails the pass. This run's `review_rounds` cells for that account are then empty (see "Write-time check failures"). A malformed `usage` object does not do this: the turn is excluded and counted in `invalid_usage_records`. The exception is a truthy non-object `usage` on the first record of a run sharing one `requestId`, or on a record before the run's first record with different input or cache usage. That raises `AttributeError` in the dedup step, in the scalar scan too, and `--record` ends in a raw traceback. A `message.model` that is a JSON array or object does the same with a `TypeError` in the scalar scan's price lookup. Either error ends the run before it writes any row for that account. Every later `--record` run for that account repeats it until the offending record leaves `cleanupPeriodDays`. Updating claude-config does not clear it. A report or paste of the traceback carries only the class name and the last frame's function name, with no paths, as the redaction bullets under "Write-time check failures" require.
 
+### Capture scope, rounds absence and earliest activity
+
+These three columns are the last three in the header, and a row this checkout writes always carries a `capture_scope`.
+
+**`capture_scope`** is a closed set, `_PR_COST_CAPTURE_SCOPE_VALUES` in `pr_cost_ledger.py`:
+- `repo`: the run read this checkout's repo scope. A run with neither `--projects` nor `--this-repo` takes it, and so does an explicit `--this-repo`.
+  - Both transcript passes, the dollar pass and the review-round pass, read only the project directories of this checkout's `git worktree list` entries, plus every directory whose name starts with the main worktree's slug followed by `--claude-worktrees-`. The prefix keeps a removed worktree's sessions in scope.
+  - The class is therefore not identity-scoped, and pr-cost's `--this-repo` reads more than the exact-identity resolution the other worktree-resolving subcommands' `--this-repo` use. `routing-guard`'s capture reads the same widened set (see `docs/transcript-analysis.md`'s "Scoping to this repo: `--this-repo`" section).
+- `glob`: an explicit `--projects` glob, `*` included, whatever it matched. A glob that matches only this repository's directories still records `glob`.
+- Empty: the row was recorded before the column, so its scope is unknown. A new class would arrive under a new header.
+
+A row stores the class, not the glob text, so repeating "the same `--projects` glob" on a `--force` re-capture relies on the operator remembering it.
+
+The known residuals of a `repo` row, each with where it sits. The list does not claim to be complete:
+- **Read as this repository's:**
+  - a foreign repository cloned under this checkout's `.claude/worktrees/`;
+  - a nested repository or submodule whose session started under a worktree matching the prefix;
+  - a path whose slug collides with that prefix;
+  - a checkout elsewhere whose path maps to the same project-directory slug as one of this checkout's live worktrees (the first gap in the `--this-repo` section of `docs/transcript-analysis.md`).
+- **Read:** a session started in a subdirectory of any worktree under `.claude/worktrees/`, live or removed, because its slug carries the prefix.
+- **Not read:** a session started in a subdirectory of the main checkout or of a worktree elsewhere, a worktree removed from outside `.claude/worktrees/`, and another clone (see the gaps in the `--this-repo` section of `docs/transcript-analysis.md`).
+- **Silent:** a scope that reads some sessions but none of one PR's prints nothing in a run without `--pr`, because the branch walk never visits that PR.
+- **Counted:** a subagent file under an in-repo session, whatever repository the subagent worked in.
+- **Scoped to the checkout that ran `--record`:** `capture_scope` names that checkout's scope, and the row's `repo` column comes from that checkout's `origin`, so a reader also matches the row's repository to the publishing one.
+- **Zero-valued:** a `repo` row whose `review_rounds_absence` is `no-local-activity` and whose `earliest_surviving_activity_at` is empty holds zero because the scope read nothing for the branch. The cause may be a PR built without Claude Code, work the scope does not read, sessions deleted before capture, or sessions that ran on another machine, and the row cannot tell them apart.
+- **Joined by name to the wrong PR:** sessions on a local branch of a fork PR that was never merged, whose head name a merged same-repository PR also used. The discovery list holds merged PRs only, up to the cap `docs/transcript-analysis.md` states under "Known limits" for `review-cost-by-size`, so the row keeps its `high` or `medium` grade.
+- **Asserted, not authenticated:** `capture_scope` records the scope of the run that wrote it, and the ledger file has no checksum, so a hand edit to the cell leaves no trace.
+
+This subsection does not say how a figure from a `repo` row could meet the publication bar, which `docs/private-project-redaction.md` states.
+
+A run whose repo scope reads no usage-bearing turn prints this to stderr, in read mode and under `--record`:
+
+```text
+pr-cost: the repo scope found no priced turn<for-account> -- see docs/pr-cost.md
+```
+
+`<for-account>` is empty, or ` in account-K` under `--all-accounts`. The line prints when the scope read no usage-bearing turn: a scope that matched no project directory, or one whose matched directories hold none. The scope header's `N project dirs found` tells the two apart. When it prints, a session started in a subdirectory is read by the prefix glob in `docs/transcript-analysis.md`'s `--this-repo` section, which records `glob`, and an account with no work on this repository inside the retention window needs nothing.
+
+**`review_rounds_absence`** holds a reason code whenever the writer leaves `review_rounds` empty:
+- `pass-failed`: the review-round pass failed.
+- `no-local-activity`: the branch has no local transcript activity in this run's scope.
+- `not-built`: a checkout that does not record rounds.
+- `size`, `shape`, `model-membership`, `label-membership` and `build`: the cell failed that write-time check (see "Write-time check failures").
+
+An empty reason beside an empty `review_rounds` cell means unknown: the row predates the column, or an operator blanked a cell that failed to parse. The only test for a legacy row is an empty `capture_scope`. A newer checkout may add a code, and readers tolerate one they do not know.
+
+**`earliest_surviving_activity_at`** is the earliest first valid-usage turn among the sessions the dollar pass attributed to the branch, in UTC to the second.
+- It is not a measured start of the work, and a span from it bounds the work's duration in neither direction.
+- Sessions deleted before capture are not counted, and neither are sessions outside the capture scope.
+- A span from it to `captured_at` near the capturing account's `cleanupPeriodDays` means older sessions may have aged out. A shorter span shows no evidence of truncation but does not rule it out.
+
 ### Write-time check failures
 
 When a row's `model_breakdown` or `review_rounds` cell fails its write-time check, or the review-round pass fails, `--record` records the row with the affected cell empty, finishes every branch, and exits 1. It prints one stderr line per such cell, after that row's write. The `model_breakdown` line reads:
@@ -133,7 +189,7 @@ pr-cost:   PR #<a>: review rounds <reason> -- recorded the row without them; see
 - `label-membership`: a variant key is not a pricing variant, or a group's class keys are not the five token classes. Cause: `a claude-config defect`.
 - `build`: building or checking the cell raised an exception. Cause: `a claude-config defect: <ExceptionClass>`, with the exception's class name only, never its message.
 
-A branch with no local transcript activity, and a checkout that does not record rounds, record an empty cell with no line and no count-line entry.
+A branch with no local transcript activity in the run's scope, and a checkout that does not record rounds, record an empty cell with no line and no count-line entry.
 
 `--record` prints `pr-cost: scanning transcripts for review rounds...` to stderr before the review-round pass (see "`--record`'s capture"), with `account-K's ` before `transcripts` under `--all-accounts`. When that pass fails, it prints once:
 
@@ -146,7 +202,7 @@ pr-cost: the review-round pass failed (<ExceptionClass>) -- any row this run rec
 At the end of the run, after the `--all-accounts` summary line when present, it prints to stderr:
 
 ```text
-pr-cost: <n> row(s) recorded with failed cells (<list>); those rows are valid -- once the cause is fixed, re-capture each with --record --force --pr N and this run's account flags, only while every session of that PR is still inside cleanupPeriodDays (see docs/pr-cost.md)
+pr-cost: <n> row(s) recorded with failed cells (<list>); those rows are valid -- once the cause is fixed, re-capture each with --record --force --pr N and this run's scope and account flags, only while every session of that PR is still inside cleanupPeriodDays (see docs/pr-cost.md)
 ```
 
 `<list>` is `PR #<a> (<cells>), PR #<b> (<cells>)`, where `<cells>` is `model_breakdown`, `review_rounds`, or `model_breakdown and review_rounds`. Each entry is prefixed `account-K ` under `--all-accounts`. A run that stops early after such a row prints no count line, so its per-PR lines are the only record.
@@ -155,7 +211,7 @@ The count line is what tells the meanings of exit 1 apart: a run that ends with 
 
 The per-PR line carries no `account-K` label under `--all-accounts`, and neither does a `--force` refusal line. On stderr, the nearest `pr-cost: resolving branch account-K/branch-N...` line above it names the account. The count line also names the account for every PR once the run completes. A `--force` refusal adds no count-line entry, so its refusal line is the record.
 
-To find the cause after an exit 1 for a failed review-round pass, run `review-round-cost` with the failed run's scope flags minus `--all-accounts`, and with the top-level `--config-dir PATH` (placed before the subcommand name) set to the failing account's config directory. The `for account-K` line on stderr names that account, where K is its position among the scanned roots sorted by resolved path. Without `--config-dir`, the command scans the active profile and every declared account.
+To find the cause after an exit 1 for a failed review-round pass, run `review-round-cost` with the failed run's scope flags minus `--all-accounts`, and with the top-level `--config-dir PATH` (placed before the subcommand name) set to the failing account's config directory. A pr-cost run with no scope flag, or with `--this-repo`, read this checkout's repo scope, which `review-round-cost --this-repo` does not reproduce because it skips removed worktrees. Pass `--projects` with the prefix glob from `docs/transcript-analysis.md`'s `--this-repo` section instead. It reads the worktrees under the main checkout's `.claude/worktrees/`, removed ones included, and sessions started in subdirectories. It reads a live worktree only when that worktree's path begins with the main checkout's path, so repeat the run with `--this-repo` when the failing branch lived in a worktree whose path does not. It also reads any other directory whose name shares that prefix. The `for account-K` line on stderr names that account, where K is its position among the scanned roots sorted by resolved path. Without `--config-dir`, the command scans the active profile and every declared account.
 
 Handle its output as follows:
 
@@ -185,7 +241,7 @@ After an exit 1 for a row without its breakdown:
 
 After an exit 1 for a `review_rounds` check failure:
 
-- A scheduled rerun without `--pr` skips the row, because a recorded row counts as captured. Only `--record --force --pr N`, with the run's account flags, inside `cleanupPeriodDays`, refills the cell.
+- A scheduled rerun without `--pr` skips the row, because a recorded row counts as captured. Only `--record --force --pr N`, with the run's scope and account flags, inside `cleanupPeriodDays`, refills the cell.
 - `size`, and a `shape` caused by a leaf above `2**63 - 1` (a token count or a micro-dollar figure), come from the transcript. A repeat of `size` on an updated checkout does not add the rounds. If the same PR fails `shape` again on an updated checkout, the transcript is the likely cause and re-forcing will not add the rounds.
 - For `size` alone, a checkout that raises `_REVIEW_ROUNDS_CELL_WRITE_MAX_CHARS` past the cell's length adds the rounds. The cap rises only within the bound in "Size bounds", so a longer cell stays unrecordable.
 - `model-membership`, `label-membership` and `build` are claude-config defects, except the two `build` cases below. Report each defect on claude-config's GitHub Issues (linked from README.md) with the rule name and, for `build`, the exception's class name, and no paths.
@@ -195,7 +251,7 @@ After an exit 1 for a `review_rounds` check failure:
 ### Upgrading an existing ledger
 
 - **Upgrade.** Read mode and export never write. The next consented `--record` that writes a row rewrites the whole file under the current header.
-  - The rewrite appends every column a row's own header lacked, each filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS` -- an empty `model_breakdown` cell for a pre-`model_breakdown` row, an `invalid_usage_records` cell of `0` for any row recorded before that column existed, and an empty `review_rounds` cell for any row recorded before that column existed.
+  - The rewrite appends every column a row's own header lacked, each filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS` -- an empty `model_breakdown` cell for a pre-`model_breakdown` row, an `invalid_usage_records` cell of `0` for any row recorded before that column existed, an empty `review_rounds` cell for any row recorded before that column existed, and an empty `review_rounds_absence`, `earliest_surviving_activity_at` and `capture_scope` cell for any row recorded before those columns existed.
   - It prints this once per upgraded ledger on stderr (`account-N's ledger` replaces `the ledger` under `--all-accounts`): `pr-cost: upgraded the ledger to the current header -- older claude-config checkouts refuse this file until they are updated, and there is no supported downgrade; see docs/pr-cost.md in the claude-config repo`.
   - Every write refuses to publish unless every prior row survives with its parsed values unchanged, comparing floats at the ledger's six decimals. A refusal leaves the ledger unchanged, so rerunning is safe.
   - A refusal message starts `pr-cost: refusing to write the ledger (ledger unchanged): `, then names a data-row number and, for a changed row, a column (the refusal that drops rows names only the row). It never names a cell value.
@@ -219,7 +275,7 @@ After an exit 1 for a `review_rounds` check failure:
 
 - `high` — `gh`'s own `headRefName` matched directly, and at least one independent cross-check corroborated it (the PR's added plan-file slug equals the branch name, or at least one pre-squash commit SHA still resolves to a local git object).
 - `medium` — a direct `headRefName` match with no corroboration.
-- `low` — the branch name matched more than one merged PR (branch-name reuse); resolved by highest commit-SHA overlap, ties broken by most recent `mergedAt`, and a remaining tie leaves the row unresolved (no row written).
+- `low` — the branch name matched more than one merged PR (branch-name reuse), a cross-repository PR included. The writer resolves among the same-repository matches by highest commit-SHA overlap, ties broken by most recent `mergedAt`, and a remaining tie leaves the row unresolved (no row written). A same-repository PR whose head name a merged cross-repository PR also used records at `low` for that reason alone, its row can hold the cross-repository PR's local review spend, and a `--force` re-capture grades it `low` again. `review-cost-by-size` excludes every `low` row.
 
 ### Row status
 
@@ -237,21 +293,30 @@ A row with a degraded `status` still exits 0.
 
 ## Data
 
-Ledger data lives outside this repo, at `$CLAUDE_CONFIG_DIR/pr-cost-ledger.tsv` by default (`~/.claude/pr-cost-ledger.tsv` when `CLAUDE_CONFIG_DIR` is unset) — a local, per-account file that `--record` creates on first use and never enters this repo's git tree. Set `PR_COST_LEDGER_PATH` to an absolute path to record somewhere else instead; a relative value is rejected. Unlike the public, git-committed weekly cost ledger, a freshly created pr-cost ledger file is given restrictive `0600` permissions, since its rows carry an opaque branch label, the raw host and owner/name, the PR number, per-PR model IDs, variant labels (fast-mode, US-geo), and per-PR review-round series (per-round dollars, tokens, model IDs and variant labels) that the weekly ledger's rows don't. `<config-dir>/machine-id` sits alongside the ledger, never at `PR_COST_LEDGER_PATH`'s own directory. It is created `0600` the first time `--record` runs. An existing ledger's mode bits are preserved on every rewrite, never tightened, so a ledger an operator loosened keeps its looser mode bits after an upgrade and also holds model IDs, variant labels and per-PR review-round series: check its mode after upgrading.
+Ledger data lives outside this repo, at `$CLAUDE_CONFIG_DIR/pr-cost-ledger.tsv` by default (`~/.claude/pr-cost-ledger.tsv` when `CLAUDE_CONFIG_DIR` is unset) — a local, per-account file that `--record` creates on first use and never enters this repo's git tree. Set `PR_COST_LEDGER_PATH` to an absolute path to record somewhere else instead; a relative value is rejected. Unlike the public, git-committed weekly cost ledger, a freshly created pr-cost ledger file is given restrictive `0600` permissions, since its rows carry an opaque branch label, the raw host and owner/name, the PR number, per-PR model IDs, variant labels (fast-mode, US-geo), per-PR review-round series (per-round dollars, tokens, model IDs and variant labels), and the time of the branch's earliest surviving local session activity, to the second (`earliest_surviving_activity_at`) that the weekly ledger's rows don't. `<config-dir>/machine-id` sits alongside the ledger, never at `PR_COST_LEDGER_PATH`'s own directory. It is created `0600` the first time `--record` runs. An existing ledger's mode bits are preserved on every rewrite, never tightened, so a ledger an operator loosened keeps its looser mode bits after an upgrade and also holds model IDs, variant labels, per-PR review-round series and the earliest-activity time: check its mode after upgrading.
 
 `--record` additionally requires the `pr_cost_recording` config key to resolve true (prompted by `install.sh`, alongside `cost_ledger_recording`; see [`docs/config-file.md`](config-file.md) for the file and legacy-fallback mechanics) — a write-taking subcommand shipped to every stow user stays consent-gated. The same key also gates `transcript-analysis.py routing-guard` (`--capture` writes its own per-account directory); see `docs/transcript-analysis.md` § "routing-guard".
 
-Never hand-edit this file: with no checksum/hash-chain layer over prior rows, an out-of-band edit (typo fix, row deletion, manual dollar edit) leaves no detectable trace — append only through the tool. Two edits are exempt: restoring a trailing tab an editor stripped, and blanking a `model_breakdown` or `review_rounds` cell that fails to parse (keep its tab; a blanked `review_rounds` cell leaves the tab as the line's last character). Only the tab restore leaves every value unchanged. Blanking discards that row's breakdown or rounds, which is permanent once the transcripts age out, so first check whether a one-character fix would keep the cell. Inside the retention window, a forced re-capture (see "The re-record contract") is the way back. Make either edit only while no `--record` runs, and confirm it by running read mode, which must parse the file.
+Never hand-edit this file: with no checksum/hash-chain layer over prior rows, an out-of-band edit (typo fix, row deletion, manual dollar edit) leaves no detectable trace — append only through the tool. Two edits are exempt: restoring the trailing tabs an editor stripped, and blanking a `model_breakdown` or `review_rounds` cell that fails to parse (keep its tab; the blanked cell is no longer the line's last cell, because three columns follow `review_rounds`). Only the tab restore leaves every value unchanged. Blanking discards that row's breakdown or rounds, which is permanent once the transcripts age out, so first check whether a one-character fix would keep the cell. Inside the retention window, a forced re-capture (see "The re-record contract") is the way back. Make either edit only while no `--record` runs, and confirm it by running read mode, which must parse the file.
 
 ### Default (read) output
 
-With no `--record`, `pr-cost` prints one line for every row currently in the ledger file, with nine columns: a redacted repo label, `pr_number`, `machine`, `status`, `join_confidence`, `captured_at`, and the three per-skill round counts described under "The `review_rounds` cell". It never prints `model_breakdown` or the rest of the `review_rounds` cell. It then prints a listing of merged PRs that have local-corpus activity but no captured row yet — the gap between "recorded" and "still recoverable." The gap listing is restricted to branches with an unambiguous direct `headRefName` match (a branch matching zero or more than one merged PR needs the manual audit `join_confidence: low` rows point at, not this quick check) and makes no `gh` calls beyond the one bulk discovery call read mode already needs.
+With no `--record`, `pr-cost` prints one line for every row currently in the ledger file, with nine columns: a redacted repo label, `pr_number`, `machine`, `status`, `join_confidence`, `captured_at`, and the three per-skill round counts described under "The `review_rounds` cell". It never prints `model_breakdown` or the rest of the `review_rounds` cell. It then prints a listing of merged PRs that have local-corpus activity but no captured row yet — the gap between "recorded" and "still recoverable." The ledger listing prints every row, while the uncaptured-PR listing reads the run's scope, the repo scope by default (see "Capture scope, rounds absence and earliest activity"). The listing never names a fork PR or a PR with a guarded head, because `--record` records nothing for either (see "`--record`'s capture"). It applies no as-of-window check, so it can name a PR that `--record` skips as merged too recently. The gap listing is restricted to branches with exactly one same-repository merged PR matching directly on `headRefName` (a branch matching none, or more than one same-repository PR, needs the manual audit `join_confidence: low` rows point at, not this quick check). A cross-repository PR does not count toward that match, so a same-repository PR whose head name a merged fork PR also used is listed, and `--record` writes its row at `low`. The listing makes no `gh` calls beyond the one bulk discovery call read mode already needs.
 
 ### `--record`'s capture
 
 The `machine` cell is generated once per config directory, persisted at `<config-dir>/machine-id`, and cannot be chosen or influenced by the operator (see "Machine identity" below). With no `--pr`, it walks every branch with local corpus activity; `--pr N` targets exactly one PR and turns several would-be skips into hard failures (an unmatched or too-recent PR aborts instead of being silently skipped).
 
 A run that reaches a row write for a branch with local transcript activity, a refused `--force` included, reads the transcripts a second time, after a start line, to capture each PR's `review_rounds` cell, pricing only sessions that open a round. A run that reaches no such write does not (see "Write-time check failures"). The pass runs at most once per account, and an unforced run skips it for a PR already captured.
+
+**Scope.** A run with neither `--projects` nor `--this-repo` reads the repo scope, in read mode and under `--record` alike, and records `capture_scope` `repo`. An explicit `--projects` glob, `*` included, reads every directory it matches and records `glob`, and `--projects '*'` reads every project directory in the account, the machine-wide scan. The repo scope's reach and residuals are in "Capture scope, rounds absence and earliest activity". The repo arm's fail-closed exits (git unable to list this checkout's worktrees, or an environment that is not a recognizable worktree of this repo) exit 1 before any write. A repo-scoped run that reads no usage-bearing turn prints the stderr line quoted in that subsection.
+
+**Branches no row is written for.** A fork PR, and a PR whose head branch is a default-branch candidate (`main`, `master`, `develop`), a detached `HEAD` or a `worktree-agent-*` name, record nothing. A branch-name join cannot tie a default-branch candidate, a detached `HEAD` or a `worktree-agent-*` name to one PR, and a fork PR's head name names a branch of another repository. The review spend of a local checkout of a merged fork PR stays out of the ledger unless a same-repository PR used the same head name, and then it lands in that PR's row at `low` (see "Join confidence").
+- The branch walk skips each with its own stderr line.
+- `--pr N` exits 1 for one, under `--all-accounts` too.
+- There is no override. `cost --branches <branch>` gives an ad hoc figure.
+
+**An unreadable merged-PR payload.** A merged-PR payload from `gh` that is not a list of objects, each with a boolean `isCrossRepository`, exits 1 before any account work, in read mode too, because both modes join.
 
 ### Machine identity
 
@@ -267,9 +332,21 @@ A run that reaches a row write for a branch with local transcript activity, a re
 
 ### The re-record contract
 
-An unforced re-record of an already-captured `(host, repo, pr_number, machine)` refuses and names `--force`. `--force` requires `--pr` (a correction targets exactly one PR) and does not overwrite: it appends a new row carrying the same key, a fresh `captured_at`, and a `supersedes` reference to the prior row's own `captured_at`. Every prior row's existing values are left unchanged; a row predating a column gains it as an empty cell when the file is next rewritten. A forced re-capture recomputes every scalar from the transcripts that survive, so run it only while every session of that PR is still inside `cleanupPeriodDays`; a PR whose early sessions have aged out is understated, and the append is permanent. The tool does not check this: the guard below compares only the new `review_rounds` cell against the captured one, and nothing checks the scalar columns or `model_breakdown`. Judge it by when work on the branch began (its first session, which can come before its first commit), and skip the re-capture when in doubt. Readers take the latest row per key (`_latest_pr_cost_row`, by `captured_at`). This is deliberate: vendor rate tables expire and the local corpus keeps growing, so more than one correction per PR is plausible, and this ledger is the sole surviving record once transcripts age out — a single-slot overwrite would lose everything before the most recent correction.
+An unforced re-record of an already-captured `(host, repo, pr_number, machine)` refuses and names `--force`. `--force` requires `--pr` (a correction targets exactly one PR) and does not overwrite: it appends a new row carrying the same key, a fresh `captured_at`, and a `supersedes` reference to the prior row's own `captured_at`. Every prior row's existing values are left unchanged; a row predating a column gains it, filled from `_PR_COST_LEDGER_COLUMN_DEFAULTS`, when the file is next rewritten. A forced re-capture recomputes every scalar from the transcripts that survive, so run it only while every session of that PR is still inside `cleanupPeriodDays`; a PR whose early sessions have aged out is understated, and the append is permanent. The tool does not check this: the guard below compares only the new `review_rounds` cell against the captured one, and nothing checks the scalar columns or `model_breakdown`. Judge it by when work on the branch began (its first session, which can come before its first commit), and skip the re-capture when in doubt. A bare `--force` re-capture reads the repo scope. A row whose `capture_scope` is empty was recorded by a run whose flags the ledger did not keep: a bare run (the machine-wide scan then), `--this-repo`, or an explicit `--projects` glob. After a bare run, `--projects '*'` reproduces that scan and records `glob`. After any other run, repeat that run's flags, because `--projects '*'` can read more than the original did and the guard refuses only a loss. A row recorded with explicit scope flags needs the same flags again. Readers take the latest row per key (`_latest_pr_cost_row`, by `captured_at`). This is deliberate: vendor rate tables expire and the local corpus keeps growing, so more than one correction per PR is plausible, and this ledger is the sole surviving record once transcripts age out — a single-slot overwrite would lose everything before the most recent correction.
 
-`--record --force --pr N`, with the run's account flags, also adds a `model_breakdown` to a PR captured before that column existed. The appended row carries the breakdown under the current `rate_stamp`, recomputes every scalar from the transcripts that survive, and becomes the PR's current row. Under `--all-accounts` it does so in every account whose corpus touched the branch. The `cleanupPeriodDays` caveat above applies. A forced re-capture whose breakdown fails its check appends an empty-cell row that supersedes a populated one. The prior row remains in the ledger history, and the fix is to re-force, within the caveat above, after the cause is fixed.
+An unforced run that meets an already-captured PR prints this to stderr, where `<hint>` depends on the captured row's `capture_scope`:
+
+```text
+pr-cost:   PR #<a> for machine=<m> is already captured -- pass --force (with --pr) to append a correcting row<hint>
+```
+
+- `repo`: no hint.
+- `glob`: `; a bare --force re-scopes the row to this repo, so pass the same --projects glob to keep its scope`.
+- Empty: `; this row predates capture scope and was read machine-wide by default, a bare --force re-scopes it to this repo, and --projects '*' keeps the machine-wide reading`.
+
+The `--force` help text says the same: "A row captured with --projects, or before capture scope was recorded, needs the same --projects (--projects '*' for the latter), or the new row is scoped to this repo." The row stores only the class, so repeating the glob is the operator's to remember (see "Capture scope, rounds absence and earliest activity").
+
+`--record --force --pr N`, with the run's scope and account flags, also adds a `model_breakdown` to a PR captured before that column existed. The appended row carries the breakdown under the current `rate_stamp`, recomputes every scalar from the transcripts that survive, and becomes the PR's current row. Under `--all-accounts` it does so in every account whose corpus touched the branch. The `cleanupPeriodDays` caveat above applies. A forced re-capture whose breakdown fails its check appends an empty-cell row that supersedes a populated one. The prior row remains in the ledger history, and the fix is to re-force, within the caveat above, after the cause is fixed.
 
 Every `--force` re-capture, per PR:
 - runs a full scalar scan, plus the review-round scan for a branch with local transcript activity
@@ -279,12 +356,15 @@ Every `--force` re-capture, per PR:
 
 A `--force` re-capture also refills a `review_rounds` cell that a failed pass or a failed check left empty, within the `cleanupPeriodDays` caveat above.
 
-**The `--force` guard.** A `--force` re-capture is refused when the new `review_rounds` cell shows less than the captured one. The guard detects a lower `rule`, a lower count or summed `agents` under one `rule`, or an empty cell over a captured one. It does not verify retention and does not detect a loss masked by a gain in another round, so the "judge it by when work on the branch began" instruction above stays the operator's control. The prior row's cell is P and the new row's is N. The first matching case decides:
+**The `--force` guard.** A `--force` re-capture is refused when the new `review_rounds` cell shows less than the captured one. The guard detects a lower `rule`, a lower count or summed `agents` under one `rule`, or an empty cell over a captured one, and it waives the count check for a move into the repo scope. It does not verify retention and does not detect a loss masked by a gain in another round, so the "judge it by when work on the branch began" instruction above stays the operator's control. The prior row's cell is P and the new row's is N. The first matching case decides:
 - P is not captured (empty): allowed, because that row holds no rounds.
 - N is empty: refused, with the reason the absence gives. A P whose lists are all empty is a recorded zero, so it refuses here too.
 - N's `rule` is lower than P's: refused.
+- P's `capture_scope` is not `repo` (empty included) and N's is `repo`: allowed, whatever the counts. The guard cannot tell why N is smaller: P's rounds held another repository's sessions, transcripts aged out, or the repo scope does not read sessions P's wider scope did (a session started in a subdirectory of the main checkout, see "Capture scope, rounds absence and earliest activity"). The new row's `earliest_surviving_activity_at` shows an aged-out loss only after the append. Repeating a `glob` row's `--projects` glob keeps its sessions.
 - Equal `rule` values, where some skill in P has a longer list or a higher summed `agents` than in N, a missing skill key counting as empty: refused. Under one rule, a skill's list gets shorter when a session transcript is gone or the re-run's scope is narrower, and its summed `agents` falls when a dispatch transcript is gone or the scope is narrower. A later session that adds rounds raises both and is never refused.
 - Otherwise allowed, a higher N `rule` included.
+
+A `glob` re-capture over a `repo` row meets no scope check, so the cases above decide it. When they allow it, the appended `glob` row becomes the current row.
 
 A refusal prints this to stderr, and the ledger stays unchanged:
 
@@ -299,10 +379,10 @@ The guard has no override, so it also blocks a re-capture meant to heal a degrad
 Each `<reason>` has a next step, and none is a hand edit (see "Data"):
 - `the review-round pass failed`: follow the remedy under "Write-time check failures". The captured row stays current, so repeat the same `--force --pr N` once the cause is fixed, inside `cleanupPeriodDays`.
 - `the new cell failed its <rule> check`: the captured row stays current. For `build`, the reason ends with the exception's class name, as the per-PR line does, and never its message. Repeat the re-record once the cause is fixed. The "After an exit 1 for a `review_rounds` check failure" bullets under "Write-time check failures" say which rules are transcript-caused and which are defects to report.
-- `this branch has no local transcript activity`: either the sessions aged out or ran on another machine, so a re-capture here would understate the scalars too and the captured row should stay, or this run's `--projects` or `--this-repo` scope is narrower than the original capture's, so repeat the original scope flags.
+- `this branch has no local transcript activity in this run's scope`: either the sessions aged out or ran on another machine, so a re-capture here would understate the scalars too and the captured row should stay, or this run's scope is narrower than the original capture's. For a row whose `capture_scope` is empty, `--projects '*'` reproduces the original scan only after a bare original run, and a row from any other run needs that run's flags repeated. For a row recorded with explicit scope flags, repeat them.
 - `this checkout does not record review rounds`: update to a checkout that does.
 - `this checkout's round rule is older than the captured row's`: update this checkout.
-- `the re-capture is less complete under the same round rule`: either some transcripts aged out since the captured row, so keep it, or the scope is narrower than the original capture's, so repeat its flags.
+- `the re-capture is less complete under the same round rule`: either some transcripts aged out since the captured row, so keep it, or the scope is narrower than the original capture's. For a row whose `capture_scope` is empty, `--projects '*'` reproduces the original scan only after a bare original run, and a row from any other run needs that run's flags repeated. For a row recorded with explicit scope flags, repeat them.
 
 ### Comparing rows across rate stamps
 
@@ -393,13 +473,13 @@ Each account's own `pr_cost_recording` config key still individually gates wheth
 
 ## Redacted cross-account export
 
-`transcript-analysis.py pr-cost-export --out PATH` reads every declared account's own `pr-cost-ledger.tsv`, collapses each to current state, redacts the five identity columns, truncates the two remaining timestamps to a date, and writes the union to a single operator-named TSV — the reproducible input the cross-account, cross-repo analysis this ledger exists to support otherwise has no way to get. It makes no `gh` call and scans no transcript corpus of its own: it is a pure local file transform over ledger files already on disk. `--out` is required and there is no stdout fallback, since stdout inside a Claude Code session is captured into that session's own transcript — the exact leak this command exists to avoid. The destination must not already exist (refused, never overwritten). It must also sit outside any git working tree, reusing the same check `--record`'s own ledger-path refusal uses. See "Residual replication paths the git-tree check doesn't close" below for that check's own blind spots, which apply here too.
+`transcript-analysis.py pr-cost-export --out PATH` reads every declared account's own `pr-cost-ledger.tsv`, collapses each to current state, redacts the five identity columns, truncates the three remaining timestamps to a date for a writer-form value, and writes the union to a single operator-named TSV — the reproducible input the cross-account, cross-repo analysis this ledger exists to support otherwise has no way to get. It makes no `gh` call and scans no transcript corpus of its own: it is a pure local file transform over ledger files already on disk. `--out` is required and there is no stdout fallback, since stdout inside a Claude Code session is captured into that session's own transcript — the exact leak this command exists to avoid. The destination must not already exist (refused, never overwritten). It must also sit outside any git working tree, reusing the same check `--record`'s own ledger-path refusal uses. See "Residual replication paths the git-tree check doesn't close" below for that check's own blind spots, which apply here too.
 
 **Same per-account opt-in gate as `--all-accounts`.** An account is included only if its own `pr_cost_recording` config key resolves true (see "`--all-accounts`" above, and [`docs/config-file.md`](config-file.md) for the file and legacy-fallback mechanics). An account not opted in is skipped, not aborted, with a per-account stderr notice and a count in the provenance line's `skipped_not_opted_in`. This reuses the same `_config.config_enabled` call, so it inherits the same legacy-sentinel symlink caveat when `claude-config.toml` doesn't set the key: symlinking one account's `<config-dir>/.pr-cost-enabled` to another's silently opts both accounts into the export together, defeating the per-account gate. Create each account's sentinel (or `claude-config.toml`) as its own regular file.
 
 **Parsing.** The file opens with a `#`-prefixed provenance line above the TSV header — pass `comment="#"` to a tab reader (`pandas.read_csv` handles this as-is), or `tail -n +2` before a raw split. `cut -f`, a bare `awk -F'\t'`, and spreadsheet imports all silently shift every column by one row if the preamble isn't stripped first.
 
-- Do not strip lines or index columns by position. The last column, `review_rounds`, may be empty, so a line can end in a tab (see the "Trailing cell" bullet under "The `review_rounds` cell").
+- Do not strip lines or index columns by position. The last column, `capture_scope`, is empty on a row recorded before it existed, so a line can end in a tab (see the "Trailing cell" bullet under "The `review_rounds` cell").
 - Read the provenance line's fields by their `key=` name, not by position, because a key can be inserted among them.
 - Parse `review_rounds` with a TSV parser and a JSON parser, not a spreadsheet: a cell can reach 1048576 characters, and a spreadsheet can truncate it into invalid JSON.
 
@@ -407,10 +487,10 @@ Each account's own `pr_cost_recording` config key still individually gates wheth
 
 - A leading `account` column (the full label, e.g. `account-1`, not the bare integer).
 - `host`/`repo`/`pr_number`/`head_branch`/`machine` tokenized as `account-<K>/<kind>-<N>` (`head_branch` renamed `head_branch_label` — see below).
-- `merged_at`/`captured_at` truncated to a date (`rate_stamp` is already date-only and is carried through unchanged).
+- `merged_at`/`captured_at`/`earliest_surviving_activity_at` truncated to a date. The truncation applies to a writer-form value: the parser holds `earliest_surviving_activity_at` to that form, while `merged_at` and `captured_at` accept any `fromisoformat` value, so a hand-edited one without a `T` exports whole. `rate_stamp` is already date-only and is carried through unchanged.
 - `supersedes` replaced by an integer `correction_count`.
 
-Every other column is byte-identical to the source ledger's own cell, except `model_breakdown` and `review_rounds`, which export in canonical encoding: a hand-reformatted source cell does not export byte-identical. `model_breakdown` is value-identical to the source cell. `review_rounds` passes the vocabulary filter below first, so it is value-identical only when the provenance line's `review_rounds_dropped_keys` is 0.
+Every other column is byte-identical to the source ledger's own cell, except `model_breakdown` and `review_rounds`, which export in canonical encoding, and `review_rounds_absence`, which exports as `unrecognized` when its value is neither empty nor one of the writer's codes (`pr_cost._ROUNDS_ABSENCES`). A hand-reformatted source cell does not export byte-identical. `model_breakdown` is value-identical to the source cell. `review_rounds` passes the vocabulary filter below first, so it is value-identical only when the provenance line's `review_rounds_dropped_keys` is 0.
 
 `model_breakdown` passes through un-tokenized, because a combiner needs a model key that stays stable across exports in order to re-price. The key carries nothing beyond the vendor catalogue: the rate table is committed to this public repo, and a PR's published `--summary` Cost block already names each priced model that PR used. Model, variant, and class keys are checked for shape only (see "Schema" above). The column stays DO-NOT-PUBLISH, because it rides an export row that carries the account dimension and because its variant labels record fast-mode and data-residency configuration. See the "The disclosed fields are not neutral" paragraph in `docs/transcript-analysis.md`'s `cost` section for why associating a PR with a model is non-neutral.
 
@@ -442,7 +522,7 @@ The two JSON columns differ on purpose: `review_rounds` is vocabulary-filtered, 
 **`head_branch_label` is not a join key.** The ledger's own `head_branch` cell already holds an opaque placeholder assigned during a *prior* `--record` run, under whatever ordinal scheme that run's own account/root ordering produced. This export re-tokenizes it rather than passing it through, because the stored label is stable only within the run that wrote it. The same repo in two different accounts always yields two unrelated tokens. A `pr` token is unique only within `(account)`, never globally.
 
 **Residual correlation and the publication boundary.**
-- Correlation surface: the `machine` token plus the two truncated dates are a light correlation handle across a corpus a third party might independently hold — the same residual `pr-cost`'s own `--all-accounts` read mode already documents above for the raw value, carried forward here via the token instead.
+- Correlation surface: the `machine` token plus the three truncated dates are a light correlation handle across a corpus a third party might independently hold — the same residual `pr-cost`'s own `--all-accounts` read mode already documents above for the raw value, carried forward here via the token instead.
 - Legacy rows: a row captured before the machine-identity change (see "Machine identity" above) persists in the ledger indefinitely once written, since captures are append-only. Its legacy `machine` value is tokenized on export like every other row's, but the provenance line's `legacy_machine_value_rows` count still flags it, since a hand-chosen label is a categorically different provenance from a tool-generated identity even once both are opaque tokens.
 - Recapture does not retire it: a later recapture of the same PR under a new machine identity (`--record --force --pr N`) does not retire that earlier row — `machine` is part of `_collapse_pr_cost_rows_to_current`'s grouping key, so the recapture survives as its own separate row instead of superseding the legacy one. This count is a heuristic, not exhaustive: a legacy hand-chosen `--machine-label` that happens to match the hex shape (e.g. `deadbeef`) is not flagged, even though it is also a legacy, potentially operator-identifying value.
 - No safe column subset to drop instead: the six-decimal `*_usd` floats and per-class token counts are higher-entropy per-PR fingerprints than the `gh`-sourced integers, so joinability against outside data is the mechanism, not any single column's entropy. The per-model mix and the variant mix add to that fingerprint, and the `fast` and `us_geo` variants record fast-mode and data-residency configuration facts. The per-round series, its per-round variant labels and its `after_merge` flags add per-round resolution to the per-PR fingerprint and to the configuration facts the variants record.
@@ -452,7 +532,7 @@ Export rows are subject to CLAUDE.md's publication-boundary rule (see "Also reda
 A figure derived from `review_rounds` (a round count, a per-round dollar or token value, an after-merge share) is outside the aggregate exception above, which covers only PR counts, token counts, cost, and models used in one bucket. Send such a figure to the owner privately. It publishes only in one of two cases:
 - It is computed over "this repository's own corpus on a single account" (CLAUDE.md's wording), per `docs/private-project-redaction.md` § "Publishing a tooling measurement". Three kinds of figure do not meet it:
   - An export figure, because an export carries other repositories' rows.
-  - A figure read from a ledger row that records no capture scope, `review-cost-by-size`'s included, because such a row's rounds can include another repository's session on a same-named branch.
+  - A figure read from any ledger row, `review-cost-by-size`'s included: a row whose `capture_scope` is not `repo` can hold another repository's session on a same-named branch, and a `repo` row carries the residuals in "Capture scope, rounds absence and earliest activity" above.
   - Read mode's per-skill round-count columns, which are `review_rounds`-derived figures under this rule. Read mode is not a publication instrument.
 - The owner authorizes that specific figure under `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case", with the bars listed there still applying.
 
@@ -480,7 +560,7 @@ Concatenating two or more `pr-cost-export` outputs directly double-counts: the s
 - Refuse the input when it carries `corpus_override=1`, because its provenance is unverified, so it cannot be combined with anything (see "`corpus_override=1` flags a root set..." above).
 - Refuse every input that shares a `corpus=` digest with another input, keeping none of them, because the same corpus was fed in twice, which would double every figure it contributes.
 - Refuse every input that is byte-identical to another input, keeping none of them, for the same reason: the same corpus was fed in twice.
-- Refuse the input when it is missing a column the procedure needs. Read every column by its header name, rather than assuming column position or count. `model_breakdown` and `review_rounds` are never required columns: an export lacking either means every row is not recorded.
+- Refuse the input when it is missing a column the procedure needs. Read every column by its header name, rather than assuming column position or count. `model_breakdown`, `review_rounds`, `review_rounds_absence`, `earliest_surviving_activity_at` and `capture_scope` are never required columns: an export lacking `model_breakdown` or `review_rounds` means every row is not recorded, and one lacking the other three means every row predates them.
 - Skip the row, and count it in a diagnostics tally, when a numeric column (a token or dollar count) fails to parse as a number.
 - Skip the row, and count it in the same diagnostics tally, when `captured_at` or `merged_at` fails to parse as a date.
 
@@ -488,7 +568,7 @@ A row skipped under the two bullets above is not grounds to refuse the whole inp
 
 Leave an input out of round sums when its provenance line's `review_rounds_dropped_keys` is nonzero, or re-export it from an updated checkout first, because its token splits can under-sum its dollars (see "Columns" above).
 
-A session older than `cleanupPeriodDays` at capture time makes a PR's round sum an undercount on the retention axis, even when every round list is empty. No field marks that PR (see "The `review_rounds` cell").
+A session older than `cleanupPeriodDays` at capture time makes a PR's round sum an undercount on the retention axis, even when every round list is empty. A row's `earliest_surviving_activity_at` is the one field that bears on it (see "Capture scope, rounds absence and earliest activity").
 
 **Namespace every token by its source input.** Prefix every `account`, `host`, `repo`, `pr_number`, and `machine` token with a label naming the input file it came from, before comparing anything across inputs. A token is unique only within the export run that produced it, so once two exports are combined, a PR's true identity is the tuple of its input, account, host, repo, and PR number. The plain (account, host, repo, PR number) tuple is not enough, because two separately-run exports can each reuse the same tokens for different PRs.
 
