@@ -30,7 +30,7 @@ Edits in scope (twelve files; item 7 added on the engineer's "Add CHANGELOG bull
 8. The byte cap (M2b): `claude/.claude/hooks/check-claude-md-length.sh` rises from 30,720 to 31,744 bytes, with `claude/.claude/hooks/tests/test_check_claude_md_length.py`, `docs/hooks.md`, the design record `docs/design-decisions/global-claude-md-agent-core-and-main-session-groups.md`, a docstring removed from `claude/.claude/hooks/tests/test_check_skill_length.py` and a second `CHANGELOG.md` bullet following. The M2a clause does not fit under the old cap.
 
 Commit sequencing and PR body:
-- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grow `CLAUDE.md` to about 30,735 bytes, so that gate denies the commit.
+- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grow `CLAUDE.md` to about 30,745 bytes, so that gate denies the commit.
 - The session commits every changed file except `claude/.claude/CLAUDE.md`. The engineer commits `CLAUDE.md` from a separate terminal, outside the gated session. The session does not retry the denial or route around it.
 - The PR body states:
   - who made the `CLAUDE.md` commit;
@@ -70,7 +70,7 @@ Neither (1) nor (3) covers a second test file's copy of a helper or of setup its
 ```
 
   If the blind reads miss the delimiter or size-limit fixture of the single-source key, add ", such as a delimiter or a size limit" after "keep equal" (37 bytes).
-- **M2a, `claude/.claude/CLAUDE.md` line 42.** In the "Discriminator literals where a canonical symbol exists" bullet, insert `, unless importing it would make a test pass whatever the value` after `defined elsewhere`, before the period, so the end of that sentence reads:
+- **M2a, `claude/.claude/CLAUDE.md` line 42.** In the "Discriminator literals where a canonical symbol exists" bullet, insert `, unless importing it would make a test pass whatever the value` after `defined elsewhere`, before the period. Also change the next sentence's opening `Reach for` to `Otherwise reach for`, and change nothing else in it. After the first change, the end of that sentence reads:
 
 ```markdown
 an enum, status, or code defined elsewhere, unless importing it would make a test pass whatever the value.
@@ -224,8 +224,9 @@ Alternatives weighed:
    - The earlier M2 text (337 bytes with its leading space) brought it to 30,705, 15 under the old cap. [verified: `wc -c` at the start of the round-3 fixes]
    - The reworded M2 is 304 bytes with its leading space, 33 fewer. [verified: `len(...encode())` printed 336 and 303 for the old and new text, before the leading space]
    - M2a adds 63 bytes. [verified: `len(...encode())` on the inserted clause]
-   - The projected result is 30735, 15 over the old cap and 1009 under the new one. [unverified: a projection until the code-writer reports `wc -c`]
-   - The optional ", such as a delimiter or a size limit" adds 37 and would land at 30772.
+   - The "Otherwise " edit adds 10 bytes. [verified: `len("Otherwise ".encode())`]
+   - The projected result is 30745, 25 over the old cap and 999 under the new one. [unverified: a projection until the code-writer reports `wc -c`]
+   - The optional ", such as a delimiter or a size limit" adds 37 and would land at 30782.
 8. No test or eval pins any wording this plan replaces. Two searches back this, each over `**/*.py` and `test-conventions/evals/trigger-cases.json`:
    - Old § 6 phrases "Carve-out", "test code is DAMP", "named test helper", "Import or call via integration", "Duplicating production", "Named exceptions" and "bad abstraction". The only hits are test docstrings using the word DAMP. [verified: the grep]
    - M2a and M3a phrases "never embed a raw", "canonical symbol", "domain discriminant", "3 or more sites" and "Discriminator literals". The only hits are the two edited lines and `code-review/SKILL.md:487`. [verified: the grep]
@@ -259,13 +260,14 @@ Alternatives weighed:
     - Keeping both edits in this PR is the engineer's call. [engineer-verified: "Keep both, quote is mine (Recommended)"] The tag covers only keeping M2a and M3a.
     - The engineer chose the clause's wording. [engineer-verified: "Yeah, I think you should use when importing. It would make the test pass whatever the value."] The tag covers the idea and its words. "A test" for "the test" and the placement are this plan's.
     - The M2 reword and the M6 correction note also come from that consult and are this plan's wording.
+    - The engineer decided that scoping the bullet's next sentence belongs in this PR. [engineer-verified: "I actually think it's within scope of this PR because the change this PR introduces exposes the defect of the preexisting prose"] The tag covers that scope decision. A later architect consult advised leaving the sentence unchanged, and the engineer decided otherwise. The one word "Otherwise" is this plan's wording.
 26. The CLAUDE.md byte cap rises from 30,720 to 31,744 bytes (M2b). [engineer-verified: "Yes, I agree that number of bytes that you suggest is reasonable. Okay, let's go with that."] The tag covers the 31,744 figure, which the engineer had been offered with its 31 KiB basis.
    - The change list (the hook, its test, `docs/hooks.md`, the two other sites that state the cap, and a CHANGELOG bullet) is this plan's.
    - The engineer also gave the reason for accepting the raise. [engineer-verified: "I'm honestly okay with you also increasing the claude.md cap, because we're just talking about a handful of bytes, and I'm already working on a huge reduction in another session to offload the main session text."] [engineer-verified: "this is not the time to worry about the claude.md limit. I would raise it."]
    - The two tags cover only that statement and that direction. They do not show that the reduction exists or lands.
    - The engineer was not offered a path-scoped rule in place of the raise. [unverified: whether one would have been preferred]
 27. The docstring in `test_consume_durable_continuity_file_on_read.py` stays unchanged. The test derives the event name from the registry (`settings.json`), not from the code under test, so deriving is not vacuous and the discriminator-literal rule it cites still applies after M2a. [engineer-verified: "Leave it alone (Recommended)"] The tag covers only leaving it. The session's earlier claim that the citation would go stale was wrong.
-28. The engineer makes the `CLAUDE.md`-growing commit outside the gated session. [engineer-verified: "You commit it (Recommended)"] The tag covers only who commits. The installed hook `~/.claude/hooks/check-claude-md-length.sh` resolves to the main checkout's copy, which reads `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720`. [verified: `readlink -f` and `grep -n '^GLOBAL_CLAUDE_MD_BYTE_LIMIT'` on that path] The gate denies a staged file that is over the limit and larger than HEAD. [verified: `_lib.sh:3115-3118,3250`] HEAD's `CLAUDE.md` is 30,705 bytes and the M2 plus M2a result is about 30,735 (row 7).
+28. The engineer makes the `CLAUDE.md`-growing commit outside the gated session. [engineer-verified: "You commit it (Recommended)"] The tag covers only who commits. The installed hook `~/.claude/hooks/check-claude-md-length.sh` resolves to the main checkout's copy, which reads `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720`. [verified: `readlink -f` and `grep -n '^GLOBAL_CLAUDE_MD_BYTE_LIMIT'` on that path] The gate denies a staged file that is over the limit and larger than HEAD. [verified: `_lib.sh:3115-3118,3250`] HEAD's `CLAUDE.md` is 30,705 bytes and the M2 plus M2a result is about 30,745 (row 7).
 
 ## Critical files
 
@@ -296,6 +298,10 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
    - Exactly-once: each block, joined as one string, occurs exactly once in its target. M5's heading, taken from its lead line, a blank line and M5's block occur together exactly once, in that order.
    - Superseded text absent: the committed M2 sentences (starting "Neither (1) nor (3) covers a helper that a second test file copies"), the committed M6 note (containing "which calls DAMP \"complementary\" to DRY, not a replacement for it") and the committed M7 bullet's last sentence (ending "now agree with that section.") each occur zero times in their target as a bare string. The committed M7 sentence is the exception: the new M7 block contains it, so it occurs exactly once in `CHANGELOG.md`, inside that block.
    - Counts the script asserts against literals written in the script from this plan, not read back from its own extraction: variant 2 is 5 lines, M2, M2a, M3, M3a, M4, M6 and M7 are 1 line each, and M5 is 28 non-blank lines. M2b's two blocks are 1 line each: the hook log line occurs once in the hook, and the CHANGELOG bullet occurs once in `CHANGELOG.md`. A pass prints one result line with those counts.
+   - M2a's second edit, on the "Discriminator literals where a canonical symbol exists" bullet of `claude/.claude/CLAUDE.md`:
+     - `unless importing it would make a test pass whatever the value. Otherwise reach for the language or framework's named constant first;` occurs once, and `. Reach for the language or framework's named constant first;` zero times.
+     - The unchanged tail `if the discriminator is project-defined and the project ships a registry or named-type module, use that.` occurs once, and `if the project defines the discriminator` zero times.
+     - A `wc -c` result other than the row 7 projection (30,745, or 30,782 with the optional insertion) is a stop-and-report.
    - Variant 2: its five `- ` lines equal the `- ` lines under `## 6. Test data` in `test-conventions/SKILL.md`, up to the next `## ` heading.
    - M2b, each its own assertion:
      - The hook holds `GLOBAL_CLAUDE_MD_BYTE_LIMIT=31744` once and `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720` zero times, and its comment holds "31,744 bytes = 31 KiB" once.
@@ -326,7 +332,9 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
      - Tell each to read nothing except the named fixture and stub files in the scratchpad, because the plan and its key sit in the worktree.
      - Each returns one verdict per fixture.
    - A text passes when both reads match the key on every fixture.
+   - The M2 and M2a reads run on the bullets as they stand after the "Otherwise" edit. Earlier read results and the staged blob from before that edit do not count, and step 7 re-stages and records the blob ID after the final reads.
    - Fail-first baseline for M2a and M3a: also run each one's fixture set once against the pre-edit text (`git show HEAD:<path>`, the one line or bullet). At least one fixture must flip, or the edit shows nothing.
+   - The baseline shows the exception clause does something. It does not test the word "Otherwise", which rests on the textual-contradiction rationale in row 25.
    - If no fixture flips against the pre-edit text, report that to the engineer and keep the edit on the textual-contradiction rationale in row 25. Do not drop it or strengthen the fixtures without the engineer.
    - On a mismatch, do not stage. The dispatching session revises the text in this plan's block, applies the revised block to its target file, then re-runs step 3 and that text's reads with fresh agents.
    - If a key entry itself looks wrong, ask the engineer before changing it, because the key carries the boundary rows 1 and 2 record.
