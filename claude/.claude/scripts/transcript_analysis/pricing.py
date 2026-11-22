@@ -124,6 +124,7 @@ class _LongPromptTier(NamedTuple):
     base_input_rate: float
 
 
+# A turn whose _context_at_turn is over threshold_tokens pays base_input_rate in place of its _MODEL_BASE_INPUT_RATES row.
 # Remove a model's _LONG_PROMPT_TIERS row only together with its _MODEL_BASE_INPUT_RATES row. Removing only the tier row:
 # - leaves its stored long-prompt groups unpriceable;
 # - prices its over-threshold turns at the lower tier with no notice.
@@ -131,7 +132,6 @@ class _LongPromptTier(NamedTuple):
 # repriced at the lower tier with no notice.
 # A new row therefore needs a routing_guard._CAPTURE_REVISION decision
 # or the remedy in "Known gaps" of the routing-guard section of docs/transcript-analysis.md.
-# A turn whose _context_at_turn is over threshold_tokens pays base_input_rate in place of its _MODEL_BASE_INPUT_RATES row.
 _LONG_PROMPT_TIERS: dict[str, _LongPromptTier] = {
     # Claude Haiku 5.5's over-100,000-token row, fetched 2026-11-20.
     "claude-haiku-5-5": _LongPromptTier(threshold_tokens=100_000, base_input_rate=0.50),

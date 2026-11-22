@@ -3492,7 +3492,9 @@ class TestReviewRoundsUpgradeNotice:
 class TestReviewRoundsCellBoundsAdmitRepresentativeRounds:
     def test_the_write_bound_admits_at_least_1000_representative_rounds(self):
         """Main thread on one model in the standard and fast variants, a dispatch on a second model, every class at a
-        nine-digit count, every count field nonzero, after_merge present, and the longest model ID in the rate table."""
+        nine-digit count, every count field nonzero, after_merge present, and the longest model ID in the rate table.
+        "Representative" means the main-thread model in two pricing-variant labels and the dispatch model in one.
+        The 1000-round bound does not cover a round holding every label in pricing._PRICING_VARIANTS."""
         nine_digit_group = dict.fromkeys(_TOKEN_CLASS_NAMES, 987_654_321)
         longest_model = max(pricing._MODEL_BASE_INPUT_RATES, key=len)
         representative_round = {
