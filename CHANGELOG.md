@@ -6,6 +6,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The documented `claude-config.toml` append one-liners now start with a newline, `.gitignore` covers six more legacy sentinel filenames, and `git-feature-branch-sync`'s explicit `--force-with-lease` recipe uses a pre-rewrite SHA.**
   - Every `printf 'key = value\n' >> .../claude-config.toml` copy in `README.md`, `docs/`, and the `advance-past-commit-stall.sh` block reason is now `printf '\nkey = value\n'`. Without the leading newline, a file lacking a trailing newline fused the new key onto its last line, and `_config.sh` skipped both as a malformed line. `docs/config-file.md` states the requirement.
   - **Migration:** a one-liner copied before this change still fuses lines on such a file. Re-copy it from the docs, or add the leading `\n`.

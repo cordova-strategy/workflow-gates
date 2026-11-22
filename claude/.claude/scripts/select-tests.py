@@ -521,6 +521,10 @@ ROOT_SKILLS_DIR = ".claude/skills"
 # also reads it, for its permissions.allow entries.
 ROOT_SETTINGS_JSON = ".claude/settings.json"
 
+# test_design_decision_files.py (HOOKS_TESTS_DIR) checks that a
+# docs/design-decisions link to this file resolves.
+RGIGNORE = ".rgignore"
+
 # test_statusline_command.py (CLAUDE_TESTS_DIR) reads this file by path.
 # test_shellcheck.py (HOOKS_TESTS_DIR) also lints it as part of its
 # tracked-shell-script sweep. test_default_branch_resolution_is_shared.py
@@ -901,6 +905,7 @@ DOMAIN_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
 # ROOT_SETTINGS_JSON: see each constant's own comment above for its citation.
 # STATUSLINE_COMMAND_SH: see its own comment above for citation.
 # CONFIG_KEYS_PSV: see its own comment above for citation.
+# RGIGNORE: see its own comment above for citation.
 # _is_py_source_under_claude_or_plugins: see its own comment above for
 # citation. Selects TICKET_REFERENCE_DISCIPLINE_TEST_PATH directly.
 # _is_test_tree_packaging_change: see its own comment above for citation.
@@ -1059,6 +1064,7 @@ CROSS_DOMAIN_EXCEPTIONS: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ..
     (lambda p: _is_under(p, ROOT_RULES_DIR), (SKILLS_TESTS_DIR, HOOKS_TESTS_DIR)),
     (lambda p: _is_under(p, ROOT_SKILLS_DIR), (SKILLS_TESTS_DIR,)),
     (lambda p: p == ROOT_SETTINGS_JSON, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR)),
+    (lambda p: p == RGIGNORE, (HOOKS_TESTS_DIR,)),
     (lambda p: p == STATUSLINE_COMMAND_SH, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR, CLAUDE_TESTS_DIR)),
     (lambda p: p == CONFIG_KEYS_PSV, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR, SKILLS_TESTS_DIR)),
     (_is_py_source_under_claude_or_plugins, (TICKET_REFERENCE_DISCIPLINE_TEST_PATH,)),
