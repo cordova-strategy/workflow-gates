@@ -1519,6 +1519,63 @@ task, so every rate in the secondary outcome prints `n/a`. A task's rate is its
 valid runs' mean docstring lines over their mean code lines. The pooled rate
 weights each task by its code lines. The rates carry no interval.
 
+`summarize` then reports two further secondary outcomes that separate how
+often an agent writes a docstring from how long each one is. Both cover Python
+class and function docstrings in non-test files, over the primary difference's
+paired tasks. Each prints the `toolkit` figure, the `bare` figure, the merged
+commits' (reference) figure and the `toolkit - bare` difference with a 95%
+bootstrap interval and the count of resamples dropped because an arm's
+denominator summed to zero. Both pool as the primary outcome does: a ratio of
+sums over each task's mean per valid run. Neither carries a threshold.
+
+- Words per new docstring is the words in new docstrings over the count of new
+  docstrings. A new docstring is a class or function docstring that has a
+  non-empty line range and whose lines are all added. A module docstring is
+  not one. A one-line docstring on its `def` line is not one, since its line
+  is also code. A docstring that gains lines inside an existing one is not
+  one. A docstring written whole onto an existing definition is one.
+- The share of new definitions with a new docstring is the count of new
+  definitions whose docstring is new over the count of new definitions. A new
+  definition is a class or function, methods and nested ones included, whose
+  `def` or `class` line and the first line of whose first body statement are
+  both added. A signature edit alone is no new definition. A docstring added
+  to an existing definition without a signature edit enters the first figure
+  and not this one, so the share stays between 0 and 1.
+
+The counts see added line numbers only, so a rewritten line reads as a new
+one. An edit to both a definition's `def` or `class` line and the first line of
+its body, or to a definition whose body sits on its `def` line, therefore
+counts that definition as new. An edit to a one-line docstring on its own line
+counts that docstring as new. A multi-line docstring counts as new only when
+every one of its lines is added. The tests in `evals/test_replay_bench_comment_metrics.py` pin each of
+these cases.
+
+A Python file the parser rejects adds nothing to either figure, while the
+primary outcome's code lines still include it. A figure prints `n/a` when no
+paired task exists, when its denominator sums to zero or, for the reference,
+when the reference is unavailable or lacks the paired tasks. A figure prints
+`not measured`, with the count of paired tasks lacking the counts, when any
+valid run of a paired task, or a reference entry, predates the counts. A
+campaign or task set recorded before the counts therefore keeps its records and
+reads `not measured`. Mining a task set again records the counts for the
+reference. A task set mined again still loads on a checkout that predates this
+change, but that checkout drops the counts and computes a different
+`task_set_hash`. A campaign must therefore be started, resumed and summarized
+from checkouts on the same side of this change, in either direction.
+
+Reading these two figures, and only these, since the 20% rule above stays the
+primary outcome's alone:
+
+- A nonzero dropped count means the interval covers only the resamples in
+  which neither arm's denominator summed to zero. A large share dropped makes
+  the readings below unreliable, because the surviving resamples over-represent
+  the tasks that carry the denominator.
+- A gap whose 95% interval covers zero is a null.
+- Any other gap is read with its sign: `toolkit` below `bare` means the
+  toolkit lowers the figure.
+- An effect on only some tasks can read as a null, because the interval also
+  carries the variation between tasks.
+
 The per-task lines and their task IDs stay in local output. So do the `run`
 progress lines and the halt messages, which print the same IDs beside per-task
 spend and ok and missing counts. An ID is two parts joined by a hyphen: the
@@ -1533,7 +1590,8 @@ repository root's `README.md` § "Requirements", git 2.32 or newer,
 Claude Code 2.1.271 or newer and `direnv` on `PATH`. Run it through
 `scripts/venv-run.sh python3`. Results are not a publication instrument,
 because the runner refuses no wider corpus. The design lives in
-`.claude/plans/docstring-verbosity-experiment.md`.
+`.claude/plans/docstring-verbosity-experiment.md`, and the design of the two
+per-docstring figures in `.claude/plans/replay-bench-per-docstring-metrics.md`.
 
 ### Usage
 
