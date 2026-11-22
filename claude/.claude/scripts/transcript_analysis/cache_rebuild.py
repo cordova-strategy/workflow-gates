@@ -389,9 +389,11 @@ def _cache_rebuild_report(args: argparse.Namespace, roots: Sequence[Path] | None
 
                     if in_w5m_branch:
                         w5m_by_origin_root[root_key] += eph_5m
-                        # Reuses _price_turn's own priced classes so the margin denominator
-                        # carries the same fast-mode/US-geo multipliers the net's own
-                        # per-call delta already applies.
+                        # Reuses _price_turn's own priced classes, so the margin denominator is
+                        # priced at each turn's own rates, the same ones the net's per-call
+                        # delta applies: the fast-mode and US-inference-geo multipliers and,
+                        # for a model priced by prompt length, the higher base rate a turn
+                        # takes over that model's threshold.
                         if dollars_by_class is not None:
                             w5m_dollars_by_origin_root[root_key] += dollars_by_class["cache_write_5m"]
                         # X is a primary-boundary-only quantity (the report's

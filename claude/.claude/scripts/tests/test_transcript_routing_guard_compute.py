@@ -862,22 +862,6 @@ class TestCaptureFiles:
 
 
 class TestPricing:
-    @pytest.mark.parametrize("variant", pricing._PRICING_VARIANTS)
-    def test_the_usage_rebuild_returns_each_pricing_variant_label(self, variant):
-        usage = routing_guard._usage_from_variant_tokens(variant, {"input": 1})
-
-        assert pricing._pricing_variant(usage) == variant
-
-    def test_the_usage_rebuild_keeps_a_nonzero_one_hour_write_in_its_own_class(self):
-        usage = routing_guard._usage_from_variant_tokens(
-            "standard", {"cache_write_1h": 7, "cache_write_5m": 3, "input": 1, "output": 2, "cache_read": 4},
-        )
-
-        assert pricing._cache_write_split(usage) == (7, 3)
-        assert pricing._token_counts(usage) == {
-            "input": 1, "output": 2, "cache_read": 4, "cache_write_1h": 7, "cache_write_5m": 3,
-        }
-
     def test_a_loops_overhead_equals_the_round_dollars_review_round_cost_prints(self, fake_projects):
         session_id = "sess-1"
         records = [
@@ -896,6 +880,10 @@ class TestPricing:
                 ts="2026-08-01T10:00:40.000Z",
             ),
             _priced(_UNPRICED_MODEL, input=80_000, branch="feat", ts="2026-08-01T10:00:50.000Z"),
+            # Two lower-tier turns whose prompts sum past the tier threshold, and one higher-tier turn.
+            _priced("claude-haiku-5-5", input=60_000, branch="feat", ts="2026-08-01T10:01:00.000Z"),
+            _priced("claude-haiku-5-5", input=70_000, branch="feat", ts="2026-08-01T10:01:10.000Z"),
+            _priced("claude-haiku-5-5", input=150_000, branch="feat", ts="2026-08-01T10:01:20.000Z"),
             _user_msg("thanks", branch="feat", ts="2026-08-01T10:05:00.000Z"),
         ]
         _write_jsonl(fake_projects / f"{session_id}.jsonl", records)
@@ -924,14 +912,34 @@ class TestPricing:
         scalars = routing_guard._branch_scalars([loop], "digest", price_later_turns=False)
 
         assert expected_dollars > 0
+        assert loop["overhead_tokens"]["claude-haiku-5-5"]["standard"]["input"] == 130_000
         assert scalars.overhead_dollars == pytest.approx(expected_dollars)
         assert scalars.degraded_loops == 1
         assert _UNPRICED_MODEL in loop["overhead_tokens"]
 
-    @pytest.mark.parametrize("model", ["<synthetic>", "", _UNPRICED_MODEL])
+    @pytest.mark.parametrize(
+        "model",
+        [
+            pytest.param("<synthetic>", id="synthetic-model"),
+            pytest.param("", id="empty-model"),
+            pytest.param(_UNPRICED_MODEL, id="unlisted-model"),
+        ],
+    )
     def test_a_model_the_table_does_not_price_gives_a_degraded_notice_and_no_crash(self, lab, capsys, model):
         account = lab.account()
         lab.row(account, "branch-on", "on", loops=[_loop(input_tokens=5, growth=1, model=model)])
+        lab.row(account, "branch-off", "off", loops=[_loop(growth=2)])
+        lab.write_note()
+
+        outcome = _compute(capsys, lab)
+
+        assert outcome.code in (0, 1)
+        assert routing_guard._DEGRADED_NOTICES["on"] in outcome.err.splitlines()
+        assert routing_guard._DEGRADED_NOTICES["off"] not in outcome.err.splitlines()
+
+    def test_a_group_whose_label_the_model_cannot_take_gives_a_degraded_notice_and_no_crash(self, lab, capsys):
+        account = lab.account()
+        lab.row(account, "branch-on", "on", loops=[_loop(input_tokens=5, growth=1, model=_SONNET, variant="long_prompt")])
         lab.row(account, "branch-off", "off", loops=[_loop(growth=2)])
         lab.write_note()
 
@@ -1040,6 +1048,21 @@ class TestPricing:
         outcome = _compute(capsys, lab)
 
         assert routing_guard._DEGRADED_NOTICES["off"] in outcome.err.splitlines()
+
+    def test_a_model_priced_by_prompt_length_in_a_key_off_rows_later_turns_is_degraded(self, lab, capsys):
+        account = lab.account()
+        lab.row(account, "branch-on", "on", loops=[_loop(growth=1)])
+        lab.row(account, "branch-off", "off", loops=[_loop(growth=2, later={"claude-haiku-5-5": 4})])
+        lab.write_note()
+
+        outcome = _compute(capsys, lab)
+
+        assert routing_guard._DEGRADED_NOTICES["off"] in outcome.err.splitlines()
+        assert "claude-haiku-5-5" in pricing._LONG_PROMPT_TIERS
+        scalars = routing_guard._branch_scalars(
+            [_loop(growth=2, later={"claude-haiku-5-5": 4})], "d", price_later_turns=True,
+        )
+        assert scalars.carry_rate_sum == 0.0
 
     @pytest.mark.parametrize(
         ("expired_model", "line_prints", "key_on_overhead_model"),

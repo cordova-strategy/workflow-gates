@@ -816,7 +816,7 @@ in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py`
 reader. `pricing.py`'s
 shared per-session step, staleness rule, and canary return values, and
 `cost.py`'s accumulation of that step's counts, also have direct tests in
-`tests/test_transcript_pricing_session_helpers.py`. `session_pricing.py`'s tests, including the pins
+`tests/test_transcript_pricing_session_helpers.py`. `pricing.py`'s prompt-length tier tests live in `tests/test_transcript_pricing_prompt_tiers.py`. `session_pricing.py`'s tests, including the pins
 its stability promise relies on, live in `tests/test_transcript_session_pricing.py`. Every other package module has its own per-command-group (or, for `denials.py`,
 per-leaf) test file: `cost.py`'s in `tests/test_transcript_cost.py`, `denials.py`'s in
 `tests/test_transcript_denials.py`, `review_trace.py`'s in

@@ -132,7 +132,7 @@ def _compute_pr_cost_branch_totals(session_iter) -> tuple[dict[str, dict], dict]
                 continue
 
             token_counts = pricing._token_counts(usage)
-            model_leaves = agg["by_model"].setdefault(model, {}).setdefault(pricing._pricing_variant(usage), {})
+            model_leaves = agg["by_model"].setdefault(model, {}).setdefault(pricing._pricing_variant(model, usage), {})
             for cls in pricing._TOKEN_CLASSES:
                 agg["dollars"][cls] += dollars_by_class[cls]
                 agg["tokens"][cls] += token_counts[cls]

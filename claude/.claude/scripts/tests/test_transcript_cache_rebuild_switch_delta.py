@@ -69,6 +69,46 @@ class TestCacheRebuildSwitchDeltaPricing:
         assert delta == pytest.approx(-12.25)
         assert unpriced_tokens == 0
 
+    def test_haiku_5_5_switch_delta_uses_the_higher_tier(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_5m=1_000_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_switch_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=False
+        )
+        # The 1,000,000-token prompt is over the threshold: 1,000,000/1e6 * (1.00 - 0.625) = 0.375.
+        assert delta == pytest.approx(0.375)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_idle_cause_switch_delta_reads_the_higher_tier_cache_read_rate(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_5m=1_000_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_switch_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=True
+        )
+        # Over the threshold: switch cost 1,000,000/1e6 * (1.00 - 0.625) = 0.375, less rescue (1.00 - 0.05) = 0.95.
+        # A cache-read rate taken from the lower tier ($0.01) would give -0.615.
+        assert delta == pytest.approx(-0.575)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_switch_delta_at_the_threshold_uses_the_lower_tier(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_5m=100_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_switch_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=False
+        )
+        # The 100,000-token prompt is at the threshold, not over it: 100,000/1e6 * (0.20 - 0.125) = 0.0075.
+        # The higher tier would give 0.0375.
+        assert delta == pytest.approx(0.0075)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_idle_cause_switch_delta_at_the_threshold_reads_the_lower_tier_cache_read_rate(self):
+        usage = _priced("claude-haiku-5-5", ephemeral_5m=100_000)["message"]["usage"]
+        delta, unpriced_tokens = cache_rebuild_rules._cache_rebuild_switch_delta_dollars(
+            "claude-haiku-5-5", usage, is_idle_5m_1h_cause=True
+        )
+        # At the threshold: switch cost 100,000/1e6 * (0.20 - 0.125) = 0.0075, less rescue 100,000/1e6 * (0.20 - 0.01)
+        # = 0.019. A cache-read rate taken from the higher tier ($0.05) would give -0.0075; the higher tier throughout
+        # would give -0.0575.
+        assert delta == pytest.approx(-0.0115)
+        assert unpriced_tokens == 0
+
 
 class TestCacheRebuildNegateSwitchDeltaForDisplay:
     """Direct unit coverage for _negate_switch_delta_for_display's own

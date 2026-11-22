@@ -23,7 +23,7 @@ mechanics).
 |---|---|---|
 | `week` | ISO week label | Join key |
 | `machine` | generated identity (see "Data" below) | Distinguishes rows from different machines when an operator compares ledger files by hand across them |
-| `rates` | `_PRICING_FETCH_DATE` | Rows computed under different price tables are not comparable |
+| `rates` | `_PRICING_FETCH_DATE` | Rows computed under different price tables are not comparable; adding a model's row changes a week's dollars within one `rates` stamp, from the first row recorded after the model was priced |
 | `usd` | `cost-trend` | Volume, not efficiency — present for context, not for scoring |
 | `context_pct` | `cost.compute_cost_trend_data` (`context_class_dollars`) | Context-class (cache read + both cache-write tiers) dollar share of the week's spend — the ~88%-of-the-bill thesis |
 | `opus_pct` | `cost-trend` | Model-routing discipline |
