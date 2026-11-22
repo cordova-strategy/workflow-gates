@@ -80,7 +80,7 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # namespace with no path separator at all), so the control is WHAT records
     # are read, not scrubbing names after the fact. The default (--projects unset)
     # scopes the read to this repo's own project dirs (_repo_scoped_project_slugs).
-    # That default still reads every declared account, so a default run is not a
+    # That default still reads every declared account. No run of this command is a
     # publication instrument (docs/transcript-analysis.md, Limits). An explicit
     # --projects is an escape hatch for corpus analysis; the caller then owns the
     # output's scope.
@@ -274,7 +274,7 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
         help="Project-dir glob. Default: this repo's own worktrees only, read across every declared account. "
-             "Its counts are cross-account pooled figures, so a default run is not a publication instrument. "
+             "No run of this command is a publication instrument (docs/transcript-analysis.md, Limits). "
              "Passing an explicit glob is an escape hatch — output is then not scoped to this repo. "
              "An explicit glob reads the active account only, unless --all-accounts.",
     )
