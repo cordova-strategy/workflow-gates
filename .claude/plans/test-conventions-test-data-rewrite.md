@@ -10,7 +10,7 @@ Why now: today the four texts disagree. `test-conventions` § 6 says repeating t
 
 Edits in scope (twelve files; item 7 added on the engineer's "Add CHANGELOG bullet" answer):
 1. `claude-skills/skills/test-conventions/SKILL.md`: replace § 6's five bullets with variant 2. Net zero lines; the file is at the 200-line default cap. The length hook (`claude/.claude/hooks/check-skill-length.sh`) denies only a file that is over its limit and longer than the committed version, so net zero passes. Keep the heading `## 6. Test data` exactly, because other files cite it.
-2. `claude/.claude/CLAUDE.md`, "Single source of truth" bullet (line 25): qualify exceptions (1) and (3) so a helper, setup its assertions do not depend on, or a value two test files must keep equal, copied into a second test file, is not covered. The clause must stand alone because the skill does not load in most sessions. Point to `test-conventions/SKILL.md` § "6. Test data"; a bare `test-conventions` target fails the citation-grammar test. The same file's "Discriminator literals where a canonical symbol exists" bullet (line 42) gains an exception clause (M2a), so it no longer tells a test to import a production symbol when the import would make the test pass whatever the value.
+2. `claude/.claude/CLAUDE.md`, "Single source of truth" bullet (line 25): qualify exceptions (1) and (3) so a helper, setup whose details its assertions do not depend on, or a value two test files must keep equal, copied into a second test file, is not covered. The clause must stand alone because the skill does not load in most sessions. Point to `test-conventions/SKILL.md` § "6. Test data"; a bare `test-conventions` target fails the citation-grammar test. The same file's "Discriminator literals where a canonical symbol exists" bullet (line 42) gains an exception clause (M2a), so it no longer tells a test to import a production symbol when the import would make the test pass whatever the value.
 3. `claude-skills/skills/code-review/SKILL.md` item 9: replace everything from "Carve-out:" to the end of the item with the three-sentence carve-out in M3, which states the same boundary. Delete the old named-helper sub-clauses. Item 9a (line 115) gains the same clause (M3a).
 4. `claude-skills/skills/test-evaluation/SKILL.md` line 68: label "Duplicating production logic in tests"; the fix cell tells the reader to call the code or use integration and to spell out expected values instead of importing them from the code under test. The engineer chose that direction with the answer "Spell out values, don't import". The earlier draft's "inline" conflicts with § 6's third bullet.
 5. `claude-skills/skills/test-conventions/REFERENCES.md`: add a section recording the verified sources, with exact quotes and URLs from grep-checked local text copies of the pages. The section records:
@@ -30,7 +30,7 @@ Edits in scope (twelve files; item 7 added on the engineer's "Add CHANGELOG bull
 8. The byte cap (M2b): `claude/.claude/hooks/check-claude-md-length.sh` rises from 30,720 to 31,744 bytes, with `claude/.claude/hooks/tests/test_check_claude_md_length.py`, `docs/hooks.md`, the design record `docs/design-decisions/global-claude-md-agent-core-and-main-session-groups.md`, a docstring removed from `claude/.claude/hooks/tests/test_check_skill_length.py` and a second `CHANGELOG.md` bullet following. The M2a clause does not fit under the old cap.
 
 Commit sequencing and PR body:
-- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grow `CLAUDE.md` to about 30,745 bytes, so that gate denies the commit.
+- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grow `CLAUDE.md` to about 30,759 bytes, so that gate denies the commit.
 - The session commits every changed file except `claude/.claude/CLAUDE.md`. The engineer commits `CLAUDE.md` from a separate terminal, outside the gated session. The session does not retry the denial or route around it.
 - The PR body states:
   - who made the `CLAUDE.md` commit;
@@ -60,13 +60,13 @@ Pending checks (a), (b) and (c) from the prior session are closed in the Approac
 
 § 6 becomes the canonical statement of the boundary. Lines 107-110 take variant 2's first four bullets verbatim, and line 111 already equals its fifth. Each of the three texts that disagree gains sentences that state the same boundary on their own and cite `test-conventions/SKILL.md` § "6. Test data". REFERENCES.md records the sources, the design record gets an in-place correction, and a CHANGELOG bullet tells stow consumers about the change.
 
-The exact edits. State of the tree: the committed branch already holds the first-round M1, M3, M4 and M5 as written below. It holds older wording of M2, M6 and M7, which these blocks replace. M2a, M3a and M2b are new. The dispatch applies only what differs, and step 3 checks the result.
+The exact edits. State of the tree: HEAD already holds M1, M3a, M4, M5, M6, M7 and M2b as written below. Three edits differ from HEAD. M2 and the `CLAUDE.md` line 42 part of M2a are in the unstaged working tree. M3 is staged, and HEAD's M3 lacks the "whose details" clause of row 29. The dispatch applies only what differs, and step 3 checks the result.
 
 - **M1, `claude-skills/skills/test-conventions/SKILL.md`.** Replace lines 107-110 with the first four bullets of Context's variant 2 block, byte for byte. Line 111 and the heading at line 105 stay.
 - **M2, `claude/.claude/CLAUDE.md` line 25.** Replace the two sentences between "...a small duplicated value that beats a bad abstraction." and "Absent a named exception, duplication is a defect." with these, keeping the bullet on one line:
 
 ```markdown
-Neither (1) nor (3) covers a second test file's copy of a helper or of setup its assertions do not depend on, or a value two test files must keep equal. Define it once in a shared test module (a value spelled out, not derived from the code under test), per `test-conventions/SKILL.md` § "6. Test data".
+Neither (1) nor (3) covers a second test file's copy of a helper or of setup whose details its assertions do not depend on, or a value two test files must keep equal. Define it once in a shared test module (a value spelled out, not derived from the code under test), per `test-conventions/SKILL.md` § "6. Test data".
 ```
 
   If the blind reads miss the delimiter or size-limit fixture of the single-source key, add ", such as a delimiter or a size limit" after "keep equal" (37 bytes).
@@ -79,7 +79,7 @@ an enum, status, or code defined elsewhere, unless importing it would make a tes
 - **M3, `claude-skills/skills/code-review/SKILL.md` line 113.** Replace everything from `Carve-out:` to the end of the line, the trailing "(see `test-conventions` §6)." included, with:
 
 ```markdown
-Carve-out: test code is DAMP, so do not flag repeated inline arrange/assert blocks unless they obscure the test's intent. Flag at two sites, whatever its size, a second test file's copy of a helper or of setup its assertions do not depend on, and a value two test files must keep equal, such as text or a number the code under test emits or parses, even when each file spells it inline. Point to one shared definition, with a value spelled out there rather than derived from the code under test, per `test-conventions/SKILL.md` § "6. Test data".
+Carve-out: test code is DAMP, so do not flag repeated inline arrange/assert blocks unless they obscure the test's intent. Flag at two sites, whatever its size, a second test file's copy of a helper or of setup whose details its assertions do not depend on, and a value two test files must keep equal, such as text or a number the code under test emits or parses, even when each file spells it inline. Point to one shared definition, with a value spelled out there rather than derived from the code under test, per `test-conventions/SKILL.md` § "6. Test data".
 ```
 
 - **M3a, `claude-skills/skills/code-review/SKILL.md` line 115 (item 9a).** Insert `, unless importing it would make a test pass whatever the value` after `without a shared named type`, before the question mark, so the result reads:
@@ -225,8 +225,9 @@ Alternatives weighed:
    - The reworded M2 is 304 bytes with its leading space, 33 fewer. [verified: `len(...encode())` printed 336 and 303 for the old and new text, before the leading space]
    - M2a adds 63 bytes. [verified: `len(...encode())` on the inserted clause]
    - The "Otherwise " edit adds 10 bytes. [verified: `len("Otherwise ".encode())`]
-   - The projected result is 30745, 25 over the old cap and 999 under the new one. [unverified: a projection until the code-writer reports `wc -c`]
-   - The optional ", such as a delimiter or a size limit" adds 37 and would land at 30782.
+   - Restoring "whose details " in M2 adds 14 bytes (row 29). [verified: `len("whose details ".encode())`]
+   - The projected result is 30759, 39 over the old cap and 985 under the new one. [verified: wc -c on the working tree printed 30759]
+   - The optional ", such as a delimiter or a size limit" adds 37 and would land at 30796.
 8. No test or eval pins any wording this plan replaces. Two searches back this, each over `**/*.py` and `test-conventions/evals/trigger-cases.json`:
    - Old § 6 phrases "Carve-out", "test code is DAMP", "named test helper", "Import or call via integration", "Duplicating production", "Named exceptions" and "bad abstraction". The only hits are test docstrings using the word DAMP. [verified: the grep]
    - M2a and M3a phrases "never embed a raw", "canonical symbol", "domain discriminant", "3 or more sites" and "Discriminator literals". The only hits are the two edited lines and `code-review/SKILL.md:487`. [verified: the grep]
@@ -238,7 +239,7 @@ Alternatives weighed:
    - M3 keeps the two-site threshold for test copies. Without it the three-site default would govern them.
    - M3 drops the differing-body rule. Its helper and setup clauses take M2's grammar and carry no "when a change to one copy ..." condition.
    - M3's value clause says "must keep equal" and "even when each file spells it inline". The original trailing "when a change to one copy ..." let a blind reader pass a delimiter spelled inline in two test files.
-   - The reworded text matched the key on every fixture. [verified: Verification step 5's item 9 reads]
+   - The reworded text matched the key on every fixture. [verified: Verification step 5's item 9 reads, run before row 29 changed the setup clause and the F3 and P3 cases] Step 5 re-runs the item 9 reads on the row 29 text.
 12. Line 68's fix cell spells out expected values instead of importing them from the code under test, rather than the earlier draft's "assert expected literals inline". [engineer-verified: "Spell out values, don't import (Recommended)"] The tag covers only that choice between the two wordings. The choice settles both conflicts with variant 2. Today's "Import" contradicts its fourth bullet. The draft's "inline" contradicts its third bullet, which forbids a value "named or pasted inline" in a second test file. [verified: Context's variant 2 block]
 13. test-evaluation's row reads "Duplicating production code in tests | Test passes with stale copy, drift | Import or call via integration". [verified: `git show origin/main:claude-skills/skills/test-evaluation/SKILL.md`, line 68] This closes the line-68 part of pending check (b).
 14. Line 3 of a design record is its italic provenance line. A record that a later change overturns gets a note immediately under that line. Tests check line 3, reject a stray "Formerly" fragment anywhere else, and resolve relative markdown links. [verified: .claude/rules/design-decisions.md:16-32; test_design_decision_files.py:268-338, 484] M6 carries no "Formerly" and no markdown link.
@@ -267,7 +268,10 @@ Alternatives weighed:
    - The two tags cover only that statement and that direction. They do not show that the reduction exists or lands.
    - The engineer was not offered a path-scoped rule in place of the raise. [unverified: whether one would have been preferred]
 27. The docstring in `test_consume_durable_continuity_file_on_read.py` stays unchanged. The test derives the event name from the registry (`settings.json`), not from the code under test, so deriving is not vacuous and the discriminator-literal rule it cites still applies after M2a. [engineer-verified: "Leave it alone (Recommended)"] The tag covers only leaving it. The session's earlier claim that the citation would go stale was wrong.
-28. The engineer makes the `CLAUDE.md`-growing commit outside the gated session. [engineer-verified: "You commit it (Recommended)"] The tag covers only who commits. The installed hook `~/.claude/hooks/check-claude-md-length.sh` resolves to the main checkout's copy, which reads `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720`. [verified: `readlink -f` and `grep -n '^GLOBAL_CLAUDE_MD_BYTE_LIMIT'` on that path] The gate denies a staged file that is over the limit and larger than HEAD. [verified: `_lib.sh:3115-3118,3250`] HEAD's `CLAUDE.md` is 30,705 bytes and the M2 plus M2a result is about 30,745 (row 7).
+28. The engineer makes the `CLAUDE.md`-growing commit outside the gated session. [engineer-verified: "You commit it (Recommended)"] The tag covers only who commits. The installed hook `~/.claude/hooks/check-claude-md-length.sh` resolves to the main checkout's copy, which reads `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720`. [verified: `readlink -f` and `grep -n '^GLOBAL_CLAUDE_MD_BYTE_LIMIT'` on that path] The gate denies a staged file that is over the limit and larger than HEAD. [verified: `_lib.sh:3115-3118,3250`] HEAD's `CLAUDE.md` is 30,705 bytes and the M2 plus M2a result is about 30,759 (row 7).
+29. The setup clause in M2 and M3 reads "setup whose details its assertions do not depend on", with "whose details" restored and "steps" left out. [engineer-verified: "Restore 'whose details' (Recommended)"] The tag covers the choice to restore the phrase at both sites. The exact clause is this plan's wording, drawn from an architect consult. So are the code-shaped key cases F3, P3 and their M2 counterparts, which replace the earlier cases that described the setup in abstract terms.
+    - The engineer chose to judge setup dependence per step. [engineer-verified: "Switch to per step (Recommended)"] The tag covers only that choice. It replaces an earlier answer, "Judge the whole paste (Recommended)", which answered a narrower question about one assertion reading back one value. [unverified: the question's exact text] This plan reads per step as the literal reading of § 6's bullet 3, which says "steps", and as the reading M2 and M3 carry with "steps" left out, so it changes no shipped text. That reading is this plan's, drawn from an architect consult, not the engineer's.
+    - Step 5 does not re-run a § 6 read. Instead, two fresh `general-purpose` agents each read § 6's bullet 3 (`test-conventions/SKILL.md:109`, "setup steps whose details ...") against the earlier F3 and P3 fixtures, and both matched the earlier key. That read is a one-off on fixtures since replaced. [verified: two fresh `general-purpose` reads this session]
 
 ## Critical files
 
@@ -294,14 +298,14 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
    - SKILL.md lines: `wc -l` on each edited SKILL.md prints the same count before and after its edit.
 2. `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. The selection should include `claude-skills/skills/tests/test_skill_citation_grammar.py` and `claude/.claude/hooks/tests/test_design_decision_files.py`. If it omits either, report that as a `select-tests.py` rule-table bug, per the repo `CLAUDE.md`, rather than widening the run by hand.
 3. Identity check, keyed by content. Write one Python script to a scratchpad outside the repository. It takes this plan's path and a repository root (default: the current directory) as arguments. It finds each block in the plan by content, never by line number: variant 2 between Context's "Variant 2, the § 6 replacement text" line and its "Public-repo constraint" line, and each fenced block after its `**M<n>,` lead line. It compares exact strings in-process and never builds a shell grep from a block, because the blocks hold backticks and double quotes. The code-writer runs it and returns its path. The dispatching session re-runs it before staging.
-   - HEAD already holds the first-round version of M1, M3, M4 and M5, and older versions of M2, M6 and M7. So presence is not enough: each check below also asserts exactly-once and that the superseded text is gone.
+   - HEAD already holds M1, M3a, M4, M5, M6, M7 and M2b as written. Only M2, M3 and the `CLAUDE.md` line 42 part of M2a differ from HEAD. So presence is not enough: each check below also asserts exactly-once and that the superseded text is gone.
    - Exactly-once: each block, joined as one string, occurs exactly once in its target. M5's heading, taken from its lead line, a blank line and M5's block occur together exactly once, in that order.
-   - Superseded text absent: the committed M2 sentences (starting "Neither (1) nor (3) covers a helper that a second test file copies"), the committed M6 note (containing "which calls DAMP \"complementary\" to DRY, not a replacement for it") and the committed M7 bullet's last sentence (ending "now agree with that section.") each occur zero times in their target as a bare string. The committed M7 sentence is the exception: the new M7 block contains it, so it occurs exactly once in `CHANGELOG.md`, inside that block.
+   - Superseded text absent: the committed M2 sentences (starting "Neither (1) nor (3) covers a helper that a second test file copies"), the committed M6 note (containing "which calls DAMP \"complementary\" to DRY, not a replacement for it") and the committed M7 bullet's last sentence (ending "now agree with that section.") each occur zero times in their target as a bare string. So does `setup its assertions do not depend on` (the pre-row-29 setup clause), in both `claude/.claude/CLAUDE.md` and `claude-skills/skills/code-review/SKILL.md`. The committed M7 sentence is the exception: the new M7 block contains it, so it occurs exactly once in `CHANGELOG.md`, inside that block.
    - Counts the script asserts against literals written in the script from this plan, not read back from its own extraction: variant 2 is 5 lines, M2, M2a, M3, M3a, M4, M6 and M7 are 1 line each, and M5 is 28 non-blank lines. M2b's two blocks are 1 line each: the hook log line occurs once in the hook, and the CHANGELOG bullet occurs once in `CHANGELOG.md`. A pass prints one result line with those counts.
    - M2a's second edit, on the "Discriminator literals where a canonical symbol exists" bullet of `claude/.claude/CLAUDE.md`:
      - `unless importing it would make a test pass whatever the value. Otherwise reach for the language or framework's named constant first;` occurs once, and `. Reach for the language or framework's named constant first;` zero times.
      - The unchanged tail `if the discriminator is project-defined and the project ships a registry or named-type module, use that.` occurs once, and `if the project defines the discriminator` zero times.
-     - A `wc -c` result other than the row 7 projection (30,745, or 30,782 with the optional insertion) is a stop-and-report.
+     - A `wc -c` result other than the row 7 projection (30,759, or 30,796 with the optional insertion) is a stop-and-report.
    - Variant 2: its five `- ` lines equal the `- ` lines under `## 6. Test data` in `test-conventions/SKILL.md`, up to the next `## ` heading.
    - M2b, each its own assertion:
      - The hook holds `GLOBAL_CLAUDE_MD_BYTE_LIMIT=31744` once and `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720` zero times, and its comment holds "31,744 bytes = 31 KiB" once.
@@ -333,9 +337,20 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
      - Each returns one verdict per fixture.
    - A text passes when both reads match the key on every fixture.
    - The M2 and M2a reads run on the bullets as they stand after the "Otherwise" edit. Earlier read results and the staged blob from before that edit do not count, and step 7 re-stages and records the blob ID after the final reads.
-   - Fail-first baseline for M2a and M3a: also run each one's fixture set once against the pre-edit text (`git show HEAD:<path>`, the one line or bullet). At least one fixture must flip, or the edit shows nothing.
-   - The baseline shows the exception clause does something. It does not test the word "Otherwise", which rests on the textual-contradiction rationale in row 25.
-   - If no fixture flips against the pre-edit text, report that to the engineer and keep the edit on the textual-contradiction rationale in row 25. Do not drop it or strengthen the fixtures without the engineer.
+   - Fixture shape for the setup cases (F3, P3 and their M2 counterparts):
+     - In F3, the production stub's allow or deny reads only that a repository exists, never its contents.
+     - P3's paste is built so some assertion reads each of its steps, so "no flag" is reachable under per-step judgment.
+     - Two cases are not probed by any fixture: a paste whose only added assertion checks that a file exists, and a multi-step paste where one assertion reads one written value and the other steps go unread.
+   - Fail-first baseline for the setup clause:
+     - Run the F3 and P3 fixtures and their M2 counterparts against the pre-row-29 text, two fresh reads per fixture, because a single read cannot be told from reader variance.
+     - Build both sources in the scratchpad from the text under test: line 25 of the working-tree `claude/.claude/CLAUDE.md` and item 9 of the staged or working-tree `claude-skills/skills/code-review/SKILL.md`. At each site, delete the phrase "whose details ", so that phrase is the only variable and the procedure does not depend on which commit HEAD is.
+     - Report how many of the two reads flipped for each fixture. A single flip is compatible with reader variance.
+     - If no entry flips, report that to the engineer and keep the clause on the row 29 quote. Do not drop it.
+   - Fail-first baseline for M2a and M3a:
+     - Run each one's fixture set once against the pre-edit text. M2a's is line 42 of `git show HEAD:claude/.claude/CLAUDE.md`. M3a's is item 9a of `git show origin/main:claude-skills/skills/code-review/SKILL.md`, because HEAD already holds the M3a clause.
+     - Report the flip count to the engineer. A flip shows the edit does something, and no flip shows nothing.
+     - If no fixture flips against the pre-edit text, report that to the engineer and keep the edit on the textual-contradiction rationale in row 25. Do not drop it or strengthen the fixtures without the engineer.
+     - The baseline shows the exception clause does something. It does not test the word "Otherwise", which rests on the textual-contradiction rationale in row 25.
    - On a mismatch, do not stage. The dispatching session revises the text in this plan's block, applies the revised block to its target file, then re-runs step 3 and that text's reads with fresh agents.
    - If a key entry itself looks wrong, ask the engineer before changing it, because the key carries the boundary rows 1 and 2 record.
    - A revision to the M2a or M3a clause goes to the engineer first, because row 25 records the clause as the engineer's words.
@@ -344,10 +359,10 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
    - Item 9 as M3 leaves it, with a verdict of flag or no flag:
      - F1, flag: two test files each spell out the delimiter the production stub parses.
      - F2, flag: a second test file holds a pasted copy of an identical named builder.
-     - F3, flag: a second test file copies setup steps whose details its assertions do not depend on.
+     - F3, flag: a second test file pastes the same inline temporary-repository setup as the first, and its assertions check only that the call is allowed or denied.
      - P1, no flag: the production stub parses F1's delimiter but stores a free-text field without parsing it, and two distinct builders in two test files each default that field to the delimiter's literal.
      - P2, no flag: a shared test module spells out the delimiter, two test files import it, and the production stub holds the same literal.
-     - P3, no flag: a second test file copies setup steps whose details its assertions depend on.
+     - P3, no flag: the same paste, plus assertions that compare the values the setup wrote, so every step is read.
      - P4, no flag: one test file repeats inline arrange blocks across its tests.
      - F4, flag: a second test file copies a named builder with one field default changed, and the two must be edited together.
      - P5, no flag: one test file reuses a helper across many of its tests.
@@ -360,8 +375,8 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
      - Not covered: a delimiter the production stub parses, spelled out in two test files.
      - Covered: the same literal as the first, as a stand-in, defaulted by two distinct builders in two test files. The builders share a name pattern and field list, differ in body, and the stub shows their other fields diverging.
      - Covered: a shared test module spells out the value, two test files import it, and the production stub holds the same literal.
-     - Not covered: a second test file copies setup steps whose details its assertions do not depend on.
-     - Covered: a second test file copies setup steps whose details its assertions depend on.
+     - Not covered: a second test file pastes inline temporary-repository setup, and its assertions check only that the call is allowed or denied.
+     - Covered: the same paste, plus assertions that compare the values the setup wrote, so every step is read.
    - The `claude/.claude/CLAUDE.md` "Discriminator literals where a canonical symbol exists" bullet as M2a leaves it, with a verdict of requires importing the production symbol or does not:
      - Does not require it: a test asserts the `Status.FAILED` wire value, in two test files. Importing the production constant would make the test pass whatever the value, so spell it out.
      - Does not require it: a test parses a delimiter and spells it out.
@@ -386,7 +401,7 @@ Projected diff: about 80 changed lines. That is 8 in `test-conventions/SKILL.md`
    - `/code-review` runs `/skill-review` on the three SKILL.md files, which the commit hook enforces.
    - Run `/ai-instruction-and-memory-files` on the `claude/.claude/CLAUDE.md` diff.
    - A review edit to any prescribed text lands in this plan's block first, then step 3's script re-runs.
-   - An edit to M2, M2a, M3, M3a or M4 also re-runs that text's step 5 reads. The M3 and M4 reads do not re-run for the round-3 fixes, which edit neither text. A review edit to M2a or M3a follows step 5's engineer-first rule.
+   - An edit to M2, M2a, M3, M3a or M4 also re-runs that text's step 5 reads. The M2 and M3 reads re-run after the row 29 edit, which changes both texts. The M4 reads do not re-run, because row 29 does not edit M4. A review edit to M2a or M3a follows step 5's engineer-first rule.
 7. Commits, after steps 1-6 pass:
    - The session runs the staged-diff `/code-review` and commits every changed file except `claude/.claude/CLAUDE.md`.
    - It then stages `claude/.claude/CLAUDE.md` alone, records `git rev-parse :claude/.claude/CLAUDE.md`, and runs the staged-diff `/code-review` on it, so a marker covers the bytes the engineer commits.
