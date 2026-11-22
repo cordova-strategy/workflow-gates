@@ -172,8 +172,7 @@ def _require_well_formed_merged_prs(merged_prs: object) -> None:
 
 
 def _pr_is_joinable(pr: dict) -> bool:
-    """False for a cross-repository PR, a PR whose isCrossRepository is not a boolean false, and a head branch no join
-    may use."""
+    """Fails closed: a missing or non-boolean isCrossRepository counts as not joinable."""
     return pr.get("isCrossRepository") is False and not scope._branch_never_joins_a_pr(pr["headRefName"])
 
 

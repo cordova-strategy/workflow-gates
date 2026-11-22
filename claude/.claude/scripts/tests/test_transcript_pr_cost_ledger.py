@@ -31,7 +31,7 @@ from ._pr_cost_helpers import (
     _PRIOR_ROW_MARKER,
     _UPGRADE_NOTICE_FRAGMENT,
     _UPGRADE_NOTICE_STEM,
-    _current_line_with_cell,
+    _current_ledger_text_with_cell,
     _enable_pr_cost,
     _fake_pr_cost_subprocess_run,
     _first_round,
@@ -239,10 +239,7 @@ class TestParsePrCostLedgerFileTextMalformed:
         is a uniform contract of _parse_pr_cost_ledger_row_cells, not
         special-cased to any column: every validation branch omits the raw
         cell and names only the column and line number."""
-        text = (
-            pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n"
-            + _current_line_with_cell(column, malformed_value) + "\n"
-        )
+        text = _current_ledger_text_with_cell(column, malformed_value)
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
             pr_cost_ledger._parse_pr_cost_ledger_file_text(text)
         message = str(exc_info.value)
@@ -485,10 +482,6 @@ def _single_group_cell(model="claude-sonnet-5", variant="standard", token_class=
     return json.dumps({model: {variant: {token_class: leaf if leaf is not None else {"tokens": 1, "usd_micros": 1}}}})
 
 
-def _current_ledger_text_with_cell(cell: str, column: str = "model_breakdown") -> str:
-    return pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + _current_line_with_cell(column, cell) + "\n"
-
-
 # Hostile primitives shared by the model_breakdown and review_rounds codec suites: a bad integer and a bad key.
 _PRIMITIVE_INTEGER_VALUES = {
     "float": 1.5, "bool": True, "negative": -1, "nan": float("nan"), "infinity": float("inf"), "above-int64": 2**63,
@@ -553,7 +546,7 @@ class TestDecodeModelBreakdownCell:
     @pytest.mark.parametrize("cell", _CODEC_REJECT_CASES)
     def test_malformed_cell_raises_naming_line_and_column_without_echoing_cell_text(self, cell):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(cell))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("model_breakdown", cell))
 
         message = str(exc_info.value)
         assert "line 2" in message
@@ -614,7 +607,7 @@ class TestDecodeModelBreakdownCell:
             ' "cache_write_1h": {"usd_micros": 100000, "tokens": 100}, "cache_read": {"usd_micros": 1500000,' \
             ' "tokens": 1000} } } }'
         for cell in (spaced_cell, unsorted_cell):
-            text = _current_ledger_text_with_cell(cell)
+            text = _current_ledger_text_with_cell("model_breakdown", cell)
 
             row = pr_cost_ledger._parse_pr_cost_ledger_file_text(text)[0]
 
@@ -1583,7 +1576,7 @@ class TestReviewRoundsColumnRegistration:
 class TestDecodeReviewRoundsCellAccepts:
     def test_canonical_sample_decodes_to_its_value_and_reformats_to_the_same_bytes(self):
         row = pr_cost_ledger._parse_pr_cost_ledger_file_text(
-            _current_ledger_text_with_cell(_CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL, "review_rounds")
+            _current_ledger_text_with_cell("review_rounds", _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL)
         )[0]
 
         assert row["review_rounds"] == _sample_review_rounds()
@@ -1635,7 +1628,7 @@ class TestDecodeReviewRoundsCellAccepts:
         # A raw newline would split the line; collapse it to spaces, which JSON also accepts between tokens.
         spaced_cell = indented_cell.replace("\n", " ")
 
-        row = pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(spaced_cell, "review_rounds"))[0]
+        row = pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", spaced_cell))[0]
 
         assert row["review_rounds"] == _sample_review_rounds()
         rendered_cell = pr_cost_ledger._format_pr_cost_ledger_row(row).split("\t")[_ledger_cell_index("review_rounds")]
@@ -1880,7 +1873,7 @@ class TestDecodeReviewRoundsCellRefuses:
         self, pinned_int_max_str_digits, cell, expected_rule,
     ):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(cell, "review_rounds"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", cell))
 
         assert str(exc_info.value) == f"line 2: malformed review_rounds ({expected_rule})"
         assert _CELL_MARKER not in str(exc_info.value).lower()
@@ -2001,6 +1994,6 @@ class TestFormatReviewRoundsCell:
 
     def test_each_json_column_names_itself_in_its_decode_error(self):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError, match="malformed model_breakdown"):
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("not json", "model_breakdown"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("model_breakdown", "not json"))
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError, match="malformed review_rounds"):
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("not json", "review_rounds"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", "not json"))

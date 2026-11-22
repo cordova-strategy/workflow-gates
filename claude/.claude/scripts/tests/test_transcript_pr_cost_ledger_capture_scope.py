@@ -11,17 +11,13 @@ from ._pr_cost_helpers import (
     _GLOB_RESCOPE_HINT,
     _PRE_INVALID_USAGE_HEADER_LINE,
     _PRE_REVIEW_ROUNDS_HEADER_LINE,
-    _current_line_with_cell,
+    _current_ledger_text_with_cell,
     _pre_invalid_usage_row_line,
     _pre_review_rounds_row_line,
     _sample_pr_cost_row,
 )
 
 _CELL_TEXT_MARKER = "zzcellmarkerzz"  # passes the absence key shape; must never reach a refusal message
-
-
-def _current_ledger_text_with_cell(column: str, cell: str) -> str:
-    return pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + _current_line_with_cell(column, cell) + "\n"
 
 
 def _parse_one_row_with_cell(column: str, cell: str) -> dict:

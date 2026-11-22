@@ -2136,8 +2136,10 @@ class TestPrCostPrescribedHandEdits:
         header = pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE
         if broken_cell_or_tail is None:
             # review_rounds, review_rounds_absence, earliest_surviving_activity_at and capture_scope are the current
-            # header's four trailing columns, and a legacy-shaped row leaves all four blank, so an editor that trims
-            # trailing whitespace strips four tabs and the row is four cells short; restoring them is the fix.
+            # header's four trailing columns.
+            # A legacy-shaped row leaves all four blank, so it ends in four tabs.
+            # An editor that trims trailing whitespace strips those four tabs and leaves the row four cells short.
+            # Restoring the tabs is the fix.
             fixed_line = _current_line_with_cell("review_rounds", "", pr_number=50)
             broken_line = fixed_line.rstrip("\t")
         else:

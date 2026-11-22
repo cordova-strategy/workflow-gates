@@ -154,7 +154,7 @@ _PR_COST_LEGACY_RESCOPE_HINT = (
 
 
 def _rescope_hint_for_captured_scope(captured_scope: str) -> str:
-    """An empty captured_scope is a row recorded before capture_scope existed; a repo row keeps its scope and needs no hint."""
+    """An empty captured_scope is a row recorded before the column existed, which was read machine-wide by default."""
     if captured_scope == _PR_COST_CAPTURE_SCOPE_GLOB:
         return _PR_COST_GLOB_RESCOPE_HINT
     if captured_scope == _PR_COST_CAPTURE_SCOPE_REPO:

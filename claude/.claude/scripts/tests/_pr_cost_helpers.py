@@ -569,6 +569,10 @@ def _current_line_with_cell(column: str, cell: str, **row_overrides) -> str:
     return "\t".join(cells)
 
 
+def _current_ledger_text_with_cell(column: str, cell: str) -> str:
+    return pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + _current_line_with_cell(column, cell) + "\n"
+
+
 def _legacy_row_line(**overrides) -> str:
     """Returns a _sample_pr_cost_row(**overrides) rendered under the frozen pre-host
     header's columns -- no host cell, no model_breakdown cell, no invalid_usage_records cell."""
