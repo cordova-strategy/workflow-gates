@@ -909,8 +909,9 @@ class TestSessionMarkerDashboardLedgerSummary:
 
 class TestSessionMarkerDashboardRegistration:
     def test_registered_with_a_ten_second_timeout(self):
-        """The hook reads stdin uncapped, so the registered timeout is its only bound; the harness default is 600 s.
+        """The hook reads stdin uncapped, so the registered timeout is its only bound.
 
+        The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery").
         10 s is a chosen ceiling matching the sibling compact hooks' registered timeout.
         It is not derived from this hook's own cap sum.
         """

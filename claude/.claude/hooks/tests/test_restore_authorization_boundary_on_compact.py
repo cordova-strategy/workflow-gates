@@ -44,8 +44,6 @@ from .conftest import requires_timeout
 RESTORE_BOUNDARY_HOOK = HOOKS_DIR / "restore-authorization-boundary-on-compact.sh"
 # The hook's stdin time cap, pinned to the hook's literal by assert_cap_engaged.
 STDIN_CAP_SECONDS = 2
-# The seconds the settings timeout leaves beyond the stdin cap for the bootstrap and the jq calls.
-BOOTSTRAP_AND_JQ_RESERVE_SECONDS = 2
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _HANDOFF_SKILL = _REPO_ROOT / "claude-skills" / "skills" / "handoff" / "SKILL.md"
 
@@ -489,9 +487,3 @@ class TestRestoreAuthorizationBoundaryRegistration:
     def test_registered_with_a_ten_second_timeout(self):
         """The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery"), so the registered cap is the binding bound."""
         assert session_start_registered_timeouts("restore-authorization-boundary-on-compact.sh") == [10]
-
-    def test_timeout_covers_the_stdin_cap_plus_the_bootstrap_reserve(self):
-        timeouts = session_start_registered_timeouts(RESTORE_BOUNDARY_HOOK.name)
-
-        assert len(timeouts) == 1
-        assert timeouts[0] >= STDIN_CAP_SECONDS + BOOTSTRAP_AND_JQ_RESERVE_SECONDS

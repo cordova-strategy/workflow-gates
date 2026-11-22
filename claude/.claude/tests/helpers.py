@@ -978,7 +978,7 @@ def run_hook_on_held_open_stdin(hook: Path, payload: dict, home: Path, path: str
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        env={**os.environ, "HOME": str(home), "PATH": path},
+        env=_build_subprocess_env(home, {"PATH": path}),
     )
     assert hook_process.stdin is not None
     assert hook_process.stdout is not None
