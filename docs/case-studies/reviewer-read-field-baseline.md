@@ -6,13 +6,19 @@ The figures come from transcripts and ledger files selected by this checkout's p
 
 ## Headline answers
 
-- **Partial or refused:** 100.0% (65/65) of the denominator's whole-file calls came back partial (`partial_token_cap`). None was refused. All 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in the denominator.
+- **Partial or refused:** 100.0% (65/65) of the denominator's whole-file calls came back partial (`partial_token_cap`). No reviewed-file call was refused. All 65 are prose (`instruction` plus `other_prose`). Code and other files have no calls in the denominator.
   - The denominator is whole-file calls on reviewed files that were partial, refused, complete on a file over 2,000 lines, or flagged `allow_large` at an estimated 25,000 tokens or more.
+  - Diff handoffs are not in the denominator.
+  - The report prints 26 partial-or-refused whole-file diff-handoff calls: 20 partial (`partial_token_cap`) and 6 refused (`refused_over_limit`).
+  - All 6 refused calls in reviewer windows are diff handoffs, and all 6 are on files over 2,000 lines.
 - **Read share:** 12.7% of modeled billed weight in reviewer windows goes to Reads. This is a share of modeled billed weight, not of tokens or dollars. Of the Read weight:
   - 18.0% is files over 1,000 lines.
   - 7.0% is code and other reviewed files over 1,000 lines.
   - 10.4% is diff handoffs over 1,000 lines.
-  - The 7.0% and 10.4% do not sum to the 18.0%.
+  - The 7.0% and 10.4% sum to 17.4%, which is 0.6 points short of the 18.0%.
+  - The remainder is 1,711,177.0 of the 279,450,796.0 Read weight (50,345,894.5 less 19,597,442.0 less 29,037,275.5).
+  - It is the weight of prose reviewed files over 1,000 lines, for which the report prints no part.
+  - The prose whole-file table has no call on a file over 1,000 lines, so that weight comes from targeted reads.
 
 ## The run
 
@@ -21,11 +27,11 @@ The figures come from transcripts and ledger files selected by this checkout's p
 - **Window:** 2026-10-25 to 2026-11-21, both days included, 28 days.
 - **`cleanupPeriodDays`:** absent from the account's settings, so the 30-day default applies. At that default, records from about 2026-10-23 onward were still kept at the run, so the window's first day, 2026-10-25, falls inside the retained span.
 - **Instrument commit:** `e5e1f34f573a`. The `claude/.claude/scripts/transcript_analysis/` package is unchanged between `daeeae4fbd4a` (#1575's head commit) and `e5e1f34f573a`.
-- **Self-checks:** five checks passed before this page was written. `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines each of them. They are the reviewer-window floor, the ledger floor, the yield-completed floor, the sample check and the output scan. The report header prints the fixed label `~/.claude/transcript-config-dirs`, which the output scan tolerates.
+- **Self-checks:** five checks passed before this page was written. `.claude/plans/reviewer-read-telemetry.md` § "Verification" step 4 defines each of them. They are the reviewer-window floor, the ledger floor, the yield-completed floor, the sample check and the output scan. Step 4's by-hand trace is not among them, because it applies only when the instrument package differs from the dry-run commit, and it does not. The report header prints the fixed label `~/.claude/transcript-config-dirs`, which the output scan tolerates.
 
 ## The report as printed
 
-Two edits to the output. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's counter line, and the three ledger-section lines that follow its sessions line. Of those three, one reports the ledger-file directory scan and two count ledger rows. One placeholder stands in for each group.
+The output has one rename and two withheld groups. The header's project-directory count is renamed "worktrees listed", because it counts `git worktree list` entries. Two groups of lines are withheld: the yield pass's counter line, and the three ledger-section lines that follow its sessions line. Of those three, one reports the ledger-file directory scan and two count ledger rows. One placeholder stands in for each group.
 
 ```text
 REVIEWER READS SOURCES (this repo (33 worktrees listed); reads one account (the active account), the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)
@@ -171,6 +177,7 @@ Rerun this the same way after #1115 and compare like with like.
 - **Re-run recipe:** the window length, account and checkout follow `docs/transcript-analysis.md` § "reviewer-reads". Run it from a worktree cut from the default branch, and before any worktree cleanup.
 - **Edits that void a comparison:** an edit to any of these makes a later run measure a different instrument. The list is not exhaustive, and a diff of the `claude/.claude/scripts/transcript_analysis/` package between the two instrument commits is the full check.
   - `read_cost`'s scanner
+  - `read_cost._file_kind` and `read_cost._INSTRUCTION_PATH_FRAGMENTS`, which decide the prose and code/other split
   - `pricing._cache_read_equivalent_weights`
   - `pricing.dedup_turns_by_request_id`
   - `reviewer_reads`
@@ -183,6 +190,8 @@ Rerun this the same way after #1115 and compare like with like.
   - `author_outcome._SESSION_ID_PATTERN`
 - **Review-skill mix:** compare the per-skill `round_windows` counts in the report's "Main-thread Reads inside review-round windows" section.
 
+#1115's body was read on 2026-11-22 for this section and for the Prose limitation.
+
 What a rise or fall after #1115 can and cannot show, read against #1115's body:
 
 - **Headline partial and refused rates:** before-state only. The partial rate and the partial-or-refused rate are already 100.0%, so neither can rise. #1115's entry read is still one default Read, so both can hold while reviewers handle a partial view as #1115 prescribes.
@@ -190,15 +199,15 @@ What a rise or fall after #1115 can and cannot show, read against #1115's body:
 - **Per-type counts:** the only place #1115's per-lens exceptions show.
   - `ciso-reviewer`'s counts may fall less, because #1115 keeps its CI and policy config files whole.
   - `staff-data-engineer` had no reviewer window in this run, so #1115's exception for its migrations has no before-count on this page.
-- **`covered_after` per reviewer window:** before-state only. #1115 replaces paging through the rest of a file with an outline and a function-context diff, so a fall is by design.
-- **`later_offset_read` per reviewer window:** it can rise on #1115's fallback of reading an enclosing function's range. A rise does not show that the rest of the file was read.
-- **`neither` per reviewer window:** before-state only. #1115's outline and diff are invisible to the instrument, while its fallback adds a ranged Read the instrument counts. Its direction therefore cannot be predicted.
+- **`covered_after`, as a share of partial or refused calls:** before-state only. #1115 replaces paging through the rest of a file with an outline and a function-context diff, so a fall is by design.
+- **`later_offset_read`, as a share of partial or refused calls:** it can rise on #1115's fallback of reading an enclosing function's range. A rise does not show that the rest of the file was read.
+- **`neither`, as a share of partial or refused calls:** before-state only. #1115's outline and diff are invisible to the instrument, while its fallback adds a ranged Read the instrument counts. Its direction therefore cannot be predicted.
 - **The Read share and its over-1,000-line part:** neither direction identifies #1115 working. Its mandatory expansions add Reads of other files while its entry rule cuts Reads of large changed files.
 - **The ledger dispositions:** a move shows a change in the mix of terminal disposition rows, which the report counts as rows and not as distinct findings. It cannot attribute that change to how files were read.
 
 ## Confounders in the window
 
-Changes to the instruction the reviewers run on, from `git log --oneline` on `origin/main` over the window.
+This section lists changes to `claude-skills/skills/code-review/SKILL.md` and the reviewer agent files only. Changes to the `plan-review` and `ready-for-review` skill files in the same window are not listed. The lists come from `git log --oneline` on `origin/main` over the window.
 
 `claude-skills/skills/code-review/SKILL.md`:
 
@@ -244,10 +253,10 @@ d246e014 prose granularity rule (#1354)
 The instrument's known limits are in `docs/transcript-analysis.md` § "reviewer-reads" (its "Known limits" paragraph). The residuals that bound publication, path identity and the ledger file check, are in `docs/private-project-redaction.md` § "This repository, one account". This page's figures also carry the limits below.
 
 - **Round-window counts.** `code-review`'s 240 whole-file calls exceed its 227 reviewed-file outcomes plus 12 diff-handoff calls by one. A whole-file call can lack an outcome class (`docs/transcript-analysis.md` § "reviewer-reads", its "Main-thread round Reads" paragraph), so the gap is not a defect.
-- **Under-cap truncation.** What a 2,000-line default truncation returns for a file under the token cap was not tested. `partial_unflagged` counts a read that returned fewer lines than the file holds and carries no truncation flag. No reviewed-file whole-file call in this run was on a file over 2,000 lines (`over_2000=0` in every reviewed-file size table), so the run did not exercise it.
+- **Under-cap truncation.** What a 2,000-line default truncation returns for a file under the token cap was not tested. `partial_unflagged` counts a read that returned fewer lines than the file holds and carries no truncation flag. No reviewed-file whole-file call of known size in this run was on a file over 2,000 lines (`over_2000=0` in every reviewed-file size table), so the run did not exercise it. The eight failed reviewed-file calls of unknown size are unclassified by size: seven in reviewer windows and one in the `code-review` round windows.
 - **Reviewer types.** `_is_reviewer_subagent_type` matches bare agent-type names with no plugin namespace. A namespaced value on another harness version would fall outside the population.
 - **Yield pass counters.** The withheld `reviewer-yield pass:` line holds a gap counter and two read-error counters. No self-check covers them. The capturer read all three as 0 in this run.
-- **Prose.** All 65 partials are prose, which is `instruction` plus `other_prose`. #1115's entry read leaves markdown instruction files whole for every reviewer. It leaves markdown docs, which `other_prose` holds, whole for `comment-discipline-reviewer` alone. `instruction` is decided by path, whatever the extension, so it also holds code and JSON files under `skills/`, which #1115's entry read does change.
+- **Prose.** All 65 partials are prose, which is `instruction` plus `other_prose`. #1115's entry read leaves markdown instruction files whole for every reviewer. It leaves markdown docs, which `other_prose` holds, whole for `comment-discipline-reviewer` alone. `docs/transcript-analysis.md` § "reviewer-reads" defines how `instruction` is decided. Because that decision ignores the extension, `instruction` also holds code and JSON files, which #1115's entry read does change. The match runs on the whole path the Read call names, so the directory a run's worktree sits in can move reads between prose and code/other.
 - **The instrument's own review rounds.** The window holds the review rounds of the change that built this instrument (#1575), as a later run's window will hold #1115's.
 
 ## What this page does not cover
