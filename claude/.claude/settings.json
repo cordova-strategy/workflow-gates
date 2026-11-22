@@ -83,10 +83,10 @@
   "model": "sonnet",
   "theme": "dark",
   "tui": "fullscreen",
-  "outputStyle": "Concise",
   "agentPushNotifEnabled": true,
   "disableArtifact": true,
   "disableWorkflows": true,
+  "outputStyle": "Concise",
   "syncClaudeAiSkills": false,
   "attribution": {
     "sessionUrl": false

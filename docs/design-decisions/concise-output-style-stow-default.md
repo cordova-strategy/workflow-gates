@@ -38,9 +38,13 @@ A scripted probe confirmed the `/output-style` half: the stowed file's hash was 
 
 Whether Claude Code writes `outputStyle` into the stowed file is the criterion that decides, not whether the setting is a personal preference. If `/config` does, the key falls inside the guard's class and a guard entry becomes mandatory. A guard entry added after this change lands has no bootstrap problem, because the guard compares staged settings with the default branch, which then already holds the staged value.
 
-`test_output_style_stays_concise_in_stow_source_settings` in `claude/.claude/hooks/tests/test_hook_alignment.py` pins the declared value. It fails on a removal, on a duplicated `outputStyle` key, which a merge can leave in the file, and on any change, including a case change, which the output-styles page treats as a non-matching value that falls back to Default. A hand edit of the tracked file, which the page documents as the user-wide route, fails this pin test when the suite runs, and the guard does not cover the key. A commit that changes the line and the test together passes every mechanical check. It shows only as two deliberate hunks in review.
+`test_output_style_stays_concise_in_stow_source_settings` in `claude/.claude/hooks/tests/test_hook_alignment.py` pins the declared value. It fails on:
 
-The line sits directly after `tui`, a guarded key Claude Code writes, beside the other shipped UI defaults. A local edit to `tui` next to the pulled insertion can make a pull conflict: `git merge-file -p` on three small scratch files left conflict markers in the merged file. How Claude Code treats a settings file holding conflict markers is unverified.
+- a removal;
+- a duplicated `outputStyle` key, which a merge can leave in the file;
+- any change, including a case change, which the output-styles page treats as a non-matching value that falls back to Default.
+
+A hand edit of the tracked file, which the page documents as the user-wide route, fails this pin test when the suite runs. The guard does not cover the key. A commit that changes the line and the test together passes every mechanical check. It shows only as two deliberate hunks in review.
 
 ## What the scripted probes measured
 
@@ -71,7 +75,7 @@ On Sonnet the mean reply was 277 words under Default and 205 under Concise, abou
 
 The explain share is inflated, because only the Concise arms held `.claude/settings.local.json`. All five Concise explain replies spent a line of about 15 words on that file. Without it the explain share is about 77%.
 
-On Opus the shares were options 64%, review 86% and tradeoffs 89%.
+On Opus the shares were options 64%, review 86% and tradeoffs 89%. Each Opus cell holds three samples, so these shares show a direction only.
 
 The edit and rename prompts ran one sample each and support no conclusion: 65 words under Default against 60 under Concise for the edit, and 23 against 29 for the rename.
 
@@ -116,11 +120,12 @@ The scripted runs could not observe the approach walk-through. `claude -p` under
 
 - Written artifacts beyond subagent briefs and commit messages, such as PR bodies, plan files and handoff notes.
 - Models other than the Sonnet and Opus models probed.
+- Claude Code builds other than 2.1.329, the one probed.
 - Multi-turn sessions.
 - Skill-driven relays, such as the main session relaying review findings, and the questions the main session asks the maintainer. The relay reported in "What Concise dropped" came from a plain prompt asking the session to delegate a review to a subagent and relay what it finds, with no skill driving the relay, at three samples per style.
 - Whether Concise still runs its own edit to check it. In the one completed refactor pair, Default tried to run the code after its edit and Concise did not. That is one sample.
 - Destructive-action confirmation and risk-disclosure text. The output-styles page says Concise keeps full length for destructive-action confirmations. No probe observed it.
-- Whether Concise keeps Claude Code's built-in software-engineering instructions. The [output styles page](https://code.claude.com/docs/en/output-styles) says "Each of the four other built-in styles keeps those instructions and adds its own", and its four non-Default styles include Concise. No probe observed it. In the one completed refactor pair, Concise did not run the code after its edit, and that is one sample.
+- Whether Concise keeps Claude Code's built-in software-engineering instructions. The [output styles page](https://code.claude.com/docs/en/output-styles) says "Each of the four other built-in styles keeps those instructions and adds its own", and its four non-Default styles include Concise. No probe observed it.
 - Whether replies stay accurate. Reply accuracy was not assessed, so "What Concise kept" covers content, not the correctness of computed values.
 - Delivery through user scope, the path this change ships.
 
