@@ -494,7 +494,7 @@ def _branch_target(
     if branch != timeline_branch and anchor.successor is None:
         # A moved record whose successor entry has no usable directory keeps its recorded branch.
         branch = timeline_branch
-    if branch is None or branch in scope._DEFAULT_BRANCH_CANDIDATES or scope._names_no_pr_branch(branch):
+    if branch is None or scope._branch_never_joins_a_pr(branch):
         return _Target(_Destination.DEFAULT_BRANCH, anchor.own)
     return _Target(_Destination.BRANCH, _BranchKey(anchor.own, anchor.successor, branch))
 
@@ -781,7 +781,7 @@ def _validated_pr_list(payload: object, status: str) -> _PrListResult:
 def _pr_for_branch(pull_requests: Iterable[_ListedPullRequest], branch: str) -> _ListedPullRequest | None:
     """The highest-numbered same-repository PR whose head is exactly `branch`. A default branch, a detached head, and a
     harness worktree-agent branch never join; a cross-repository PR never joins."""
-    if branch in scope._DEFAULT_BRANCH_CANDIDATES or scope._names_no_pr_branch(branch):
+    if scope._branch_never_joins_a_pr(branch):
         return None
     matches = [pr for pr in pull_requests if not pr.is_cross_repository and pr.head_ref_name == branch]
     return max(matches, key=lambda pr: pr.number) if matches else None

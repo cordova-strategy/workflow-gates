@@ -480,7 +480,8 @@ def _gh_discover_merged_prs(corpus_host: str, pinned_repo: str) -> list[dict]:
     queried on its own host rather than on api.github.com.
     """
     payload, degraded = _gh_pr_list(
-        corpus_host, pinned_repo, state="merged", json_fields="number,headRefName,additions,deletions,changedFiles,mergedAt",
+        corpus_host, pinned_repo, state="merged",
+        json_fields="number,headRefName,additions,deletions,changedFiles,mergedAt,isCrossRepository",
         label="pr list",
     )
     if degraded == _GH_PR_LIST_UNPARSEABLE:
