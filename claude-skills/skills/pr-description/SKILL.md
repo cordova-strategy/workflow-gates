@@ -77,7 +77,7 @@ not something you can resolve. If none match, proceed without a layer.
   the body's own headings — do not drop it, do not silently paraphrase it,
   and do not leave it sitting as an unlabeled block between sections. A bare
   block is exactly the span the coherence pass is told to flag.
-- **A closing-keyword reference, when a `<TICKET-ID>` was passed in.** Include `Fixes <TICKET-ID>` in the body alongside any existing citation of it (see REFERENCES.md for why).
+- **A ticket reference, when a `<TICKET-ID>` was passed in.** Include `Fixes <TICKET-ID>` in the body alongside any other existing citation of it (see REFERENCES.md for why), replacing any `Part of <TICKET-ID>` line, unless the caller, the engineer or the plan this work implements says a later PR will finish the ticket, or the body already cites it as `Part of <TICKET-ID>` and none of them says this PR finishes it. Then cite it as `Part of <TICKET-ID>`, with no closing keyword before the ID anywhere in the body, and name what the later PR covers, as they or the body already say. Follow-up work outside the ticket, and the body's own description of its scope, are not such a statement. When it is unclear whether a later PR will finish the ticket, and the body cites no `Part of <TICKET-ID>`, write `Fixes <TICKET-ID>`.
 - **The attribution trailer**, at both the top and the bottom of the body — the first line (blank line, then the rest of the body) and the last line: `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
 
 ## Cost section

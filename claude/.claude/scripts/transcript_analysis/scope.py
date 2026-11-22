@@ -158,6 +158,11 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     fallback to "*" would reintroduce the cross-project read this exists to
     prevent.
     """
+    return [_path_to_project_slug(p) for p in _repo_worktree_paths(command_label)]
+
+
+def _repo_worktree_paths(command_label: str) -> list[str]:
+    """This repo's worktree paths as `git worktree list` prints them, failing closed as `_repo_scoped_project_slugs` does."""
     try:
         # timeout guards the fail-closed posture: a hung local git (stale lock,
         # network-mounted .git) would otherwise block the whole CLI with no exit.
@@ -241,7 +246,7 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
         )
         sys.exit(1)
 
-    return [_path_to_project_slug(p) for p in worktree_paths]
+    return worktree_paths
 
 
 def _path_stripped_scan_error(exc: OSError) -> OSError:
@@ -638,9 +643,9 @@ def _resolve_project_scope(
     fail-closed messages and, uppercased, the caller's resolved-scope header.
     The resolved slug list is cached on `args` so a caller needing two
     independent iterators over the same scope triggers one `git worktree
-    list` call, not two — no current caller does this, but the cache is
-    correct if one starts to. This caching relies on main()'s
-    single-Namespace-per-process, single-subcommand-dispatch invariant — an
+    list` call, not two — reviewer-reads does this, by pre-seeding
+    `args._this_repo_slugs` before its first iterator. This caching relies on
+    main()'s single-Namespace-per-process, single-subcommand-dispatch invariant — an
     `args` object reused across two different subcommand invocations would
     silently reuse the first's resolved slugs instead of re-resolving for the
     second.
@@ -814,7 +819,7 @@ _DO_NOT_PUBLISH_BANNER = (
 # the subcommand itself resolves. Most members resolve their own multi-root
 # scan via their own subcommand-level --config-dir (_resolve_cost_roots).
 # The exceptions register no --config-dir flag of their own:
-# - cost-counts, period-cost and read-cost build their own single root.
+# - cost-counts, period-cost, read-cost and reviewer-reads build their own single root.
 # - review-cost-by-size builds its own single root by default and calls
 #   resolve_scan_roots under --all-accounts.
 _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR = (
@@ -822,7 +827,7 @@ _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR = (
     "cache-efficiency",
     "subagents", "subagent-mix", "cost-trend", "cache-rebuild", "plan-boundary",
     "instrument-authoring", "pr-cost", "cost-counts", "rearm-backtest",
-    "pr-cost-export", "period-cost", "review-cost-by-size", "read-cost",
+    "pr-cost-export", "period-cost", "review-cost-by-size", "read-cost", "reviewer-reads",
 )
 
 # Describes the --config-dir checks that _resolve_cost_roots enforces.

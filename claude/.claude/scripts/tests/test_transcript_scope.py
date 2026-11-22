@@ -264,6 +264,45 @@ class TestRepoScopedProjectSlugsContainmentGuard:
         assert slugs == [scope._path_to_project_slug("/repo"), scope._path_to_project_slug("/other/wt")]
 
 
+class TestRepoWorktreePaths:
+    """`_repo_worktree_paths` is the guarded `git worktree list` read that `_repo_scoped_project_slugs` maps to slugs."""
+
+    def test_returns_the_porcelain_paths_in_order_unslugged(self, monkeypatch):
+        monkeypatch.setattr(os, "getcwd", lambda: "/repo/nested")
+
+        def fake_run(cmd, *a, **k):
+            if cmd[:3] == ["git", "worktree", "list"]:
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo", "/other/wt"), "")
+            return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        assert scope._repo_worktree_paths("duration") == ["/repo", "/other/wt"]
+
+    def test_fails_closed_under_the_callers_label_when_cwd_is_outside_all_worktrees(self, monkeypatch, capsys):
+        monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
+        monkeypatch.setattr(
+            subprocess, "run",
+            lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), ""),
+        )
+
+        with pytest.raises(SystemExit) as raised:
+            scope._repo_worktree_paths("duration")
+
+        assert raised.value.code == 1
+        assert "duration: working directory is not within the resolved repo worktrees" in capsys.readouterr().err
+
+    def test_fails_closed_when_git_worktree_list_fails(self, monkeypatch, capsys):
+        def boom(cmd, *a, **k):
+            raise FileNotFoundError("git")
+        monkeypatch.setattr(subprocess, "run", boom)
+
+        with pytest.raises(SystemExit) as raised:
+            scope._repo_worktree_paths("duration")
+
+        assert raised.value.code == 1
+        assert "duration: cannot determine repo scope" in capsys.readouterr().err
+
+
 class TestRepoScopedProjectSlugsGitCallFailureModes:
     @pytest.mark.parametrize(
         ("failing_command", "failure_kind", "expected_stderr"),
