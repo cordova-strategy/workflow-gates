@@ -24,6 +24,13 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Pre-flight item 1 ran `git log` with no range, so it also walked the base branch's history and reported almost any branch in a multi-contributor repo as shared. It now runs `git fetch origin`, then `git log --format='%ae %ce' origin/main..origin/<branch>`.
   - **Migration:** pre-flight item 1 can establish a branch as solo-contributor from that log, so the engineer no longer needs to say so.
   - The skill's word "personal" becomes "solo-contributor" throughout. The change is live on `git pull`.
+- **`/pr-description` can cite a multi-PR ticket without closing it.**
+  - `/pr-description` cites a ticket as `Part of <TICKET-ID>`, with no closing keyword, when the caller, the engineer or the plan the work implements says a later PR will finish it.
+    - To mark a PR that a later PR will finish, say so in plain words in the arguments passed to `/ready-for-review`, or in the plan the work implements. Say it on the run that first drafts the body. A later statement may not rewrite a published body that already carries `Fixes`, so edit that line by hand.
+    - An existing `Part of` citation is kept unless one of them says this PR finishes the ticket.
+    - Every other ticket still gets `Fixes <TICKET-ID>`, including a PR that a later PR will finish when its session holds no such statement.
+    - GitHub does not list a `Part of` PR among the issue's linked pull requests.
+  - **Migration:** the `pr-description-claude-config` skill is deleted. It was this repository's own project layer and never loaded. An install that `install.sh` produced drops it on `git pull`, with no re-run. See GH-1528.
 - **`select-tests.py` now runs `timing`-marked tests in a second, serial pytest pass that collects the selection and filters it with `-m`, as CI's split does, when the selection contains them and the run starts two or more workers (README's Tests section lists the other cases that run one pass).**
   - A split run never runs the one `timing` test that starts a busy process per core, which now carries the `saturates_cpu` marker, and the README's Tests section states the rest of the split-run contract and how to run that test locally.
   - **Migration:** a split run prints two pytest summaries and a closing stderr line.
