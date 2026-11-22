@@ -6,6 +6,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.
   - The old URL redirects only until a repository is created at that name ([GitHub's transfer documentation](https://docs.github.com/en/repositories/creating-and-managing-repositories/transferring-a-repository)).

@@ -1579,6 +1579,13 @@ class TestSelectPytestTargets:
         assert result.is_full_suite is False
         assert result.target_paths == (_mod.HOOKS_TESTS_DIR,)
 
+    def test_rgignore_change_selects_hooks_tests(self):
+        """test_design_decision_files.py (HOOKS_TESTS_DIR) checks that a
+        docs/design-decisions link to .rgignore resolves."""
+        result = _mod.select_pytest_targets([".rgignore"])
+        assert result.is_full_suite is False
+        assert result.target_paths == (_mod.HOOKS_TESTS_DIR,)
+
     def test_root_rules_dir_change_selects_hooks_and_skills_tests(self):
         """test_rules_frontmatter.py (SKILLS_TESTS_DIR) rglobs both this
         directory and RULES_DIR (claude/.claude/rules/) for frontmatter
@@ -2565,6 +2572,7 @@ _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
     _mod.GLOBAL_CLAUDE_MD,
     _mod.ROOT_CLAUDE_MD,
     _mod.ROOT_SETTINGS_JSON,
+    _mod.RGIGNORE,
     _mod.STATUSLINE_COMMAND_SH,
     _mod.CONFIG_KEYS_PSV,
     _mod.CHANGELOG_MD,
