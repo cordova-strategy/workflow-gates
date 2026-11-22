@@ -1,6 +1,6 @@
 # Comment-reviewer docstring study: labelled evidence and the stage-1 result
 
-**Date:** 2026-11-21. The study ran from 2026-11-19.
+**Date:** 2026-11-22. The study ran from 2026-11-19.
 **Pin:** `ccab57e5`, the `origin/main` commit that added `.claude/plans/comment-rule-false-angle-fix.md`. The study recorded `4d2d6ea16136`, which is not an ancestor of `origin/main`, because this repository squash-merges. Each of the 18 modules under `claude/.claude/scripts/` that the real docstring cells reviewed is byte-identical at the pin, checked against the digest each cell recorded. The cells' `meta.json` files are not published, so this check cannot be repeated from the published set.
 **Model and CLI:** `claude-sonnet-5-5` and Claude Code `2.1.329`, as frozen at `evidence/probe/freeze-stage1.txt:42`.
 **Invocation:** each run was `claude -p` with the reviewer body as an inline agent, `--model sonnet --effort high`. Amended and ablation runs got `amended-rule.md` appended to the system prompt, amended-v2 runs got `amended-v2-rule.md`, and shipped runs read the rule from the author's installed instruction file.
@@ -30,7 +30,7 @@
 - **Frozen module copies, the `snapshot/` tree and each cell's `meta.json`.** The real modules are at the pin, and the six synthetic modules are 3 to 13 lines that their diffs largely show.
 - **Labeller and reviewer drafts, pilot and cost notes, `labels-v3.md` and the unfrozen label copies.** `labels-v4.md` carries each labeller's verdict per row, and `probe/labels.json` is the frozen copy.
 - **Stage 2 and the unused `ablation-v2` body.** Stage 2 never ran.
-- **The author's two user-level instruction files.** One is not in this repository.
+- **The author's two user-level instruction files.**
 
 ## Changes made to the copy
 
@@ -62,12 +62,14 @@ jq -n -r 'input as $key | [inputs] | map(select(all(.a, .b, .c, .d, .e; .pass)))
 - The stage-1 precondition was met (`evidence/probe/stage1-results.md` lines 7 to 10).
 - **Stage 1 is NO-GO on conditions a, c and d.** Condition b did not trigger. `go-no-go.md` lines 81 to 89 say how each condition reads.
 - **Condition a.** P17c7 and P26c4 each passed the REWRITE checklist in 3 of 10 runs against a gate of 7 of 10 (`stage1-results.md` lines 18, 19 and 27). The packet ids are the ones the recount above prints.
-- **Condition b: candidates 4, confirmed 0.** The reading found no DELETE-row harm beyond one P17c1 run. The candidates are in `stage1-results.md` lines 33 to 38, and each run file is under `evidence/probe/out-v2/amended-v2/`.
+- **Condition b: candidates 4, confirmed 0.** The candidates are in `stage1-results.md` lines 33 to 38, and each run file is under `evidence/probe/out-v2/amended-v2/`.
   - P01c1 and P01c2: unconfirmed. Every run's replacement omits the clause (`P01-declared_roots_file/run1.md`, `run2.md`, `run3.md`).
   - P01c4: read as a pointer conversion, the way `go-no-go.md` line 43 treats P01c3, P22c2 and P28c1 (listed apart, not counted), not a confirmed flip. Run 1 deletes it, and runs 2 and 3 restate its contrast from the label's side.
   - P17c1: unconfirmed. The clause survives in `P17-project_family/run3.md` only, and runs 1 and 2 drop it.
   - Other flips, not gated (`stage1-results.md` line 39): P08c1 and P08c2 are unconfirmed, because all three `P08-declared_config_dirs` runs drop them. P08c3 is kept in a rewritten pointer form in runs 2 and 3.
-- **Condition c.** Control R1 had a clause deleted in 3 of 3 runs (`stage1-results.md` line 44), so the condition fails. The clause is "a lockout stalls every job sharing that key". Each run calls it an unsourced cause-and-effect claim, not a restatement, and its proposed replacement omits it (`R1-schedule_retry/run1.md` lines 26 to 36, `run2.md` lines 21 to 36, `run3.md` lines 5 to 15). Runs 2 and 3 offer sourcing it as an alternative to deleting it. K1's one edit is in `K1-fetch_report/run3.md`. It asks for a version and a locatable source and changes no reason or trigger, in 1 of 3 runs.
+- **Condition c.** Control R1 had a clause deleted in 3 of 3 runs (`stage1-results.md` line 44), so the condition fails.
+  - R1's clause is "a lockout stalls every job sharing that key". Each run calls it an unsourced cause-and-effect claim, not a restatement, and its proposed replacement omits it (`R1-schedule_retry/run1.md` lines 26 to 36, `run2.md` lines 21 to 36, `run3.md` lines 5 to 15). Runs 2 and 3 offer sourcing it as an alternative to deleting it.
+  - K1's one edit is in `K1-fetch_report/run3.md`. It asks for a version and a locatable source and changes no reason or trigger, in 1 of 3 runs.
 - **Condition d: candidates 1, confirmed 1.** Condition d is met as a NO-GO trigger in its own right, alongside conditions a and c.
   - P27c1 is deleted in `P27-print_resolved_scope/run2.md` (lines 5 to 25) and `run3.md` (lines 7 to 13). Run 1 keeps it with a pointer (line 37).
   - P27c3 is deleted in the same findings, in all three runs. The scorer's candidate list did not include it.
