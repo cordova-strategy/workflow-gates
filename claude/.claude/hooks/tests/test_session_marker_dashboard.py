@@ -939,8 +939,7 @@ class TestStdinHeldOpen:
 
 class TestSessionMarkerDashboardRegistration:
     def test_registered_with_a_ten_second_timeout(self):
-        """The hook's stdin read is capped at 2 s when timeout or gtimeout exists.
-        The registered timeout is the outer bound.
+        """The registered timeout is the outer bound on the hook.
 
         The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery").
         10 s is a chosen ceiling matching the sibling compact hooks' registered timeout.

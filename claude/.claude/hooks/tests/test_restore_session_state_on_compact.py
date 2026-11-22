@@ -278,8 +278,10 @@ class TestFailOpen:
         _assert_silent(silent)
         _assert_emits_state_block(_run_hook(RESTORE_STATE_HOOK, _payload(transcript), isolated_home))
 
-    # Both timing tests that scale caps stub python3, so every run of the real script in this file uses the unscaled
-    # production caps (6 s for python3, 5 s per jq call).
+    # Both timing tests that scale caps stub python3.
+    # Every run of the real script with timeout or gtimeout on PATH therefore uses the unscaled production caps:
+    # 6 s for python3, 5 s per jq call and 2 s for the stdin read.
+    # The uncapped-fallback test, with neither command on PATH, is the one run with no cap.
     # On a one-line transcript the script alone takes about 0.25 to 0.7 s warm and about 1 s or more with no cached
     # bytecode, and the whole hook adds a few hundred milliseconds. The 6 s cap bounds only the script call.
     # A cap kill under extreme load would surface as a JSON decode error on empty stdout.

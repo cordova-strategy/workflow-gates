@@ -970,6 +970,10 @@ def run_hook_on_held_open_stdin(hook: Path, payload: dict, home: Path, path: str
     Waits at most the hook's registered SessionStart timeout, then kills the hook and fails, so a missing stdin cap
     fails the test instead of hanging it. `communicate` is avoided because it closes stdin.
     The hook's stdout and stderr are not drained while waiting, so output past a pipe buffer would stall it.
+    The payload is written right after `Popen`, but a scaled stdin cap (see TIMEOUT_SCALE_DIVISOR) starts only when
+    the hook reaches its capped read. A test process descheduled for longer than that cap in between would let the
+    cap kill the read on an empty pipe, surfacing as a JSONDecodeError on empty stdout. The serial timing CI leg makes
+    this very unlikely.
     """
     registered_timeout_seconds = session_start_registered_timeouts(hook.name)[0]
     assert isinstance(registered_timeout_seconds, int), f"{hook.name} has no integer SessionStart timeout registered"
