@@ -34,12 +34,17 @@ HOOKS_DIR = "claude/.claude/hooks"
 HOOKS_TESTS_DIR = "claude/.claude/hooks/tests"
 SCRIPTS_DIR = "claude/.claude/scripts"
 SCRIPTS_TESTS_DIR = "claude/.claude/scripts/tests"
-# The Cursor adapter's shim and data files. The two hooks tests below run the shim through a subprocess or a path import
-# and read its JSON files, which TestCrossDomainReadCompleteness cannot see, so a change under the directory selects them
+# The Cursor adapter's shim and data files. The hooks tests below run the shim through a subprocess or a path import
+# or read its JSON files, which TestCrossDomainReadCompleteness cannot see, so a change under the directory selects them
 # by path. The blanket SCRIPTS_DIR rule still selects the scripts tests.
 CURSOR_ADAPTER_DIR = "claude/.claude/scripts/cursor-adapter"
 CURSOR_ADAPTER_READING_TESTS = (
-    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_arms.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_generated_entries.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_leading_cd.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_payloads.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_session_id.py",
+    "claude/.claude/hooks/tests/test_cursor_adapter_gate_matrix_trigger_flags.py",
     "claude/.claude/hooks/tests/test_cursor_adapter_lib_parity.py",
 )
 # test_cursor_adapter_translate.py (SCRIPTS_TESTS_DIR) runs parse-manifest-dependencies.py through
@@ -285,13 +290,15 @@ TRANSCRIPT_ANALYSIS_PACKAGE_DIR = "claude/.claude/scripts/transcript_analysis"
 SKILL_STRUCTURE_VALIDATOR_MODULE = "plugins/skill-management/scripts/validate_skill_structure.py"
 
 # Every module SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES's test files import
-# by name from the hooks test tree, directly or through a SCRIPTS_TESTS_DIR helper module.
+# by name from the hooks test tree, directly, through a SCRIPTS_TESTS_DIR helper module,
+# or through another hooks-tree module this set lists.
 HOOKS_TESTS_MODULES_IMPORTED_BY_SCRIPTS_TESTS: frozenset[str] = frozenset({
     "claude/.claude/hooks/__init__.py",
     "claude/.claude/hooks/tests/__init__.py",
     "claude/.claude/hooks/tests/conftest.py",
     "claude/.claude/hooks/tests/_lib_sh_helpers.py",
     "claude/.claude/hooks/tests/_cursor_payloads.py",
+    "claude/.claude/hooks/tests/_cursor_adapter_namespace.py",
     "claude/.claude/hooks/tests/_cursor_identity_fixtures.py",
     "claude/.claude/hooks/tests/test_config_lib.py",
     "claude/.claude/hooks/tests/test_review_ledger_script.py",
@@ -338,8 +345,8 @@ SKILLS_TESTS_IMPORTING_SKILL_EVALS_RUNNER: frozenset[str] = frozenset({
 })
 
 # SCRIPTS_TESTS_DIR test files that import a
-# HOOKS_TESTS_MODULES_IMPORTED_BY_SCRIPTS_TESTS member by name, directly or through
-# a SCRIPTS_TESTS_DIR helper module.
+# HOOKS_TESTS_MODULES_IMPORTED_BY_SCRIPTS_TESTS member by name, directly, through
+# a SCRIPTS_TESTS_DIR helper module, or through another hooks-tree module this set lists.
 SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES: frozenset[str] = frozenset({
     "claude/.claude/scripts/tests/test_author_outcome.py",
     "claude/.claude/scripts/tests/test_config_parser_parity.py",
@@ -354,7 +361,7 @@ SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES: frozenset[str] = frozenset({
     "claude/.claude/scripts/tests/test_cursor_adapter_install_uninstall.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_install_unusable_inputs.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_install_write_failures.py",
-    "claude/.claude/scripts/tests/test_cursor_adapter_parts.py",
+    "claude/.claude/scripts/tests/test_cursor_adapter_package.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_scripts_env_scrub.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_shim_faults.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_shim_hook_run.py",
@@ -415,9 +422,11 @@ CONFIG_KEYS_PSV = "claude/.claude/hooks/config-keys.psv"
 
 # test_hook_alignment.py (HOOKS_TESTS_DIR) reads this file's permissions.allow
 # entries by path. test_doc_counts.py (HOOKS_TESTS_DIR) reads its
-# skillOverrides counts. test_skills.py (SKILLS_TESTS_DIR) reads its
-# skillOverrides map at line 153, its docs/skills.md cross-check at line 1686,
-# and its destructive-cleanup permissions check at line 1724.
+# skillOverrides counts. In SKILLS_TESTS_DIR, test_skills.py reads it in
+# _settings_skill_overrides, test_skill_overrides_documented_in_docs_skills_md,
+# and test_destructive_cleanup_forms_require_ask_not_allow.
+# test_review_orchestrator_and_review_pr.py (SKILLS_TESTS_DIR) reads it in
+# test_review_orchestrator_protocol_marker_check_is_the_whole_allowlisted_command.
 # test_claude_enable_tool.py (SCRIPTS_TESTS_DIR) reads it by path to assert
 # which settings payload backs a re-enabled session.
 CLAUDE_SETTINGS_JSON = "claude/.claude/settings.json"
@@ -782,7 +791,8 @@ DOMAIN_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
 # through test_agent_roster.py.
 # HOOKS_TESTS_MODULES_IMPORTED_BY_SCRIPTS_TESTS: every
 # SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES member imports one of these
-# hooks-test-tree modules by name, directly or through a SCRIPTS_TESTS_DIR helper module.
+# hooks-test-tree modules by name, directly, through a SCRIPTS_TESTS_DIR helper module,
+# or through another hooks-tree module this set lists.
 # CURSOR_ADAPTER_DIR: see that constant's own comment above.
 # HOOK_HELPERS_RUN_BY_SCRIPTS_TESTS: see its own comment above for citation.
 # _is_plugin_manifest_change: test_plugin_manifests.py (SKILLS_TESTS_DIR)

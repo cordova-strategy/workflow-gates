@@ -156,12 +156,18 @@ LAST_ASSISTANT_MESSAGE="${LAST_ASSISTANT_MESSAGE%"${LAST_ASSISTANT_MESSAGE##*[![
 last_line="${LAST_ASSISTANT_MESSAGE##*$'\n'}"
 last_sentence="${last_line##*[.?!][[:space:]]}"
 
-VERB_RE='(want me to|would you like me to|let me know if|shall I|should I|do you want me to)'
-OBJECT_RE='(commit|push|open (a|the) PR|create a PR)'
-FIRE_RE="${VERB_RE}[^.?!]*${OBJECT_RE}"
-EXCLUDE_RE='(merge|--force|force-push|reset --hard|close the PR|delete the branch|failing|failed|error|blocked|anyway)'
+WORD_START='(^|[^[:alnum:]_])'
+WORD_END='([^[:alnum:]_]|$)'
+PERMISSION_VERBS='(want me to|would you like me to|let me know if|shall I|should I|do you want me to)'
+SHIPPING_OBJECTS='(commit(s|ted|ting)?|push(es|ed|ing)?|open (a|the) PRs?|create a PR)'
+# The join's first and last characters are the verb's trailing and the object's leading word boundary, so one space serves as both.
+VERB_OBJECT_JOIN='[^[:alnum:]_.?!]([^.?!]*[^[:alnum:]_.?!])?'
+FIRE_RE="${WORD_START}${PERMISSION_VERBS}${VERB_OBJECT_JOIN}${SHIPPING_OBJECTS}${WORD_END}"
+VERB_RE="${WORD_START}${PERMISSION_VERBS}${WORD_END}"
+# Each exclusion phrase is bounded at its start only, so a form that extends it (merged, errors) still excludes.
+EXCLUDE_RE="${WORD_START}(merge|--force|force-push|reset --hard|close the PR|delete the branch|failing|failed|error|blocked|anyway)"
 
-# Both regexes MUST stay unquoted in [[ =~ ]] — a quoted pattern is a literal
+# These regexes MUST stay unquoted in [[ =~ ]] — a quoted pattern is a literal
 # string comparison and never matches. Case folding via shopt,
 # saved/restored, not grep -i, to stay fork-free.
 _SAVED_NOCASEMATCH=$(shopt -p nocasematch)
@@ -245,7 +251,7 @@ WRITTEN_PROMPT_ID=$(cat "$STATE_FILE" 2>/dev/null)
 
 printf 'fired session=%s prompt=%s\n' "$SESSION_ID" "$PROMPT_ID" >> "$LOG_FILE" 2>/dev/null || true
 
-REASON="Do not ask the engineer for permission to continue at a natural stopping point, unless CLAUDE.md, the skill you are following, or a hold the engineer stated requires the question. If one does, end your turn. Otherwise continue with your task's next step, say the task is complete, or say what is blocked. To disable this on this machine: printf 'commit_stall_block = false\n' >> \"$CONFIG_DIR/claude-config.toml\""
+REASON="Do not ask the engineer for permission to continue at a natural stopping point, unless CLAUDE.md, the skill you are following, or a hold the engineer stated requires the question. If one does, end your turn. Otherwise continue with your task's next step, say the task is complete, or say what is blocked. To disable this on this machine: printf '\ncommit_stall_block = false\n' >> \"$CONFIG_DIR/claude-config.toml\""
 
 # Mirrors _lib_emit_allow_with_context's gated-encode shape:
 # an empty REASON_JSON exits before printing, avoiding the malformed

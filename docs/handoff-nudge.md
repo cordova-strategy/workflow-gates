@@ -33,7 +33,7 @@ Revisit this default via an extended `rearm-backtest` once escalation-fire data 
 
 **Recovering from a hard block.** This is sticky within a session. Once the estimate has reached `HANDOFF_NUDGE_BLOCK_AT`, every later re-arm in that same session hard-blocks too, compaction included, with no in-session reset. Four routes out:
 
-- **Kill-switch** (`printf 'handoff_nudge = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"`) — suppresses every future fire, including the hard block, the same as it already suppresses the advisory nudge.
+- **Kill-switch** (`printf '\nhandoff_nudge = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"`) — suppresses every future fire, including the hard block, the same as it already suppresses the advisory nudge.
 - **`/handoff`** — the default way out. It writes a resume file for a fresh session, whose own estimate starts back below `HANDOFF_NUDGE_BLOCK_AT`.
 - **`/compact`** — only the user can run it, since the harness gives the agent no tool binding for it. It drops the estimate whether or not the criteria under "Compaction as an alternative to /handoff" hold, which ends this block. The next block follows at the blocked estimate plus `HANDOFF_NUDGE_REARM_SPACING`; see the "A /compact does not reset the nudge" bullet under "Known limitations". The block stops the loop before any model call, so no model composes a focus line and the message names the bare form.
 - **The `/handoff` active-bypass marker** (`<config-dir>/.handoff-active.d/<session_id>`) — set by `activate-handoff-bypass.sh` the moment the handoff skill loads (the skill's own `marker.sh activate handoff` step is its first instructed step, and is a fallback for the rare case that hook doesn't fire), live until the skill deactivates it or the session ends. It keeps a qualifying re-arm advisory instead of blocking, so the block can't truncate `/handoff`'s own multi-turn write.
@@ -105,13 +105,13 @@ No measurement compares the cost of a `/compact` with a handoff plus a resume, s
 Set the `handoff_nudge` config key to `false` to suppress nudges globally:
 
 ```bash
-printf 'handoff_nudge = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\nhandoff_nudge = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 Set it back to `true` to re-enable — see [`docs/config-file.md`](config-file.md) for the file's hand-edit contract:
 
 ```bash
-printf 'handoff_nudge = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+printf '\nhandoff_nudge = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
 ```
 
 The hook checks this key before reading the transcript. It is useful to turn off when running `claude -p` pipelines or automated test harnesses where the nudge would produce noise.
@@ -215,4 +215,4 @@ python3 ~/.claude/scripts/transcript-analysis.py spend-over-threshold --since 20
   - The signal-response audits (`transcript-analysis.py handoff-signal-response`) do not count `/compact` as a response. The transcript's `isCompactSummary` records are the source a later audit would use to measure uptake. Whether those records tell a user `/compact` from an auto-compaction is unverified.
 - **A long skill body can come back partial.**
   - A skill body over the 5,000-token re-injection cap comes back partial after a compaction, while its active markers survive. Source: https://code.claude.com/docs/en/context-window, section "What survives compaction", fetched 2026-10-18, re-verify by 2027-01-18: "Skill bodies are re-injected after compaction, but large skills are truncated to fit the per-skill cap, and the oldest invoked skills are dropped once the total budget is exceeded. Truncation keeps the start of the file, so put the most important instructions near the top of `SKILL.md`."
-  - Sizes come from `wc -c claude-skills/skills/<name>/SKILL.md` at about 4 bytes per token (an estimate, not measured). `code-review`, `plan-review` and `ready-for-review` exceed the cap, while `brief` falls under it. `handoff` and `plan-it` sit within the estimate's margin of the cap, so the estimate cannot place them. A `/compact` mid-flow in one of the first three can leave the model without that skill's later steps, so the focus line names the skill in flight and its current step. The post-compaction state block (`restore-session-state-on-compact.sh`) also lists each skill loaded this session with its SKILL.md path, so the model can re-read it. It does not name the step in flight, which only the focus line carries.
+  - Sizes come from `wc -c claude-skills/skills/<name>/SKILL.md` at about 4 bytes per token (an estimate, not measured). `code-review`, `plan-review` and `ready-for-review` exceed the cap, while `brief` falls under it. `handoff` and `plan-it` sit within the estimate's margin of the cap, so the estimate cannot place them. A `/compact` mid-flow in one of the first three can leave the model without that skill's later steps, so the focus line names the skill in flight and its current step. The post-compaction state block (`restore-session-state-on-compact.sh`) also lists each skill loaded this session with its SKILL.md path, so the model can re-read it. It does not name the step in flight. The steering hook (`steer-compaction-summary.sh`) asks the compaction summary to name the skill and its current step, as model behavior, and the focus line adds the engineer's own focus on a manual compaction.
