@@ -2307,11 +2307,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_calibrate.add_argument("--delta", type=float, default=None, help="The margin (default: analysis.DELTA).")
     p_calibrate.add_argument(
         "--harm", choices=("normal", "concentrated"), default="normal",
-        help="Normal shifts every acted fixture alike; concentrated gives each a 10%% chance of a large drop instead.",
+        help="Normal shifts every acted fixture alike; concentrated gives each a "
+        "calibrate.CONCENTRATED_HARM_PROBABILITY chance of the calibrate.CONCENTRATED_HARM_DROP drop instead.",
     )
     p_calibrate.add_argument(
         "--over-cap-share", type=float, default=1.0,
-        help="The share of fixtures the rule acts on, in (0, 1]. The rest keep arm X's rate equal to the baseline's.",
+        help="The share of fixtures the rule acts on, in (0, 1]. The acted fixture count is the share times the "
+        "fixture count, rounded half up, and at least one. The rest keep arm X's rate equal to the baseline's.",
     )
     # 4000 replicates put the Monte Carlo standard error of a 2.5% rate near 0.0025.
     p_calibrate.add_argument("--replicates", type=_positive_int, default=4000, help="Replicates per cell.")

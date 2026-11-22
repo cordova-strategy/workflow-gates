@@ -55,7 +55,10 @@ VOLUME_FACTOR_RANGE = (0.8, 1.2)  # arm X's expected finding volume as a multipl
 CONCENTRATED_HARM_PROBABILITY = 0.10  # chance an acted fixture takes the large drop instead of a small shift
 CONCENTRATED_HARM_DROP = 0.5  # the large drop, in absolute rate
 
-SOLVER_DRAWS = 100_000  # latent draws per shift solve; the expected difference then has a Monte Carlo SE under 0.001
+# Latent draws per shift solve. A draw's difference lies in [-1, 1], so its variance is at most 1.
+# Precision's weights 1 + k * lambda are independent of that difference and E[w^2] / E[w]^2 = 1 + 8k^2 / (1 + 4k)^2 < 1.5
+# for lambda ~ Gamma(2, 2), so to first order the expected difference's SE is under sqrt(1.5 / SOLVER_DRAWS), about 0.004.
+SOLVER_DRAWS = 100_000
 SOLVER_SEED = "calibrate-shift-solver"
 SHIFT_BOUND = 1.0  # the bisection brackets the shift in [-SHIFT_BOUND, SHIFT_BOUND]
 SOLVER_TOLERANCE = 1e-6  # well below the draw count's own Monte Carlo error
@@ -77,9 +80,14 @@ def _require_positive_int(field: str, value: object) -> None:
     _require(isinstance(value, int) and not isinstance(value, bool) and value >= 1, field, "must be an int >= 1", value)
 
 
+def sign_flip_path(fixtures: int) -> str:
+    """Which sign-flip test `analysis.sign_flip_p_value` runs at this fixture count."""
+    return SIGN_FLIP_PATH_EXACT if fixtures <= analysis.SIGN_FLIP_EXACT_MAX_FIXTURES else SIGN_FLIP_PATH_MONTE_CARLO
+
+
 def smallest_sign_flip_p_value(fixtures: int, flips: int) -> float:
     """The smallest p-value `analysis.sign_flip_p_value` can return at this fixture count."""
-    if fixtures <= analysis.SIGN_FLIP_EXACT_MAX_FIXTURES:
+    if sign_flip_path(fixtures) == SIGN_FLIP_PATH_EXACT:
         return 2.0**-fixtures
     return 1 / (flips + 1)
 
@@ -243,6 +251,7 @@ def plan_cells(config: CalibrationConfig, *, solver_draws: int | None = None) ->
             "so the sign-flip adopt rate there is 0.0 by construction"
             if unattainable_alphas else ""
         )
+        alphas_token = ",".join(repr(alpha) for alpha in config.alphas)
         for true_difference in (-config.delta, 0.0):
             acted_target = true_difference * fixtures / acted
             started = time.monotonic()
@@ -257,7 +266,9 @@ def plan_cells(config: CalibrationConfig, *, solver_draws: int | None = None) ->
             cells.append(Cell(fixtures, acted, true_difference, shift))
             print(
                 f"calibrate: cell {_describe_cell(fixtures, true_difference)} metric={config.metric} k={config.k} "
-                f"harm={config.harm} acted={acted} replicates={config.replicates} shift={shift:.6f} "
+                f"harm={config.harm} over_cap_share={config.over_cap_share!r} acted={acted} "
+                f"replicates={config.replicates} alphas={alphas_token} sign_flip_path={sign_flip_path(fixtures)} "
+                f"flips={config.flips} seed={config.seed} workers={config.workers} shift={shift:.6f} "
                 f"solved in {time.monotonic() - started:.1f}s{unattainable_note}",
                 file=sys.stderr,
             )
@@ -277,9 +288,8 @@ class FixturePlan:
 def plan_fixtures(
     rng: random.Random, *, metric: str, harm: str, k: int, fixtures: int, acted_fixtures: int, shift: float,
 ) -> list[FixturePlan]:
-    """Draws every fixture's latents and derives its rates and volumes. The first
-    `acted_fixtures` take arm X's shifted rate and volume factor. Every other
-    fixture has arm X's rate equal to the baseline's and a volume factor of 1."""
+    """Draws every fixture's latents and derives its rates and volumes. Past
+    `acted_fixtures` the rule does not act, so arm X behaves as the current rule there."""
     plans = []
     for index in range(fixtures):
         latents = draw_latents(rng, metric)
@@ -487,7 +497,6 @@ def summarize_cell(
     """One output row. A rate's denominator includes undefined replicates. The row
     carries no worker count and no timing, so output is byte-identical across worker counts."""
     replicate_count = len(results)
-    exact = cell.fixtures <= analysis.SIGN_FLIP_EXACT_MAX_FIXTURES
     return {
         "metric": config.metric,
         "k": config.k,
@@ -501,7 +510,7 @@ def summarize_cell(
         "undefined_replicates": sum(result.undefined for result in results),
         "flips": config.flips,
         "seed": config.seed,
-        "sign_flip_path": SIGN_FLIP_PATH_EXACT if exact else SIGN_FLIP_PATH_MONTE_CARLO,
+        "sign_flip_path": sign_flip_path(cell.fixtures),
         "python_version": platform.python_version(),
         "cells_planned": cells_planned,
         "alphas": [
@@ -520,11 +529,12 @@ def run_sweep(
     solver_draws: int | None = None,
 ) -> list[dict]:
     """Runs every cell, planning them first when `cells` is omitted. With `out_path`,
-    an empty array is written before the first replicate so an unwritable path fails
-    early, and the array is rewritten after each cell so an interrupted sweep keeps
-    its finished cells. A row prints only once it is in the file. Any exception
-    leaving the sweep, a KeyboardInterrupt included, terminates the pool's workers
-    first, because leaving the pool's `with` would otherwise wait for running chunks."""
+    an empty array is written before the first replicate, so an unwritable path fails
+    before any replicate runs. The array is rewritten after each cell, so an
+    interrupted sweep keeps its finished cells. A row prints only once it is in the
+    file. Any exception leaving the sweep, a KeyboardInterrupt included, terminates
+    the pool's workers first. Leaving the pool's `with` would otherwise wait for
+    running chunks."""
     if cells is None:
         cells = plan_cells(config, solver_draws=solver_draws)
     if out_path is not None:

@@ -24,6 +24,7 @@ SMALL_SOLVER_DRAWS = 2000
 DELTA = 0.05
 SIGMA_BOUND = 4  # each statistical bound is about four standard errors
 EXACT_CAP = analysis.SIGN_FLIP_EXACT_MAX_FIXTURES
+MATERIAL_DIFFERENCE = 1e-3  # far above float rounding, far below the smallest draw-driven difference (about 0.017)
 
 
 def _config(**overrides) -> calibrate.CalibrationConfig:
@@ -44,6 +45,10 @@ def _terms(estimate: float, residuals: list[float], delta: float) -> analysis.Fi
         estimate=estimate, residuals=tuple(residuals),
         null_centered=tuple(residual + estimate + delta for residual in residuals),
     )
+
+
+def _key_value_tokens(line: str) -> dict[str, str]:
+    return dict(token.split("=", 1) for token in line.split() if "=" in token)
 
 
 def _patch_cpu_count(monkeypatch: pytest.MonkeyPatch, count: int | None) -> None:
@@ -100,6 +105,20 @@ class TestScenarioDraws:
             assert min(totals) >= 1
             assert statistics.fmean(totals) == pytest.approx(
                 1 + 4 * k, abs=SIGMA_BOUND * statistics.stdev(totals) / math.sqrt(fixtures),
+            )
+
+    def test_each_arms_total_follows_its_own_volume(self) -> None:
+        fixtures = 300
+        plans = [
+            calibrate.FixturePlan(baseline_rate=0.5, arm_x_rate=0.5, baseline_volume=1.0, arm_x_volume=40.0)
+        ] * fixtures
+
+        counts = calibrate.draw_precision_counts(random.Random(10), plans)
+
+        for arm, expected_total in ((ARM_CURRENT_RULE, 2.0), (ARM_FUNCTION_CONTEXT, 41.0)):
+            totals = [fixture.total_by_arm[arm] for fixture in counts.values()]
+            assert statistics.fmean(totals) == pytest.approx(
+                expected_total, abs=SIGMA_BOUND * statistics.stdev(totals) / math.sqrt(fixtures),
             )
 
     def test_precision_total_is_exactly_one_for_a_fixture_with_no_extra_finding(self) -> None:
@@ -250,6 +269,21 @@ class TestSolver:
         assert all("sign_flip_smallest_p=0.0625 exceeds alpha [0.025]" in line for line in four_fixture_lines)
         assert not any("sign_flip_smallest_p" in line for line in eight_fixture_lines)
 
+    def test_the_plan_line_renders_each_field_as_one_token_with_the_cells_sign_flip_path(self, capsys) -> None:
+        config = _config(fixture_counts=(6, EXACT_CAP + 1), alphas=(0.025, 0.0125), flips=200)
+
+        calibrate.plan_cells(config, solver_draws=SMALL_SOLVER_DRAWS)
+
+        plan_lines = [line for line in capsys.readouterr().err.splitlines() if "solved in" in line]
+        assert len(plan_lines) == 4
+        settings_by_fixtures = {}
+        for line in plan_lines:
+            settings = _key_value_tokens(line)
+            settings_by_fixtures[settings["fixtures"]] = settings
+            assert settings["alphas"] == "0.025,0.0125"
+        assert settings_by_fixtures["6"]["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_EXACT
+        assert settings_by_fixtures[str(EXACT_CAP + 1)]["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_MONTE_CARLO
+
     @pytest.mark.parametrize(
         ("fixtures", "share", "expected"),
         [
@@ -324,7 +358,10 @@ class TestDecideReplicate:
 
 
 class TestDegenerateTermsFromPrecisionCounts:
-    """These characterize a known weakness of the statistics on such terms, so a remedy inverts them."""
+    """When one fixture carries every finding, the interval has zero width, so the t-interval compares the estimate
+    with -delta. `null_centered` is constant up to float rounding, so the sign-flip p-value is set by the sign of
+    the estimate plus delta and by the fixture count. A change to how `precision_fixture_terms` treats fixtures
+    with no finding is expected to change these results."""
 
     ALPHAS = (0.025, 1 / 64, 0.0125)
 
@@ -552,6 +589,12 @@ class TestWorkersAndSeeds:
         assert pickle.loads(pickle.dumps(calibrate.run_replicate)) is calibrate.run_replicate
         assert pickle.loads(pickle.dumps(job)) == job
 
+    def test_every_job_carries_the_configs_seed_and_over_cap_share(self) -> None:
+        jobs = self._jobs(seed=7, over_cap_share=0.5)
+
+        assert {job.run_seed for job in jobs} == {7}
+        assert {job.over_cap_share for job in jobs} == {0.5}
+
     def test_each_job_gives_the_same_result_in_reversed_order_and_on_a_rerun(self) -> None:
         jobs = self._jobs()
 
@@ -562,13 +605,23 @@ class TestWorkersAndSeeds:
         assert calibrate.run_jobs(self._jobs(), pool=None, workers=1) == forward
 
     @pytest.mark.parametrize("metric", ["recall", "precision"])
-    def test_a_two_worker_pool_gives_the_in_process_results(self, metric) -> None:
-        jobs = self._jobs(metric=metric)
+    def test_a_two_worker_pool_gives_the_in_process_results(self, metric, monkeypatch) -> None:
+        # Above the exact cap with 200 flips, so workers also run the Monte Carlo sign-flip path.
+        monte_carlo_cell = calibrate.Cell(
+            fixtures=EXACT_CAP + 1, acted_fixtures=EXACT_CAP + 1, true_difference=-DELTA, shift=-0.05,
+        )
+        jobs = calibrate.cell_jobs(
+            _config(metric=metric, fixture_counts=(EXACT_CAP + 1,), replicates=16, flips=200), monte_carlo_cell,
+        )
 
         in_process = calibrate.run_jobs(jobs, pool=None, workers=1)
+        map_kwargs = []
         with calibrate.make_pool(2) as pool:
+            real_map = pool.map
+            monkeypatch.setattr(pool, "map", lambda *args, **kwargs: map_kwargs.append(kwargs) or real_map(*args, **kwargs))
             pooled = calibrate.run_jobs(jobs, pool=pool, workers=2)
 
+        assert map_kwargs[0]["chunksize"] > 1, "workers must receive multi-job chunks"
         assert pooled == in_process
 
     def test_a_pool_worker_ignores_sigint(self) -> None:
@@ -592,15 +645,20 @@ class TestWorkersAndSeeds:
         assert [result.estimate for result in narrow] == [result.estimate for result in wide]
         assert [result.lower_limits[0] for result in narrow] == [result.lower_limits[0] for result in wide]
 
-    @pytest.mark.parametrize("changed", [{"run_seed": 1}, {"replicate_index": 1}], ids=["run-seed", "replicate-index"])
-    def test_jobs_differing_only_in_seed_or_index_give_different_estimates_and_lower_limits(self, changed) -> None:
+    @pytest.mark.parametrize(
+        "changed",
+        [{"run_seed": 1}, {"replicate_index": 1}, {"over_cap_share": 0.75}, {"true_difference": 0.0}],
+        ids=["run-seed", "replicate-index", "over-cap-share", "true-difference"],
+    )
+    def test_jobs_differing_only_in_a_seed_field_give_different_estimates_and_lower_limits(self, changed) -> None:
         job = self._jobs()[0]
 
         original = calibrate.run_replicate(job)
         changed_result = calibrate.run_replicate(job._replace(**changed))
 
-        assert changed_result.estimate != original.estimate
-        assert changed_result.lower_limits != original.lower_limits
+        # A difference within float rounding would also arise from a reordered sum over the same per-fixture terms.
+        assert changed_result.estimate != pytest.approx(original.estimate, abs=MATERIAL_DIFFERENCE)
+        assert changed_result.lower_limits != pytest.approx(original.lower_limits, abs=MATERIAL_DIFFERENCE)
 
 
 class TestPlannedCellsReachTheirTrueDifference:
@@ -745,7 +803,17 @@ class TestCalibrateCommand:
         ])
 
         assert exit_code == 0
-        printed_rows = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+        captured = capsys.readouterr()
+        plan_lines = [line for line in captured.err.splitlines() if "fixtures=6 " in line and "solved in" in line]
+        assert len(plan_lines) == 2
+        for line in plan_lines:
+            settings = _key_value_tokens(line)
+            assert {key: settings[key] for key in ("over_cap_share", "flips", "seed", "workers")} == {
+                "over_cap_share": "0.75", "flips": "200", "seed": "11", "workers": "2",
+            }
+            assert settings["alphas"] == "0.05"
+            assert settings["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_EXACT
+        printed_rows = [json.loads(line) for line in captured.out.splitlines()]
         assert json.loads(out_path.read_text()) == printed_rows
         assert pool_sizes == [2]
         assert printed_rows[0]["true_difference"] == -0.2
