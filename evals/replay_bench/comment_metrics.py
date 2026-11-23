@@ -290,8 +290,7 @@ def _classify_python(text: str, lines: list[str], numbers: tuple[int, ...]) -> F
 def _python_definition_counts(
     owners: Iterable[tuple[mine_szz._DocstringOwner, range | None]], added: frozenset[int], words: Mapping[int, int],
 ) -> PythonDefinitionCounts:
-    """A module docstring is no class or function docstring, so a module owner counts nothing.
-    A docstring is new when its trimmed range is non-empty and every line is added."""
+    """A module docstring is no class or function docstring, so a module owner counts nothing."""
     new_docstrings = new_docstring_words = new_definitions = documented_new_definitions = 0
     for node, docstring_range in owners:
         if isinstance(node, ast.Module):

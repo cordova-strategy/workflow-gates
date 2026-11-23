@@ -1544,24 +1544,30 @@ sums over each task's mean per valid run. Neither carries a threshold.
 
 The counts see added line numbers only, so a rewritten line reads as a new
 one. An edit to both a definition's `def` or `class` line and the first line of
-its body, or to a definition whose body sits on its `def` line, therefore
-counts that definition as new. An edit to a one-line docstring on its own line
-counts that docstring as new. A multi-line docstring counts as new only when
-every one of its lines is added. The tests in `evals/test_replay_bench_comment_metrics.py` pin each of
-these cases.
+its body, an edit to a signature together with a line inserted at the top of
+its body, or an edit to a definition whose body sits on its `def` line,
+therefore counts that definition as new. An edit to a one-line docstring on its
+own line counts that docstring as new. A multi-line docstring counts as new
+only when every one of its lines is added. The tests in
+`evals/test_replay_bench_comment_metrics.py` pin each of these cases.
 
 A Python file the parser rejects adds nothing to either figure, while the
-primary outcome's code lines still include it. A figure prints `n/a` when no
-paired task exists, when its denominator sums to zero or, for the reference,
-when the reference is unavailable or lacks the paired tasks. A figure prints
-`not measured`, with the count of paired tasks lacking the counts, when any
-valid run of a paired task, or a reference entry, predates the counts. A
-campaign or task set recorded before the counts therefore keeps its records and
-reads `not measured`. Mining a task set again records the counts for the
-reference. A task set mined again still loads on a checkout that predates this
-change, but that checkout drops the counts and computes a different
-`task_set_hash`. A campaign must therefore be started, resumed and summarized
-from checkouts on the same side of this change, in either direction.
+primary outcome's code lines still include it. A figure prints:
+
+- `n/a` when no paired task exists.
+- `n/a` when its denominator sums to zero.
+- `n/a`, for the reference, when the reference is unavailable or lacks the
+  paired tasks.
+- `not measured`, with the count of paired tasks lacking the counts, when any
+  valid run of a paired task, or a reference entry, predates the counts.
+
+A campaign or task set recorded before the counts keeps its records and reads
+`not measured`. Mining a task set again records the counts for the reference.
+
+Start, resume and summarize a campaign from checkouts that all have the
+`python_definition_counts` key or all lack it. A checkout that lacks the key
+still loads a task set mined with it, drops the counts and computes a different
+`task_set_hash`.
 
 Reading these two figures, and only these, since the 20% rule above stays the
 primary outcome's alone:

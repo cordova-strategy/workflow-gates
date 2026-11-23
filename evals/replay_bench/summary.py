@@ -311,19 +311,51 @@ def _unmeasured_text(unmeasured: int, total: int, subject: str = "paired tasks")
     return f"not measured ({unmeasured} of {total} {subject} lack the counts)"
 
 
-def _pooled_figure_text(task_ids: Sequence[str], counts_by_task: Mapping[str, _ArmCounts | None], subject: str) -> str:
+@dataclass(frozen=True)
+class PooledFigure:
+    """`ratio` is None when any task lacks the counts or when the pooled denominator sums to zero.
+
+    `task_count` is the number of tasks the figure pooled over: the paired tasks for an arm,
+    the paired tasks with a reference entry for the reference.
+    """
+    ratio: float | None
+    unmeasured: int
+    task_count: int
+
+
+@dataclass(frozen=True)
+class FigureDifference:
+    """`difference` is None when any task lacks the counts or when an arm's pooled denominator sums to zero.
+
+    `difference`, `interval` and `dropped_resamples` are meaningful only when `unmeasured` is 0, so a reader checks it first.
+    """
+    difference: float | None
+    interval: tuple[float, float] | None
+    dropped_resamples: int
+    unmeasured: int
+    task_count: int
+
+
+@dataclass(frozen=True)
+class DocstringFigureOutcome:
+    stem: str
+    arms: dict[str, PooledFigure]
+    reference: PooledFigure
+    difference: FigureDifference
+
+
+def _pooled_figure(task_ids: Sequence[str], counts_by_task: Mapping[str, _ArmCounts | None]) -> PooledFigure:
     unmeasured = sum(counts_by_task[task_id] is None for task_id in task_ids)
-    if unmeasured:
-        return _unmeasured_text(unmeasured, len(task_ids), subject)
-    return _number(_pooled_ratio(task_ids, counts_by_task))
+    ratio = None if unmeasured else _pooled_ratio(task_ids, counts_by_task)
+    return PooledFigure(ratio, unmeasured, len(task_ids))
 
 
-def _figure_difference_text(
+def _figure_difference(
     task_ids: Sequence[str], toolkit_counts: Mapping[str, _ArmCounts | None], bare_counts: Mapping[str, _ArmCounts | None],
-) -> str:
+) -> FigureDifference:
     unmeasured = sum(toolkit_counts[task_id] is None or bare_counts[task_id] is None for task_id in task_ids)
     if unmeasured:
-        return _unmeasured_text(unmeasured, len(task_ids))
+        return FigureDifference(None, None, 0, unmeasured, len(task_ids))
 
     def pooled_difference(resampled_ids: Sequence[str]) -> float | None:
         toolkit_ratio, bare_ratio = _pooled_ratio(resampled_ids, toolkit_counts), _pooled_ratio(resampled_ids, bare_counts)
@@ -331,41 +363,65 @@ def _figure_difference_text(
 
     difference = pooled_difference(task_ids)
     if difference is None:
-        return "n/a"
-    interval, dropped = _interval_and_drops_over_tasks(task_ids, pooled_difference)
-    text = _difference_text(difference, interval)
-    if interval is not None:
-        text += f", {dropped} of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped"
-    return text
+        return FigureDifference(None, None, 0, 0, len(task_ids))
+    interval, dropped_resamples = _interval_and_drops_over_tasks(task_ids, pooled_difference)
+    return FigureDifference(difference, interval, dropped_resamples, 0, len(task_ids))
 
 
-def _per_docstring_figure_lines(
+def docstring_figure_outcomes(
     block_records: Mapping[str, Sequence[ReplayRunRecord]], paired_ids: Sequence[str], reference: Mapping[str, dict],
-) -> list[str]:
-    """Descriptive secondary figures over the primary outcome's paired tasks, non-test files only. They carry no threshold."""
-    lines = []
+) -> list[DocstringFigureOutcome]:
+    """Descriptive secondary figures over the primary outcome's paired tasks, non-test files only. They carry no threshold.
+
+    `paired_ids` must be the primary outcome's paired task set, each id present in `block_records` with a valid run in both arms.
+    A violation raises `KeyError` or `statistics.StatisticsError` rather than being filtered.
+    """
     reference_ids = [task_id for task_id in paired_ids if task_id in reference]
+    outcomes = []
     for figure in _DOCSTRING_FIGURES:
         counts = {
             arm_name: {task_id: _measured_arm_counts(block_records[task_id], arm_name, figure) for task_id in paired_ids}
             for arm_name in PAIRED_ARM_NAMES
         }
         reference_counts = {task_id: _measured_reference_counts(reference[task_id], figure) for task_id in reference_ids}
+        outcomes.append(
+            DocstringFigureOutcome(
+                stem=figure.stem,
+                arms={arm_name: _pooled_figure(paired_ids, counts[arm_name]) for arm_name in PAIRED_ARM_NAMES},
+                reference=_pooled_figure(reference_ids, reference_counts),
+                difference=_figure_difference(paired_ids, counts[TOOLKIT.name], counts[BARE.name]),
+            )
+        )
+    return outcomes
+
+
+def _pooled_figure_text(figure: PooledFigure, subject: str) -> str:
+    if figure.unmeasured:
+        return _unmeasured_text(figure.unmeasured, figure.task_count, subject)
+    return _number(figure.ratio)
+
+
+def _figure_difference_text(figure_difference: FigureDifference) -> str:
+    if figure_difference.unmeasured:
+        return _unmeasured_text(figure_difference.unmeasured, figure_difference.task_count)
+    text = _difference_text(figure_difference.difference, figure_difference.interval)
+    if figure_difference.interval is not None:
+        text += f", {figure_difference.dropped_resamples} of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped"
+    return text
+
+
+def _per_docstring_figure_lines(outcomes: Sequence[DocstringFigureOutcome]) -> list[str]:
+    lines = []
+    for outcome in outcomes:
         lines.append(
-            f"additional secondary outcome: {figure.stem}, non-test files, over the paired tasks of the primary outcome "
+            f"additional secondary outcome: {outcome.stem}, non-test files, over the paired tasks of the primary outcome "
             "(a task's counts are its valid runs' means)"
         )
         for arm_name in PAIRED_ARM_NAMES:
-            lines.append(f"  {arm_name} {figure.stem}: {_pooled_figure_text(paired_ids, counts[arm_name], 'paired tasks')}")
-        reference_text = (
-            _pooled_figure_text(reference_ids, reference_counts, "paired tasks with a reference entry")
-            if reference_ids else "n/a"
-        )
-        lines.append(f"  reference (the merged commits) {figure.stem}: {reference_text}")
-        lines.append(
-            f"  {figure.stem}, toolkit - bare: "
-            f"{_figure_difference_text(paired_ids, counts[TOOLKIT.name], counts[BARE.name])}"
-        )
+            lines.append(f"  {arm_name} {outcome.stem}: {_pooled_figure_text(outcome.arms[arm_name], 'paired tasks')}")
+        reference_text = _pooled_figure_text(outcome.reference, "paired tasks with a reference entry")
+        lines.append(f"  reference (the merged commits) {outcome.stem}: {reference_text}")
+        lines.append(f"  {outcome.stem}, toolkit - bare: {_figure_difference_text(outcome.difference)}")
     return lines
 
 
@@ -453,7 +509,7 @@ def summarize(campaign_dir: Path, *, local_dir: Path, budget_cap_usd: float) -> 
             for arm in (TOOLKIT, BARE)
         )
         lines.append(f"  paired task {task_id!r}: toolkit {_number(toolkit_rate)}, bare {_number(bare_rate)}")
-    lines.extend(_per_docstring_figure_lines(block_records, paired_ids, reference))
+    lines.extend(_per_docstring_figure_lines(docstring_figure_outcomes(block_records, paired_ids, reference)))
 
     lines.append("diagnostics per arm:")
     for arm_name in arm_names:

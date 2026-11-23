@@ -21,9 +21,24 @@ CAP = 3.0
 
 
 def metrics(
-    *, words=10, code=10, docstring=0, unclassified=0, ast_rejected=0, non_file=0, undecodable=0,
-    test_words=0, test_code=0, test_docstring=0, definitions=None,
+    *, words=None, code=10, docstring=None, unclassified=0, ast_rejected=0, non_file=0, undecodable=0,
+    test_words=None, test_code=0, test_docstring=None, definitions=None,
 ) -> dict:
+    """With `definitions`, each scope's comment words default to cover its new docstring words and its docstring lines
+    to cover one line per new docstring. An explicit value below that fails the helper."""
+    def new_docstring_totals(scope) -> tuple[int, int]:
+        return (definitions[scope]["new_docstrings"], definitions[scope]["new_docstring_words"]) if definitions else (0, 0)
+
+    new_docstrings, new_docstring_words = new_docstring_totals("non_test")
+    test_new_docstrings, test_new_docstring_words = new_docstring_totals("test")
+    words = max(10, new_docstring_words) if words is None else words
+    docstring = new_docstrings if docstring is None else docstring
+    test_words = test_new_docstring_words if test_words is None else test_words
+    test_docstring = test_new_docstrings if test_docstring is None else test_docstring
+    assert words >= new_docstring_words and docstring >= new_docstrings, "the fixture's totals cannot hold its new docstrings"
+    assert test_words >= test_new_docstring_words and test_docstring >= test_new_docstrings, (
+        "the fixture's test-scope totals cannot hold its new docstrings"
+    )
     synthetic = CommentMetrics()
     synthetic.comment_words["non_test"] = words
     synthetic.line_counts["non_test"].update(code=code, docstring=docstring, unclassified=unclassified)
@@ -702,7 +717,7 @@ class TestSecondaryAndDiagnostics:
 
 
 def reference_task(
-    *, code, docstring, words=10, commit_digit="a", test_words=0, test_code=0, test_docstring=0, definitions=None,
+    *, code, docstring=None, words=None, commit_digit="a", test_words=None, test_code=0, test_docstring=None, definitions=None,
 ) -> tasks.ReplayTask:
     source_repo, commit = "/synthetic/source-repo", commit_digit * 40
     return tasks.ReplayTask(
@@ -871,14 +886,34 @@ SHARE_FIGURE = "share of new definitions with a new docstring"
 BOTH_FIGURES = [WORDS_FIGURE, SHARE_FIGURE]
 
 
-def add_counted_block(campaign, task_id, *, toolkit, bare) -> None:
+def counted_runs(task_id, *, toolkit, bare) -> list[records.ReplayRunRecord]:
     """Each arm lists one entry per run: a `definition_counts` dict, or None for a run recorded without the counts."""
-    runs = [
+    return [
         record(task_id, arm_name, run_index=run_index, run_metrics=metrics(definitions=definitions))
         for arm_name, arm_runs in (("toolkit", toolkit), ("bare", bare))
         for run_index, definitions in enumerate(arm_runs)
     ]
-    campaign.add_block(task_id, *runs)
+
+
+def add_counted_block(campaign, task_id, *, toolkit, bare) -> None:
+    campaign.add_block(task_id, *counted_runs(task_id, toolkit=toolkit, bare=bare))
+
+
+def counted_blocks(runs_by_task: dict[str, tuple[list, list]]) -> dict[str, list[records.ReplayRunRecord]]:
+    """One block per task from `{task_id: (toolkit_runs, bare_runs)}`, as `summary.docstring_figure_outcomes` reads them."""
+    return {
+        task_id: counted_runs(task_id, toolkit=toolkit, bare=bare) for task_id, (toolkit, bare) in runs_by_task.items()
+    }
+
+
+def figure_outcomes(blocks, reference=None) -> dict[str, summary.DocstringFigureOutcome]:
+    """The outcomes of every block as paired tasks, keyed by figure stem. `reference` maps a task id to its entry.
+
+    `summarize` feeds the paired ids in sorted order and the seeded bootstrap depends on that order, so the helper does too.
+    """
+    return {
+        outcome.stem: outcome for outcome in summary.docstring_figure_outcomes(blocks, sorted(blocks), reference or {})
+    }
 
 
 def figure_section(lines: list[str]) -> list[str]:
@@ -894,32 +929,6 @@ def pin_reference_task_set(campaign, *reference_tasks) -> None:
 
 
 class TestThePerDocstringFigures:
-    def test_each_figure_is_a_ratio_of_sums_over_a_tasks_per_run_means(self, campaign):
-        """Kills: pooling run sums, a mean of per-task ratios, a share numerator wired to new docstrings (b has 6
-        new docstrings and 2 new definitions, so it would print above 1), a field swap and a read of the test scope."""
-        add_counted_block(
-            campaign, "a",
-            toolkit=[definition_counts(2, 20, 4, 1), definition_counts(4, 60, 2, 1)], bare=[definition_counts(2, 8, 3, 2)],
-        )
-        add_counted_block(campaign, "b", toolkit=[definition_counts(6, 12, 2, 1)], bare=[definition_counts(2, 6, 4, 1)])
-
-        lines = campaign.summarize()
-
-        toolkit_words, bare_words = (20 + 60) / 2 + 12, 8 + 6
-        toolkit_docstrings, bare_docstrings = (2 + 4) / 2 + 6, 2 + 2
-        assert number_after(lines, f"  toolkit {WORDS_FIGURE}:") == pytest.approx(toolkit_words / toolkit_docstrings, abs=1e-4)
-        assert number_after(lines, f"  bare {WORDS_FIGURE}:") == pytest.approx(bare_words / bare_docstrings)
-        assert number_after(lines, f"  {WORDS_FIGURE}, toolkit - bare:") == pytest.approx(
-            toolkit_words / toolkit_docstrings - bare_words / bare_docstrings, abs=1e-4,
-        )
-        toolkit_share, bare_share = ((1 + 1) / 2 + 1) / ((4 + 2) / 2 + 2), (2 + 1) / (3 + 4)
-        assert toolkit_share == pytest.approx(0.4) and toolkit_share < 1, (
-            "the fixture's toolkit share is below 1, which a share numerator of new docstrings would exceed"
-        )
-        assert number_after(lines, f"  toolkit {SHARE_FIGURE}:") == pytest.approx(toolkit_share)
-        assert number_after(lines, f"  bare {SHARE_FIGURE}:") == pytest.approx(bare_share, abs=1e-4)
-        assert number_after(lines, f"  {SHARE_FIGURE}, toolkit - bare:") == pytest.approx(toolkit_share - bare_share, abs=1e-4)
-
     def test_a_toolkit_figure_below_bare_prints_a_negative_difference(self, campaign):
         for task_id in ("a", "b"):
             add_counted_block(campaign, task_id, toolkit=[definition_counts(2, 10, 2, 1)], bare=[definition_counts(2, 30, 2, 2)])
@@ -934,50 +943,29 @@ class TestThePerDocstringFigures:
             f"  {SHARE_FIGURE}, toolkit - bare: -0.5000, 95% interval [-0.5000, -0.5000], 0 of {resamples} resamples dropped"
         ) in lines
 
-    @pytest.mark.parametrize(
-        ("figure", "numerator_index", "denominator_index"),
-        [pytest.param(WORDS_FIGURE, 1, 0, id="words per new docstring"), pytest.param(SHARE_FIGURE, 3, 2, id="share")],
-    )
-    def test_the_printed_interval_is_bootstrapped_over_the_printed_pooled_difference(
-        self, campaign, figure, numerator_index, denominator_index,
+    @pytest.mark.parametrize("figure", BOTH_FIGURES)
+    def test_the_printed_difference_line_carries_the_difference_the_interval_bounds_and_the_dropped_count(
+        self, campaign, figure,
     ):
-        """Kills: an interval bootstrapped over an unweighted mean of per-task differences instead of the printed
-        pooled difference."""
-        toolkit_by_task = {"a": (3, 35, 4, 1), "b": (2, 16, 6, 2), "c": (6, 29, 6, 6)}
-        bare_by_task = {"a": (4, 17, 5, 4), "b": (4, 30, 5, 0), "c": (4, 11, 3, 2)}
-        for task_id in toolkit_by_task:
-            add_counted_block(
-                campaign, task_id,
-                toolkit=[definition_counts(*toolkit_by_task[task_id])], bare=[definition_counts(*bare_by_task[task_id])],
-            )
-
-        def pooled_ratio(counts_by_task, resampled_ids) -> float:
-            return (
-                sum(counts_by_task[task_id][numerator_index] for task_id in resampled_ids)
-                / sum(counts_by_task[task_id][denominator_index] for task_id in resampled_ids)
-            )
-
-        def pooled_difference(resampled_ids) -> float:
-            return pooled_ratio(toolkit_by_task, resampled_ids) - pooled_ratio(bare_by_task, resampled_ids)
-
-        def unweighted_mean_difference(resampled_ids) -> float:
-            return statistics.fmean(pooled_difference([task_id]) for task_id in resampled_ids)
-
-        task_ids = sorted(toolkit_by_task)
-        clusters = {task_id: (task_id, "") for task_id in task_ids}
-        (low, high), dropped = analysis.bootstrap_interval_with_drops(task_ids, pooled_difference, cluster_by_defect=clusters)
-        unweighted_interval, _ = analysis.bootstrap_interval_with_drops(
-            task_ids, unweighted_mean_difference, cluster_by_defect=clusters,
-        )
-        assert [f"{bound:.4f}" for bound in unweighted_interval] != [f"{low:.4f}", f"{high:.4f}"], (
-            "the fixture's unweighted-mean interval equals the pooled one at 4 decimals, so it cannot tell them apart"
-        )
+        """Kills: printing the unmeasured count, a literal 0 or the kept count as the dropped count, swapping the
+        interval bounds, and printing the difference where the interval goes."""
+        runs_by_task = {
+            "both-arms-high": ([definition_counts(3, 30, 3, 2)], [definition_counts(3, 12, 3, 1)]),
+            "both-arms-low": ([definition_counts(2, 20, 2, 1)], [definition_counts(4, 40, 4, 3)]),
+            "one-arm-empty": ([definition_counts(0, 0, 0, 0)], [definition_counts(2, 10, 2, 1)]),
+        }
+        for task_id, (toolkit, bare) in runs_by_task.items():
+            add_counted_block(campaign, task_id, toolkit=toolkit, bare=bare)
+        difference = figure_outcomes(counted_blocks(runs_by_task))[figure].difference
+        low, high = difference.interval
+        assert difference.dropped_resamples > 0, "the fixture must drop a resample so that a printed 0 is wrong"
+        assert low < high and difference.difference not in (low, high), "the fixture's difference and bounds must differ"
 
         lines = campaign.summarize()
 
         assert (
-            f"  {figure}, toolkit - bare: {pooled_difference(task_ids):.4f}, 95% interval [{low:.4f}, {high:.4f}], "
-            f"{dropped} of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped"
+            f"  {figure}, toolkit - bare: {difference.difference:.4f}, 95% interval [{low:.4f}, {high:.4f}], "
+            f"{difference.dropped_resamples} of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped"
         ) in lines
 
     def test_an_unpaired_task_and_a_no_code_task_stay_out_and_a_failed_run_is_not_an_unmeasured_one(self, campaign):
@@ -1017,9 +1005,12 @@ class TestThePerDocstringFigures:
     def test_one_run_without_the_counts_leaves_that_arm_and_the_difference_not_measured(
         self, campaign, figure, lacking_arm, runs_with_gaps,
     ):
-        """Kills: computing an arm over only the runs that carry the counts, which would change the tasks a figure covers,
-        and testing only one arm for missing counts in the difference. The run order varies so that inspecting only the
-        first or only the last valid run fails."""
+        """Kills:
+        - computing an arm over only the runs that carry the counts, which would change the tasks a figure covers
+        - testing only one arm for missing counts in the difference
+
+        The run order varies so that inspecting only the first or only the last valid run fails.
+        """
         measured_arm = "bare" if lacking_arm == "toolkit" else "toolkit"
         arm_runs = {lacking_arm: runs_with_gaps, measured_arm: [definition_counts(1, 5, 1, 1)]}
         add_counted_block(campaign, "k2", toolkit=arm_runs["toolkit"], bare=arm_runs["bare"])
@@ -1064,9 +1055,9 @@ class TestThePerDocstringFigures:
         assert f"  {figure}, toolkit - bare: {not_measured}" in lines
 
     def test_the_reference_pools_the_paired_tasks_non_test_counts(self, campaign):
-        paired = reference_task(code=40, docstring=10, definitions=definition_counts(3, 30, 2, 1))
-        other_paired = reference_task(code=40, docstring=10, commit_digit="c", definitions=definition_counts(2, 20, 2, 2))
-        unpaired = reference_task(code=40, docstring=10, commit_digit="d", definitions=definition_counts(40, 4000, 40, 40))
+        paired = reference_task(code=40, definitions=definition_counts(3, 30, 2, 1))
+        other_paired = reference_task(code=40, commit_digit="c", definitions=definition_counts(2, 40, 4, 1))
+        unpaired = reference_task(code=40, commit_digit="d", definitions=definition_counts(40, 4000, 40, 40))
         pin_reference_task_set(campaign, paired, other_paired, unpaired)
         for task in (paired, other_paired):
             add_counted_block(
@@ -1076,8 +1067,8 @@ class TestThePerDocstringFigures:
 
         lines = campaign.summarize()
 
-        assert f"  reference (the merged commits) {WORDS_FIGURE}: {(30 + 20) / (3 + 2):.4f}" in lines
-        assert f"  reference (the merged commits) {SHARE_FIGURE}: {(1 + 2) / (2 + 2):.4f}" in lines
+        assert f"  reference (the merged commits) {WORDS_FIGURE}: {(30 + 40) / (3 + 2):.4f}" in lines
+        assert f"  reference (the merged commits) {SHARE_FIGURE}: {(1 + 1) / (2 + 4):.4f}" in lines
 
     def test_a_reference_entry_without_the_counts_is_not_measured(self, campaign):
         task = reference_task(code=40, docstring=10)
@@ -1096,7 +1087,7 @@ class TestThePerDocstringFigures:
     def test_an_unavailable_reference_and_a_reference_lacking_the_task_print_n_a_and_never_say_unavailable(self, campaign):
         add_counted_block(campaign, "t1", toolkit=[definition_counts(2, 20, 2, 1)], bare=[definition_counts(1, 5, 1, 1)])
         unavailable = campaign.summarize()
-        other_task = reference_task(code=40, docstring=10, definitions=definition_counts(3, 30, 2, 1))
+        other_task = reference_task(code=40, definitions=definition_counts(3, 30, 2, 1))
         pin_reference_task_set(campaign, other_task)
         lacking_the_task = campaign.summarize()
 
@@ -1117,32 +1108,6 @@ class TestThePerDocstringFigures:
         assert f"  {WORDS_FIGURE}, toolkit - bare: n/a" in lines
         assert f"  toolkit {SHARE_FIGURE}: 0.0000" in lines
         assert f"  {SHARE_FIGURE}, toolkit - bare: -0.5000, no interval for fewer than two paired tasks" in lines
-
-    @pytest.mark.parametrize("empty_arm", ["toolkit", "bare"])
-    @pytest.mark.parametrize("figure", BOTH_FIGURES)
-    def test_resamples_that_leave_an_arm_with_no_denominator_are_dropped_and_counted(self, campaign, figure, empty_arm):
-        """Two tasks, one of which leaves an arm empty: a resample drawing only that task drops, about a quarter of them."""
-        populated, empty = [definition_counts(3, 30, 3, 2)], [definition_counts(0, 0, 0, 0)]
-        add_counted_block(campaign, "both-arms", toolkit=populated, bare=populated)
-        add_counted_block(
-            campaign, "one-arm-empty", toolkit=empty if empty_arm == "toolkit" else populated,
-            bare=empty if empty_arm == "bare" else populated,
-        )
-
-        lines = campaign.summarize()
-
-        line = next(line for line in lines if line.startswith(f"  {figure}, toolkit - bare:"))
-        dropped = int(re.search(rf", (\d+) of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped", line).group(1))
-        assert 2000 < dropped < 3000
-
-    @pytest.mark.parametrize("figure", BOTH_FIGURES)
-    def test_a_fixture_with_no_empty_arm_prints_a_dropped_count_of_zero(self, campaign, figure):
-        add_counted_block(campaign, "t1", toolkit=[definition_counts(3, 30, 3, 2)], bare=[definition_counts(2, 10, 3, 1)])
-        add_counted_block(campaign, "t2", toolkit=[definition_counts(1, 9, 2, 1)], bare=[definition_counts(4, 8, 2, 2)])
-
-        line = next(line for line in campaign.summarize() if line.startswith(f"  {figure}, toolkit - bare:"))
-
-        assert line.endswith(f", 0 of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped")
 
     def test_the_figures_print_after_the_secondary_outcome_and_before_the_diagnostics(self, campaign):
         add_counted_block(campaign, "t1", toolkit=[definition_counts(2, 20, 2, 1)], bare=[definition_counts(1, 5, 1, 1)])
@@ -1169,7 +1134,7 @@ class TestThePerDocstringFigures:
             return lines[start:end + 1]
 
         without_counts = primary_lines("without", {"t1": None, "t2": None})
-        with_counts = primary_lines("with", {"t1": definition_counts(2, 20, 3, 1), "t2": definition_counts(5, 90, 4, 4)})
+        with_counts = primary_lines("with", {"t1": definition_counts(2, 4, 3, 1), "t2": definition_counts(5, 5, 4, 4)})
 
         assert without_counts and with_counts == without_counts
 
@@ -1213,6 +1178,126 @@ class TestThePerDocstringFigures:
             words_per_docstring, documented_share = expected(name)
             assert number_after(lines, f"{prefix} {WORDS_FIGURE}:") == pytest.approx(words_per_docstring, abs=1e-4)
             assert number_after(lines, f"{prefix} {SHARE_FIGURE}:") == pytest.approx(documented_share, abs=1e-4)
+
+
+class TestThePerDocstringFiguresAsValues:
+    def test_each_figure_is_a_ratio_of_sums_over_a_tasks_per_run_means(self):
+        """Kills:
+        - pooling run sums
+        - a mean of per-task ratios
+        - a share numerator wired to new docstrings
+        - a field swap
+        - a read of the test scope
+
+        Task `b` has 6 new docstrings and 2 new definitions, so a share numerator wired to new docstrings puts its share
+        above 1.
+        """
+        outcomes = figure_outcomes(counted_blocks({
+            "a": ([definition_counts(2, 20, 4, 1), definition_counts(4, 60, 2, 1)], [definition_counts(2, 8, 3, 2)]),
+            "b": ([definition_counts(6, 12, 2, 1)], [definition_counts(2, 6, 4, 1)]),
+        }))
+
+        toolkit_words, bare_words = (20 + 60) / 2 + 12, 8 + 6
+        toolkit_docstrings, bare_docstrings = (2 + 4) / 2 + 6, 2 + 2
+        words = outcomes[WORDS_FIGURE]
+        assert words.arms["toolkit"].ratio == pytest.approx(toolkit_words / toolkit_docstrings)
+        assert words.arms["bare"].ratio == pytest.approx(bare_words / bare_docstrings)
+        assert words.difference.difference == pytest.approx(toolkit_words / toolkit_docstrings - bare_words / bare_docstrings)
+        toolkit_share, bare_share = ((1 + 1) / 2 + 1) / ((4 + 2) / 2 + 2), (2 + 1) / (3 + 4)
+        share = outcomes[SHARE_FIGURE]
+        assert share.arms["toolkit"].ratio == pytest.approx(toolkit_share)
+        assert share.arms["bare"].ratio == pytest.approx(bare_share)
+        assert share.difference.difference == pytest.approx(toolkit_share - bare_share)
+
+    def test_the_reference_is_a_ratio_of_sums_over_the_paired_tasks_with_an_entry(self):
+        """Kills: a mean of per-task ratios, and pooling a reference task that is not paired.
+
+        The tasks' words per docstring are 10 and 20 and their shares 1/2 and 1/4, so a mean of ratios gives 15 and 3/8.
+        """
+        blocks = counted_blocks({
+            task_id: ([definition_counts(2, 20, 2, 1)], [definition_counts(1, 5, 1, 1)]) for task_id in ("a", "b")
+        })
+        reference = {
+            task_id: {"python_definition_counts": counts}
+            for task_id, counts in {
+                "a": definition_counts(3, 30, 2, 1),
+                "b": definition_counts(2, 40, 4, 1),
+                "unpaired": definition_counts(40, 4000, 40, 40),
+            }.items()
+        }
+
+        outcomes = figure_outcomes(blocks, reference)
+
+        assert outcomes[WORDS_FIGURE].reference.ratio == pytest.approx((30 + 40) / (3 + 2))
+        assert outcomes[SHARE_FIGURE].reference.ratio == pytest.approx((1 + 1) / (2 + 4))
+
+    @pytest.mark.parametrize(
+        ("figure", "numerator_index", "denominator_index"),
+        [pytest.param(WORDS_FIGURE, 1, 0, id="words per new docstring"), pytest.param(SHARE_FIGURE, 3, 2, id="share")],
+    )
+    def test_the_interval_is_bootstrapped_over_the_pooled_difference(self, figure, numerator_index, denominator_index):
+        """Kills: an interval bootstrapped over an unweighted mean of per-task differences instead of the pooled
+        difference."""
+        toolkit_by_task = {"a": (3, 35, 4, 1), "b": (2, 16, 6, 2), "c": (6, 29, 6, 6)}
+        bare_by_task = {"a": (4, 17, 5, 4), "b": (4, 30, 5, 0), "c": (4, 11, 3, 2)}
+        blocks = counted_blocks({
+            task_id: ([definition_counts(*toolkit_by_task[task_id])], [definition_counts(*bare_by_task[task_id])])
+            for task_id in toolkit_by_task
+        })
+
+        def pooled_ratio(counts_by_task, resampled_ids) -> float:
+            return (
+                sum(counts_by_task[task_id][numerator_index] for task_id in resampled_ids)
+                / sum(counts_by_task[task_id][denominator_index] for task_id in resampled_ids)
+            )
+
+        def pooled_difference(resampled_ids) -> float:
+            return pooled_ratio(toolkit_by_task, resampled_ids) - pooled_ratio(bare_by_task, resampled_ids)
+
+        def unweighted_mean_difference(resampled_ids) -> float:
+            return statistics.fmean(pooled_difference([task_id]) for task_id in resampled_ids)
+
+        task_ids = sorted(toolkit_by_task)
+        clusters = {task_id: (task_id, "") for task_id in task_ids}
+        (low, high), dropped = analysis.bootstrap_interval_with_drops(task_ids, pooled_difference, cluster_by_defect=clusters)
+        unweighted_interval, _ = analysis.bootstrap_interval_with_drops(
+            task_ids, unweighted_mean_difference, cluster_by_defect=clusters,
+        )
+        assert unweighted_interval != pytest.approx((low, high), abs=1e-4), (
+            "the fixture's unweighted-mean interval equals the pooled one, so it cannot tell them apart"
+        )
+
+        difference = figure_outcomes(blocks)[figure].difference
+
+        assert difference.difference == pytest.approx(pooled_difference(task_ids))
+        assert difference.interval == pytest.approx((low, high))
+        assert difference.dropped_resamples == dropped
+
+    @pytest.mark.parametrize("empty_arm", ["toolkit", "bare"])
+    @pytest.mark.parametrize("figure", BOTH_FIGURES)
+    def test_resamples_that_leave_an_arm_with_no_denominator_are_dropped_and_counted(self, figure, empty_arm):
+        """Two tasks, one of which leaves an arm empty: a resample drawing only that task drops, about a quarter of them."""
+        populated, empty = [definition_counts(3, 30, 3, 2)], [definition_counts(0, 0, 0, 0)]
+        blocks = counted_blocks({
+            "both-arms": (populated, populated),
+            "one-arm-empty": (empty if empty_arm == "toolkit" else populated, empty if empty_arm == "bare" else populated),
+        })
+
+        difference = figure_outcomes(blocks)[figure].difference
+
+        assert 2000 < difference.dropped_resamples < 3000
+
+    @pytest.mark.parametrize("figure", BOTH_FIGURES)
+    def test_a_fixture_with_no_empty_arm_drops_no_resample(self, figure):
+        blocks = counted_blocks({
+            "t1": ([definition_counts(3, 30, 3, 2)], [definition_counts(2, 10, 3, 1)]),
+            "t2": ([definition_counts(1, 9, 2, 1)], [definition_counts(4, 8, 2, 2)]),
+        })
+
+        difference = figure_outcomes(blocks)[figure].difference
+
+        assert difference.interval is not None, "two paired tasks bootstrap an interval, so a zero drop count is a real count"
+        assert difference.dropped_resamples == 0
 
 
 class TestTheCampaignLineNamesTheRunner:

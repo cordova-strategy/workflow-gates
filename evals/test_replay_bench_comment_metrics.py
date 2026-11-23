@@ -282,8 +282,6 @@ class TestPythonDefinitionCounts:
         counts = _definition_counts(source, added_lines)
 
         assert counts == expected
-        new_docstrings, _words, new_definitions, documented_new_definitions = counts
-        assert documented_new_definitions <= min(new_definitions, new_docstrings)
 
     def test_the_counts_keep_the_declaration_order_the_summary_figures_unpack_by_position(self):
         assert comment_metrics.PYTHON_DEFINITION_COUNT_FIELDS == (
@@ -296,7 +294,6 @@ class TestPythonDefinitionCounts:
         counts = _definition_counts(source, {1, 2, 3, 4, 5})
 
         assert counts == (2, 5, 2, 2)
-        assert counts[3] <= min(counts[2], counts[0])
 
     # `git diff -U0` shows an edited line as a removal plus an addition, so an edit to a line that sits where
     # a definition's `def` line and first body line meet reads as an insertion. Each case is a documented gap.

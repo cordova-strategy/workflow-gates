@@ -17,7 +17,7 @@ Intended outcome:
 
 ## Approach
 
-Each run, and each task mined from now on, records four Python counts per scope: new docstrings, the words in them, new definitions, and new definitions whose docstring is new. `summarize` turns the non-test counts into two descriptive figures, words per new docstring and the share of new definitions with a new docstring. It prints them after the existing secondary outcome, over the primary outcome's paired tasks, each with a `toolkit - bare` difference, a 95% bootstrap interval and its dropped-resample count, and no threshold. A run record or task set written before this change keeps its bytes and its task-set hash, and every figure it cannot supply prints `not measured`.
+Each run, and each task mined from now on, records four Python counts per scope: new docstrings, the words in them, new definitions, and new definitions whose docstring is new. `summarize` turns the non-test counts into two descriptive figures, words per new docstring and the share of new definitions with a new docstring. It prints them after the existing secondary outcome, over the primary outcome's paired tasks, each with a `toolkit - bare` difference, a 95% bootstrap interval with its dropped-resample count beside it, and no threshold. A run record or task set written before this change keeps its bytes and its task-set hash, and every figure it cannot supply prints `not measured`.
 
 **What counts.** Both rules read only what `measure_diff` already receives: the added line numbers and the post-change file (row 16).
 
@@ -87,7 +87,7 @@ Alternatives set aside:
   - Rejected, working from the flattened line set: it carries neither the owning node nor any definition without a docstring.
 - **M2: `_classify_python` derives the four counts from the owners, the added line numbers and the word counts, and returns them on `FileClassification`.** `anchors: G3, row7, row8, row16, row18, row19, row20, row21`
 - **M3: `CommentMetrics.python_definition_counts` defaults to None, `to_dict` omits it when None, `from_dict` reads it with `.get`, and `measure_diff` always sets it, zeroed per scope before tallying.** `anchors: G1, row12, row13, row14, row22` An unmeasured task set keeps its bytes and hash, and a measured empty change stays distinct from an unmeasured one.
-- **M4: `summary._per_docstring_figure_lines` prints both figures after the existing secondary outcome and before `diagnostics per arm:`, reusing the primary's pooling helpers and `bootstrap_interval_with_drops`.** `anchors: G2, row5, row6, row9, row10, row11, row23, row24`
+- **M4: `summary.docstring_figure_outcomes` pools both figures with the primary's pooling helpers and bootstraps their difference with `bootstrap_interval_with_drops`, and `summary._per_docstring_figure_lines` prints the result after the existing secondary outcome and before `diagnostics per arm:`.** `anchors: G2, row5, row6, row9, row10, row11, row23, row24`
 - **M5: `evals/README.md` defines both figures, their `n/a` and `not measured` cases and the direction-aware reading rule, beside the existing secondary outcome.** `anchors: row1, row2, row3, row25, row26, row27, row30`
 
 **Assumption rows:**
@@ -138,8 +138,10 @@ Only `summary.py` references `_ArmCounts` and `_arm_docstring_counts`, the latte
 29. [verified: `staff-sdet`'s in-process call of `select_pytest_targets`, as relayed; `claude/.claude/scripts/select-tests.py:709-711`] The plan's changed paths select `domain-selected` targets, not the full suite: the `evals/test_replay_bench*.py` and `evals/test_review_bench*.py` tests, three other evals tests, `claude/.claude/scripts/tests/test_select_tests.py` (from the `evals/replay_bench/` edits) and `claude-skills/skills/tests` (from the `evals/README.md` edit).
 30. [engineer-verified: "Ask the architect I don’t know how to answer this"] Asked whether the null clause reads as an interval covering zero or as a gap below a run-to-run spread figure, the engineer left the choice to the architect. The quote covers only that delegation, and row 26 records the choice.
 31. [engineer-verified: "Proceed anyway"] Asked whether to split a plan that projects about 480 changed lines against a 400-line threshold, the engineer selected this label. The plan ships as one PR.
-32. [verified: the real-git known-gap tests in `evals/test_replay_bench_comment_metrics.py` run through `_measure_change`, which pin items 1, 2, 3 and 5 of Approach's "Rewrites count as new"; item 4, the one-line-definition case, is pinned by a unit-layer row] The plan accepts these as residuals and pins them as known gaps. A multi-line docstring with one changed line counts nothing, pinned by a unit-layer row.
+32. [verified: the known-gap tests in `evals/test_replay_bench_comment_metrics.py`] Real-git tests through `_measure_change` pin items 1, 2, 3 and 5 of Approach's "Rewrites count as new". A unit-layer row pins item 4, the one-line-definition case. The plan accepts these as residuals and pins them as known gaps. A multi-line docstring with one changed line counts nothing, pinned by a unit-layer row.
 33. [engineer-verified: "Follow the architect (Recommended)"] Asked about this round's two added test files and the diff growth from about 480 to about 650 lines, the engineer selected this label, which is the session's option, after asking "Does the architect agree or disagree?". The architect's recommendation, the session's relay of it, was to keep one PR at the larger size and drop both added test files, whose assertions compare a producer's key to the test's own literal. The end-to-end summary test covers key drift. The plan ships as one PR at about 600 lines, without those files.
+34. [engineer-verified: "Keep both (Recommended)"] Asked whether to keep a structured seam that review added to `summary.py`, the engineer selected this label, which is the session's option. `docstring_figure_outcomes` returns one structured outcome per figure. The outcomes are frozen dataclasses that mirror `paired_outcome`. `_per_docstring_figure_lines` renders from them. Tests therefore assert pooled values, the interval and the dropped count on the outcome, while printed-line tests pin the state texts, the difference line and the placement. The printed output is unchanged.
+35. [engineer-verified: "Keep both (Recommended)"] In the same question the engineer selected this label for dropping the unit-layer table's final `documented_new_definitions <= min(new_definitions, new_docstrings)` assertion, which the table's exact-tuple assertions make redundant.
 
 ## Critical files
 
@@ -165,7 +167,7 @@ Dispatch 1, measurement:
   - A module node is returned.
   - A parse failure returns `[]` and counts one attempt and one failure on `stats`.
 - `evals/test_replay_bench_comment_metrics.py`, two layers:
-  - Unit layer: one table-driven test over `classify_file` with explicit added-line sets, each case asserting the whole four-field tuple. A final assertion over every case checks `documented_new_definitions <= min(new_definitions, new_docstrings)`. The cases are:
+  - Unit layer: one table-driven test over `classify_file` with explicit added-line sets, each case asserting the whole four-field tuple. The cases are:
     - a new function with a sectioned docstring, whose blank line adds no word;
     - a new function without a docstring;
     - a signature edit of a documented function, which counts nothing;
@@ -201,23 +203,28 @@ Dispatch 2, summary and docs:
   - `_mean_counts_per_run` gains `run_denominator`, defaulting to `_run_code_lines`.
   - `_arm_docstring_counts` becomes `_arm_counts(task_records, arm_name, run_numerator, run_denominator=_run_code_lines)`, and the existing secondary outcome calls it.
   - `_interval_and_drops_over_tasks` wraps `analysis.bootstrap_interval_with_drops` with today's singleton cluster map, and `_interval_over_tasks` returns its interval.
-  - A two-row figure table, with stems `words per new docstring` and `share of new definitions with a new docstring`, and `_per_docstring_figure_lines(block_records, paired_ids, reference)`. `summarize` calls it once after the existing secondary's per-task loop (`:331-335`) with `paired_ids` from `:317`.
-  - Each figure prints a header line beginning `additional secondary outcome:`, then `  toolkit <stem>:`, `  bare <stem>:`, `  reference (the merged commits) <stem>:` and `  <stem>, toolkit - bare:`. A value prints as a number, `n/a` (no paired task, a zero pooled denominator, or an unavailable reference), or `not measured` with the count of paired tasks lacking the counts. The difference line appends the dropped-resample count.
-  - The figure code reads the four field names from `PythonDefinitionCounts`, not from string literals.
+  - A two-row figure table, with stems `words per new docstring` and `share of new definitions with a new docstring`, and `docstring_figure_outcomes(block_records, paired_ids, reference)`, which pools both figures and bootstraps their difference, returning one `DocstringFigureOutcome` per figure. A `DocstringFigureOutcome` holds a `PooledFigure` per arm, one for the reference, and a `FigureDifference`. `_per_docstring_figure_lines(outcomes)` renders them. `summarize` calls the two once after the existing secondary's per-task loop (`:331-335`) with `paired_ids` from `:317`.
+  - `paired_ids` must be the primary outcome's paired set: each id is in `block_records` and has a valid run in both arms. The function filters nothing, so a violation raises `KeyError` or `StatisticsError` out of `summarize`.
+  - Each figure prints a header line beginning `additional secondary outcome:`, then `  toolkit <stem>:`, `  bare <stem>:`, `  reference (the merged commits) <stem>:` and `  <stem>, toolkit - bare:`. A value prints as a number, `n/a` (no paired task, a zero pooled denominator, or an unavailable reference), or `not measured` with the count of paired tasks lacking the counts. The difference line appends the dropped-resample count beside its interval. A defined difference with no interval prints `<difference>, no interval for fewer than two paired tasks` and withholds the count. `n/a` prints only for an undefined difference.
+  - The figure code reads the four field names from `PythonDefinitionCounts` through `comment_metrics.PYTHON_DEFINITION_COUNT_FIELDS`, not from string literals.
+  - `summary.py` unpacks that tuple by position to bind each count's role. A test pins the tuple's order, so reordering the dataclass fields fails with a legible message instead of swapping a figure's numerator and denominator.
 - `evals/test_replay_bench_summary.py`:
   - `metrics()` gains `definitions=None`, a dict of non-test and test counts. None leaves the key out, as every existing caller expects. `reference_task` gains the same parameter.
   - Fixtures give the four fields distinct values and nonzero test-scope counts, so a field swap or a test-scope read fails. One fixture has more new docstrings than new definitions, so a numerator wired to docstrings would print a share above 1.
-  - New tests:
-    - each figure is a ratio of sums over per-run means;
-    - the `toolkit - bare` sign is pinned with a literal, toolkit below bare printing a negative value;
-    - an unpaired task and a no-code task enter neither figure, and a failed run (`metrics is None`) never makes a figure `not measured`;
-    - one paired task with `k=2` in one arm, run 0 carrying the counts and run 1 not, prints `not measured` for that arm and its difference while the other arm keeps its figure;
-    - the reference reads a task set carrying the counts, prints `not measured` for an entry without them, and prints `n/a` when the reference is unavailable or lacks the task;
-    - an arm with no new docstring in any paired task prints `n/a`;
-    - a two-task fixture with no new docstring in one arm prints a dropped-resample count between 2,000 and 3,000, parametrized over which arm is empty and over which figure, plus a drop-free fixture printing 0;
-    - the primary outcome's lines, sliced from `primary outcome:` through the last `  excluded,` line, are non-empty and identical across two campaigns with the same words and code metrics, one carrying nonzero counts;
-    - one end-to-end test builds a record and a task set, read back through `ReplayTask.from_dict`, from real `measure_diff(...).to_dict()` output and shows `summarize` prints a measured figure for the arms and the reference, so a key or scope drift between producer and reader fails.
-  - The all-resamples-dropped message is unreachable with a real fixture, because a two-task resample equal to the original multiset has a defined statistic. The plan therefore prints the dropped-resample count and names no such message, and an undefined interval prints `n/a` as it does today.
+  - New tests, by layer. Value-layer tests assert fields of the `DocstringFigureOutcome` that `docstring_figure_outcomes` returns. Printed-line tests assert text from `summarize`.
+    - Value layer:
+      - each figure is a ratio of sums over per-run means, and the reference pools the same way over its paired tasks that have an entry;
+      - the interval resamples the pooled difference, not an unweighted mean of task differences;
+      - a two-task fixture with no new docstring in one arm records a dropped-resample count between 2,000 and 3,000, parametrized over which arm is empty and over which figure, plus a drop-free fixture recording 0;
+      - an unpaired task and a no-code task enter neither figure, and a failed run (`metrics is None`) never makes a figure `not measured`;
+      - one paired task with `k=2` in one arm, run 0 carrying the counts and run 1 not, makes that arm and its difference `not measured` while the other arm keeps its figure, parametrized over which arm lacks the counts and over which run lacks them.
+    - Printed layer:
+      - the difference line carries the difference, the interval bounds and the dropped-resample count taken from the structured outcome, and a toolkit figure below bare prints a negative difference;
+      - the state texts: `not measured` with the count of paired tasks lacking the counts, including tasks recorded before the counts existed, and `n/a` for an arm with no new docstring in any paired task, for an unavailable reference and for a reference that lacks the task;
+      - the figures print after the existing secondary outcome and before `diagnostics per arm:`;
+      - the primary outcome's lines, sliced from `primary outcome:` through the last `  excluded,` line, are non-empty and identical across two campaigns with the same words and code metrics, one carrying nonzero counts.
+    - End to end: one test builds a record and a task set, read back through `ReplayTask.from_dict`, from real `measure_diff(...).to_dict()` output and shows `summarize` prints a measured figure for the arms and the reference, so a key or scope drift between producer and reader fails.
+  - The all-resamples-dropped state is practically unreachable with a real fixture, because a two-task resample equal to the original multiset has a defined statistic. The plan therefore names no message for it. If it occurred, the line would print the one-task wording above and withhold the count.
 - `evals/README.md`:
   - A paragraph after the secondary-outcome paragraph (`:1512-1520`). It defines both figures by Approach's rules and points to the primary's reading guide (`:1495-1507`) for pooling rather than restating it. It states the `n/a` and `not measured` cases, the interval and drop count, and that no threshold applies. It says "added or rewritten" and names all five rewrite residuals and the silent omission of parser-rejected files.
   - The reading rule as Approach words it: the null clause first, then the sign, then the caveat that an effect on only some tasks can read as a null, with a pointer to rows 26 and 30 left out of the README.
@@ -227,14 +234,14 @@ Reuse, not reimplement: `_docstring_lines_without_shared_code`, `_comment_words`
 
 Consulted, not edited: `claude/.claude/scripts/select-tests.py`, `evals/replay_bench/tasks.py`, `evals/replay_bench/smoke.py`.
 
-Projected diff: about 600 lines, up from the about 480 the engineer answered "Proceed anyway" to, after this round's added tests (row 33).
+Projected diff: about 1,200 changed lines (`git diff origin/main --shortstat -- evals/` reports 1,167 insertions and 36 deletions, about 70% of the insertions in the three test files). Rows 31 and 33 answered the smaller figures of about 480 and about 600 lines.
 
 ## Verification
 
 1. `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. Its selection is the set row 29 names, including `claude-skills/skills/tests` for the README edit.
 2. `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` reports nothing.
 3. `git diff main...HEAD -- evals/replay_bench/summary.py` changes no line inside `paired_outcome`, `run_spread` or the primary printout, which runs from the `primary outcome:` line through the `excluded,` loop. `git diff main...HEAD -- evals/test_replay_bench_summary.py` edits no existing test body. That diff check covers only those regions. The existing primary-outcome tests in step 1 guard the helper rename, since `_mean_counts_per_run`, `_ratio_of_sums` and `_reference_pooled_ratio` sit outside them.
-4. Among Dispatch 1 and 2's new tests, three carry the constraints: the frozen-literal task dict and hash hold, so existing task-set hashes hold; the primary outcome's lines stay identical with and without the counts; and the mixed-run `k=2` fixture prints `not measured`.
+4. Among Dispatch 1 and 2's new tests, three carry the constraints: the frozen-literal task dict and hash hold, so existing task-set hashes hold; the primary outcome's lines stay identical with and without the counts; and the mixed-run `k=2` fixture makes its arm and difference `not measured`.
 5. No step runs `run`, `smoke` or `summarize` against `.local/`, so no paid run happens and no campaign figure or task ID enters the PR or this plan.
 
 ## Out of scope
