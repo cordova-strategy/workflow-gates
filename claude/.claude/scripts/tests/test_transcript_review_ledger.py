@@ -254,40 +254,6 @@ class TestReadLedgerRowEntriesForSession:
         assert [row["round"] for _file_index, row in entries] == [1]
         assert listed_dirs == [ledger_dir]
 
-    def test_an_index_shared_across_lookups_sees_a_new_file_and_appended_rows_and_parses_an_unchanged_file_once(
-        self, tmp_path, monkeypatch,
-    ):
-        ledger_dir = tmp_path / "review-narrative-ledger"
-        ledger_dir.mkdir(parents=True)
-        first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
-        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
-        jsonl.parent.mkdir(parents=True)
-        jsonl.write_text("")
-        real_read = review_ledger._read_ledger_rows_from_file
-        parsed_paths = []
-
-        def _counting_read(ledger_path, **reader_options):
-            parsed_paths.append(ledger_path)
-            return real_read(ledger_path, **reader_options)
-
-        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", _counting_read)
-        ledger_indexes = {}
-
-        first_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
-        unchanged_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
-        assert parsed_paths == [first_path]
-        assert len(unchanged_entries) == len(first_entries) == 1
-
-        with first_path.open("a") as ledger_file:
-            ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
-        second_path = _write_branch_ledger_file(
-            tmp_path, "b" * 64, [_ledger_row(round=3, disposition="DEFER", session_id="sess-1")],
-        )
-        grown_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
-
-        assert sorted(row["round"] for _file_index, row in grown_entries) == [1, 2, 3]
-        assert sorted(parsed_paths, key=str) == sorted([first_path, first_path, second_path], key=str)
-
     def test_a_file_with_no_session_slot_yields_no_rows_for_the_session_named_like_its_stem(self, tmp_path):
         """`notes.jsonl` has no session-id slot, so rows without a `session_id` belong to no session,
         including the one whose id equals the file's stem."""
@@ -611,3 +577,61 @@ class TestLedgerIndex:
 
         assert opened is True
         assert len(rows) == 2
+
+    def test_an_index_shared_across_lookups_sees_a_new_file_and_appended_rows_and_parses_an_unchanged_file_once(
+        self, tmp_path, monkeypatch,
+    ):
+        ledger_dir = tmp_path / "review-narrative-ledger"
+        ledger_dir.mkdir(parents=True)
+        first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
+        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
+        jsonl.parent.mkdir(parents=True)
+        jsonl.write_text("")
+        real_read = review_ledger._read_ledger_rows_from_file
+        parsed_paths = []
+
+        def _counting_read(ledger_path, **reader_options):
+            parsed_paths.append(ledger_path)
+            return real_read(ledger_path, **reader_options)
+
+        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", _counting_read)
+        ledger_indexes = {}
+
+        first_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+        unchanged_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+        assert parsed_paths == [first_path]
+        assert len(unchanged_entries) == len(first_entries) == 1
+
+        with first_path.open("a") as ledger_file:
+            ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
+        second_path = _write_branch_ledger_file(
+            tmp_path, "b" * 64, [_ledger_row(round=3, disposition="DEFER", session_id="sess-1")],
+        )
+        grown_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+
+        assert sorted(row["round"] for _file_index, row in grown_entries) == [1, 2, 3]
+        assert sorted(parsed_paths, key=str) == sorted([first_path, first_path, second_path], key=str)
+
+    @pytest.mark.parametrize("rewrite_at_same_size", [False, True], ids=["grown-same-mtime", "same-size-newer-mtime"])
+    def test_a_changed_signature_half_alone_makes_the_index_re_read_the_file(
+        self, tmp_path, rewrite_at_same_size,
+    ):
+        first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
+        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
+        jsonl.parent.mkdir(parents=True)
+        jsonl.write_text("")
+        ledger_indexes = {}
+        entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+        assert [row["round"] for _file_index, row in entries] == [1]
+        before = first_path.stat()
+
+        if rewrite_at_same_size:
+            first_path.write_text(first_path.read_text().replace('"round": 1', '"round": 7'))
+            os.utime(first_path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+        else:
+            with first_path.open("a") as ledger_file:
+                ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
+            os.utime(first_path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+
+        assert sorted(row["round"] for _file_index, row in entries) == ([7] if rewrite_at_same_size else [1, 2])

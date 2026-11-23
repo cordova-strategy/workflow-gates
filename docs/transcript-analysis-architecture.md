@@ -313,7 +313,7 @@ shape, and documented scope gaps.
 ### `review_ledger.py`
 
 Reads the review-narrative-ledger files under a config-dir root and attributes their rows to sessions. A leaf: it imports no other
-package module, and the import-cycle test fails if that ever creates a cycle. `_LedgerIndex` holds one config-dir root's parsed ledger files, refreshed on
+package module. `_LedgerIndex` holds one config-dir root's parsed ledger files, refreshed on
 every session lookup, and attributes each row to a session by its `session_id` field or, for a row without one, by its
 filename. `_read_ledger_row_entries_for_session` returns one session's rows sorted by `event_time`.
 `_read_ledger_rows_from_file` prints the file's path on an open failure, with an `author-outcome:` prefix.
