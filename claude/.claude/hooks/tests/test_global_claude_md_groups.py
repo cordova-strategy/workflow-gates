@@ -136,7 +136,7 @@ _PLACEMENTS = [
         _PROCEED_CLAUSE,
         "main",
     ),
-    # Kept in Main session against the tool-capability test; global-claude-md-agent-core-and-main-session-groups.md says why.
+    # take-the-named-step stays in Main session; global-claude-md-agent-core-and-main-session-groups.md says why.
     ("take-the-named-step", "**Take the next step you name.**", "main"),
     ("respond-to-open-pr-comments", "Always respond to open PR comments", "main"),
     ("prescribed-dispatch", "**A prescribed dispatch is an authorized dispatch.**", "main"),

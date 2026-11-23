@@ -108,20 +108,20 @@ Alternatives weighed:
 27. A step gated on an answer only the user can give ("I'll do X once you pick") needs no new item in the closed list. Agent Core's options bullet makes the choice the user's when the session can write the sentence naming why it is a genuine decision (`:49`). When that sentence cannot be written, the same bullet sends the session to the sensible default (`:55`). The "CLAUDE.md" item therefore lets a genuine question make the step wait. It still excludes an offer the agent made up. An item such as "the decision is the user's" would admit that offer (row 6). An `AskUserQuestion` call does not make a message compliant by itself, because it is not the named step's tool call. A made-up question asked through it still breaks the bullet's first sentence, while a genuine one is covered through `:49`. [verified: claude/.claude/CLAUDE.md:49, :55; the bullet text above]
 28. The engineer's answer on the running-work clause, put to them at plan review after round 2 flagged that it postdates their hedged-offer answer (row 5). [engineer-verified: "Keep the clause (Recommended)"]
 29. The engineer's answer on the bullet's trigger, a message that "names your next step", which is wider than the session's description of option 2 (a message that reports a finished unit and names the next step). [engineer-verified: "Keep the wider trigger (Recommended)"]
-30. The engineer's answer on M2's replacement of the line-101 comment, put to them after code review rounds 1 and 2 each flagged that comment's category list. The engineer was asked whether to keep the replacement or revert it, and answered in their own words. [engineer-verified: "Ask the architect."] `plan-architect` then recommended keeping the replacement, because Agent Core's "Don't restate the code" bullet makes a category list of the rows below it a restatement. The label replaces one comment line with one line, so the diff stays small. That recommendation is the architect's, not the engineer's. The engineer has not confirmed that it settles keep-or-revert. [verified: `claude/.claude/CLAUDE.md:116` states the "Don't restate the code" bullet] [unverified: the architect's recommendation is relayed, so confirm it settles the question]
+30. The engineer's answer on M2's replacement of the line-101 comment, put to them after code review rounds 1 and 2 each flagged that comment's category list. The engineer was asked whether to keep the replacement or revert it, and answered in their own words. [engineer-verified: "Ask the architect."] `plan-architect` then recommended keeping the replacement, because Agent Core's "Don't restate the code" bullet makes a category list of the rows below it a restatement. The label replaces one comment line with one line, so the diff stays small. That recommendation is the architect's, not the engineer's. [verified: `claude/.claude/CLAUDE.md:116` states the "Don't restate the code" bullet] [unverified: the architect's recommendation is relayed, so confirm it settles the question]
 
 ## Critical files
 
 Line numbers below cite each file before the change.
 
 - `claude/.claude/CLAUDE.md`: insert the M1 bullet as a new line after line 129, so it becomes line 130.
-- `claude/.claude/hooks/tests/test_global_claude_md_groups.py`, in this order:
-  - Insert the two lines in the block below after line 138, before the bullet lands (M2).
+- `claude/.claude/hooks/tests/test_global_claude_md_groups.py`, two edits and one reuse:
   - Replace the one-line comment at line 101 with `    # Main-session-only bullets.`.
   - Reuse `test_pinned_bullet_sits_in_its_group` (`:282-302`) and `_index_of_only_line_containing` (`:243-256`) as they stand.
+  - Insert the two lines in the block below after line 138, before the bullet lands (M2).
 
 ```python
-    # Kept in Main session against the tool-capability test; global-claude-md-agent-core-and-main-session-groups.md says why.
+    # take-the-named-step stays in Main session; global-claude-md-agent-core-and-main-session-groups.md says why.
     ("take-the-named-step", "**Take the next step you name.**", "main"),
 ```
 
