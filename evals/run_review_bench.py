@@ -2,7 +2,8 @@
 """Review bench CLI: `mine-szz`, `mine-rounds`, `mine-pr-comments`, `confirm` for
 evals/review_bench's known-defect set; `snapshot-arms`, `smoke`, and `run` for its
 fixture and runner harness; `judge`, `spot-check export|import`, `analyze`, and
-`freeze` for its adjudication and analysis.
+`freeze` for its adjudication and analysis; `calibrate` for the synthetic
+false-adopt and power rates of the sign-flip test and fixture t-interval.
 
 LOCAL USE ONLY -- never run in CI. `mine-rounds` reads this account's own
 session transcripts; `mine-pr-comments` reads the authenticated `gh` user's
@@ -1135,6 +1136,30 @@ def cmd_snapshot_arms(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_calibrate(args: argparse.Namespace) -> int:
+    from review_bench import calibrate
+
+    out_path = Path(args.out) if args.out is not None else None
+    try:
+        # An empty final component (`""`, `.`, `/`) names no file, and atomic_write_text would fail on it only after planning.
+        if out_path is not None and out_path.name == "":
+            print(f"calibrate: --out must name a file, got {args.out!r}", file=sys.stderr)
+            return 2
+        # A flag left unset stays out, so the config's own defaults (the analysis constants) apply.
+        optional_settings = {"delta": args.delta, "alphas": args.alpha, "flips": args.flips}
+        config = calibrate.CalibrationConfig(
+            metric=args.metric, fixture_counts=args.fixtures, k=args.k, replicates=args.replicates,
+            harm=args.harm, over_cap_share=args.over_cap_share, seed=args.seed, workers=args.workers,
+            **{name: value for name, value in optional_settings.items() if value is not None},
+        )
+        cells = calibrate.plan_cells(config)
+    except calibrate.CalibrationConfigError as exc:
+        print(f"calibrate: {exc}", file=sys.stderr)
+        return 2
+    calibrate.run_sweep(config, cells=cells, out_path=out_path)
+    return 0
+
+
 def _load_defects_for_run(args: argparse.Namespace) -> list:
     from review_bench import defects
 
@@ -2264,6 +2289,51 @@ def build_parser() -> argparse.ArgumentParser:
     p_freeze.add_argument("--main-commit-sha", default="", help="main's own commit SHA, recorded for reference only.")
     p_freeze.add_argument("--out", default=str(DEFAULT_CONDITIONS_PATH), help="Where to write conditions.json.")
     p_freeze.set_defaults(func=cmd_freeze)
+
+    p_calibrate = sub.add_parser(
+        "calibrate",
+        help=(
+            "Simulate the false-adopt and power rates of the sign-flip test and fixture t-interval "
+            "on synthetic data (no model, no spend)."
+        ),
+    )
+    p_calibrate.add_argument("--metric", required=True, choices=("recall", "precision"), help="The metric to simulate.")
+    p_calibrate.add_argument(
+        "--fixtures", type=int, action="append", required=True,
+        help="A fixture count to simulate; repeat for several. Each gets a false-adopt cell then a power cell.",
+    )
+    p_calibrate.add_argument("--k", type=_positive_int, required=True, help="K, the runs per defect and arm.")
+    p_calibrate.add_argument(
+        "--alpha", type=float, action="append", default=None,
+        help="A one-sided alpha to decide at; repeat for several (default: analysis.ALPHA_ONE_SIDED).",
+    )
+    p_calibrate.add_argument("--delta", type=float, default=None, help="The margin (default: analysis.DELTA).")
+    p_calibrate.add_argument(
+        "--harm", choices=("normal", "concentrated"), default="normal",
+        help="Normal shifts every acted fixture alike; concentrated gives each a "
+        "calibrate.CONCENTRATED_HARM_PROBABILITY chance of the calibrate.CONCENTRATED_HARM_DROP drop instead.",
+    )
+    p_calibrate.add_argument(
+        "--over-cap-share", type=float, default=1.0,
+        help="The share of fixtures the rule acts on, in (0, 1]. The acted fixture count is the share times the "
+        "fixture count, rounded half up, and at least one. The rest keep arm X's rate equal to the baseline's.",
+    )
+    # 4000 replicates put the Monte Carlo standard error of a 2.5% rate near 0.0025.
+    p_calibrate.add_argument("--replicates", type=_positive_int, default=4000, help="Replicates per cell.")
+    p_calibrate.add_argument("--seed", type=int, default=0, help="Seed for every replicate's draws.")
+    p_calibrate.add_argument(
+        "--workers", type=_positive_int, default=1,
+        help="Worker processes, at most this machine's usable CPU count. Output is the same for any count.",
+    )
+    p_calibrate.add_argument(
+        "--flips", type=_positive_int, default=None,
+        help="Sign-flip resamples above the exact-test cap (default: analysis.SIGN_FLIP_RESAMPLES).",
+    )
+    p_calibrate.add_argument(
+        "--out", default=None,
+        help="Optional path for the rows as a JSON array, rewritten after each cell and replacing any earlier file.",
+    )
+    p_calibrate.set_defaults(func=cmd_calibrate)
 
     return parser
 
