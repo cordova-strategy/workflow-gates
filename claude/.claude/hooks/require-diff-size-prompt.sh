@@ -99,7 +99,7 @@
 #   - In the documented flow the prompt comes after the /code-review round, because
 #     /code-review writes its marker in the commit chain.
 #   - A question asked in prose rather than through AskUserQuestion may be pushed past
-#     by advance-past-commit-stall.sh when autonomous shipping is active.
+#     by advance-past-commit-stall.sh for a `.cwd` its root guard accepts.
 #   - A headless or scheduled session stops at the deny and reports, because the deny
 #     text says to. The ask prompt's headless behavior is untested.
 #   - A branch name reused at the same checkout path within 30 days inherits the old
