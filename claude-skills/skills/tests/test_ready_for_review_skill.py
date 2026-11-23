@@ -262,8 +262,9 @@ def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review
     _assert_pinned_clause_right_bounded(
         "**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun "
         "`python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` "
-        "without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`, "
-        "and the first call's background rule above applies. `<branch>` is the current branch name. "
+        "without `--omit-plan-review-spawns`. Run it as one foreground Bash call with `timeout: 600000`. "
+        "If the harness moves it to the background, follow the background bullet above. "
+        "`<branch>` is the current branch name. "
         "`--this-repo` is required: branch names aren't unique across repos, and omitting it leaks "
         "another repo's same-named branch in as false spawn evidence.",
         step_4_raw_text,

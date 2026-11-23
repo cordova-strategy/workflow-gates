@@ -211,6 +211,8 @@ class _BranchPrefilter(NamedTuple):
                 return True
             if branch_name in self.branch_names:
                 return True
+        # A session with one field-less subagent file is kept whole, which costs parse time only.
+        # The fail-open on a field-less file serves the key-rename canary.
         return not found_a_field
 
 

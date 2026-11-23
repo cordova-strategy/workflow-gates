@@ -329,7 +329,16 @@ A pooled total may sum dollars as recorded across differing `rate_stamp` values,
 
 ### Comparing rows recorded with `--this-repo`
 
-`--record --this-repo` reads the project directories of removed worktrees under `<main>/.claude/worktrees/`, as well as live worktrees. Every transcript-derived column, including `model_breakdown` and the `review_rounds` cell, of a row recorded with `--this-repo` before that scope widening and one recorded after it are not comparable. The columns read from GitHub, the key columns, `rate_stamp` and `captured_at` are unaffected. The default `--record` scope is machine-wide and did not change. The ledger has no scope column or `note` column to mark the change, and each machine takes the change at its own `git pull`. Tell the side of a row by its `captured_at` against the capturing checkout's pull date. The widening is independent of the attribution cutover below, so judge each separately. To bring a row recorded before the widening onto the new scope, re-capture it with `--record --force --pr N --this-repo` on the machine that captured it, from a checkout that has pulled the widening, inside `cleanupPeriodDays`. The widening only adds directories, so a re-capture never reads fewer sessions. A pooled total spanning the widening carries a comparability label, as a total spanning the attribution cutover does. The scope is a directory-name prefix rule, so a post-widening row can also include a same-named branch's sessions from another repo cloned under `<main>/.claude/worktrees/`. The PR-body block's `Transcript files scanned` cell, from `cost --summary`, also counts every transcript file of such a directory, whatever the branch or date.
+A row recorded with `--this-repo` before the scope widening and one recorded after it are not comparable.
+
+- **What widened:** `--record --this-repo` reads the project directories of removed worktrees under `<main>/.claude/worktrees/`, as well as live worktrees. The default `--record` scope is machine-wide and did not change.
+- **Affected columns:** every transcript-derived column, including `model_breakdown` and the `review_rounds` cell.
+- **Unaffected columns:** the columns read from GitHub, the key columns, `rate_stamp` and `captured_at`.
+- **No marker:** the ledger has no scope column or `note` column to mark the change, and each machine takes the change at its own `git pull`.
+- **Telling a row's side:** compare its `captured_at` against the capturing checkout's pull date. The widening is independent of the attribution cutover below, so judge each separately.
+- **Re-capturing:** to bring a row recorded before the widening onto the new scope, re-capture it with `--record --force --pr N --this-repo`. Run it on the machine that captured the row, from a checkout that has pulled the widening, inside `cleanupPeriodDays`. The widening only adds directories, so a re-capture never reads fewer sessions.
+- **Pooled totals:** a pooled total spanning the widening carries a comparability label, as a total spanning the attribution cutover does.
+- **Over-inclusion after the widening:** the scope is a directory-name prefix rule, so a post-widening row can also include a same-named branch's sessions from another repo cloned under `<main>/.claude/worktrees/`. The PR-body block's `Transcript files scanned` cell, from `cost --summary`, also counts every transcript file of such a directory, whatever the branch or date.
 
 ### Pre-branch and subagent attribution
 

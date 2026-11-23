@@ -98,16 +98,8 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
     - To bring a `pr-cost` row recorded before the pull onto the new scope, re-capture it with `--record --force --pr N --this-repo` on the machine that captured it, inside `cleanupPeriodDays`. See `docs/pr-cost.md` § "Comparing rows recorded with `--this-repo`".
   - **Also moves:** read time grows with the sessions removed worktrees' directories retain. A removed worktree's sessions on an earlier branch of the same name now join any `--branches` figure, including the PR-body cost block (`pr-cost-section.sh`) and `skill-fidelity-report.sh` evidence. The `evals` `mine-rounds` candidate pool widens.
     - In the `--this-repo` scope, `--branches` runs of `cost --summary` without `--since`, `cost-counts`, `skill-invocation` and `review-trace` skip parsing a session only when no `gitBranch` field in its transcript files names a filtered branch.
-    - Under that `cost --summary`, the `PRICING INTEGRITY` narrowing covers both canary sides: usage drift, and a spawn with no subagent turn.
-    - The usage-drift side reads only the sessions `cost` parses.
-    - The spawn side can stay silent when the parsed sessions hold no spawn, even if a skipped session holds spawns with no subagent turn.
-    - Before it reports a spawn with no subagent turn, it parses the admitted sessions again, up to the first one that holds a subagent turn.
-    - A malformed record in a session those four commands skip, such as a line that is not a JSON object, no longer aborts them.
-    - Because that re-read also parses skipped sessions, a record the parser cannot read in one it reaches still aborts on that path.
-    - The spawn-side re-read counts raw sidechain records, not deduped turns.
-    - `cost` and `cost-counts` print their non-contiguous-merge NOTICE and usage-drift WARNING lines only for the sessions they parse.
-    - `sessions --paths --include-subagents` takes its subagent file list from the call the corpus reader uses, so the paths and their order are unchanged.
-    - That `sessions` listing still prints a subagent file the reader drops, whether unreadable or empty.
+    - Under that `cost --summary`, the `PRICING INTEGRITY` banner narrows on both canary sides, so it can print less. The non-contiguous-merge NOTICE and usage-drift WARNING lines of `cost` and `cost-counts` cover only the sessions they parse. A malformed record in a session those four commands skip, such as a line that is not a JSON object, no longer aborts them.
+    - The spawn-side re-read and its exceptions are in the list that follows "Detail of the `PRICING INTEGRITY` narrowing" in `docs/transcript-analysis.md`, under `cost`.
   - **Exposure:** the rule also admits a repo cloned under `<main>/.claude/worktrees/` and a sibling directory whose slug starts with the same prefix, and reads their sessions as this repo's. `cost --summary`, `cost-counts`, `read-cost` and `skill-invocation`'s default scope all read them. The scanned-files count that `cost --summary` prints, and the PR-body cost block embeds, moves with every transcript file of such a directory, whatever the branch or date. The `evals` `mine-rounds` miner also sends those directories' branch names to GitHub through `gh pr list --head`.
     - `subagents`, `subagent-mix` and `review-round-cost` print the admitted directories' branch names raw under multi-root `--this-repo`. `review-round-cost` also prints a dated per-round dollar series and spawn counts for them.
     - `sessions --paths --this-repo` prints every admitted directory's raw transcript paths.

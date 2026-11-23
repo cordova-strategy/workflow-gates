@@ -111,7 +111,7 @@ Name the pipeline's own skills **out of scope** in the prompt (the agent body al
 
 **Halt on a silent-abbreviation finding.** The escape hatch is stating the deviation with a rationale — a low bar; that fix stays inline, prose only. A finding needing an actual code change follows step 3's `code-writer` route, not a separate dispatch. Fix it in a new commit (staged-diff `/code-review` + marker gate), return to step 2, and do not re-run this step on its own output.
 
-**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`, and the first call's background rule above applies. `<branch>` is the current branch name. `--this-repo` is required: branch names aren't unique across repos, and omitting it leaks another repo's same-named branch in as false spawn evidence.
+**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`. Run it as one foreground Bash call with `timeout: 600000`. If the harness moves it to the background, follow the background bullet above. `<branch>` is the current branch name. `--this-repo` is required: branch names aren't unique across repos, and omitting it leaks another repo's same-named branch in as false spawn evidence.
 - Report to the human any row there of the missing reviewer type that reads `round=plan-review`, since the fidelity view dropped it.
 - A killed or failed rerun leaves the finding standing; say so in the report.
 

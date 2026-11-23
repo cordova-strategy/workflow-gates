@@ -1,5 +1,5 @@
-"""scope.py's scan-traversal, scan-gap and glob-selection classes; test_transcript_scope.py's docstring
-names where scope.py's other tests live."""
+"""scope.py's scan-traversal, scan-gap, glob-selection and branch-prefilter-gap (`TestBranchPrefilterGaps`)
+classes; test_transcript_scope.py's docstring names where scope.py's other tests live."""
 import argparse
 import errno
 import os

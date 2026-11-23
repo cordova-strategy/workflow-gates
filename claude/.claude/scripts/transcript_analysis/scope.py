@@ -147,10 +147,10 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
     sibling `<repo>-fork` and every main-checkout subdirectory defeat.
 
-    A session started in a subdirectory of the main checkout is excluded. A session started in a subdirectory of a
-    worktree outside `<main>/.claude/worktrees/` is excluded. Each project dir is slugged from the subdirectory
-    path, so no live slug or prefix matches it. The documented prefix glob covers only the main checkout's
-    subdirectories.
+    A session started in a subdirectory of the main checkout is excluded. The documented prefix glob covers only
+    the main checkout's subdirectories.
+    A session started in a subdirectory of a worktree outside `<main>/.claude/worktrees/` is excluded.
+    Each such session's project dir is slugged from the subdirectory path, so no live slug or prefix matches it.
 
     Fails closed (SystemExit) rather than returning a machine-wide scope whenever
     the environment is not a recognizable git worktree of this repo — a silent

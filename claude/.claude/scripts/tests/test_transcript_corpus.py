@@ -620,6 +620,8 @@ class TestBranchPrefilter:
         assert carried is expected_carried
         assert elapsed_seconds < ceiling_seconds, f"scan took {elapsed_seconds:.1f}s"
 
+    # A file mixing plain-key and escaped-key `gitBranch` records is a documented unpinned residual,
+    # because no known writer varies key escaping within one file.
     @pytest.mark.parametrize(
         "lines",
         [
