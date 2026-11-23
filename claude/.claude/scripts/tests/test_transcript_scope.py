@@ -1,4 +1,4 @@
-"""scope.py's tests other than the scan-traversal, scan-gap and glob-selection classes in test_transcript_scope_scan.py."""
+"""scope.py's tests that no test_transcript_scope_<seam>.py sibling holds."""
 import argparse
 import importlib.util
 import os
@@ -10,7 +10,16 @@ from pathlib import Path
 import pytest
 from transcript_analysis import buckets, corpus, cost, scope, skill_invocation
 
-from .conftest import _asst, _cost_args, _option_help, _priced, _worktree_porcelain, _write_cost_root, _write_jsonl
+from .conftest import (
+    _asst,
+    _cost_args,
+    _option_help,
+    _priced,
+    _two_declared_roots,
+    _worktree_porcelain,
+    _write_cost_root,
+    _write_jsonl,
+)
 
 
 def test_projects_dir_honors_claude_config_dir(monkeypatch, tmp_path):
@@ -721,13 +730,12 @@ class TestSingleLevelProjectsGlob:
     ):
         """cmd_skill_invocation inlines the same len(roots) > 1 /
         _iter_glob_scoped_sessions branch _resolve_project_scope's own
-        multi-root branch does, so it needs the identical runtime check."""
-        root_a = tmp_path / "acct-a"
-        root_a.mkdir()
-        root_b = tmp_path / "acct-b"
-        root_b.mkdir()
-        args = argparse.Namespace(projects="a/b", branches=None, include_subagents=False, config_dir=None)
-        monkeypatch.setattr(scope, "resolve_scan_roots", lambda _args: [root_a, root_b])
+        multi-root branch does, so it needs the identical runtime check.
+        --all-accounts is what reaches that branch with an explicit --projects."""
+        _two_declared_roots(tmp_path, monkeypatch)
+        args = argparse.Namespace(
+            projects="a/b", branches=None, include_subagents=False, config_dir=None, all_accounts=True,
+        )
         with pytest.raises(SystemExit) as exc:
             skill_invocation.cmd_skill_invocation(args)
         assert exc.value.code == 2
@@ -752,7 +760,9 @@ class TestPoisonedProjectsDirGlobal:
         roots_file.write_text(f"{real_root}\n")
         monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(roots_file))
 
-        buckets.cmd_buckets(type("A", (), {"projects": "*", "this_repo": False, "branches": None})())
+        buckets.cmd_buckets(
+            type("A", (), {"projects": "*", "this_repo": False, "branches": None, "all_accounts": True})()
+        )
         out = capsys.readouterr().out
         assert "feat-declared-root" in out
         assert "2 roots" in out
