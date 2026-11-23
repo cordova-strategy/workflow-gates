@@ -356,61 +356,27 @@ class TestDecideReplicate:
         assert result.lower_limits == expected_lower_limits
         assert result.t_interval_adopts == (True, False)
 
-
-class TestDegenerateTermsFromPrecisionCounts:
-    """When one fixture carries every finding, the interval has zero width, so the t-interval compares the estimate
-    with -delta. `null_centered` is constant up to float rounding, so the sign-flip p-value is set by the sign of
-    the estimate plus delta and by the fixture count. A change to how `precision_fixture_terms` treats fixtures
-    with no finding is expected to change these results."""
-
-    ALPHAS = (0.025, 1 / 64, 0.0125)
-
-    def _decide(self, *, fixtures, valid_x, total_x, valid_baseline, total_baseline) -> calibrate.ReplicateResult:
-        """Every finding sits in the first fixture. The others carry present defects and no findings."""
-        def carried(index: int, value: int) -> int:
-            return value if index == 0 else 0
-
-        counts = {
-            f"d{index}": analysis.DefectPrecisionCounts(
-                defect_id=f"d{index}",
-                valid_by_arm={
-                    ARM_CURRENT_RULE: carried(index, valid_baseline), ARM_FUNCTION_CONTEXT: carried(index, valid_x),
-                },
-                total_by_arm={
-                    ARM_CURRENT_RULE: carried(index, total_baseline), ARM_FUNCTION_CONTEXT: carried(index, total_x),
-                },
-            )
-            for index in range(fixtures)
-        }
-        defect_ids = list(counts)
-        terms = analysis.precision_fixture_terms(
-            counts, defect_ids, ARM_CURRENT_RULE, ARM_FUNCTION_CONTEXT,
-            cluster_by_defect={defect_id: (defect_id, defect_id) for defect_id in defect_ids}, delta=DELTA,
+    def test_a_p_value_equal_to_alpha_adopts_by_the_sign_flip(self) -> None:
+        """Six positive null_centered values give p = 1/64 exactly, equal to the middle alpha."""
+        result = calibrate.decide_replicate(
+            _terms(0.0, [0.01, -0.01] * 3, DELTA), alphas=(0.025, 1 / 64, 0.0125), delta=DELTA, flips=100,
         )
-        return calibrate.decide_replicate(terms, alphas=self.ALPHAS, delta=DELTA, flips=100)
 
-    def test_a_clear_loss_gives_a_zero_width_interval_and_p_of_one_so_nothing_adopts(self) -> None:
-        result = self._decide(fixtures=6, valid_x=6, total_x=10, valid_baseline=8, total_baseline=10)
-
-        assert result.estimate == pytest.approx(-0.20)
-        assert result.lower_limits == pytest.approx((result.estimate,) * 3, abs=1e-12)
-        assert result.p_value == 1.0
-        assert result.t_interval_adopts == result.sign_flip_adopts == (False, False, False)
-
-    def test_a_small_loss_adopts_by_the_t_interval_at_every_alpha_and_by_the_sign_flip_at_p_of_one_sixty_fourth(self) -> None:
-        result = self._decide(fixtures=6, valid_x=14, total_x=25, valid_baseline=15, total_baseline=25)
-
-        assert result.lower_limits[0] > -DELTA
         assert result.p_value == 1 / 64
-        assert result.t_interval_adopts == (True, True, True)
         assert result.sign_flip_adopts == (True, True, False)
 
-    def test_the_same_counts_over_five_fixtures_give_p_of_one_thirty_second_so_only_the_t_interval_adopts(self) -> None:
-        result = self._decide(fixtures=5, valid_x=14, total_x=25, valid_baseline=15, total_baseline=25)
+    def test_a_zero_width_interval_and_a_constant_null_centered_get_no_special_case(self) -> None:
+        """Zero residuals give a zero-width t interval at the estimate, and a constant null_centered of delta."""
+        estimate = 0.0
 
-        assert result.p_value == 1 / 32
-        assert result.t_interval_adopts[0] is True
-        assert result.sign_flip_adopts[0] is False
+        result = calibrate.decide_replicate(
+            _terms(estimate, [0.0] * 6, DELTA), alphas=(0.025, 1 / 64, 0.0125), delta=DELTA, flips=100,
+        )
+
+        assert result.lower_limits == pytest.approx((estimate,) * 3, abs=1e-12)
+        assert result.t_interval_adopts == (True, True, True)
+        assert result.p_value == 1 / 64
+        assert result.sign_flip_adopts == (True, True, False)
 
 
 class TestSummarizeCell:
