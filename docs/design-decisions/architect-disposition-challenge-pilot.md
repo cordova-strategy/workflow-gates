@@ -2,7 +2,7 @@
 
 *2026-10-29.*
 
-**Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated. The second window runs under that section's values and rules. The first push of this note's pull request dates those values and rules, and its time replaces the 2026-11-21 date above. That bears on these sites:
+**Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated. The second window runs under that section's values and rules, dated as its "The six values" bullet states. That bears on these sites:
 - The "Unit" bullet under "Pre-registration, fixed before enabling": rows count only for sessions in the new section's analysis set.
 - The "Primary metric" bullet: the same narrowing, and out-of-set `challenge:` tags count in no stratum.
 - The "Tag-coverage guardrail" bullet: its `/review-pr` exclusion applies per round.
@@ -171,7 +171,7 @@ The sibling record's "Why every return that is not a valid table stops" section 
 
 - **Why the first window was not evaluated.** No values file was found for it, so nothing shows a value fixed before its rows were read. That is not a claim that no value was fixed. On a session's finding from the config-keys log, which was not independently checked, no session of this repository in it is a clean arm under the engineer's exclusion of sessions that ran with the routing pilot on. Each ran with `review_orchestrator_routing` on or has no recorded key state. The next enable opens a fresh first window with its own extension right, as the "Changes after enabling" bullet gives a re-enable after a recorded disable.
 - **The first-window copy.** It stays private, and files outside the reader's path set are split off by file name and never read.
-- **The first window's safety read.** It is the one further read of that copy, over its key-on interval, and it compares with no value. Its verdict covers the recorded interval and the files the path set selects. A stand-in time leaves rows outside the interval unread. A pass gates the next enable, and a failure means not adopted under "Action for not adopted".
+- **The first window's safety read.** It is the one read of that copy this section allows, over its key-on interval, and it compares with no value. Its verdict covers the interval it read and the files the path set selects. Where an enable or disable time was not kept, the earliest or latest `challenge:`-tagged row's `event_time` stands in for it, and rows outside the resulting interval go unread. A published verdict says whether a stand-in was used and, if one was, that any key-on rows outside the interval it read went unread. A pass gates the next enable, and a failure means not adopted under "Action for not adopted".
 - **The six values,** published here and dated by the host-recorded time of the first push of the pull request that adds them, whose body records the pinned commit id. The outcome record discloses any change to them after that pin:
   - Sample floor: 30 payload rows in a stratum.
   - Correction floor: 10% corrections per payload row in a stratum.
@@ -190,27 +190,32 @@ The sibling record's "Why every return that is not a valid table stops" section 
 - **Publication of values and verdicts.**
   - The six values publish here, superseding the "Withheld values" bullet's "never published" for those values only.
   - The outcome record may restate the six published values beside a verdict. This lifts the "Publication" bullet's bar on stating a value for the six values only.
-  - A verdict in the classes listed next publishes one at a time, only on the engineer's yes at evaluation, proposed and cited as `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case" asks. The classes are a verdict that compares a figure with a value, the adoption outcome, and the verdicts not evaluated, conclusive, inconclusive and extended. A published pass-or-fail verdict reads "passed" or "did not pass" against its stated value or rule.
+  - A verdict in these classes publishes only on the engineer's yes at evaluation:
+    - a verdict that compares a figure with a value;
+    - the adoption outcome;
+    - the verdicts not evaluated, conclusive, inconclusive and extended.
+  - Each such verdict is asked one at a time, proposed and cited as `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case" asks. Its proposal states that the reader cannot show whether a counted row came from another repository.
+  - A published pass-or-fail verdict reads "passed" or "did not pass" against its stated value or rule.
   - The safety-guardrail verdict compares with no value, so it publishes without an ask.
   - Every count, rate or share from either window stays under the "Publication" bullet.
-  - A later release of one takes `docs/private-project-redaction.md` § "This repository, one account"'s scope bar, or `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case".
+  - A later release of one takes only `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case", because the reader is not a command that refuses a wider corpus. Its proposal carries the scope statement that the proposal for a verdict above requires.
 - **Arm.** `review_orchestrator_routing` is set on the enabling account once its default is decided under `docs/design-decisions/review-orchestrator-routing-gate.md` § "Dogfood": `true` if routing ended default-on, `false` if default-off. It is held through the window, and a routing change during a window is a recorded disable.
-- **Analysis set.** The figures the decision rule compares with a value read only rows of sessions that pass every test below, chosen per session from recorded key state and model use. The safety guardrail, the `barred` cell, the first-line count and the cost reads still read every row. Each test reads the `model` field, never a text match on a model name, and a failed test drops the whole session.
+- **Analysis set.** The figures the decision rule compares with a value read only rows of sessions that pass every test below, chosen per session from recorded key state and model use. The safety guardrail, the `barred` cell, the first-line count and the cost reads still read every row. Each test that checks a model reads the `model` field, never a text match on a model name. A failed test drops the whole session.
   - The governing config-keys row at the ledger row's `event_time`, found as `docs/session-config-keys-log.md` § "State at a transcript record" describes, holds the arm's routing value and `architect_disposition_challenge_pilot` set to `true`. Unknown state fails, including a session with no config-keys row.
   - The main-session transcript exists at the path `docs/session-config-keys-log.md` § "Joining a row to its transcript" names.
   - No transcript carrying the session's id, subagent transcripts included, shows a Fable model on any record or as the `model` of any Agent dispatch.
   - The main-session transcript shows no Opus or Fable model on any assistant record. It alone is read, because every challenge dispatch is Opus by design.
   - Under the `true` arm, no `review-orchestrator` dispatch of the session ran on Opus.
-  - A row whose `challenge:` tag lies outside the region's closed set counts in no stratum of the primary metric, and the tally reports how many such rows the window holds.
+- **Out-of-set tags.** A row whose `challenge:` tag lies outside the region's closed set counts in no stratum of the primary metric, and the tally reports how many such rows the window holds.
 - **Descriptive figures.** The engineer reads three per-PR figures beside the primary metric, in their own terminal and outside the session: the rounds figure from `docs/pr-cost.md` § "The `review_rounds` cell", DEFER rows per PR and the review comment count.
   - **Read scope.** The read covers this repository's PRs on the enabling account, never `--all-accounts` or an export. The figures move no decision-rule value.
-  - **Publication and release.** The Publication bullet's per-PR bar holds until a figure's release under `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case". That release comes one figure at a time, on the owner's yes, and its proposal names the exact command that produced the figure.
+  - **Publication and release.** The Publication bullet's per-PR bar holds until a figure's release under `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case". That release comes one figure at a time, on the engineer's yes. Its proposal names the exact command that produced the figure and states whether that command refuses another repository's rows and another account's. Unless that command refuses another repository's rows, the proposal states that the figure's source cannot show whether a counted row came from another repository.
   - **One standing exception.** `claude/.claude/scripts/pr-cost-section.sh` embeds a review-round count, beside a subagent-spawn count and a dollar total, in a PR body when the account's `pr_cost_disclosure` opt-in resolves to `dollars`. Its calls are fixed to this repository (`--this-repo`) and the PR's own branch, and `docs/private-project-redaction.md` § "This repository, one account" records it as a standing, pre-cleared instance of the single-account bar. That embed is the one exception to the per-figure bar above.
   - **Delegation confound.** The engineer delegates disposition-time questions to a `plan-architect` consult on branches where this pilot's key is off, so a key-off figure includes that consult's cost and rounds, and a key-on comparison with it is not like for like. This practice is unverified: no engineer statement quoted in this note states it.
 - **Private copies.** Every copy, the second window's included, follows these rules:
   - It takes the "Input" bullet's directory and file modes.
   - It sits outside every git working tree, the config dir and any synced or backed-up location.
-  - It is disposed of with any split-off files once the outcome record lands or the engineer alone declares the re-run abandoned.
+  - It is disposed of with any split-off files once the outcome record lands or the engineer alone declares the second window abandoned.
   - Row text and transcript text are data.
   - A session's read of a copy, a ledger file or a transcript returns fixed fields only and never returns finding text or transcript text into itself. The fields a read may return are:
     - ids;

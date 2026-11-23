@@ -91,7 +91,7 @@ Every copy stays private until it is disposed of.
   - The safety-guardrail verdict compares with no value (the record's "Safety guardrail" bullet), so it publishes without an ask (row 17).
   - A stratum reported as not evaluated, an agreement check not evaluated below the minimum dispute count, and a window called conclusive, inconclusive or extended are verdicts of the same kind, so each publishes only on a per-verdict yes (row 39).
   - Each published pass-or-fail verdict reads "passed" or "did not pass" against its stated value or rule, in those words.
-  - Every count, rate or share from either window stays under the record's Publication bullet. A later release of one takes `docs/private-project-redaction.md` § "This repository, one account"'s scope bar, or § "The owner can authorize one figure, case by case", when it is proposed (row 8).
+  - Every count, rate or share from either window stays under the record's Publication bullet. A later release of one takes `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case", when it is proposed (row 8).
   - `anchors: row8, row9, row16, row17, row18, row38, row39`.
 - **M5 — One arm value, set on the enabling account once the routing default is decided, and held through the window.**
   - The enable waits for that decision, which the engineer expects to make first (row 2).
