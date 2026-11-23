@@ -47,10 +47,12 @@ _COUNTER_FIXTURE_SINCE = "2026-05-15"
 
 
 def _counter_fixture() -> dict[str, list]:
-    """Three sessions whose every counter takes a non-zero value, and out-of-window records of each skip kind.
+    """Under the `_COUNTER_FIXTURE_SINCE` window, three sessions whose every counter is non-zero.
 
-    The skip kinds take the values 21 to 34, each distinct from the other counters. Session `sess-c` holds only
-    losing duplicates, each carrying a trigger for every counter taken over emitted lines.
+    They also hold out-of-window records of each skip kind. Under that window the skip kinds take the values 21 to 34,
+    each distinct from the other counters. Without a window, `undated` is 0 and the other skip kinds are one higher,
+    except `uninterpretable`. Session `sess-c` holds only losing duplicates, each carrying a trigger for every counter
+    taken over emitted lines.
     """
     clock = iter(range(1, 3600))
 
@@ -422,6 +424,12 @@ def _counted_ask_blocks(records, *, windowed: bool) -> int:
     return total
 
 
+def _value_at(root, path: tuple):
+    for step in path:
+        root = root[step]
+    return root
+
+
 class TestConservationUnderMutation:
     def _base_session(self) -> list[dict]:
         return [
@@ -443,8 +451,12 @@ class TestConservationUnderMutation:
     )
     def test_no_mutation_raises_and_every_call_leaves_through_a_counted_path(self, mutated_position, window):
         base = self._base_session()
+        walked_paths = []
+        replacement_types = set()
 
         for path, mutated in field_mutations(base[mutated_position]):
+            walked_paths.append(path)
+            replacement_types.add(type(_value_at(mutated, path)))
             records = [*base[:mutated_position], mutated, *base[mutated_position + 1:]]
             failure_context = f"path {path!r} replaced by {mutated!r}"
 
@@ -462,6 +474,12 @@ class TestConservationUnderMutation:
                 counts["questions"] + skipped["malformed_question"] + skipped["unanswered_question"]
                 + skipped["duplicate_question"]
             ), failure_context
+
+        assert replacement_types == {type(None), str, int, list, dict}
+        if mutated_position == 1:
+            assert any(
+                path[:2] == ("message", "content") and path[3:] == ("input", "questions", 0) for path in walked_paths
+            )
 
     def test_non_dict_record_and_non_dict_message_count_uninterpretable(self):
         records = [

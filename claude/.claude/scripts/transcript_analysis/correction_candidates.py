@@ -282,28 +282,27 @@ class _Truncation:
         self.cut_fields: list[str] = []
 
     def _note_if_cut(self, field_name: str, value: str) -> bool:
-        """Whether `value` exceeds the limit, recording `field_name` when it does."""
         is_cut = self.limit != 0 and len(value) > self.limit
         if is_cut:
             self.cut_fields.append(field_name)
         return is_cut
 
     def head(self, field_name: str, value: str) -> str:
-        self._note_if_cut(field_name, value)
-        return user_input._truncate_prompt_text(value, self.limit)
+        result = user_input._truncate_prompt_text(value, self.limit)
+        if result != value:
+            self.cut_fields.append(field_name)
+        return result
 
     def head_or_none(self, field_name: str, value: str | None) -> str | None:
         return None if value is None else self.head(field_name, value)
 
     def tail(self, field_name: str, value: str) -> str:
-        """The last `limit` characters, with the truncation note in front."""
         if not self._note_if_cut(field_name, value):
             return value
         return f"(truncated, {len(value)} chars total) …{value[-self.limit:]}"
 
 
 def _ask_blocks(rec: dict) -> list[tuple[int, dict]]:
-    """Each AskUserQuestion tool_use block of an assistant record with its position in the record's content."""
     content = _message_content(rec)
     if not isinstance(content, list):
         return []
@@ -328,7 +327,6 @@ def _well_formed_questions(block: dict) -> list[dict] | None:
 
 
 def _option_entries(entry: dict) -> list[dict]:
-    """The entry's well-formed options as `label` and `description` dicts."""
     options = entry.get("options")
     if not isinstance(options, list):
         return []
@@ -371,7 +369,6 @@ def _tool_result_blocks(rec: dict) -> list[dict]:
 def _question_entries(
     questions: Sequence[dict], tool_use_result: object, answered: bool, truncation: _Truncation
 ) -> list[dict]:
-    """The output entry for each asked question."""
     answers = tool_use_result["answers"] if answered else {}
     annotations = tool_use_result.get("annotations") if isinstance(tool_use_result, dict) else None
     entries: list[dict] = []
@@ -504,7 +501,6 @@ def _session_candidates(
     since_ts: float | None,
     until_epoch: float | None,
 ) -> tuple[list[_Candidate], Counter[str]]:
-    """One session file's in-window candidates and the counts of what it skipped."""
     counts: Counter[str] = Counter()
     timeline = _FileTimeline(record_count=len(records))
     prompt_shaped: list[tuple[int, dict, str, float | None]] = []
@@ -589,7 +585,6 @@ def _dedup_and_order(candidates: Iterable[_Candidate]) -> tuple[list[_Candidate]
 
 
 def _failed_relations(checks: Mapping) -> list[str]:
-    """The sorted names of the count relations that do not hold."""
     answered_with_text = checks["answered_entries"] - checks["null_answers"]
     failed = []
     if "dict" in checks["result_types"] and checks["questions_answered"] == 0:
@@ -657,7 +652,6 @@ def _scope_record(
 
 
 def _jsonl_text(records: Iterable[Mapping]) -> str:
-    """The records as ASCII JSON Lines, each followed by one newline."""
     return "".join(json.dumps(record, ensure_ascii=True, separators=(",", ":")) + "\n" for record in records)
 
 

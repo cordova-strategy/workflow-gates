@@ -142,7 +142,7 @@ def _set_at(root, path: tuple, replacement) -> None:
     target[path[-1]] = replacement
 
 
-_MUTATION_REPLACEMENTS = (None, "mutated", 7, [], {})
+_MUTATION_REPLACEMENTS = (None, "mutated", "", 7, [], {})
 
 
 def field_mutations(record: dict) -> Iterator[tuple[tuple, dict]]:

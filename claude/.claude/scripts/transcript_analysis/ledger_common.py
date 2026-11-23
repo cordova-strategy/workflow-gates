@@ -270,9 +270,12 @@ def _refuse_unusable_out_path(out: str, command: str) -> None:
         )
         sys.exit(2)
     # The publish step creates its temp file in this directory, so a missing one would fail only after the work is done.
+    # Writability is not checked: a refusal for it would change pr-cost-export's and routing-guard compute's exit codes
+    # for more paths than the missing-directory case their docs state.
     if not Path(out).parent.resolve().is_dir():
         print(
-            f"{command}: --out {out!r} is not in an existing directory -- create the directory first",
+            f"{command}: --out {out!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree",
             file=sys.stderr,
         )
         sys.exit(2)

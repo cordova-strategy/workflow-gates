@@ -1903,7 +1903,8 @@ class TestOutPath:
         assert outcome.code == 2
         assert outcome.out == ""
         assert outcome.err == (
-            f"routing-guard: --out {str(out_path)!r} is not in an existing directory -- create the directory first\n"
+            f"routing-guard: --out {str(out_path)!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
         )
         assert not out_path.parent.exists()
         assert not any(path.endswith(".r1.json") for path in spies.opened_paths())

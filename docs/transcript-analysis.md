@@ -55,11 +55,15 @@ For question-driven routing ("which subcommand answers X?"), use the `/transcrip
   3. A record with an `origin` is typed when its `origin.kind` is `human`, and skipped as `non_human_origin` otherwise.
   4. A record without an `origin` is skipped as `headless` when it carries the three `claude -p` markers (`entrypoint` `sdk-cli`, `promptSource` `sdk`, `turnOrigin` `sdk`), as `no_origin_after_origin` when an earlier record in the same file carried an `origin`, and as `notification_text` when its text contains `task-notification>`. Otherwise it is typed, as an older build wrote it.
 
-  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. A prompt-shaped record differs from a fresh user prompt by also excluding tool-result-keyed records and by applying the origin rules. `correction-candidates` differs from `compaction-context.py`'s rule in four ways:
+  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. A prompt-shaped record differs from a fresh user prompt by also excluding tool-result-keyed records. The origin rules decide its verdict, not whether it is prompt-shaped. `correction-candidates` differs from `compaction-context.py`'s rule in these ways:
   - It skips a headless prompt.
   - It admits an older prompt with no `origin` in a file that has none.
   - It keeps a typed prompt that opens with a tag other than the five in rule 2.
   - It counts a skipped record by kind instead of dropping it silently.
+  - It types a slash prompt on different terms:
+    - It needs no skill-load record after the prompt, where `compaction-context.py` needs one directly after it.
+    - It accepts any command name matching `[^<]+`, where `compaction-context.py` allows `[A-Za-z0-9._:-]{1,64}`.
+    - It needs the text to open with a slash tag, where `compaction-context.py` accepts the `<command-name>` tag anywhere in the text.
 
 ---
 
@@ -682,9 +686,13 @@ Good catch. I'll add IP-range validation before trusting that header.
 
 **Flags.**
 - `--projects GLOB` / `--this-repo` — the scope. One of them is required: a run with neither, or with an empty `--projects`, exits 2. An explicit `--projects '*'` is allowed and reads every project on this machine. `--this-repo` has gaps (see "What `--this-repo` does not cover" above).
-- `--since DATE` / `--until DATE` — inclusive zero-padded `YYYY-MM-DD` window on the timestamp of each prompt-shaped record and each asking record, in UTC. A date that does not exist exits 2 through argparse. A date with an unpadded month or day, such as `2026-5-09`, exits 2 with one line naming the flag and never echoing the value, because it would otherwise apply no bound. A `--since` date after the `--until` date exits 2 with one fixed line that echoes no date, because it would otherwise write an empty file under a scope record that names an impossible window. The same day for both flags is a valid one-day window.
+- `--since DATE` / `--until DATE` — inclusive zero-padded `YYYY-MM-DD` window on the timestamp of each prompt-shaped record and each asking record, in UTC.
+  - A date that does not exist exits 2 through argparse.
+  - A date with an unpadded month or day, such as `2026-5-09`, exits 2 with one line naming the flag and never echoing the value, because it would otherwise apply no bound.
+  - A `--since` date after the `--until` date exits 2 with one fixed line that echoes no date, because it would otherwise write an empty file under a scope record that names an impossible window.
+  - The same day for both flags is a valid one-day window.
 - `--truncate-chars N` — maximum characters kept of each free-text field (default: 2000, chosen rather than measured). `0` disables truncation, and a negative value exits 2.
-- `--out PATH` — the file to write. Required unless `--preview` is given. It must be a new path outside any git work tree, in a directory that already exists. An existing path, a path inside a git work tree, and a path in a missing directory each exit 2 with one line, before any transcript is read. The directory must also be writable, on a filesystem that supports hard links, and have free space for the file. Those requirements fail only at publish, after the scan.
+- `--out PATH` — the file to write. Required unless `--preview` is given. It must be a new path outside any git work tree, in a directory that already exists. An existing path, a path inside a git work tree, and a path in a missing directory each exit 2 with one line, before any transcript is read. The git-tree refusal appears only once the directory exists, and a parent that is a regular file gets the same refusal as a missing directory. The directory must also be writable, on a filesystem that supports hard links, and have free space for the file. Those requirements fail only at publish, after the scan.
 - `--preview` — list the project families the scope matches on stderr and write nothing. It runs every refusal above, the window and `--out` checks included, so a preview given the run's own flags also checks the destination's path. Those `--out` checks do not cover writability, hard-link support or free space. It ignores `--since`, `--until` and `--truncate-chars`, creates no file or directory, and exits 0.
 
 The top-level `--config-dir PATH` narrows a run to that one root. It goes before the subcommand name, since `correction-candidates` registers no `--config-dir` of its own. Without it, a run reads every declared root (see "Corpus scope: the declared-roots file" above).
@@ -705,8 +713,20 @@ A `--projects '*'` run has three costs:
 Its stderr and scope record also list every project family of every declared account, and that list stays in the session.
 
 - Exit 0: the file was written, or `--preview` listed its families.
-- Exit 1: `--this-repo` outside a checkout, `--this-repo` with a top-level `--config-dir` whose roots hold none of this checkout's project directories, or the transcript reader aborted. The reader skips a line it cannot decode, so only a line that raises another error aborts the scan. The run then names the error type alone, with no file written, and a preview prints no families line.
-- Exit 2: an argparse error (a negative or non-integer `--truncate-chars`, a date that does not exist), a refusal above (a reversed window included), `--projects` naming more than one directory level under several roots, a path that appeared at `--out` during the run, or a write or link failure at publish. This run writes no file at `--out`.
+- Exit 1, in any of these cases:
+  - `--this-repo` outside a checkout.
+  - `--this-repo` with a top-level `--config-dir` whose roots hold none of this checkout's project directories.
+  - The transcript reader aborted.
+
+  The reader skips a line it cannot decode, so only a line that raises another error aborts the scan. The run then names the error type alone, with no file written, and a preview prints no families line.
+- Exit 2, in any of these cases:
+  - An argparse error, such as a negative or non-integer `--truncate-chars` or a date that does not exist.
+  - A refusal above, a reversed window included.
+  - `--projects` naming more than one directory level under several roots.
+  - A path that appeared at `--out` during the run.
+  - A write or link failure at publish.
+
+  This run writes no file at `--out`.
 
 Refusals run before the header and any read, and only the first that applies prints: argparse, then no effective scope, then an unapplied or reversed window bound, then neither `--out` nor `--preview`, then the `--out` path.
 
@@ -722,18 +742,18 @@ After the header, a `--preview` prints the banner, the families line and the zer
 - The file holds raw message text, which may include credentials a person pasted or an agent echoed.
 - No skill in this repository reads the file. Reading it in a session copies its text into that session's transcript.
 - The data-file read guard is opt-in and off until armed, so an unarmed machine has no guard.
-- An armed guard covers the Read tool only. The command accepts any `--out` name, and the runbook ends it in `.jsonl`. In the runbook's folder, a hidden `.correction-candidates-<random>.tmp` is covered only by size or a configured glob. The rules and the arming steps are in `docs/security-hardening.md` § "Arming the data-file read hook".
+- An armed guard covers the Read tool only. The command accepts any `--out` name, and the runbook ends it in `.jsonl`. In the folder the engineer names in step 2, a hidden `.correction-candidates-<random>.tmp` is covered only by size or a configured glob. The rules and the arming steps are in `docs/security-hardening.md` § "Arming the data-file read hook".
 - Grep, Bash and every other route are barred by instruction only. A Read denial is final: do not route around it.
 - In a session, only the runbook's file check and raw cross-check may open a `.jsonl` file, each printing counts and kind names only. No other command may.
 - The engineer may run the extraction in their own terminal instead of a session.
 - The file is `0600`.
   - Runbook step 2 creates the folder `0700` only when it is absent.
   - The command creates no folder and never sets a folder's mode.
-  - A folder under a cloud-sync or shared mount copies the file whatever its mode.
+  - The git-tree check does not cover a cloud-sync folder or a bare-repo dotfile manager (see `docs/pr-cost.md` § "Residual replication paths the git-tree check doesn't close"), and a shared mount exposes the file whatever its mode.
 - Stderr names raw project directories, so it carries the repository's `DO NOT PUBLISH` banner, and the scope record carries the same banner.
 - The banner is shared with other subcommands. It says the output contains real project names and session IDs and does not mention that this file holds raw message text, so it understates what the file holds.
 - The file outlives the transcripts it came from, and deleting those transcripts does not delete it.
-- The engineer deletes each file once the classification pass (see "Running on each machine") has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete, and no pass will read it (see "Run and exit codes").
+- The engineer deletes each file once the classification pass, a model pass the engineer runs over the files, has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete, and that pass will not read it (see "Run and exit codes").
 - This subcommand is not a publication instrument. See `docs/private-project-redaction.md` § "Publishing a tooling measurement" before quoting any figure from its files.
 
 **What a candidate is.**
@@ -753,9 +773,20 @@ After the header, a `--preview` prints the banner, the families line and the zer
 - `--since` and `--until` apply to each prompt-shaped record's and each asking record's own timestamp. An out-of-window record counts nowhere but still sets file state: the origin state, the earlier-assistant test, exchange ordinals and context text. Under a window, a record with no parseable timestamp counts once as `undated` (once per `AskUserQuestion` block for an asking record).
 - Truncation cuts each text field at N characters. A head cut appends `… (truncated, K chars total)`, and `preceding_assistant_text`'s tail cut prefixes `(truncated, K chars total) …`. The note lies outside N, so a cut field is longer than N. `checks.truncated_fields` counts the cut values per field name.
 
-**Line order.** File line order is authoritative: by `session_id`, then record index, then block position within the record. `exchange` groups lines and is not an order. A question and the prompt that opens the next exchange sit on adjacent lines, which links a reply to the question it answers or asks about. That adjacency is lost when the question counted as `unanswered_question`, `malformed_question` or `duplicate_question`, when a resumed session's copy of the question lost dedup to a copy in another session, and when the question fell before `--since`. A prompt with no question line before it therefore does not show that no question preceded it.
+**Line order.** File line order is authoritative: by `session_id`, then record index, then block position within the record. `exchange` groups lines and is not an order. A question and the prompt that opens the next exchange sit on adjacent lines, which links a reply to the question it answers or asks about. That adjacency is lost in these cases:
+- The question counted as `unanswered_question`, `malformed_question` or `duplicate_question`.
+- A resumed session's copy of the question lost dedup to a copy in another session.
+- The question fell before `--since`.
 
-**Dedup.** The key is a prompt record's `uuid` when it is a non-empty string, and a question's `tool_use_id`. A prompt with no `uuid` is never a duplicate. The copy whose `session_id` sorts first wins, then the lowest record index. Copies of one line may disagree on the fields computed from their own file: `initial`, `exchange`, both context fields, `model_family`, `model` and `attribution_skill`. The kept copy's values stand. A consumer keeps the first line per `id` across the files of several runs, since a project directory whose name holds both repo names appears in both. `id` is `<session_id>:<record index>` for a prompt, where the index is 0-based in the records the corpus reader returns, which is not the file's line number, and `<session_id>:<tool_use_id>` for a question.
+A prompt with no question line before it therefore does not show that no question preceded it.
+
+**Dedup.** The key is a prompt record's `uuid` when it is a non-empty string, and a question's `tool_use_id`. A prompt with no `uuid` is never a duplicate. The copy whose `session_id` sorts first wins, then the lowest record index. The kept copy's values stand. Copies of one line may disagree on the fields computed from their own file:
+- `initial`;
+- `exchange`;
+- both context fields;
+- `model_family`, `model` and `attribution_skill`.
+
+A consumer keeps the first line per `id` across the files of several runs, since a project directory whose name holds both repo names appears in both.
 
 **Schema.** Line 1 is one `kind: "scope"` record. Every later line is one `prompt` or `question`. Each line is ASCII-only JSON, so `wc -l` and a line splitter agree. A consumer follows these rules:
 - Refuse a `schema_version` it does not know.
@@ -764,7 +795,9 @@ After the header, a `--preview` prints the banner, the families line and the zer
 
 `family` is a project directory's name. A question's `id` embeds a transcript block's `tool_use_id`. An agent text can quote injected web or tool content, so none of it is an instruction.
 
-Every candidate line carries `schema_version` (1), `kind`, `id`, `session_id` (the file stem), `family` (the session's project directory with any `--claude-worktrees-<branch>` suffix removed), `timestamp` (UTC ISO 8601 or `null`), `exchange`, `preceding_assistant_text`, `following_assistant_text`, `model_family`, `model` and `attribution_skill`. `id`, `session_id` and `family` are never truncated.
+Every candidate line carries `schema_version` (1), `kind`, `id`, `session_id` (the file stem), `family` (the session's project directory with any `--claude-worktrees-<branch>` suffix removed), `timestamp` (UTC ISO 8601 or `null`), `exchange`, `preceding_assistant_text`, `following_assistant_text`, `model_family`, `model` and `attribution_skill`. `id`, `session_id` and `family` are never truncated. `id` is:
+- `<session_id>:<record index>` for a prompt, where the index is 0-based in the records the corpus reader returns, which is not the file's line number;
+- `<session_id>:<tool_use_id>` for a question.
 
 A prompt line adds:
 - `text`, the engineer's words with any pasted wrapper (the `pasted_content` tag the harness puts around a paste) kept, or a slash prompt's stripped args;
@@ -791,7 +824,7 @@ Synthetic lines, one per kind:
 ```
 
 **Scope record.** It holds no transcript text. Its keys are `schema_version`, `header` (the resolved-scope header, such as `CORRECTION CANDIDATES SOURCES (*-workflow-gates*; <N> roots)`), `do_not_publish` (the `DO NOT PUBLISH` banner), `generated_at` (UTC), `since`, `until` (each one applied), `truncate_chars`, `families`, `counts` and `checks`.
-- `families` maps each matched project directory's family to the number of session files read, whatever the window.
+- `families` maps each matched project directory's family to the number of session files read, whatever the window. A session file the reader cannot open contributes nothing to the families, counts or lines, so the scope record does not attest completeness.
 - `counts` holds these entries:
   - `prompts`: emitted prompt lines, slash prompts included;
   - `slash_prompts`: emitted prompt lines with a non-null `command`;
@@ -816,7 +849,11 @@ Whether a machine should show any prompts or questions at all is the engineer's 
 
 ### Running on each machine
 
-The command runs unchanged on another machine whose checkout has the `correction-candidates` subcommand (`transcript-analysis.py correction-candidates --help` exits 0), so the engineer can extract from the transcripts held there. Other machines only extract. A later classification pass the engineer runs reads every machine's file, and moving files between machines is out of scope. No skill reads the files today (see "Privacy"). Extraction runs first because transcripts expire, and each file waits for that pass or for the engineer's decision to delete it. A session on another machine reads these steps from its own checkout. The engineer may instead run steps 3 and 4 in their own terminal and paste the stdout and stderr back. The session then resumes at the step after. In that case the extraction never runs inside a session.
+The command runs unchanged on another machine whose checkout has the `correction-candidates` subcommand (`transcript-analysis.py correction-candidates --help` exits 0), so the engineer can extract from the transcripts held there. Steps 3 and 4 run in one of two ways:
+- The session runs them.
+- The terminal route: the engineer runs them in their own terminal, runs step 1's `python3 --version` there first, and pastes the stdout and stderr back with whether each command exited 0, since the stops below key on exit status. The session still does step 2. It hands over the step-3 previews first and runs the families confirmation on the pasted output, then hands over the step-4 commands. It resumes at step 5, where it does the post-run checks that step 4 names, the `ls` and the families compare.
+
+Extraction runs first because transcripts expire. No step moves a file off the machine that extracted it, so each file waits there for the one classification pass, which the engineer runs on a single machine and which covers every machine's file, or for the engineer's decision to delete it. The engineer moves a file to the classifying machine, and no step here does.
 
 **Before the session.** The checkout must have the `correction-candidates` subcommand, by one of two routes:
 - The engineer runs `git pull` on that machine's stowed checkout in a terminal outside Claude Code, since the worktree gate denies it inside a session.
@@ -825,17 +862,21 @@ The command runs unchanged on another machine whose checkout has the `correction
   - Step 6 reports the worktree's path and branch. The engineer removes both in a terminal outside Claude Code, with `git worktree remove <path>` and then `git branch -D <branch>` from the stowed checkout, or keeps them. The session never removes them.
 
 **Steps.**
-1. Run `python3 --version` in the session's working directory, where every later command runs. Stop below the Python floor in `README.md` § "Requirements". A pyenv shim resolves `python3` per directory.
-2. Run `mkdir -p -m 700 ~/correction-candidates`, then `ls -la ~/correction-candidates`.
+1. Run `python3 --version` in the session's working directory, where every later command runs on the session route. Stop below the Python floor in `README.md` § "Requirements". A pyenv shim resolves `python3` per directory.
+2. Get the output folder from the engineer: `$HOME/correction-candidates`, or a replacement the engineer supplies as an absolute path with no `~`. Steps 2 to 6 call it `<out-dir>`. The session types it unchanged inside the double quotes the commands carry, so the default is typed as `"$HOME/correction-candidates"`.
+   - Before the `mkdir`, ask the engineer for the output folder, then end the turn. The question states that no cloud-sync client or dotfile manager may track or sync the folder, and the git-tree check covers neither; see `docs/pr-cost.md` § "Residual replication paths the git-tree check doesn't close". It also states that the default `$HOME/correction-candidates` qualifies only when nothing tracks or syncs `$HOME`. The engineer replies with an absolute path or names the default explicitly.
+   - Step 2 runs nothing further until a later engineer message names a path or names the default explicitly. Silence and any other reply, such as a bare "yes", are not a path.
+   - Refuse a replacement path that contains `$`, a backtick, `"` or `\`, because the session types the path inside double quotes, where `$` and backticks still expand. Also refuse one that is not absolute or that contains `~`, because `~` does not expand inside double quotes and `mkdir` would create a literal `~` directory.
+   - Run `mkdir -p -m 700 "<out-dir>"`, then `ls -la "<out-dir>"`.
    - The mode applies only when the folder is absent, and an existing folder keeps its own. Report the `.` entry's mode. A mode with group or other bits set is the engineer's to fix.
    - The files live there until the engineer deletes them, at the end condition under "Privacy".
-3. Preview each repo name, with today's date typed as a literal: `python3 ~/.claude/scripts/transcript-analysis.py correction-candidates --projects '*-workflow-gates*' --out ~/correction-candidates/workflow-gates-<YYYY-MM-DD>.jsonl --preview`, then the same for `claude-config`. This repository appears under both names, `workflow-gates` on the remote and `claude-config` in the README and older checkouts, so one clone's sessions can sit under either. End each file name in `.jsonl`: an armed read guard covers the file by name only for an extension it lists (see "Privacy").
+3. Preview each repo name, with today's date typed as a literal: `python3 ~/.claude/scripts/transcript-analysis.py correction-candidates --projects '*-workflow-gates*' --out "<out-dir>/workflow-gates-<YYYY-MM-DD>.jsonl" --preview`, then the same for `claude-config`. This repository appears under both names, `workflow-gates` on the remote and `claude-config` in the README and older checkouts, so one clone's sessions can sit under either. End each file name in `.jsonl`: an armed read guard covers the file by name only for an extension it lists (see "Privacy").
    - Show each header, any `scanning root` lines, and each families line verbatim. In the same message, ask whether the data-file read guard is armed on this machine. Then end the turn.
-   - Step 4 starts only after a later engineer message confirms every family in each families line. Silence is not confirmation.
+   - Step 4 starts, or on the terminal route its command is handed over, only after a later engineer message confirms every family in each families line. Silence is not confirmation.
    - On a family the engineer does not confirm, stop. The engineer chooses the next glob. An anchored glob, such as the prefix glob under "Scoping to this repo", is computed by the engineer in their own terminal and supplied as a literal. The session types it unchanged into steps 3 to 5.
    - On any `1 root` header, quote its parenthetical and ask whether this machine runs other accounts. On "no", continue. On "yes", stop: the engineer declares each other account's config directory in `~/.claude/transcript-config-dirs` (format in `docs/transcript-analysis.md` § "Corpus scope: the declared-roots file"), and the preview re-runs until the header shows the expected root count.
 4. Extract with the same commands minus `--preview`, each Bash call at the tool's maximum timeout.
-   - After each run, whatever its exit, run `ls -la ~/correction-candidates`. Report each entry's name, size and modification time, hidden `.correction-candidates-*.tmp` entries included, and never a file's contents.
+   - After each run, whatever its exit, run `ls -la "<out-dir>"`. Report each entry's name, size and modification time, hidden `.correction-candidates-*.tmp` entries included, and never a file's contents.
    - A timeout or kill is a stop. A re-run happens only on the engineer's word, under a new file name, since an existing path is refused.
    - A run killed before its publish links the file leaves nothing at its path. A kill after the link leaves what "Run and exit codes" describes, and the engineer deletes any hidden temp entry.
    - Compare each families line with the confirmed preview. On a new family, stop. The default is that the engineer deletes the file. Keeping it and dropping that family's lines later by `family` is the engineer's explicit choice.
@@ -843,7 +884,7 @@ The command runs unchanged on another machine whose checkout has the `correction
    - The file check prints the kind names and a leak count, and never a field:
 
      ```bash
-     python3 -I -c "import json, sys; rows = [json.loads(line) for line in open(sys.argv[1], encoding='ascii')]; leaks = [row for row in rows if row['kind'] == 'prompt' and row['text'].lstrip().startswith(('<command-', '<local-command-', '<bash-', '[Request interrupted by user'))]; print(sorted({row['kind'] for row in rows}), len(leaks))" <path>
+     python3 -I -c "import json, sys; rows = [json.loads(line) for line in open(sys.argv[1], encoding='ascii')]; leaks = [row for row in rows if row['kind'] == 'prompt' and row['text'].lstrip().startswith(('<command-', '<local-command-', '<bash-', '[Request interrupted by user'))]; print(sorted({row['kind'] for row in rows}), len(leaks))" "<path>"
      ```
 
    - It passes when the kinds are `scope`, plus `prompt` and `question` when their counts are above zero, and the leak count is 0. A failure is a stop.
@@ -854,7 +895,7 @@ The command runs unchanged on another machine whose checkout has the `correction
    - The sum must be at least `ask_user_question_calls`. A sum below it, or a positive sum with `ask_user_question_calls` at 0, is a stop: report the sum, the count and each root's total verbatim, and edit nothing.
    - Report any excess with its possible sources: blocks in sidechain records, in uninterpretable records, or on undecodable lines; a project directory reached through two roots, which the run reads once; and the live session's own growth since the extraction.
 6. Report each path, header, families line, counts line, file-check line and cross-check sum, in session only. Never put them in a commit, PR, issue, comment, or handoff file.
-   - Report the engineer's answer on the read guard, and on the worktree route the worktree's path and branch.
+   - Report the engineer's answer on the read guard, the `<out-dir>` the engineer named in step 2, and on the worktree route the worktree's path and branch.
    - Name each `failed_relations` entry, with its population counts beside it. A file with a non-empty `failed_relations` is kept and reported, and nothing classifies it until the engineer explains the failure.
    - Report `truncated_fields`. When many values were cut, the engineer decides whether to re-extract with a larger `--truncate-chars`, or `0`, while the transcripts last, or to accept the cut.
    - When `prompts` or `questions` is zero, ask the engineer whether this machine should show any. On "yes", stop: the file is kept and held back from classification, as for a failed relation.
@@ -864,7 +905,7 @@ The command runs unchanged on another machine whose checkout has the `correction
 
 **Stops at any step.**
 - Any non-zero exit: stop and report the exit status and stderr verbatim. Edit no script, and widen no scope. An argparse `invalid choice: 'correction-candidates'` means the script that ran lacks the subcommand: the checkout was not updated, or the worktree route ran the stowed path instead of the worktree's.
-- A harness refusal of one of this runbook's own commands: stop and give the engineer the literal command to run in a terminal. For a preview or an extraction, the engineer pastes its stdout and stderr back, and the session resumes at the step after. A refusal of any other command is final.
+- A harness refusal of one of this runbook's own commands: stop and give the engineer the literal command to run in a terminal. For a preview or an extraction, the session continues on the terminal route and hands over step 1's `python3 --version`, then the refused command and the ones after it, never a preview already confirmed or an extraction that already ran. An extraction is still handed over only after the families confirmation in step 3. A refusal of any other command is final.
 - A zero-session warning: check that the checkout's directory name holds the repo name, and report it.
 
 ---

@@ -350,7 +350,7 @@ class TestRefusals:
             *result,
             expected_stderr=(
                 f"correction-candidates: --out {str(out)!r} is not in an existing directory"
-                " -- create the directory first\n"
+                " -- pass a new path in an existing directory outside any git working tree\n"
             ),
         )
         assert not out.parent.exists()

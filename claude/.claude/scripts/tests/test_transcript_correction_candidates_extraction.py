@@ -682,6 +682,18 @@ class TestQuestionRecords:
 
         assert only_line(records)["result_text"] == expected
 
+    def test_question_before_any_exchange_opening_has_exchange_zero_and_text_from_the_files_start(self):
+        records = [
+            assistant_text("opening remark", timestamp=ts(1)),
+            ask_record([question_spec("Which?")]),
+            ask_answer_record(answers={"Which?": "Yes"}, timestamp=ts(6)),
+        ]
+
+        line = only_line(records)
+
+        assert line["exchange"] == 0
+        assert line["preceding_assistant_text"] == "opening remark\n\nasking now"
+
     def test_answered_call_has_no_result_text(self):
         records = [ask_record([question_spec("Which?")]), ask_answer_record(answers={"Which?": "Yes"}, timestamp=ts(6))]
 
@@ -827,6 +839,48 @@ class TestTruncation:
 
         assert (line["preceding_assistant_text"], line["text"]) == (long_text, long_text)
 
+    def test_limit_zero_returns_long_head_tail_and_answer_values_whole_and_names_no_cut_field(self):
+        long_text = "x" * 5000
+        records = [
+            assistant_text(long_text, timestamp=ts(1)),
+            prompt(long_text, 2),
+            ask_record([question_spec("Which?")], minute=5),
+            ask_answer_record(answers={"Which?": long_text}, timestamp=ts(6)),
+        ]
+
+        candidates, _counts = scan(records, truncate_chars=0)
+
+        by_kind = {candidate.kind: candidate for candidate in candidates}
+        assert by_kind["prompt"].record["text"] == long_text
+        assert by_kind["prompt"].record["preceding_assistant_text"] == long_text
+        assert by_kind["question"].record["questions"][0]["answer"] == long_text
+        assert all(candidate.truncated_fields == () for candidate in candidates)
+
+    def test_a_head_value_of_exactly_the_limit_is_whole_and_one_character_more_is_cut_and_named_once(self):
+        records = [prompt("12345", 1, uuid="u1"), prompt("123456", 2, uuid="u2")]
+
+        (exact, over), _counts = scan(records, truncate_chars=5)
+
+        assert exact.record["text"] == "12345"
+        assert exact.truncated_fields == ()
+        assert over.record["text"] == "12345… (truncated, 6 chars total)"
+        assert over.truncated_fields == ("text",)
+
+    def test_a_tail_value_of_exactly_the_limit_is_whole_and_one_character_more_is_cut_and_named_once(self):
+        records = [
+            assistant_text("12345", timestamp=ts(1)),
+            prompt("go", 2, uuid="u1"),
+            assistant_text("123456", timestamp=ts(3)),
+            prompt("again", 4, uuid="u2"),
+        ]
+
+        exact, over = [candidate for candidate in scan(records, truncate_chars=5)[0]]
+
+        assert exact.record["preceding_assistant_text"] == "12345"
+        assert "preceding_assistant_text" not in exact.truncated_fields
+        assert over.record["preceding_assistant_text"] == "(truncated, 6 chars total) …23456"
+        assert over.truncated_fields.count("preceding_assistant_text") == 1
+
     def test_a_small_limit_leaves_id_session_id_and_family_whole(self):
         long_session = "session-" + "s" * 40
         long_family = FAMILY + "-" + "f" * 40
@@ -870,6 +924,15 @@ class TestDedupAndOrder:
         kept, counts, _checks = run_files({"sess-a": records})
 
         assert len(kept) == 3
+        assert counts["skipped"]["duplicate_prompt"] == 0
+
+    def test_empty_string_uuid_prompts_are_all_emitted_and_none_counts_as_a_duplicate(self):
+        records = [prompt(f"prompt {n}", n) for n in (1, 2)]
+        records = [with_fields(record, uuid="") for record in records]
+
+        kept, counts, _checks = run_files({"sess-a": records})
+
+        assert [candidate.record["text"] for candidate in kept] == ["prompt 1", "prompt 2"]
         assert counts["skipped"]["duplicate_prompt"] == 0
 
     def test_uuid_repeated_in_one_file_keeps_the_first_copy(self):

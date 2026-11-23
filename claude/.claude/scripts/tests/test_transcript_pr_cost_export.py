@@ -972,6 +972,7 @@ class TestPrCostExportMissingOutDirectory:
         assert exc_info.value.code == 2
         assert (config_reads, ledger_reads) == ([], [])
         assert capsys.readouterr().err == (
-            f"pr-cost-export: --out {str(out_path)!r} is not in an existing directory -- create the directory first\n"
+            f"pr-cost-export: --out {str(out_path)!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
         )
         assert not out_path.parent.exists()

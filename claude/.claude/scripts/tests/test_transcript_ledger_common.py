@@ -812,7 +812,8 @@ class TestOutPathHelpersNameTheCommand:
 
         assert exc_info.value.code == 2
         assert capsys.readouterr().err == (
-            f"{_OUT_COMMAND}: --out {out!r} is not in an existing directory -- create the directory first\n"
+            f"{_OUT_COMMAND}: --out {out!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
         )
         assert parent.exists() is (parent_kind == "file")
         assert not Path(out).exists()
