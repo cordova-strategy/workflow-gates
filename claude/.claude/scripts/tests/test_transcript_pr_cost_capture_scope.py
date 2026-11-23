@@ -18,6 +18,7 @@ from ._pr_cost_helpers import (
     _cell_of,
     _enable_pr_cost,
     _fake_pr_cost_subprocess_run,
+    _force_refusal_line,
     _ledger_rows,
     _merged_pr,
     _pr_cost_args,
@@ -50,6 +51,7 @@ _PAYLOAD_REFUSAL_LINE = (
     "pr-cost: gh pr list returned merged PRs this checkout cannot join (not a list of objects, each with a boolean"
     " isCrossRepository) -- refusing to join any PR; update gh, and report it if it repeats (see docs/pr-cost.md)"
 )
+_REASON_LESS_COMPLETE = "the re-capture is less complete under the same round rule"
 
 
 def _empty_scope_line(for_account: str = "") -> str:
@@ -480,6 +482,27 @@ class TestForceRecaptureCallSitePassesBothScopes:
         assert recaptured_row["capture_scope"] == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO
         assert recaptured_row["supersedes"] == "2026-01-01T00:00:00Z"
         assert len(recaptured_row["review_rounds"]["rounds"]["code-review"]) == 0
+
+    def test_a_repo_scoped_force_recapture_is_refused_over_a_larger_row_with_the_repo_scope(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a",))
+        monkeypatch.setattr(
+            scope, "_repo_scoped_project_slugs", lambda command_label="skill-invocation": [fake_projects.name],
+        )
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [_sample_pr_cost_row(
+            pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, captured_at="2026-01-01T00:00:00Z",
+            capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO,
+            review_rounds=_cell_of(review_rounds.REVIEW_ROUND_RULE, code_review=[1, 1]),
+        )])
+        ledger_bytes_before = ledger_path.read_bytes()
+
+        with pytest.raises(SystemExit) as exc_info:
+            _run_record(fake_projects, pr=1, force=True, projects=None)
+
+        assert exc_info.value.code == 1
+        assert _force_refusal_line(1, _SEEDED_MACHINE_IDENTITY, _REASON_LESS_COMPLETE) in capsys.readouterr().err.splitlines()
+        assert ledger_path.read_bytes() == ledger_bytes_before
 
 
 class TestAlreadyCapturedLineNamesTheRowsScope:
