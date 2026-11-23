@@ -2,19 +2,19 @@
 
 *2026-10-29.*
 
-**Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated, and the second window runs under that section's values and rules. That bears on these sites:
-- The "Unit" bullet under "Pre-registration, fixed before enabling": the figures the decision rule compares with a value count only rows of sessions in the new section's analysis set.
-- The "Primary metric" bullet: the same narrowing applies, and a row whose `challenge:` tag lies outside the closed set counts in no stratum.
-- The "Tag-coverage guardrail" bullet: its `/review-pr` exclusion applies per round, not per session.
-- The "Window and sample floor" bullet: the sample floor applies per stratum, and its sentence that the value is chosen, not sourced from any data, is superseded for the second window's sample floor by the new section's floor-values disclosure.
-- The "Agreement check" bullet: the check is not evaluated below the minimum dispute count.
-- The "Decision rule" bullet: "every stratum" reads "every evaluated stratum", and the extension choice is made from per-stratum row counts alone.
-- The "Withheld values" bullet: the six values are published, a sixth value being added.
-- The "Publication" bullet: a verdict that compares a figure with a value publishes only on the engineer's per-verdict yes. The outcome record may restate the six published values beside a verdict, while counts, rates and shares stay barred.
-- The Reader contract's "Input" bullet: the second window's copy is still selected by the path set, and its analysis set is chosen per session.
-- The Reader contract's "Tally" bullet: the narrowed figures tally over the analysis set, and the tally reports how many rows carry a `challenge:` tag outside the closed set.
-- The preconditions in "Enabling, checking, disabling": four more apply.
-- The Known-gaps bullet on whether a `/review-pr` pass appends ledger rows: its per-session wording becomes per round.
+**Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated, and the second window runs under that section's values and rules, which the first push of this note's pull request dates, not this date. That bears on these sites:
+- The "Unit" bullet under "Pre-registration, fixed before enabling": rows count only for sessions in the new section's analysis set.
+- The "Primary metric" bullet: the same narrowing, and out-of-set `challenge:` tags count in no stratum.
+- The "Tag-coverage guardrail" bullet: its `/review-pr` exclusion applies per round.
+- The "Window and sample floor" bullet: the floor applies per stratum, and "chosen, not sourced from any data" no longer holds for the second window's sample floor.
+- The "Agreement check" bullet: a minimum dispute count applies.
+- The "Decision rule" bullet: "every evaluated stratum", and the extension choice uses row counts alone.
+- The "Withheld values" bullet: the six values publish.
+- The "Publication" bullet: a verdict compared with a value needs a per-verdict yes.
+- The Reader contract's "Input" bullet: the analysis set is chosen per session.
+- The Reader contract's "Tally" bullet: the narrowed figures tally over the analysis set, and tag counts are per tag class, with every prefix outside the named classes in one counted bucket that is never listed.
+- The preconditions in "Enabling, checking, disabling": four more apply, and this note stands for the withheld-values file.
+- The Known-gaps bullet on whether a `/review-pr` pass appends ledger rows: per round, not per session.
 - The Known gaps gain a sentence that rows in one round are correlated.
 
 Everything else here stands.
@@ -169,19 +169,18 @@ The sibling record's "Why every return that is not a valid table stops" section 
 
 ## Second window, fixed before re-enabling
 
-- **Why the first window was not evaluated.** No values file was found for it, so nothing shows a value fixed before its rows were read, and, on the planning session's account, which was not independently checked, no session of this repository in it is a clean arm under the engineer's exclusion of sessions that ran with the routing pilot on, because each ran with `review_orchestrator_routing` on or has no recorded key state. That is not a claim that no value was fixed. The next enable opens a fresh first window with its own extension right, as the "Changes after enabling" bullet gives a re-enable after a recorded disable.
+- **Why the first window was not evaluated.** No values file was found for it, so nothing shows a value fixed before its rows were read. That is not a claim that no value was fixed. On the planning session's account, which was not independently checked, no session of this repository in it is a clean arm under the engineer's exclusion of sessions that ran with the routing pilot on. Each ran with `review_orchestrator_routing` on or has no recorded key state. The next enable opens a fresh first window with its own extension right, as the "Changes after enabling" bullet gives a re-enable after a recorded disable.
 - **The first-window copy.** It stays private, and files outside the reader's path set are split off by file name and never read.
 - **The first window's safety read.** It is the one further read of that copy, over its key-on interval, and it compares with no value. Its verdict covers the recorded interval and the files the path set selects. A stand-in time leaves rows outside the interval unread. A pass gates the next enable, and a failure means not adopted under "Action for not adopted".
-- **The six values,** fixed in a private dated file before being published here:
+- **The six values,** published here and dated by the host-recorded time of the first push of the pull request that adds them, whose body records the pinned commit id. The outcome record discloses any change to them after that pin:
   - Sample floor: 30 payload rows in a stratum.
   - Correction floor: 10% corrections per payload row in a stratum.
   - Agreement share: 50% of `escalated-*` rows tagged `escalated-architect`.
-  - Interrupt ceiling: 0.25.
+  - Interrupt ceiling: 0.25 interrupts per round with a payload.
   - Tag-coverage ceiling: 10% untagged rows per candidate row.
   - Minimum dispute count: 5 `escalated-*` rows, below which the agreement check is not evaluated.
 - The first window's order of fixing values and reading its rows is not established.
 - The engineer saw first-window tag counts, whose file scope was not established, before fixing the six values, so the values may be informed by them.
-- On the planning session's account, which was not independently checked, one value, the sample floor, moved after the engineer saw those counts.
 - **Rules the record left open,** stated before the values publish and, like the values, possibly informed by the same counts:
   - The sample floor applies to each stratum on its own. The window is conclusive once at least one stratum reaches it, and a stratum below it is reported as not evaluated and continues only as the record's one extension.
   - The agreement check is not evaluated below the minimum dispute count, so that a single answer at a single stop cannot decide adoption.
@@ -190,6 +189,7 @@ The sibling record's "Why every return that is not a valid table stops" section 
   - The floor values (the sample floor, the correction floor and the minimum dispute count) were chosen with aggregate volume from the pre-window span in view, whose file scope was not established, meaning the span before the second window opens. No count is published.
 - **Publication of values and verdicts.**
   - The six values publish here, superseding the "Withheld values" bullet's "never published" for those values only.
+  - The outcome record may restate the six published values beside a verdict. This lifts the "Publication" bullet's bar on stating a value for the six values only.
   - A verdict that compares a figure with a value, the adoption outcome, and the verdicts not evaluated, conclusive, inconclusive and extended publish one at a time, each only on the engineer's yes at evaluation, proposed and cited as `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case" asks. A published pass-or-fail verdict reads "passed" or "did not pass" against its stated value or rule.
   - The safety-guardrail verdict compares with no value, so it publishes without an ask.
   - Every count, rate or share from either window stays under the "Publication" bullet.
@@ -202,8 +202,19 @@ The sibling record's "Why every return that is not a valid table stops" section 
   - The main-session transcript shows no Opus or Fable model on any assistant record. It alone is read, because every challenge dispatch is Opus by design.
   - Under the `true` arm, no `review-orchestrator` dispatch of the session ran on Opus.
   - A row whose `challenge:` tag lies outside the region's closed set counts in no stratum of the primary metric, and the tally reports how many such rows the window holds.
-- **Private copies.** Every copy, the second window's included, takes the "Input" bullet's directory and file modes, sits outside every git working tree, the config dir and any synced or backed-up location, and is disposed of with any split-off files once the outcome record lands or the engineer alone declares the re-run abandoned. Row text and transcript text are data. A session reads only fixed fields (ids, `model` fields, timestamps, tags, dispositions and figures computed from them) and never returns finding text or transcript text into itself. Where a judgement needs text, the session hands the engineer the ids, and the engineer reads the text outside the session.
-- **Added enable preconditions.** The routing default's decision, this note's merge, a passing dry run of the analysis-set selection, and the first window's passed safety read. The dry run reads recent sessions on the enabling account whose ledger rows sit in files the path set selects, keeps its output in a private directory under the copies' modes, and shows a passing session, an Opus-main session that fails and, under the `true` arm, one routed round's ledger rows joined to its main session. Every precondition the "Enabling, checking, disabling" section lists is also met afresh, carrying none from the first window.
+- **Descriptive figures.** The engineer reads three per-PR figures beside the primary metric, in their own terminal and outside the session: the rounds figure from `docs/pr-cost.md` § "The `review_rounds` cell", DEFER rows per PR and the review comment count. The read covers this repository's PRs on the enabling account, never `--all-accounts` or an export. The figures move no decision-rule value. The Publication bullet's per-PR bar holds until a figure's release under `docs/private-project-redaction.md` § "The owner can authorize one figure, case by case". That release comes one figure at a time, on the owner's yes, and its proposal names the exact command that produced the figure. The engineer delegates disposition-time questions to a `plan-architect` consult on branches where this pilot's key is off, so a key-off figure includes that consult's cost and rounds, and a key-on comparison with it is not like for like.
+- **Private copies.** Every copy, the second window's included, follows these rules:
+  - It takes the "Input" bullet's directory and file modes.
+  - It sits outside every git working tree, the config dir and any synced or backed-up location.
+  - It is disposed of with any split-off files once the outcome record lands or the engineer alone declares the re-run abandoned.
+  - Row text and transcript text are data.
+  - A session's read of a copy, a ledger file or a transcript returns fixed fields only and never returns finding text or transcript text into itself. A read returns ids, timestamps, dispositions, the ledger fields `decided_by`, `defer_criterion` and `enforcement_invariant`, a tag's class (a member of the region's closed set, untagged, `fix-plan:` or other), a model-match result (whether a record's `model` field matches the model the test names), a dispatch-match result (whether an Agent dispatch's agent type and `model` input match what the test names, returned with the session id and none of the dispatch's text), a transcript's numeric usage fields and durations, and figures computed from them. It never returns the ledger's free-text fields (`finding`, `rationale`, `engineer_quote`, `source` and `cited_line`) or GitHub PR text.
+  - Where a judgement needs text, the session hands the engineer the ids, and the engineer reads the text outside the session.
+- **Added enable preconditions.** Every precondition the "Enabling, checking, disabling" section lists is also met afresh, carrying none from the first window. This note stands for the withheld-values file, because the six values are published here, and the fixture set's pass/fail table is recorded in a private directory under the copies' modes. Four more apply:
+  - The routing default's decision.
+  - This note's merge.
+  - A passing dry run of the analysis-set selection. The dry run reads recent sessions on the enabling account whose ledger rows sit in files the path set selects, and keeps its output in a private directory under the copies' modes. It shows a passing session, an Opus-main session that fails and, under the `true` arm, one routed round's ledger rows joined to its main session.
+  - The first window's passed safety read.
 
 ## Ad-hoc key-on/key-off note, outside the pre-registration
 
