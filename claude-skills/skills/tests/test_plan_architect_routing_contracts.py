@@ -10,8 +10,7 @@ from _skill_md_helpers import (
     _CODE_REVIEW_FINDING_DISPOSITION_HEADING,
     _CODE_REVIEW_SKILL_PATH,
     _PLAN_ARCHITECT_BLOCKING_MARK,
-    _PLAN_ARCHITECT_FINDING_LINE_DECLINE,
-    _PLAN_ARCHITECT_FINDING_LINE_OPEN,
+    _PLAN_ARCHITECT_FINDING_LINE_ACCEPT,
     _PLAN_IT_STEP5_HEADING,
     _PLAN_REVIEW_SKILL_PATH,
     _ROUTING_MD_PATH,
@@ -27,9 +26,11 @@ from _skill_md_helpers import (
 # The label `/code-review`'s Fix route line, the orchestrator's `HALT:` entry and
 # `subagent-delegation`'s HALT handling each spell.
 _PLAN_ARCHITECT_PLAN_REVISION_LABEL = "plan-architect — plan revision"
-# The two return lines that end a `blocking` entry in the enforcement-invariant stop-and-ask.
-_PLAN_ARCHITECT_OPEN_OR_DECLINE_RETURN = (
-    f"`{_PLAN_ARCHITECT_FINDING_LINE_OPEN}` or `{_PLAN_ARCHITECT_FINDING_LINE_DECLINE}`"
+# What ends a `blocking` entry in the enforcement-invariant stop-and-ask: a return with no `accept` line.
+# The clause holds whether or not Step 5's re-dispatch ran, because that re-dispatch runs only where a line was missing.
+_PLAN_ARCHITECT_NO_ACCEPT_RETURN = (
+    f"gives it no `{_PLAN_ARCHITECT_FINDING_LINE_ACCEPT}` line, even after `plan-it` Step 5's re-dispatch "
+    "where a line was missing"
 )
 
 _PLAN_ARCHITECT_DESIGN_DOC = "docs/design-decisions/plan-architect-decides-review-findings.md"
@@ -104,7 +105,7 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
             f"says, and this line names `{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}` for it. The rest of its fix "
             "keeps its usual route, which runs first because a plan edit re-arms `require-plan-review.sh`. "
             "An ADDRESS row for a finding the enforcement-invariant rule below covers, whose "
-            f"`{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}` return is {_PLAN_ARCHITECT_OPEN_OR_DECLINE_RETURN}, "
+            f"`{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}` return {_PLAN_ARCHITECT_NO_ACCEPT_RETURN}, "
             "ends in that rule's blocking stop-and-ask with the keep logged as that rule says, "
             "and is not left standing as "
             "ADDRESS. DEFER rows carry no route — they produce no fix."
@@ -157,10 +158,10 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
         heading="### Exception: gate/review loops stay orchestrator-driven",
         phrase=(
             f"when at least one entry names `{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}`, dispatch "
-            "`plan-architect` once with every such entry, as `code-review/SKILL.md` § \"Finding disposition\" "
+            "`plan-architect` with every such entry, as `code-review/SKILL.md` § \"Finding disposition\" "
             "says, and stage that plan as step 2 stages `Fix paths:`; otherwise skip that clause. "
-            f"A `{_PLAN_ARCHITECT_BLOCKING_MARK}` entry whose return line is "
-            f"{_PLAN_ARCHITECT_OPEN_OR_DECLINE_RETURN} ends in "
+            f"A `{_PLAN_ARCHITECT_BLOCKING_MARK}` entry whose return "
+            f"{_PLAN_ARCHITECT_NO_ACCEPT_RETURN}, ends in "
             "that section's enforcement-invariant stop-and-ask, asked of the user now, with its keep "
             "logged as that rule says. Then name the paths just staged, including any from your own "
             "dispatch, then run `/code-review` inline in this session at once, invoking the skill with "
@@ -194,8 +195,7 @@ _PLAN_ARCHITECT_ROUTING_FEED_SITES = (
 def _assert_site_carries_pinned_phrase(site: _PlanArchitectPinnedPhrase, *, context: str) -> None:
     """Assert `site.phrase` sits in the site's section, ending on a structural boundary when `right_bounded`.
 
-    A `###` heading's section ends at the next `#` line, so it excludes the sibling and child subsections
-    that `_raw_heading_section_text`, which ends only at a `## ` line, would include.
+    `###` headings use `_raw_subsection_text`.
     """
     assert site.heading is not None or not site.right_bounded, (
         f"{site.name}: right_bounded needs a heading to bound against; with heading=None the whole file is "

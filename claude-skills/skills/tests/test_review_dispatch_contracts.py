@@ -318,7 +318,9 @@ def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> No
         _raw_heading_section_text(plan_review_skill_path, "## Output format"),
         context=(
             f"{plan_review_skill_path}: Output format no longer carries its prose-only-round "
-            f"bullet verbatim. {rerun_note}"
+            f"bullet verbatim. {rerun_note} Its completion-marker clause is also the subject of "
+            "Cell V in docs/design-decisions/plan-architect-decides-review-findings.md, so re-run "
+            "that cell too."
         ),
     )
     assert diff_exclusion_literal in agent_scope_text, (

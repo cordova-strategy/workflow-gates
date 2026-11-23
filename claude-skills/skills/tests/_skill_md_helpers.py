@@ -614,7 +614,8 @@ _PLAN_ARCHITECT_PATH = _AGENTS_DIR / "plan-architect.md"
 _PLAN_ARCHITECT_CONSULT_HEADING = "## MODE=consult"
 
 # The finding-line verbs `plan-architect` returns and the marks a dispatcher puts on its own prompt line.
-# The charter, plan-it Step 5 and the review orchestrator each name them, so a rename fails every site.
+# A pin that builds its token from one of these constants fails a site that keeps the old token after a rename.
+# Verbatim clause pins spell the tokens out and do not follow a rename.
 _PLAN_ARCHITECT_FINDING_LINE_ACCEPT = "accept"
 _PLAN_ARCHITECT_FINDING_LINE_DECLINE = "decline"
 _PLAN_ARCHITECT_FINDING_LINE_OPEN = "open"

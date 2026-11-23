@@ -24,7 +24,7 @@ The verdict is written before the architect decides, so it cannot depend on what
 
 Each bullet names a protection and the failure a cooperative agent makes without it. A cooperative agent makes an honest mistake and is not an attacker.
 
-- The `approved` mark on a dispatcher line, and `open` for a Critical-files addition or `Ask:` widening on an `approved` plan: a file added after approval already needs the engineer's answer, and `plan-architect` holds no `Bash`, so it cannot see commit state. Without the mark, an approved plan's file limit grows silently.
+- The `approved` mark on a dispatcher line, and `open` for a Critical-files addition or `Ask:` widening on an `approved` plan: a file added after approval already needs the engineer's answer. `plan-architect` holds no `Bash`, so it cannot see commit state or whether the engineer approved the plan this session. The dispatcher passes the mark. Without the mark, an approved plan's file limit grows silently.
 - The mark-both fallback when the dispatcher cannot tell: over-marking costs one engineer question, and under-marking silently declines a blocker.
 - The engineer-answer block before the quoted findings: the architect writes `[engineer-verified]` tags only for answers in that block, so an answer placed among the finding bodies is not recorded.
 - The post-dispatch Quote provenance check: the `/plan-review` completion marker follows the dispatch with no re-review, and Step 4's check runs before the dispatch, so it never sees a quote the architect adds or rewords.
@@ -34,7 +34,7 @@ Each bullet names a protection and the failure a cooperative agent makes without
 - A decline that rests on an engineer decision cites the `[engineer-verified]` row, because an uncited "the engineer decided" can suppress a valid re-raise.
 - Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
 
-These protections sit inside the declared tier (production, cooperative), so a later review does not extend them against an actor that tier excludes.
+These protections assume the `cooperative` tier that `plan-review/ROUTING.md` § "Reviewer roles" defines, so a later review does not extend them against an actor that tier excludes.
 
 ## Ordering
 

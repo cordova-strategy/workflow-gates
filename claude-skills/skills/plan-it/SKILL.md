@@ -96,9 +96,9 @@ A near-empty return is the success shape, so never judge it truncated. A re-disp
 **Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading down in answer to a `/plan-review` or `/code-review` finding, and it gets a review round's findings together in one revision re-dispatch. After line 2, that prompt carries the findings in place of the Context and Step 3 evidence bullets, with each mark and answer on a prompt line outside every quoted finding:
 - Number the findings, each as the review rendered it, under a lead-in naming the review and round, with the findings-file path of each reviewer that wrote one.
 - Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or `/code-review`'s enforcement-invariant rule covers it.
-- Mark the plan `approved` for a `/code-review` round or a plan with a commit on this branch. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has already approved.
+- Mark the plan `approved` for a `/code-review` round, a plan with a commit on this branch, or a plan the engineer approved this session. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has already approved.
 - When you cannot tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` and the plan `approved`.
-- Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body: the selected label or typed text, with any option description marked as your own proposal.
+- Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body: the number of the finding it settles, the question it answered, and the selected label or typed text, with any option description marked as your own proposal.
 
 Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each `[engineer-verified: "<quote>"]` quote it added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "Step 4 — Design-fitness gate" says, and ask the engineer about any you cannot find. On the return:
 - Relay each `decline` line to the engineer with its reason.

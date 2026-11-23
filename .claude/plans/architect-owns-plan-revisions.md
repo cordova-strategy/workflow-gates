@@ -46,9 +46,9 @@ Paths are repository-relative. A bare `file:N` cites the merge-base.
 > **Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading down in answer to a `/plan-review` or `/code-review` finding, and it gets a review round's findings together in one revision re-dispatch. After line 2, that prompt carries the findings in place of the Context and Step 3 evidence bullets, with each mark and answer on a prompt line outside every quoted finding:
 > - Number the findings, each as the review rendered it, under a lead-in naming the review and round, with the findings-file path of each reviewer that wrote one.
 > - Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or `/code-review`'s enforcement-invariant rule covers it.
-> - Mark the plan `approved` for a `/code-review` round or a plan with a commit on this branch. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has already approved.
+> - Mark the plan `approved` for a `/code-review` round, a plan with a commit on this branch, or a plan the engineer approved this session. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has already approved.
 > - When you cannot tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` and the plan `approved`.
-> - Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body: the selected label or typed text, with any option description marked as your own proposal.
+> - Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body: the number of the finding it settles, the question it answered, and the selected label or typed text, with any option description marked as your own proposal.
 >
 > Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each `[engineer-verified: "<quote>"]` quote it added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "Step 4 — Design-fitness gate" says, and ask the engineer about any you cannot find. On the return:
 > - Relay each `decline` line to the engineer with its reason.
@@ -115,7 +115,7 @@ A plan in a harness plan-mode file is outside `.claude/plans/`, and Step 5 stops
 **M4 — `/code-review` and `review-orchestrator` route a plan edit the same way** (anchors: row 4, row 16, row 17, row 18, row 31, row 36).
 - `claude-skills/skills/code-review/SKILL.md:359`, inside the existing `Fix route:` paragraph, directly after "naming whichever of that rule's carve-outs applies.", add the following on the same line, so the file gains no line:
 
-> An ADDRESS row whose fix edits a plan from its `## Approach` heading down, whichever rule made it ADDRESS, sends that edit to `plan-architect` as `plan-it/SKILL.md` § "Step 5 — Architecture design" says, and this line names `plan-architect — plan revision` for it. The rest of its fix keeps its usual route, which runs first because a plan edit re-arms `require-plan-review.sh`. An ADDRESS row for a finding the enforcement-invariant rule below covers, whose `plan-architect — plan revision` return is `open` or `decline`, ends in that rule's blocking stop-and-ask with the keep logged as that rule says, and is not left standing as ADDRESS.
+> An ADDRESS row whose fix edits a plan from its `## Approach` heading down, whichever rule made it ADDRESS, sends that edit to `plan-architect` as `plan-it/SKILL.md` § "Step 5 — Architecture design" says, and this line names `plan-architect — plan revision` for it. The rest of its fix keeps its usual route, which runs first because a plan edit re-arms `require-plan-review.sh`. An ADDRESS row for a finding the enforcement-invariant rule below covers, whose `plan-architect — plan revision` return gives it no `accept` line, even after `plan-it` Step 5's re-dispatch where a line was missing, ends in that rule's blocking stop-and-ask with the keep logged as that rule says, and is not left standing as ADDRESS.
 
   "Whichever rule made it ADDRESS" reaches the contradiction route's *Apply this round's fix*, a fix-plan table row, the round-cap one-defect verdict and a conceded challenge flip. None of those pinned regions changes. A row editing the plan above `## Approach`, such as its Context or `Ask:` line, keeps today's route, as `/plan-review`'s session keeps that region. In the inline flow the next round reviews the staged diff, so the session stages the plan edit as it stages `code-writer`'s.
 - `claude-skills/skills/subagent-delegation/SKILL.md:170`, in place, so the file stays at its 218-line cap (row 31): "- Not code (the review-findings PR-body block, a `respond-pr` reply, a plan-file edit) — stays inline." becomes:
@@ -125,7 +125,7 @@ A plan in a harness plan-mode file is outside `.claude/plans/`, and Step 5 stops
 - `claude/.claude/agents/review-orchestrator.md` item 6: after its first sentence, add "A plan edit the skill's Fix route sends to `plan-architect` goes under `HALT:` with its ADDRESS row verbatim, a `blocking` mark when the enforcement-invariant rule covers it or you cannot tell whether it does, and its reviewer's findings-file path, naming `plan-architect — plan revision` as its rule. The round goes on as after a stop-and-ask about one finding, and `code-writer` gets only the rest of its fix. Report any other inline-route row under `HALT:`." Step 5's **Review findings.** prompt needs those fields, and item 8's own fields carry neither the suggested fix nor the findings-file path. The "cannot tell" clause mirrors Step 5's mark-both fallback. The last sentence hands the dispatcher any inline-route row that neither `code-writer` nor `plan-architect` gets. Item 7 then writes no marker (row 17).
 - `claude-skills/skills/subagent-delegation/SKILL.md:215`, in place: "- With any `HALT:` entry, name the paths just staged," becomes:
 
-> - With any `HALT:` entry, first, when at least one entry names `plan-architect — plan revision`, dispatch `plan-architect` once with every such entry, as `code-review/SKILL.md` § "Finding disposition" says, and stage that plan as step 2 stages `Fix paths:`; otherwise skip that clause. A `blocking` entry whose return line is `open` or `decline` ends in that section's enforcement-invariant stop-and-ask, asked of the user now, with its keep logged as that rule says. Then name the paths just staged,
+> - With any `HALT:` entry, first, when at least one entry names `plan-architect — plan revision`, dispatch `plan-architect` with every such entry, as `code-review/SKILL.md` § "Finding disposition" says, and stage that plan as step 2 stages `Fix paths:`; otherwise skip that clause. A `blocking` entry whose return gives it no `accept` line, even after `plan-it` Step 5's re-dispatch where a line was missing, ends in that section's enforcement-invariant stop-and-ask, asked of the user now, with its keep logged as that rule says. Then name the paths just staged,
 
   The rest of the line stays. The inline round that follows then reviews the plan edit with the round's other fixes.
 
@@ -173,10 +173,11 @@ The row claims, one per Step 4 answer kind:
     - The decision and run tests' failure messages say to re-run Cell A and its adversarial cells by hand, as `rerun_note` does for the prose cells (`test_review_dispatch_contracts.py:286-289`).
   - Token tests pin that the charter names each finding-line verb and mark in backticks, and that Step 5's **Review findings.** paragraph names both marks and the `decline` and `open` lines.
   - A pointer test pins that Step 5's **Quote provenance.** pointer resolves to a `plan-review` Step 4 paragraph covering quotes added or changed since the plan's last commit.
-  - Seeded tests run `closes_bullet_run` on synthetic sections:
+  - Seeded tests run `_assert_pinned_clause_right_bounded` on synthetic sections, with `closes_bullet_run` unless a bullet names the default bound:
     - An appended bullet or sentence fails.
-    - A blank line or the section's end passes.
-    - The default bound still accepts a following bullet.
+    - A blank line before a paragraph, or the section's end, passes.
+    - `test_closes_bullet_run_rejects_a_bullet_after_a_blank_line_that_the_default_bound_accepts` fails a `-`, `*` or `1.` bullet after a blank line, which the default bound passes.
+    - Under the default bound, `test_default_right_bound_accepts_only_a_structural_boundary_after_the_pin` passes a blank line, the section's end, a following bullet or a following heading. It fails a sentence appended on the pin's own line or on the next line.
     - A bullet inserted anywhere in a pinned run fails.
 - `claude-skills/skills/tests/test_review_dispatch_contracts.py`:
   - `approve_with_changes_literal` becomes `_PLAN_REVIEW_PROSE_ONLY_ROUND_BULLET`, M3's whole rewritten bullet, right-bounded in Output format, so an appended verdict sentence that depends on what is accepted fails.
@@ -189,6 +190,7 @@ The row claims, one per Step 4 answer kind:
     - `review-orchestrator` item 6, its `blocking` mark, "cannot tell" clause and `HALT:` catch-all included.
     - `subagent-delegation`'s not-code carve-out, and its `HALT:` dispatch with that dispatch's `blocking` stop-and-ask.
     - `ROUTING.md:55`'s re-review feed.
+  - `_PLAN_ARCHITECT_NO_ACCEPT_RETURN` holds the stop-and-ask key, "gives it no `accept` line, even after `plan-it` Step 5's re-dispatch where a line was missing", which the `code-review` and `subagent-delegation` stop-and-ask pins share.
   - `_ENGINEER_ANSWERS_POINTER_SITES` pins the two pointers to M5's paragraph and that the paragraph exists. `_ENGINEER_ANSWER_ROW_CLAIM_SITES` pins each row claim in its asking step.
   - `_REMOVED_SECOND_PLAN_WRITER_PHRASES` holds the six phrases Verification step 3 greps for, each with its file. A parametrized test asserts each stays out of that file, since presence pins stay green when an old route returns beside a new one.
   - An ordering test asserts that § "Record review completion + deactivate" runs the deactivate call, then the dispatch paragraph, then the marker write. It also pins the marker sentence right-bounded (row 30).
@@ -200,7 +202,7 @@ The row claims, one per Step 4 answer kind:
   - Why each review-round protection exists: the cooperative failure behind each rule, among them these four:
     - A reviewer's own `BLOCKER` severity is not the dispatcher's `blocking` mark.
     - A reviewer's suggested fix often proposes literal ledger text.
-    - A writer with no `Bash` cannot see commit state, so the dispatcher passes the `approved` mark.
+    - A writer with no `Bash` cannot see commit state or whether the engineer approved the plan this session, so the dispatcher passes the `approved` mark.
     - The `/plan-review` completion marker follows the dispatch with no re-review, so the Quote provenance check runs after the dispatch.
   - Why `/plan-review`'s dispatch follows its deactivate call (row 30), and why `code-writer` runs before `plan-architect` in a `/code-review` round (row 16).
   - Cost: each review round with findings adds one Opus dispatch, plus at most one for findings the return left without a line, besides Step 5's own re-dispatches.
@@ -259,7 +261,7 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 14. `plan-review`'s fix-or-ask rule allows an enforcement-invariant finding only two ends: a fix, or an engineer answer. `[verified: plan-review/SKILL.md:283]` — anchors: M1
 15. A re-review's reviewers get the prior round's applied changes inline, and they diff every `[engineer-verified]` row. `[verified: plan-review/ROUTING.md:55, 80]` Today the session that made the edits supplies the applied changes, so M3 names a new source for them. — anchors: M1, M3
 16. During `/code-review` the plan is usually committed, so a plan edit re-arms the plan-review gate. The architect therefore runs after `code-writer` in a round. Today's inline plan-file fix re-arms the gate the same way (row 31). `[verified: row 9; plan-architect-writes-its-own-plan-sections.md:23]` — anchors: M4
-17. `review-orchestrator` item 8 sends a plan-revision return to `HALT:`, and a stop-and-ask about one finding ends only that finding's handling. An entry's fields carry no suggested fix or findings-file path. Item 7 writes no marker while a `HALT:` entry stands. After any `HALT:` entry the dispatcher runs the rest of the loop inline, but that step names no action for the halted row itself, so M4 gives it one. `[verified: review-orchestrator.md:29-47; subagent-delegation/SKILL.md:215]` — anchors: M4
+17. `review-orchestrator` item 8 sends a plan-revision return to `HALT:`. A stop-and-ask about one finding ends only that finding's handling. An entry's fields carry no suggested fix or findings-file path. Item 7 writes no marker while a `HALT:` entry stands. After any `HALT:` entry the dispatcher runs the rest of the loop inline. That step names no action for the halted row itself, so M4 gives it one. `[verified: review-orchestrator.md:29-47; subagent-delegation/SKILL.md:215]` — anchors: M4
 18. `code-review/SKILL.md` is 546 lines against its 550-line cap, so M4 adds no line. `[verified: line count; claude/.claude/hooks/tests/test_check_skill_length.py:337-340]` — anchors: M4
 19. Three pins bear on this change:
     - `approve_with_changes_literal` pins the prose-verdict sentence M3 rewrites. `[verified: claude-skills/skills/tests/test_review_dispatch_contracts.py:294-297]`
@@ -291,7 +293,7 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 38. The design record's Measurement note names Cell A as Verification step 7's own fixture, because step 7 now carries Cell A. `[verified: docs/design-decisions/plan-architect-decides-review-findings.md Measurement note; Verification step 7]` Applied as a consult-decided correction, not an engineer answer. — anchors: M7
 39. `claude-skills/skills/tests/test_plan_architect_routing_contracts.py` joins this plan's Critical files. `[engineer-verified: "Move new tests to a new file (Recommended)"]` — anchors: root
 40. `claude/.claude/tests/test_code_file_size.py` fails a tracked `.py` file past 1,000 lines that has no exception row, and `test_review_dispatch_contracts.py` with the routing pins ran past that limit. `[verified: claude/.claude/tests/test_code_file_size.py:1, 367; line counts of both test files]` — anchors: M7
-41. Row 40's counts: `test_review_dispatch_contracts.py` held 1,201 lines at commit `243c63d7`, before the routing pins moved out. `[verified: git show 243c63d7:claude-skills/skills/tests/test_review_dispatch_contracts.py | wc -l prints 1201]` `test_review_dispatch_contracts.py` holds 817 lines now. `test_plan_architect_routing_contracts.py` holds 402 lines. The 377 lines of `test_plan_architect_routing_contracts.py` after its docstring and imports on lines 1-25, added to the 817, make 1,194. `[verified: Grep line counts of the working tree; test_plan_architect_routing_contracts.py:1-25]` — anchors: row 40
+41. Row 40's counts: `test_review_dispatch_contracts.py` held 1,201 lines at commit `243c63d7`, before the routing pins moved out. `[verified: git show 243c63d7:claude-skills/skills/tests/test_review_dispatch_contracts.py | wc -l prints 1201]` `test_review_dispatch_contracts.py` and `test_plan_architect_routing_contracts.py` now hold fewer than 1,000 lines each. `[verified: wc -l prints 819 and 402 for the two files]` — anchors: row 40
 
 ## Critical files
 
@@ -393,7 +395,7 @@ Projected diff: about 1,020 changed lines against the merge base outside `.claud
   - M6's loop points at the route Cell V measures.
   - `review-orchestrator` item 6 and the dispatcher's `HALT:` step are pinned by text only. No cell plays the routed flow, whose routing key ships off (`review-orchestrator-routing-gate.md:73`).
   - Cell C samples only the contradiction route among the rules M4's clause reaches.
-  - M4's enforcement-invariant sentence is pinned by text only. It ends a `blocking` ADDRESS row in a stop-and-ask when the row's `plan-architect` return is `open` or `decline`. Cell A measures the architect's `open` on a `blocking` finding it would decline (finding 6), and no cell plays the session's handling of that return.
+  - M4's enforcement-invariant sentence is pinned by text only. It ends a `blocking` ADDRESS row in a stop-and-ask when the row's `plan-architect` return gives it no `accept` line, even after Step 5's re-dispatch where a line was missing. Cell A measures the architect's `open` on a `blocking` finding it would decline (finding 6), and no cell plays the session's handling of that return.
 - Deriving Verification step 3's six phrases from `_REMOVED_SECOND_PLAN_WRITER_PHRASES`. The step runs once, at implementation, and the tuple stays the phrases' durable home. Nothing ties the two copies, so an entry later dropped from the tuple leaves the other five cases green.
 - A hook, or a rule in `code-writer.md`, enforcing the single-writer rule (row 3).
 - `claude/.claude/CLAUDE.md` § "Plan Review"'s "address them first" (row 24). `/plan-review` now routes its own findings, so the line stays true, and that file loads into every session's context.

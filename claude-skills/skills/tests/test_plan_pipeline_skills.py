@@ -311,12 +311,14 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "lead-in naming the review and round, with the findings-file path of each reviewer that wrote "
         "one. - Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or "
         "`/code-review`'s enforcement-invariant rule covers it. - Mark the plan `approved` for a "
-        "`/code-review` round or a plan with a commit on this branch. A commit is the observable "
-        "`/plan-review` Step 4 uses for a plan the engineer has already approved. - When you cannot "
+        "`/code-review` round, a plan with a commit on this branch, or a plan the engineer approved this "
+        "session. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has "
+        "already approved. - When you cannot "
         "tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` "
         "and the plan `approved`. - Carry each engineer answer on its own prompt line, in a block that "
-        "precedes every quoted finding body: the selected label or typed text, with any option "
-        "description marked as your own proposal."
+        "precedes every quoted finding body: the number of the finding it settles, the question it "
+        "answered, and the selected label or typed text, with any option description marked as your "
+        "own proposal."
     ),
     # Starts at the Step 5 paragraph that follows the prompt bullets and spans the return bullets,
     # so a bullet added before the first return bullet fails the pin.
@@ -623,11 +625,27 @@ def test_closes_bullet_run_accepts_only_a_blank_line_or_section_end_after_the_ru
         _assert_pinned_clause_right_bounded(pinned_run, raw_section, context="seeded", closes_bullet_run=True)
 
 
-def test_default_right_bound_still_accepts_a_following_bullet_after_a_one_bullet_pin() -> None:
-    """Without `closes_bullet_run`, a following bullet is a boundary, as for every pin that quotes one bullet."""
-    _assert_pinned_clause_right_bounded(
-        "First bullet.", "- First bullet.\n- Second bullet.\n", context="seeded"
-    )
+@pytest.mark.parametrize(
+    ("text_after_pin", "pin_is_bounded"),
+    [
+        pytest.param("\n", True, id="section-end"),
+        pytest.param("\n\nNext paragraph.\n", True, id="blank-line"),
+        pytest.param("\n- Following bullet.\n", True, id="following-bullet"),
+        pytest.param("\n# Next heading\n", True, id="following-heading"),
+        pytest.param(" Appended sentence.\n", False, id="appended-on-the-same-line"),
+        pytest.param("\nAppended sentence.\n", False, id="appended-on-the-next-line"),
+    ],
+)
+def test_default_right_bound_accepts_only_a_structural_boundary_after_the_pin(
+    text_after_pin: str, pin_is_bounded: bool
+) -> None:
+    """Without `closes_bullet_run`, the pin must end the section or precede a blank line or a line starting with `-` or `#`."""
+    raw_section = "Pinned sentence." + text_after_pin
+    if pin_is_bounded:
+        _assert_pinned_clause_right_bounded("Pinned sentence.", raw_section, context="seeded")
+        return
+    with pytest.raises(AssertionError, match="unbounded trailing content"):
+        _assert_pinned_clause_right_bounded("Pinned sentence.", raw_section, context="seeded")
 
 
 @pytest.mark.parametrize("list_marker", ["-", "*", "1."])
