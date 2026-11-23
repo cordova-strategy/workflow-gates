@@ -248,6 +248,14 @@ Declaration block: review as you would without this declaration, and drop no fin
     The session relayed the options not chosen as "Apply ciso's fix" and "Keep current text".
 32. [engineer-verified: "I think apply the clause. What does the architect think?"] The quote covers only that selection and the request for the architect's view. The question, in the session's wording, asked whether to append a clause to the `input` item's fetched-content sentence so that content fetched from anyone other than whoever runs the change stays `untrusted`. The wording that shipped is the plan-architect's, not the engineer's [unverified]: "so `input` takes `untrusted` when any of that content comes from anyone else, no matter who starts the fetch or read". The session relayed the options not chosen as "Keep current sentence".
 33. [engineer-verified: "Leave it, say so in CHANGELOG (Recommended)"] The quote covers only that selection. The question, in the session's wording, asked whether a hostile-agent finding on a gate whose tier line says `cooperative` stays waived, or whether the waiver sites should apply only when the review declares `agent=cooperative`. The selection leaves the waivers unchanged and adds a `CHANGELOG.md` sentence, which M7 lists. The option's description is the session's [unverified]. The session relayed the option not chosen as "Change the waiver now", which edits the waiver text in `CLAUDE.md` and both project layers.
+34. [engineer-verified: "yes go ahead and do that. I think test_hook_alignment should be split, but that's overly heavy for your PR to handle"] The quote covers only the session's three-part proposal:
+    - merge `origin/main` into this branch;
+    - raise the `ceiling` of the `test_hook_alignment.py` row in `code-file-size-exceptions.toml` from 3767 to 3770;
+    - leave the heavier remedy, splitting `test_hook_alignment.py`, out of this PR.
+
+    The proposal's wording is the session's [unverified]. Its cause, that the merged tree counts 3 lines more than the row holds because of the `_HOOK_THREAT_MODEL_SECTION` edit, is [verified: `git diff origin/main...HEAD --numstat` prints 5 added and 2 removed lines for `test_hook_alignment.py`; the file is 3767 lines on `origin/main` and 3770 lines at `67c19b58`, before the merge]. The +3 comes from the wrapped mirror of M6's added sentences, which row 11 pins whole, so it cannot shrink without moving that constant out, which is the heavier remedy of splitting the file. After the merge, a local run of `claude/.claude/tests/test_code_file_size.py` printed 3770 for that row [verified: that run].
+
+    3770 is the value printed at the merge. A later merge from `origin/main` or a change to that constant rewrites the row from the check's printed value. The row and the `_HOOK_THREAT_MODEL_SECTION` edit land and revert as one unit, because a ceiling is exact in both directions.
 
 ## Critical files
 
@@ -261,12 +269,13 @@ One `code-writer` dispatch. Every file shares the declaration vocabulary, and th
 - `CLAUDE.md` — M6, in place on line 105.
 - `claude/.claude/hooks/tests/test_hook_alignment.py` — M6's `_HOOK_THREAT_MODEL_SECTION` only.
 - `CHANGELOG.md` — M7's entry.
+- `code-file-size-exceptions.toml` — raises the `ceiling` of the `test_hook_alignment.py` row from 3767 to 3770, and no other field (row 34).
 
-Projected diff: about 330 lines, counting added plus removed lines. About 260-270 are in `test_review_dispatch_contracts.py`, about 10 in `test_hook_alignment.py`, and about 60 across the prose files and `CHANGELOG.md`, where each rewritten physical line counts once removed and once added. Verification step 3's fixture lives only in its dispatch prompts, so it adds nothing.
+Projected diff: about 330 lines, counting added plus removed lines, plus 2 in `code-file-size-exceptions.toml`. About 260-270 are in `test_review_dispatch_contracts.py`, about 10 in `test_hook_alignment.py`, and about 60 across the prose files and `CHANGELOG.md`, where each rewritten physical line counts once removed and once added. Verification step 3's fixture lives only in its dispatch prompts, so it adds nothing.
 
 ## Verification
 
-1. Tests, pins and lint. `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes, and its printed selection includes `test_review_dispatch_contracts.py` and `test_hook_alignment.py` (row 18). `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` is clean.
+1. Tests, pins and lint. `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes, and its printed selection includes `test_review_dispatch_contracts.py`, `test_hook_alignment.py` (row 18) and `claude/.claude/tests/test_code_file_size.py`, and the last passes on the final tree (row 34). `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` is clean.
 2. The hard cut leaves no old form, no ladder sentence and no old item wording outside preserved records and plans. This prints nothing:
 
 ```bash
@@ -292,6 +301,7 @@ git grep -n -e 'declared: <surface>' -e 'dev-only, cooperative' -e 'declared tie
 
   The first gate whose header states a hostile-agent threat lands all of these together. That change also narrows the "omits `untrusted-input`" waiver condition in `CLAUDE.md` and both project layers, because the condition would otherwise waive findings on a `hostile` gate (rows 12, 13). Until then, a gate finding a project layer routes is judged by the gate's tier line, which cannot say `hostile`.
 - **Reading a gate's tier line into the review's fields.** Such a reading would have to lower no field that the engineer's words or any part of the change raise. It would also have to hold only as the line stands at the merge base, because a line the change adds or edits is author text (row 27). No consumer needs it: every rule that reads `agent` or `input` also needs `caller=operator-only`, which no tier line states (M3, M4, M5), and the project layers route gate findings by the tier line on their own path (row 13).
+- **Splitting `test_hook_alignment.py`.** The engineer deferred it (row 34), and it is owned by issue 1532, named on that file's row in `code-file-size-exceptions.toml`.
 - **A review-time `reversibility` field.** The engineer agreed to drop it (row 20).
 - **Narrowing what `untrusted-input` keeps live so that persistence findings need `hostile`.** The engineer chose "In scope whenever input is untrusted (Recommended)" (row 15), and the narrowing would relax the 9 `untrusted-input` gates (row 16).
 - **A DEFER ban or a forced `undeclared` `input` for row 23's remainder.** The engineer selected "Architect's sentence fix (Recommended)" instead (row 24).
