@@ -103,6 +103,8 @@ TEST_FILES = (
     "test_transcript_judgment_pair.py",
     "test_transcript_correction_candidates.py",
     "test_transcript_correction_candidates_counts.py",
+    "test_transcript_correction_candidates_questions.py",
+    "test_transcript_correction_candidates_canaries_and_aborts.py",
     "test_transcript_correction_candidates_extraction.py",
     "test_transcript_skill_invocation.py",
     "test_transcript_skill_pair.py",

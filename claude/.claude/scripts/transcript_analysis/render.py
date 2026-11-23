@@ -76,6 +76,7 @@ def _is_fresh_user_prompt(rec: dict) -> bool:
 HUMAN_ORIGIN_KIND = "human"
 # A record with no `origin` is a `claude -p` prompt only when it carries every one of these values, which every
 # recorded `claude -p` prompt did and no recorded harness-written record did.
+# Source: `docs/precompact-hook-behavior.md` § "Record shapes".
 NO_ORIGIN_PROMPT_MARKERS = {"entrypoint": "sdk-cli", "promptSource": "sdk", "turnOrigin": "sdk"}
 
 

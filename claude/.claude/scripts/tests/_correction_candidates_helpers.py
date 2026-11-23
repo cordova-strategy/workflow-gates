@@ -11,6 +11,7 @@ from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from transcript_analysis import cli, correction_candidates, ledger_common, scope
 
 from ._compaction_context_helpers import (
@@ -28,6 +29,10 @@ from ._compaction_context_helpers import (
 )
 from .conftest import _correction_candidates_args, _write_jsonl
 
+HEADER_PREFIX = "CORRECTION CANDIDATES SOURCES ("
+FAMILIES_PREFIX = "correction-candidates: families "
+BANNER = scope._DO_NOT_PUBLISH_BANNER
+ABORT_LINE = "correction-candidates: the transcript scan aborted ({name}); no file was written\n"
 DEFAULT_MODEL = "claude-sonnet-4-6"
 DEFAULT_TIMESTAMP = "2026-05-19T10:00:00.000Z"
 
@@ -212,10 +217,12 @@ def slash_prompt_session() -> list:
     ]
 
 
+def window_bounds(since=None, until=None) -> tuple[float | None, float | None]:
+    return scope._parse_absolute_window_args(_correction_candidates_args(since=since, until=until), "correction-candidates")
+
+
 def scan(records, *, session=SESSION, family=FAMILY, truncate_chars=2000, since=None, until=None):
-    since_ts, until_epoch = scope._parse_absolute_window_args(
-        _correction_candidates_args(since=since, until=until), "correction-candidates",
-    )
+    since_ts, until_epoch = window_bounds(since, until)
     return correction_candidates._session_candidates(
         records, session, family, truncate_chars=truncate_chars, since_ts=since_ts, until_epoch=until_epoch,
     )
@@ -245,9 +252,36 @@ def run_files(files: dict[str, list], **kwargs):
     return kept, counts, checks
 
 
+def question_session(*, minute: int = 1) -> list[dict]:
+    return [
+        prompt("please fix the thing", minute),
+        ask_record([question_spec("Which one?", ("Alpha", "Beta"))], minute=minute + 1),
+        ask_answer_record(answers={"Which one?": "Alpha"}, timestamp=ts(minute + 2)),
+        assistant_text("done", timestamp=ts(minute + 3)),
+    ]
+
+
 def stub_git_check(monkeypatch) -> None:
     """Replace the out-path git check with one that finds no work tree, so allow-path and preview tests never run `git`."""
     monkeypatch.setattr(ledger_common, "_ledger_path_is_git_tracked", lambda *args, **kwargs: False)
+
+
+@pytest.fixture()
+def real_git_check():
+    """Requesting this fixture keeps the real out-path git check, which `stubbed_git_check` otherwise replaces."""
+
+
+@pytest.fixture(autouse=True)
+def stubbed_git_check(request, monkeypatch):
+    if "real_git_check" not in request.fixturenames:
+        stub_git_check(monkeypatch)
+
+
+@pytest.fixture()
+def out_dir(tmp_path) -> Path:
+    directory = tmp_path / "out"
+    directory.mkdir()
+    return directory
 
 
 class _TaggedStream:

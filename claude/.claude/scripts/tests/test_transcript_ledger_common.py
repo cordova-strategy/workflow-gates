@@ -823,7 +823,7 @@ class TestOutPathHelpersNameTheCommand:
 
         ledger_common._refuse_unusable_out_path(str(tmp_path / "export.tsv"), _OUT_COMMAND)
 
-    def test_publish_new_owner_file_creates_a_0600_file_through_a_command_prefixed_temp_file(
+    def test_publish_new_owner_file_creates_a_0600_file_through_a_command_prefixed_temp_file_with_the_destinations_extension(
         self, tmp_path, monkeypatch,
     ):
         out_path = tmp_path / "export.tsv"
@@ -842,7 +842,7 @@ class TestOutPathHelpersNameTheCommand:
         assert stat.S_IMODE(out_path.stat().st_mode) == 0o600
         assert len(linked_sources) == 1
         assert linked_sources[0].startswith(f".{_OUT_COMMAND}-")
-        assert linked_sources[0].endswith(".tmp")
+        assert linked_sources[0].endswith(".tsv")
         assert _directory_entries(tmp_path) == ["export.tsv"]
 
     @pytest.mark.parametrize(

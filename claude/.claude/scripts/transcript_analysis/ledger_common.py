@@ -270,8 +270,7 @@ def _refuse_unusable_out_path(out: str, command: str) -> None:
         )
         sys.exit(2)
     # The publish step creates its temp file in this directory, so a missing one would fail only after the work is done.
-    # Writability is not checked: a refusal for it would change pr-cost-export's and routing-guard compute's exit codes
-    # for more paths than the missing-directory case their docs state.
+    # Writability is deliberately unchecked, so this refusal covers only a missing directory or a file parent.
     if not Path(out).parent.resolve().is_dir():
         print(
             f"{command}: --out {out!r} is not in an existing directory"
@@ -299,7 +298,9 @@ def _publish_new_owner_file(out: str, text: str, command: str) -> None:
     # parent is still resolved, so a symlinked parent directory lands inside
     # the same target the git-tree check validated.
     open_path = Path(out).parent.resolve() / Path(out).name
-    outcome = _publish_new_file(open_path, text, f".{command}-", ".tmp")
+    # The temp name keeps the destination's extension so the read guard's extension rule covers both names.
+    # A dotfile-only destination name such as `.jsonl` has no suffix, so its temp name carries none.
+    outcome = _publish_new_file(open_path, text, f".{command}-", open_path.suffix)
     if outcome is _PublishOutcome.CREATED:
         return
     if outcome is _PublishOutcome.EXISTS:

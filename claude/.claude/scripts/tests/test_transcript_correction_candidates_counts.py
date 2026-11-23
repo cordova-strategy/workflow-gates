@@ -3,7 +3,7 @@ from collections import Counter
 from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
-from transcript_analysis import corpus, correction_candidates, render, scope
+from transcript_analysis import corpus, correction_candidates, render
 
 from ._compaction_context_helpers import (
     ABSENT,
@@ -36,6 +36,7 @@ from ._correction_candidates_helpers import (
     stub_git_check,
     text_block,
     ts,
+    window_bounds,
     with_fields,
     written_lines,
 )
@@ -49,10 +50,8 @@ _COUNTER_FIXTURE_SINCE = "2026-05-15"
 def _counter_fixture() -> dict[str, list]:
     """Under the `_COUNTER_FIXTURE_SINCE` window, three sessions whose every counter is non-zero.
 
-    They also hold out-of-window records of each skip kind. Under that window the skip kinds take the values 21 to 34,
-    each distinct from the other counters. Without a window, `undated` is 0 and the other skip kinds are one higher,
-    except `uninterpretable`. Session `sess-c` holds only losing duplicates, each carrying a trigger for every counter
-    taken over emitted lines.
+    They also hold out-of-window records of each skip kind. Session `sess-c` holds only losing duplicates, each carrying
+    a trigger for every counter taken over emitted lines.
     """
     clock = iter(range(1, 3600))
 
@@ -301,7 +300,7 @@ class TestScopeRecord:
             "schema_version": 1,
             "kind": "scope",
             "header": "HEADER",
-            "do_not_publish": scope._DO_NOT_PUBLISH_BANNER,
+            "do_not_publish": correction_candidates._RAW_TEXT_NOTICE,
             "generated_at": "2026-05-19T10:00:07+00:00",
             "since": "2026-05-01",
             "until": "2026-05-19",
@@ -424,6 +423,27 @@ def _counted_ask_blocks(records, *, windowed: bool) -> int:
     return total
 
 
+_PROMPT_SKIP_KINDS = (
+    "interrupt", "slash_command", "local_command", "bash_mode", "non_human_origin", "headless", "no_origin_after_origin",
+    "notification_text", "duplicate_prompt",
+)
+
+
+def _prompt_shaped_records_to_account_for(records, window: dict) -> int:
+    """Prompt-shaped records an emitted line, a prompt skip kind or `undated` must account for, by the module's own predicates."""
+    since_ts, until_epoch = window_bounds(**window)
+    total = 0
+    for rec in records:
+        if not isinstance(rec, dict) or rec.get("isSidechain") or not render._is_interpretable(rec):
+            continue
+        if rec.get("type") != "user" or not correction_candidates._is_prompt_shaped(rec):
+            continue
+        epoch = correction_candidates._record_epoch(rec)
+        if (bool(window) and epoch is None) or correction_candidates._in_window(epoch, since_ts, until_epoch):
+            total += 1
+    return total
+
+
 def _value_at(root, path: tuple):
     for step in path:
         root = root[step]
@@ -474,6 +494,14 @@ class TestConservationUnderMutation:
                 counts["questions"] + skipped["malformed_question"] + skipped["unanswered_question"]
                 + skipped["duplicate_question"]
             ), failure_context
+            undated_ask_blocks = (
+                _counted_ask_blocks(records, windowed=False) - _counted_ask_blocks(records, windowed=True)
+                if window else 0
+            )
+            assert (
+                counts["prompts"] + sum(skipped[kind] for kind in _PROMPT_SKIP_KINDS) + skipped["undated"]
+                == _prompt_shaped_records_to_account_for(records, window) + undated_ask_blocks
+            ), failure_context
 
         assert replacement_types == {type(None), str, int, list, dict}
         if mutated_position == 1:
@@ -501,6 +529,14 @@ class TestConservationUnderMutation:
         line = only_line(records)
 
         assert line["initial"] is True
+
+    def test_sidechain_record_with_an_origin_does_not_set_the_file_origin_state(self):
+        records = [sidechain(prompt("side", 1)), with_fields(prompt("plain", 2), origin=ABSENT)]
+
+        candidates, counts = scan(records)
+
+        assert [candidate.record["text"] for candidate in candidates] == ["plain"]
+        assert counts["no_origin_after_origin"] == 0
 
     def test_sidechain_record_is_ignored_not_counted(self):
         candidates, counts = scan([sidechain(prompt("side", 1))])

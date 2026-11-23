@@ -1,6 +1,6 @@
-"""The correction-candidates command: cmd_correction_candidates, which writes every main-session
-AskUserQuestion exchange and every typed prompt, each with the agent text around it, as JSON Lines
-to one owner-only file, and its subparser registration.
+"""The correction-candidates command: cmd_correction_candidates, which writes each answered, declined or errored
+main-session AskUserQuestion exchange and each typed prompt in the window, each with the agent text around it,
+as JSON Lines to one owner-only file, and its subparser registration.
 
 The typed-prompt definition is docs/transcript-analysis.md's "Terms" entry, and the record schema is
 that doc's correction-candidates section.
@@ -35,6 +35,11 @@ _COMMAND = "correction-candidates"
 SCHEMA_VERSION = 1
 DEFAULT_TRUNCATE_CHARS = 2000
 _ASK_USER_QUESTION_TOOL = "AskUserQuestion"
+# The shared banner understates this file, which holds raw message text, so the scope record carries this notice instead.
+_RAW_TEXT_NOTICE = (
+    "DO NOT PUBLISH — this file contains raw message text, which may include credentials,"
+    " and real project names and session IDs."
+)
 
 KIND_PROMPT = "prompt"
 KIND_QUESTION = "question"
@@ -640,7 +645,7 @@ def _scope_record(
         "schema_version": SCHEMA_VERSION,
         "kind": KIND_SCOPE,
         "header": header,
-        "do_not_publish": scope._DO_NOT_PUBLISH_BANNER,
+        "do_not_publish": _RAW_TEXT_NOTICE,
         "generated_at": generated_at.astimezone(UTC).isoformat(timespec="seconds"),
         "since": since,
         "until": until,
@@ -718,13 +723,11 @@ def _refuse_unusable_arguments(args: argparse.Namespace) -> tuple[float | None, 
     return since_ts, until_epoch
 
 
-def _warn_when_no_session_matched(families: Mapping[str, int]) -> None:
+def _warn_when_no_session_matched(families: Mapping[str, int], projects_glob: str | None) -> None:
     if not families:
-        print(
-            f"{_COMMAND}: warning: no session matched this scope; check that the checkout's directory name"
-            " holds the repo name",
-            file=sys.stderr,
-        )
+        names_a_repo = projects_glob not in (None, "*")
+        glob_hint = "; check that the checkout's directory name holds the repo name" if names_a_repo else ""
+        print(f"{_COMMAND}: warning: no session matched this scope{glob_hint}", file=sys.stderr)
 
 
 def cmd_correction_candidates(args: argparse.Namespace) -> None:
@@ -754,7 +757,7 @@ def cmd_correction_candidates(args: argparse.Namespace) -> None:
 
     if args.preview:
         _stderr_families_line(families)
-        _warn_when_no_session_matched(families)
+        _warn_when_no_session_matched(families, args.projects)
         return
 
     kept, duplicate_counts = _dedup_and_order(candidates)
@@ -773,7 +776,7 @@ def cmd_correction_candidates(args: argparse.Namespace) -> None:
     print(args.out)
     _stderr_families_line(families)
     _stderr_json_line("counts", {"counts": counts, "checks": checks})
-    _warn_when_no_session_matched(families)
+    _warn_when_no_session_matched(families, args.projects)
 
 
 def _non_negative_int(value: str) -> int:
@@ -793,8 +796,8 @@ def _add_correction_candidates_subparser(subparsers: argparse._SubParsersAction)
     p_cc = subparsers.add_parser(
         "correction-candidates",
         help=(
-            "Write every main-session AskUserQuestion exchange and typed prompt, with the agent text around it,"
-            " as JSON Lines to a new file named by --out."
+            "Write each answered, declined or errored main-session AskUserQuestion exchange and each typed prompt in the window,"
+            " with the agent text around it, as JSON Lines to a new file named by --out."
         ),
         epilog=(
             "Scope is required: pass --projects GLOB ('*' reads every project on this machine) or --this-repo."

@@ -683,9 +683,9 @@ bare.
 
 ### `correction_candidates.py`
 
-The correction-candidates command: `cmd_correction_candidates`, which writes every main-session
-`AskUserQuestion` exchange and typed prompt, each with the agent text around it, as JSON Lines to a new
-owner-only file, and the `_add_correction_candidates_subparser` registration. The extraction is a set of
+The correction-candidates command: `cmd_correction_candidates`, which writes each answered, declined or errored
+main-session `AskUserQuestion` exchange and each typed prompt in the window, each with the agent text
+around it, as JSON Lines to a new owner-only file, and the `_add_correction_candidates_subparser` registration. The extraction is a set of
 functions of in-memory records, so tests drive it without files: `_prompt_verdict`, `_slash_command_args`,
 `_session_candidates`, `_answer_is_free_text`, `_dedup_and_order`, `_failed_relations`,
 `_counts_and_checks`, `_scope_record` (which takes its generation time as an argument), and
@@ -1106,9 +1106,12 @@ why. `TestIsFreshUserPrompt` lives in `tests/test_transcript_render.py` because 
 
 The correction-candidates command's tests split at the extraction seam:
 `tests/test_transcript_correction_candidates_extraction.py` covers verdicts, exchanges, context text,
-questions, truncation, dedup, serialization, and the record key sets,
+truncation, dedup, serialization, and the record key sets,
+`tests/test_transcript_correction_candidates_questions.py` covers the question entries and lines,
 `tests/test_transcript_correction_candidates_counts.py` covers the scope record's counters, the count
-relations, and robustness under field mutation, and
+relations, and robustness under field mutation,
+`tests/test_transcript_correction_candidates_canaries_and_aborts.py` covers what reaches the terminal and the
+scope record, and the corpus-abort messages, and
 `tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the
 written file through `main()`. `tests/_correction_candidates_helpers.py`, a plain module, not a test file
 itself, holds their shared builders. It imports the record builders from `tests/_compaction_context_helpers.py`,

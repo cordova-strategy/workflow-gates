@@ -1,4 +1,6 @@
-"""cmd_correction_candidates and its subparser: wiring, refusals, preview, the written file, and what reaches the terminal."""
+"""cmd_correction_candidates and its subparser: wiring, refusals, preview and the written file.
+
+The canary and abort tests are in test_transcript_correction_candidates_canaries_and_aborts.py."""
 import json
 import os
 import stat
@@ -10,17 +12,21 @@ import pytest
 from helpers import init_git_repo_with_commit
 from transcript_analysis import cli, correction_candidates, ledger_common, scope
 
+from . import _correction_candidates_helpers as candidates_helpers
 from ._compaction_context_helpers import slash_invocation
 from ._correction_candidates_helpers import (
+    BANNER,
+    FAMILIES_PREFIX,
+    HEADER_PREFIX,
     ask_answer_record,
     ask_record,
     assistant_text,
     prompt,
+    question_session,
     question_spec,
     record_streams,
     run_main,
     seed,
-    stub_git_check,
     ts,
     with_fields,
     written_lines,
@@ -30,50 +36,36 @@ from .conftest import _two_declared_roots
 _SCOPE_ERROR = "correction-candidates: pass --projects GLOB or --this-repo (--projects '*' reads every project on this machine)\n"
 _OUT_ERROR = "correction-candidates: pass --out PATH (a new file outside any git work tree) or --preview\n"
 _ZERO_PADDED = "must be a zero-padded YYYY-MM-DD date\n"
-_HEADER_PREFIX = "CORRECTION CANDIDATES SOURCES ("
-_FAMILIES_PREFIX = "correction-candidates: families "
-_BANNER = scope._DO_NOT_PUBLISH_BANNER
 _REVERSED_WINDOW_ARGS = ["--since", "2026-05-02", "--until", "2026-05-01"]
 _FAR_REVERSED_WINDOW_ARGS = ["--since", "2026-05-10", "--until", "2026-05-01"]
 _REVERSED_WINDOW_ERROR = "correction-candidates: --since must not be after --until\n"
 _COUNTS_PREFIX = "correction-candidates: counts "
 _REPO_FAMILY = "-home-example-src-workflow-gates"
-_ABORT_LINE = "correction-candidates: the transcript scan aborted ({name}); no file was written\n"
 _SUBAGENT_CANARY = "CANARY-SUBAGENT-DISPATCH-PROMPT"
 _UNPADDED_SINCE = ["--since", "2026-5-09"]
 _UNPADDED_SINCE_ERROR = f"correction-candidates: --since {_ZERO_PADDED}"
 
 
-@pytest.fixture()
-def real_git_check():
-    """Requesting this fixture keeps the real out-path git check, which every other test here stubs."""
-
-
-@pytest.fixture(autouse=True)
-def stubbed_git_check(request, monkeypatch):
-    if "real_git_check" not in request.fixturenames:
-        stub_git_check(monkeypatch)
-
-
-@pytest.fixture()
-def out_dir(tmp_path) -> Path:
-    directory = tmp_path / "out"
-    directory.mkdir()
-    return directory
+# The fixtures live once in the helper module. An import would trip F811 on every test parameter that names one.
+real_git_check = candidates_helpers.real_git_check
+stubbed_git_check = candidates_helpers.stubbed_git_check
+out_dir = candidates_helpers.out_dir
 
 
 def families_of(stderr: str) -> dict:
-    (families_line,) = [line for line in stderr.splitlines() if line.startswith(_FAMILIES_PREFIX)]
-    return json.loads(families_line.removeprefix(_FAMILIES_PREFIX))
+    (families_line,) = [line for line in stderr.splitlines() if line.startswith(FAMILIES_PREFIX)]
+    return json.loads(families_line.removeprefix(FAMILIES_PREFIX))
 
 
-def question_session(*, minute: int = 1) -> list[dict]:
-    return [
-        prompt("please fix the thing", minute),
-        ask_record([question_spec("Which one?", ("Alpha", "Beta"))], minute=minute + 1),
-        ask_answer_record(answers={"Which one?": "Alpha"}, timestamp=ts(minute + 2)),
-        assistant_text("done", timestamp=ts(minute + 3)),
-    ]
+class TestStderrLinePrefixes:
+    """The abort tests assert these prefixes are absent, so a prefix that drifts from the command's output must fail here."""
+
+    def test_the_command_prints_the_banner_then_a_line_starting_with_the_families_prefix(self, capsys):
+        correction_candidates._stderr_families_line({"-home-example-src-repo": 1})
+
+        banner, families_line = capsys.readouterr().err.splitlines()
+        assert banner == BANNER
+        assert families_line.startswith(FAMILIES_PREFIX)
 
 
 class TestCliWiring:
@@ -165,9 +157,9 @@ class TestRefusals:
     def _assert_refused(self, status, stdout, stderr, *, expected_stderr=None, expected_status=2):
         assert status == expected_status
         assert stdout == ""
-        assert _HEADER_PREFIX not in stderr
-        assert _FAMILIES_PREFIX not in stderr
-        assert _BANNER not in stderr
+        assert HEADER_PREFIX not in stderr
+        assert FAMILIES_PREFIX not in stderr
+        assert BANNER not in stderr
         if expected_stderr is not None:
             assert stderr == expected_stderr
 
@@ -411,9 +403,29 @@ class TestPublishFailure:
         assert status == 2
         assert stdout == ""
         assert len(stderr.splitlines()) == 2
-        assert stderr.splitlines()[0].startswith(_HEADER_PREFIX)
+        assert stderr.splitlines()[0].startswith(HEADER_PREFIX)
         assert "could not be published" in stderr.splitlines()[1]
         assert list(out_dir.iterdir()) == []
+
+    def test_the_publish_temp_name_keeps_the_destinations_jsonl_extension(
+        self, fake_projects, out_dir, monkeypatch, capsys,
+    ):
+        seed(fake_projects, question_session())
+        linked_sources: list[str] = []
+        real_link = os.link
+
+        def recording_link(src, dst):
+            linked_sources.append(Path(src).name)
+            real_link(src, dst)
+
+        monkeypatch.setattr(os, "link", recording_link)
+
+        status, _stdout, _stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out_dir / "run.jsonl"))
+
+        assert status == 0
+        (temp_name,) = linked_sources
+        assert temp_name.startswith(".correction-candidates-")
+        assert temp_name.endswith(".jsonl")
 
     def test_a_destination_that_appears_mid_scan_exits_2_and_is_left_unchanged(
         self, fake_projects, out_dir, monkeypatch, capsys,
@@ -438,7 +450,7 @@ class TestPublishFailure:
         assert status == 2
         assert stdout == ""
         assert len(stderr.splitlines()) == 2
-        assert stderr.splitlines()[0].startswith(_HEADER_PREFIX)
+        assert stderr.splitlines()[0].startswith(HEADER_PREFIX)
         assert out.read_text() == "squatter\n"
         assert [path.name for path in out_dir.iterdir()] == ["run.jsonl"]
 
@@ -455,9 +467,9 @@ class TestPreview:
         assert status == 0
         assert stdout == ""
         header, banner, families_line = stderr.splitlines()
-        assert header.startswith(_HEADER_PREFIX)
-        assert banner == _BANNER
-        assert families_line.startswith(_FAMILIES_PREFIX)
+        assert header.startswith(HEADER_PREFIX)
+        assert banner == BANNER
+        assert families_line.startswith(FAMILIES_PREFIX)
         assert families_of(stderr) == {"-home-user-testrepo": 1}
         assert sorted(tmp_path.rglob("*")) == before
 
@@ -491,6 +503,54 @@ class TestPreview:
             "correction-candidates: warning: no session matched this scope;"
             " check that the checkout's directory name holds the repo name",
         ]
+
+    def test_a_zero_session_warning_names_the_directory_name_hint_only_for_a_projects_glob_that_names_a_repo(self, capsys):
+        correction_candidates._warn_when_no_session_matched({}, None)
+        correction_candidates._warn_when_no_session_matched({}, "*")
+        correction_candidates._warn_when_no_session_matched({}, "*-no-such-repo*")
+
+        assert capsys.readouterr().err.splitlines() == [
+            "correction-candidates: warning: no session matched this scope",
+            "correction-candidates: warning: no session matched this scope",
+            "correction-candidates: warning: no session matched this scope;"
+            " check that the checkout's directory name holds the repo name",
+        ]
+
+
+class TestZeroSessionHint:
+    """The hint reaches stderr from both command call sites, and only for a `--projects` glob that names a repo."""
+
+    @pytest.fixture(params=["run", "preview"])
+    def mode_flags(self, request, out_dir) -> list[str]:
+        return ["--out", str(out_dir / "run.jsonl")] if request.param == "run" else ["--preview"]
+
+    @staticmethod
+    def _warnings(stderr: str) -> list[str]:
+        return [line for line in stderr.splitlines() if "warning" in line]
+
+    def test_a_zero_session_this_repo_prints_no_directory_name_hint(self, fake_projects, monkeypatch, capsys, mode_flags):
+        monkeypatch.setattr(scope, "_repo_scoped_project_slugs", lambda *args, **kwargs: [fake_projects.name])
+        fake_projects.mkdir(parents=True, exist_ok=True)
+
+        status, _stdout, stderr = run_main(monkeypatch, capsys, "--this-repo", *mode_flags)
+
+        assert status == 0
+        assert self._warnings(stderr) == ["correction-candidates: warning: no session matched this scope"]
+
+    def test_a_zero_session_projects_glob_prints_the_directory_name_hint(self, fake_projects, monkeypatch, capsys, mode_flags):
+        status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*-no-such-repo*", *mode_flags)
+
+        assert status == 0
+        assert self._warnings(stderr) == [
+            "correction-candidates: warning: no session matched this scope;"
+            " check that the checkout's directory name holds the repo name",
+        ]
+
+    def test_a_zero_session_projects_star_prints_no_directory_name_hint(self, fake_projects, monkeypatch, capsys, mode_flags):
+        status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", *mode_flags)
+
+        assert status == 0
+        assert self._warnings(stderr) == ["correction-candidates: warning: no session matched this scope"]
 
 
 class TestRun:
@@ -526,7 +586,7 @@ class TestRun:
         def label(stream: str, text: str) -> str:
             prefixes = {
                 "stderr": (
-                    (_HEADER_PREFIX, "header"), (_BANNER, "banner"), (_FAMILIES_PREFIX, "families"), (_COUNTS_PREFIX, "counts"),
+                    (HEADER_PREFIX, "header"), (BANNER, "banner"), (FAMILIES_PREFIX, "families"), (_COUNTS_PREFIX, "counts"),
                 ),
             }
             return next((name for prefix, name in prefixes.get(stream, ()) if text.startswith(prefix)), stream)
@@ -534,7 +594,7 @@ class TestRun:
         events = [label(stream, text) for stream, text in writes if text != "\n"]
         assert events == ["header", "publish", "stdout", "banner", "families", "counts"]
 
-    def test_stderr_holds_the_header_the_banner_the_families_line_and_the_counts_line_at_one_root(
+    def test_stderr_lines_and_the_scope_record_notice_at_one_root(
         self, fake_projects, out_dir, monkeypatch, capsys,
     ):
         seed(fake_projects, question_session())
@@ -543,12 +603,15 @@ class TestRun:
         _status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
 
         header, banner, families_line, counts_line = stderr.splitlines()
-        assert header.startswith(_HEADER_PREFIX)
-        assert banner == _BANNER
-        assert families_line.startswith(_FAMILIES_PREFIX)
+        assert header.startswith(HEADER_PREFIX)
+        assert banner == BANNER
+        assert families_line.startswith(FAMILIES_PREFIX)
         record = written_lines(out)[0]
         assert record["header"] == header
-        assert record["do_not_publish"] == _BANNER
+        assert "raw message text" in record["do_not_publish"]
+        assert record["do_not_publish"].startswith("DO NOT PUBLISH")
+        assert "credentials" in record["do_not_publish"]
+        assert "project names" in record["do_not_publish"]
         counts_payload = json.loads(counts_line.removeprefix(_COUNTS_PREFIX))
         assert counts_payload == {"counts": record["counts"], "checks": record["checks"]}
 
@@ -565,8 +628,8 @@ class TestRun:
         header, first_root_line, second_root_line, banner, families_line, counts_line = stderr.splitlines()
         assert "2 roots" in header
         assert (first_root_line, second_root_line) == ("scanning root 1/2...", "scanning root 2/2...")
-        assert banner == _BANNER
-        assert families_line.startswith(_FAMILIES_PREFIX)
+        assert banner == BANNER
+        assert families_line.startswith(FAMILIES_PREFIX)
         assert counts_line.startswith(_COUNTS_PREFIX)
         lines = written_lines(out)
         assert lines[0]["families"] == {_REPO_FAMILY: 1}
@@ -669,7 +732,7 @@ class TestRun:
         _status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
 
         assert out.read_bytes().isascii()
-        assert stderr.replace(_BANNER, "").isascii()
+        assert stderr.replace(BANNER, "").isascii()
         scope_record, prompt_line, question_line = written_lines(out)
         assert prompt_line["text"] == "café ☕ please"
         assert question_line["questions"][0]["answer"] == "Ünïcode answer"
@@ -688,6 +751,37 @@ class TestRun:
         lines = written_lines(out)
         assert [line["kind"] for line in lines] == ["scope"]
         assert lines[0]["checks"]["failed_relations"] == []
+
+    @pytest.mark.parametrize(
+        ("expected_failures", "answer_record"),
+        [
+            pytest.param([], ask_answer_record(answers={"Which one?": "Alpha"}, timestamp=ts(3)), id="healthy-selected-answer"),
+            pytest.param(
+                ["answers_read"], ask_answer_record(timestamp=ts(3)), id="answers_read-dict-result-without-answers",
+            ),
+            pytest.param(
+                ["answers_keyed"], ask_answer_record(answers={"Choice": "Alpha"}, timestamp=ts(3)),
+                id="answers_keyed-answers-keyed-by-header",
+            ),
+            pytest.param(
+                ["labels_matched"], ask_answer_record(answers={"Which one?": "typed words"}, timestamp=ts(3)),
+                id="labels_matched-every-answer-typed",
+            ),
+        ],
+    )
+    def test_the_scope_record_names_exactly_the_relations_an_answer_shape_fails(
+        self, expected_failures, answer_record, fake_projects, out_dir, monkeypatch, capsys,
+    ):
+        seed(fake_projects, [
+            prompt("please fix the thing", 1),
+            ask_record([question_spec("Which one?", ("Alpha", "Beta"), header="Choice")], minute=2),
+            answer_record,
+        ])
+        out = out_dir / "run.jsonl"
+
+        run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
+
+        assert written_lines(out)[0]["checks"]["failed_relations"] == expected_failures
 
     def test_a_main_and_a_worktree_directory_share_one_family(self, tmp_path, out_dir, monkeypatch, capsys):
         projects = tmp_path / "projects"
@@ -774,191 +868,3 @@ class TestScopeNarrowing:
         assert status == 0
         assert families_of(stderr) == {"-home-user-testrepo": 1}
         assert _OUT_OF_SCOPE_FAMILY not in stderr
-
-
-_CANARIES = {
-    "prompt": "CANARY-PROMPT-TEXT",
-    "slash_args": "CANARY-SLASH-ARGS",
-    "assistant": "CANARY-ASSISTANT-TEXT",
-    "model": "CANARY-MODEL",
-    "skill": "CANARY-SKILL",
-    "question": "CANARY-QUESTION",
-    "header": "CANARY-HEADER",
-    "label": "CANARY-OPTION-LABEL",
-    "description": "CANARY-OPTION-DESCRIPTION",
-    "answer": "CANARY-ANSWER",
-    "notes": "CANARY-NOTES",
-    "result": "CANARY-DECLINE-CONTENT",
-    "answers_key": "CANARY-ANSWERS-KEY",
-    "annotations_key": "CANARY-ANNOTATIONS-KEY",
-    "entry_key": "CANARY-ENTRY-KEY",
-    "option_key": "CANARY-OPTION-KEY",
-    "result_key": "CANARY-RESULT-KEY",
-}
-_CANARIES_IN_KEYS_NO_OUTPUT_READS = {"answers_key", "annotations_key", "entry_key", "option_key", "result_key"}
-
-
-def _canary_session() -> list[dict]:
-    spec = {
-        **question_spec(_CANARIES["question"], (_CANARIES["label"], "Other"), header=_CANARIES["header"]),
-        _CANARIES["entry_key"]: 1,
-    }
-    spec["options"][0]["description"] = _CANARIES["description"]
-    spec["options"][1][_CANARIES["option_key"]] = 1
-    answered = ask_answer_record(
-        answers={_CANARIES["question"]: _CANARIES["answer"], _CANARIES["answers_key"]: "x"},
-        annotations={_CANARIES["question"]: {"notes": _CANARIES["notes"]}, _CANARIES["annotations_key"]: {}},
-        timestamp=ts(4),
-    )
-    answered["toolUseResult"][_CANARIES["result_key"]] = 1
-    declined = ask_answer_record(
-        tool_use_id="toolu_declined", tool_use_result="declined", content=_CANARIES["result"], timestamp=ts(7),
-    )
-    return [
-        with_fields(slash_invocation("scratch", _CANARIES["slash_args"]), timestamp=ts(0), uuid="slash"),
-        prompt(_CANARIES["prompt"], 1),
-        assistant_text(_CANARIES["assistant"], timestamp=ts(2), model=_CANARIES["model"]),
-        ask_record([spec], minute=3, model=_CANARIES["model"], attribution_skill=_CANARIES["skill"]),
-        answered,
-        ask_record([question_spec("Declined?")], tool_use_id="toolu_declined", minute=6),
-        declined,
-    ]
-
-
-def _assert_no_canary_outside_the_file(*texts: str) -> None:
-    for name, canary in _CANARIES.items():
-        for text in texts:
-            assert canary not in text, f"canary {name} reached the terminal or the scope record"
-
-
-class TestCanaries:
-    def test_a_run_prints_no_transcript_text_and_the_scope_record_holds_none(self, fake_projects, out_dir, monkeypatch, capsys):
-        seed(fake_projects, _canary_session())
-        out = out_dir / "run.jsonl"
-
-        _status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
-
-        file_text = out.read_text(encoding="ascii")
-        assert all(
-            canary in file_text for name, canary in _CANARIES.items() if name not in _CANARIES_IN_KEYS_NO_OUTPUT_READS
-        )
-        _assert_no_canary_outside_the_file(stdout, stderr, file_text.splitlines()[0])
-
-    def test_a_preview_prints_no_transcript_text(self, fake_projects, monkeypatch, capsys):
-        seed(fake_projects, _canary_session())
-
-        _status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--preview")
-
-        _assert_no_canary_outside_the_file(stdout, stderr)
-
-    def test_a_publish_failure_prints_no_transcript_text(self, fake_projects, out_dir, monkeypatch, capsys):
-        seed(fake_projects, _canary_session())
-
-        def failing_link(*args, **kwargs):
-            raise OSError("link refused")
-
-        monkeypatch.setattr(os, "link", failing_link)
-
-        _status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out_dir / "run.jsonl"))
-
-        _assert_no_canary_outside_the_file(stdout, stderr)
-
-    def test_a_project_directory_name_with_a_newline_and_an_escape_byte_gives_one_ascii_families_line(
-        self, tmp_path, monkeypatch, capsys,
-    ):
-        projects = tmp_path / "projects"
-        monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
-        seed(projects / "-home-user-odd\n\x1b[31mname", question_session())
-
-        status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--preview")
-
-        assert status == 0
-        assert stderr.replace(_BANNER, "").isascii()
-        assert "\x1b" not in stderr
-        assert [line.startswith(_FAMILIES_PREFIX) for line in stderr.splitlines()].count(True) == 1
-        assert len(stderr.splitlines()) == 3
-
-
-class TestCorpusAbort:
-    @pytest.fixture(params=[ValueError, RecursionError], ids=["value-error", "recursion-error"])
-    def aborting_scan(self, request, fake_projects, monkeypatch):
-        """Patch the session iterator to yield one session and then raise, the way the corpus reader aborts."""
-        error_type = request.param
-
-        def resolve_then_abort(*args, **kwargs):
-            def sessions():
-                yield fake_projects / "sess.jsonl", []
-                raise error_type(f"aborted near {_CANARIES['prompt']}")
-
-            return sessions(), "glob"
-
-        monkeypatch.setattr(scope, "_resolve_project_scope", resolve_then_abort)
-        return error_type.__name__
-
-    def test_a_run_exits_1_without_echoing_the_exception_text_or_writing_a_file(
-        self, aborting_scan, out_dir, monkeypatch, capsys,
-    ):
-        out = out_dir / "run.jsonl"
-
-        status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
-
-        assert status == 1
-        assert stdout == ""
-        header, abort_line = stderr.splitlines(keepends=True)
-        assert header.startswith(_HEADER_PREFIX)
-        assert abort_line == _ABORT_LINE.format(name=aborting_scan)
-        _assert_no_canary_outside_the_file(stderr)
-        assert list(out_dir.iterdir()) == []
-
-    def test_a_preview_exits_1_with_no_families_line(self, aborting_scan, monkeypatch, capsys):
-        status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--preview")
-
-        assert status == 1
-        assert stdout == ""
-        assert _FAMILIES_PREFIX not in stderr
-        assert stderr.splitlines(keepends=True)[1] == _ABORT_LINE.format(name=aborting_scan)
-        assert len(stderr.splitlines()) == 2
-
-
-class TestCorpusAbortOnARealFile:
-    """The reader's own exception contract: a line nested past the recursion limit reaches the command as an abort."""
-
-    @pytest.fixture(params=["one-root", "two-roots"])
-    def nested_line_project(self, request, tmp_path, monkeypatch) -> Path:
-        deeply_nested_line = "[" * 200_000
-        try:
-            json.loads(deeply_nested_line)
-        except RecursionError:
-            pass
-        else:
-            pytest.skip("this interpreter parses a 200,000-deep array without raising")
-        if request.param == "one-root":
-            projects = tmp_path / "projects"
-            monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
-        else:
-            projects = _two_declared_roots(tmp_path, monkeypatch)[1]
-        project_dir = projects / "-home-user-testrepo"
-        project_dir.mkdir(parents=True)
-        (project_dir / "sess.jsonl").write_text(f"{deeply_nested_line}\n")
-        return project_dir
-
-    def test_a_run_exits_1_with_the_one_line_abort_message_and_no_file(
-        self, nested_line_project, out_dir, monkeypatch, capsys,
-    ):
-        status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out_dir / "run.jsonl"))
-
-        assert status == 1
-        assert stdout == ""
-        assert stderr.splitlines(keepends=True)[-1] == _ABORT_LINE.format(name="RecursionError")
-        assert "Traceback" not in stderr
-        assert _FAMILIES_PREFIX not in stderr
-        assert list(out_dir.iterdir()) == []
-
-    def test_a_preview_exits_1_with_no_families_line(self, nested_line_project, monkeypatch, capsys):
-        status, stdout, stderr = run_main(monkeypatch, capsys, "--projects", "*", "--preview")
-
-        assert status == 1
-        assert stdout == ""
-        assert stderr.splitlines(keepends=True)[-1] == _ABORT_LINE.format(name="RecursionError")
-        assert "Traceback" not in stderr
-        assert _FAMILIES_PREFIX not in stderr
