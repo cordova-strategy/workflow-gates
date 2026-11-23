@@ -44,7 +44,8 @@ from helpers import REPO_ROOT, init_git_repo, isolated_git_env
 
 TABLE_PATH = REPO_ROOT / "code-file-size-exceptions.toml"
 
-# The opening phrase of each header section, each required to appear somewhere in the header, so a reworded header cannot leave a pointer at nothing:
+# The opening phrase of each header section, each required to appear somewhere in the header,
+# so a reworded header cannot leave a pointer at nothing:
 # "Choosing a verdict:" is cited by the no-row message.
 # "Layout rule:" points readers at the shape test.
 # "Conflict rule:" is cited by the decode problem.
@@ -316,7 +317,8 @@ def test_enumeration_ignores_an_ambient_repository_redirecting_variable(repo, gi
     _write(repo, "a.py", "a\n")
     _git(repo, git_env, "add", "a.py")
     # Git ignores a missing GIT_WORK_TREE path when listing the index.
-    # A GIT_WORK_TREE that is the repository's parent makes it list nothing, so that value is the one that detects an inherited variable.
+    # A GIT_WORK_TREE that is the repository's parent makes it list nothing,
+    # so that value is the one that detects an inherited variable.
     redirect_target = repo.parent if variable_name == "GIT_WORK_TREE" else tmp_path / "no-such-path"
     monkeypatch.setenv(variable_name, str(redirect_target))
 
@@ -587,6 +589,8 @@ def test_under_ceiling_line_prints_the_value_to_write_and_no_growth_remedies():
 
     assert "Write ceiling = 1501." in message
     assert REMEDY_HEADING_PREFIX not in message
+    structural = render([_violation(ViolationKind.UNDER_CEILING, "a.py", 1501, 1502)], {"a.py": _structural_row(1502)})
+    assert "The row's reason" not in structural
 
 
 def test_under_limit_line_prints_no_ceiling_value_and_no_remedy_block():
@@ -602,6 +606,8 @@ def test_not_counted_line_says_the_path_is_not_a_tracked_regular_file():
     message = render([_violation(ViolationKind.NOT_COUNTED, "gone.py", None, 1500)], {"gone.py": _split_pending_row(1500)})
 
     assert "gone.py: not a tracked regular `.py`/`.sh` file" in message
+    assert REMEDY_HEADING_PREFIX not in message
+    assert "ceiling =" not in message
 
 
 # --- load_table ------------------------------------------------------------------------------------------------
@@ -729,17 +735,20 @@ def test_top_level_key_that_is_not_a_table_is_a_schema_problem_naming_it():
 
 
 @pytest.mark.parametrize(
-    "seam_line",
+    ("verdict_line", "prose_line", "key"),
     [
-        pytest.param('seam = "one\\ntwo"', id="single-line-string-with-escaped-newline"),
-        pytest.param('seam = """\none\ntwo"""', id="multi-line-string-holding-a-line-break"),
+        pytest.param(SPLIT_VERDICT, 'seam = "one\\ntwo"', "seam", id="single-line-string-with-escaped-newline"),
+        pytest.param(SPLIT_VERDICT, 'seam = """\none\ntwo"""', "seam", id="multi-line-string-holding-a-line-break"),
+        pytest.param(SPLIT_VERDICT, 'seam = "one\\u2028two"', "seam", id="seam-with-line-separator-u2028"),
+        pytest.param(SPLIT_VERDICT, 'seam = "one\\u2029two"', "seam", id="seam-with-paragraph-separator-u2029"),
+        pytest.param(STRUCTURAL_VERDICT, 'reason = "one\\u2028two"', "reason", id="structural-reason-with-line-separator-u2028"),
     ],
 )
-def test_seam_holding_a_line_break_is_a_schema_problem_naming_its_row(seam_line):
-    loaded = load_table(_row_text("ceiling = 1001", 'verdict = "split pending"', seam_line).encode())
+def test_prose_holding_a_line_break_is_a_schema_problem_naming_its_row(verdict_line, prose_line, key):
+    loaded = load_table(_row_text("ceiling = 1001", verdict_line, prose_line).encode())
 
     assert loaded.failed_stage is TableStage.SCHEMA
-    assert loaded.problems == ["a.py: seam holds a line break or control character, so it cannot print on one line."]
+    assert loaded.problems == [f"a.py: {key} holds a line break or control character, so it cannot print on one line."]
 
 
 def _schema_case(case_id: str, *field_lines: str, problem_fragment: str):

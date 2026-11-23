@@ -2771,7 +2771,7 @@ def _targets_outside_roots(targets: set[str], roots: tuple[str, ...]) -> list[st
 
 class TestSupplementaryTargets:
     """SUPPLEMENTARY_RULES adds the size check to a domain selection through add_supplementary_targets,
-    which `main` applies after select_pytest_targets, so the rule-table assertions elsewhere stay unchanged."""
+    which `main` applies after select_pytest_targets."""
 
     @staticmethod
     def _selection_with_supplements(paths: list[str]):

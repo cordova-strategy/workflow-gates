@@ -202,7 +202,7 @@ TICKET_REFERENCE_DISCIPLINE_TEST_PATH = "claude/.claude/hooks/tests/test_ticket_
 # test_code_file_size.py counts every tracked .py and .sh file and reads
 # CODE_FILE_SIZE_EXCEPTIONS_TOML, so a change to any such file or to the table
 # selects it. SUPPLEMENTARY_RULES adds it for the former and
-# CROSS_DOMAIN_EXCEPTIONS for the latter.
+# CROSS_DOMAIN_EXCEPTIONS for the latter. A change to CODE_FILE_SIZE_MODULE_PATH also selects test_select_tests.py.
 CODE_FILE_SIZE_TEST_PATH = "claude/.claude/tests/test_code_file_size.py"
 CODE_FILE_SIZE_EXCEPTIONS_TOML = "code-file-size-exceptions.toml"
 CODE_FILE_SIZE_MODULE_PATH = "claude/.claude/tests/code_file_size.py"
@@ -1114,7 +1114,7 @@ def _is_code_file_change(path: str) -> bool:
 # - A rename lists only the new path, so renaming a row's file out of .py/.sh goes unselected.
 SUPPLEMENTARY_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
     (_is_code_file_change, (CODE_FILE_SIZE_TEST_PATH,)),
-    # test_select_tests.py imports this module for its COUNTED_SUFFIXES contract test.
+    # test_select_tests.py imports claude/.claude/tests/code_file_size.py for its COUNTED_SUFFIXES contract test.
     (lambda p: p == CODE_FILE_SIZE_MODULE_PATH, (SELECT_TESTS_TEST_PATH,)),
 )
 

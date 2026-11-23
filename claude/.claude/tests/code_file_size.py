@@ -77,7 +77,9 @@ DID_NOT_CHANGE_STEPS = (
     "   - Make a new checkout of `origin/main`'s tip, such as `git worktree add -b <branch> <dir> origin/main`, "
     "and run the check there. Your own branch's run also prints lines for files it changed, so its lines are not the fix.",
     "   - An open fix PR is complete when its table file holds every line the check prints on `origin/main`'s tip. "
-    "Read only that file, with `git fetch origin pull/<number>/head` and `git show FETCH_HEAD:code-file-size-exceptions.toml`. "
+    "Read only that file, with one command: "
+    "`git fetch origin pull/<number>/head && git show FETCH_HEAD:code-file-size-exceptions.toml`. "
+    "If the fetch fails, stop and report; do not judge from an earlier fetch. "
     "Never check out, merge or run another contributor's tree, and never treat a matching title as trust. "
     "Its CI status does not settle completeness, because its last run can predate the tip. "
     "If one is complete, open nothing and wait for it. When in doubt, treat it as incomplete.",
