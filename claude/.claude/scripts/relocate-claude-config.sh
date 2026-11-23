@@ -795,10 +795,9 @@ print_manual_steps() {
 Not done by this command:
   - Config dirs not listed in ~/.claude/transcript-config-dirs, or listed there and reported above as not re-linked, keep their links into the old location.
     A session under such an account loads none of this repo's settings, hooks or skills until its dir is re-linked.
-    To have this command re-link one, list its absolute path in that file, or correct the line a warning above names, or make its dir reachable.
+    To have this command re-link one, list its absolute path in that file, or correct the line a warning above names, or make its dir reachable, then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when this run passed it.
     Listing a dir there also adds it to the transcript tools' scan when it holds `projects/`.
-    Then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when this run passed it.
-    Listing a dir there gives this command write access to its links, whether or not the transcript tools scan it, so list one only if you want that.
+    Listing a dir there also gives this command write access to its links, whether or not the transcript tools scan it, so list one only if you want that.
     This command did not touch a link reported above as left alone, so re-link or remove it yourself.
   - Any other account that registered this repo's marketplace, listed or not, still records it at the old location.
     `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points it once that account's `settings.json` resolves.

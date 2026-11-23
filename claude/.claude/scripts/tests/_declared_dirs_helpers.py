@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .test_relocate_claude_config import _SCRIPT, _make_repo, _script_env
+from .test_relocate_claude_config import _SCRIPT, _SUBPROCESS_TIMEOUT_SECONDS, _make_repo, _script_env
 
 _ROOTS_LABEL = "~/.claude/transcript-config-dirs"
 # The reader's warning for an unusable roots-file line, to `.format(line=<N>)`.
@@ -23,8 +23,6 @@ _SKILLS_ROOT = "claude-skills"
 _UNIT_ROOTS = [_PACKAGE_ROOT, _SKILLS_ROOT]
 # The roots-file line number every unit-layer call passes, so a backup name's `.L7.` is checkable.
 _LINE = 7
-# A hang guard for every sourced call: a loop that never ends fails the test instead of stalling CI.
-_SUBPROCESS_TIMEOUT_SECONDS = 60
 _BASH = shutil.which("bash") or "bash"
 
 _AWKWARD_ENTRY_NAME = "-a b$c]`d@e*f\\g$(touch injected)"
@@ -242,11 +240,23 @@ class _RunnerScene:
     repointed: list[Path] = field(default_factory=list)
     unchanged: dict[Path, str] = field(default_factory=dict)
     expected_counts: tuple[int, int, int, int] | None = None
+    # The dirs the roots file lists, in their absolute spelling, whose paths no output may name.
+    listed_dirs: list[Path] = field(default_factory=list)
+
+    def write_roots_file(self, *entries: tuple[str, Path]) -> None:
+        """Writes the roots file and `listed_dirs` from the same entries, so the dirs a canary checks are the dirs listed."""
+        _write_roots_file(self.home, [spelling for spelling, _ in entries])
+        self.listed_dirs = [listed_dir for _, listed_dir in entries]
 
 
-def _runner_scene_base(tmp_path: Path) -> _RunnerScene:
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
+def _runner_scene_base(
+    tmp_path: Path, *, home: Path | None = None, new_repo_parent: Path | None = None, new_repo_name: str = "new-repo"
+) -> _RunnerScene:
+    """A home holding an empty `.claude` and a new checkout under `new_repo_parent` (default: `tmp_path`).
+    A `home` passed in may be a symlink to a directory that exists."""
+    home = tmp_path / "home" if home is None else home
+    (home / ".claude").mkdir(parents=True, exist_ok=True)
     scratch = tmp_path / "scratch"
     scratch.mkdir()
-    return _RunnerScene(home=home, new_repo=_make_repo(tmp_path, "new-repo"), scratch=scratch)
+    new_repo = _make_repo(tmp_path if new_repo_parent is None else new_repo_parent, new_repo_name)
+    return _RunnerScene(home=home, new_repo=new_repo, scratch=scratch)

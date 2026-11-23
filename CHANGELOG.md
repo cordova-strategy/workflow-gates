@@ -81,7 +81,10 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Listing a dir there now gives this command write access to its links, whether or not the transcript tools scan it. Deleting the dir's line keeps the command away from it. That also drops the dir from the transcript tools' scan.
   - `--repair <new-path>` reaches every listed account, so its destination is trusted for each of them.
   - A dangling link at one of this repo's package paths is re-pointed when its text ends in that path, whichever checkout its text named.
-  - A run that exited 0 before can exit 3 now, when a dir under a listed dir, or the listed dir itself, cannot be searched. It can also exit 3 when a link needs re-pointing and its listed dir, a dir under it, or the backup dir is unwritable. A dir with nothing to re-point is not written. It can also exit 3 when a link cannot be re-pointed for another reason. The retry is `--repair`.
+  - A run that exited 0 before can exit 3 now, and `--repair` is the retry. It exits 3 in these cases:
+    - A dir under a listed dir, or the listed dir itself, cannot be searched.
+    - A link needs re-pointing and its listed dir, a dir under it, or the backup dir is unwritable. A dir with nothing to re-point is not written.
+    - A link cannot be re-pointed for another reason.
   - Backups now get a unique `<name>.<suffix>` name, with or without the file, so two same-named links in one run no longer replace each other's backup.
   - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
   - **Migration:** after a relocation that left a listed account's links pointing at the old location, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.

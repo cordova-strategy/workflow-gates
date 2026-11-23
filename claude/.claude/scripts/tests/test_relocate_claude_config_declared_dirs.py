@@ -275,6 +275,18 @@ def _assert_neither_stream_names_a_link_text_or_an_old_checkout(
             assert old_checkout_spelling not in stream
 
 
+def _assert_neither_stream_names_a_listed_dir(run: _SourcedRun, listed_dirs: Sequence[Path], home: Path) -> None:
+    """A listed dir's path, typed or physical, can identify an account. The backup dir under `home` is the one
+    place the output names a path by design, so its spelling is set aside first."""
+    assert listed_dirs, "a canary over no listed dirs passes vacuously"
+    backup_dir_spelling = str(home / ".claude-config-relocate-backup")
+    listed_dir_spellings = {spelling for listed_dir in listed_dirs for spelling in (str(listed_dir), str(listed_dir.resolve()))}
+    for stream in (run.stdout, run.stderr):
+        printed = stream.replace(backup_dir_spelling, "")
+        for listed_dir_spelling in listed_dir_spellings:
+            assert listed_dir_spelling not in printed
+
+
 @pytest.mark.parametrize(
     "case",
     [pytest.param(case, marks=requires_non_root) if case == "unsearchable-nested" else case for case in _DECISION_CASES],
@@ -573,7 +585,7 @@ def test_a_dir_with_nothing_to_re_point_is_not_written(tmp_path: Path, mode: str
     if mode == "read-only":
         scene.restrict(scene.account, 0o555)
 
-    run = scene.run_unit(prelude="" if mode == "read-only" else recording_prelude)
+    run = scene.run_unit(prelude=recording_prelude)
 
     assert run.call_statuses == [0], run.stderr
     assert _outcomes(run.stdout) == [(_LINE, 0, 0, 0, 0)]
@@ -593,7 +605,7 @@ def _run_runner(home: Path, new_path: Path, cwd: Path) -> _SourcedRun:
 
 def _scene_home_claude(tmp_path: Path) -> _RunnerScene:
     scene = _runner_scene_base(tmp_path)
-    _write_roots_file(scene.home, ["~/.claude"])
+    scene.write_roots_file(("~/.claude", scene.home / ".claude"))
     scene.unchanged[scene.home / ".claude" / "hooks"] = _stale_link(scene.home / ".claude", "hooks", tmp_path / "old-repo")
     scene.skip_line = f"the dir on line 1 of {_ROOTS_LABEL} is ~/.claude, which the stows above cover"
     return scene
@@ -603,7 +615,7 @@ def _scene_inside_checkout(tmp_path: Path) -> _RunnerScene:
     scene = _runner_scene_base(tmp_path)
     inside = scene.new_repo / "acct-inside"
     inside.mkdir()
-    _write_roots_file(scene.home, [str(inside)])
+    scene.write_roots_file((str(inside), inside))
     scene.unchanged[inside / "hooks"] = _stale_link(inside, "hooks", tmp_path / "old-repo")
     scene.skip_line = f"the dir on line 1 of {_ROOTS_LABEL} lies inside the checkout, which this command never re-links"
     return scene
@@ -611,7 +623,7 @@ def _scene_inside_checkout(tmp_path: Path) -> _RunnerScene:
 
 def _scene_checkout_itself(tmp_path: Path) -> _RunnerScene:
     scene = _runner_scene_base(tmp_path)
-    _write_roots_file(scene.home, [str(scene.new_repo)])
+    scene.write_roots_file((str(scene.new_repo), scene.new_repo))
     scene.unchanged[scene.new_repo / "hooks"] = _stale_link(scene.new_repo, "hooks", tmp_path / "old-repo")
     scene.skip_line = f"the dir on line 1 of {_ROOTS_LABEL} lies inside the checkout, which this command never re-links"
     return scene
@@ -619,13 +631,11 @@ def _scene_checkout_itself(tmp_path: Path) -> _RunnerScene:
 
 def _scene_home_claude_symlinked(tmp_path: Path) -> _RunnerScene:
     real_home = tmp_path / "acct-real-home"
-    (real_home / ".claude").mkdir(parents=True)
+    real_home.mkdir()
     linked_home = tmp_path / "acct-home-link"
     linked_home.symlink_to(real_home)
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    scene = _RunnerScene(home=linked_home, new_repo=_make_repo(tmp_path, "new-repo"), scratch=scratch)
-    _write_roots_file(linked_home, ["~/.claude"])
+    scene = _runner_scene_base(tmp_path, home=linked_home)
+    scene.write_roots_file(("~/.claude", linked_home / ".claude"))
     scene.unchanged[real_home / ".claude" / "hooks"] = _stale_link(real_home / ".claude", "hooks", tmp_path / "old-repo")
     scene.skip_line = f"the dir on line 1 of {_ROOTS_LABEL} is ~/.claude, which the stows above cover"
     return scene
@@ -635,7 +645,7 @@ def _scene_sibling_prefix(tmp_path: Path) -> _RunnerScene:
     scene = _runner_scene_base(tmp_path)
     sibling = tmp_path / "new-repo-acct-sibling"
     sibling.mkdir()
-    _write_roots_file(scene.home, [str(sibling)])
+    scene.write_roots_file((str(sibling), sibling))
     _stale_link(sibling, "hooks", tmp_path / "old-repo")
     scene.repointed = [sibling / "hooks"]
     scene.expected_counts = (1, 0, 0, 0)
@@ -643,12 +653,9 @@ def _scene_sibling_prefix(tmp_path: Path) -> _RunnerScene:
 
 
 def _scene_home(tmp_path: Path) -> _RunnerScene:
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
-    scene = _RunnerScene(home=home, new_repo=_make_repo(home, "new-repo"), scratch=scratch)
-    _write_roots_file(home, ["~"])
+    scene = _runner_scene_base(tmp_path, new_repo_parent=tmp_path / "home")
+    home = scene.home
+    scene.write_roots_file(("~", home))
     _stale_link(home, "hooks", tmp_path / "old-repo")
     scene.repointed = [home / "hooks"]
     scene.unchanged[home / ".claude" / "decoy-link"] = _decoy_link(home / ".claude", tmp_path / "old-repo")
@@ -657,13 +664,9 @@ def _scene_home(tmp_path: Path) -> _RunnerScene:
 
 
 def _scene_checkout_parent(tmp_path: Path) -> _RunnerScene:
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
     parent = tmp_path / "acct-parent"
-    scene = _RunnerScene(home=home, new_repo=_make_repo(parent, "-new-repo"), scratch=scratch)
-    _write_roots_file(home, [str(parent)])
+    scene = _runner_scene_base(tmp_path, new_repo_parent=parent, new_repo_name="-new-repo")
+    scene.write_roots_file((str(parent), parent))
     _stale_link(parent, "hooks", tmp_path / "old-repo")
     scene.repointed = [parent / "hooks"]
     scene.unchanged[scene.new_repo / "decoy-link"] = _decoy_link(scene.new_repo, tmp_path / "old-repo")
@@ -699,6 +702,7 @@ def test_runner_skips_home_claude_and_the_checkout_and_bounds_ancestors(tmp_path
         assert os.readlink(link) == text
     if scene.expected_counts is not None:
         assert [counts[1:] for counts in _outcomes(run.stdout)] == [scene.expected_counts]
+    _assert_neither_stream_names_a_listed_dir(run, scene.listed_dirs, scene.home)
     _assert_neither_stream_names_an_account(run)
 
 
@@ -749,15 +753,12 @@ class _AwkwardRunner:
     typed_new_path: Path
     new_repo: Path
     expected_text: str
+    listed_dirs: list[Path]
 
 
 def _build_awkward_runner(tmp_path: Path) -> _AwkwardRunner:
     """A listed dir whose name holds a space, `$` and `*`, reached through a symlinked parent and then directly,
     and a checkout named `_AWKWARD_DESTINATION_NAME` that the call spells through a symlinked parent."""
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
-    scratch = tmp_path / "scratch"
-    scratch.mkdir()
     real_parent = tmp_path / "real-parent"
     real_parent.mkdir()
     (tmp_path / "link-parent").symlink_to(real_parent)
@@ -766,16 +767,18 @@ def _build_awkward_runner(tmp_path: Path) -> _AwkwardRunner:
     real_new_parent = tmp_path / "real-new-parent"
     real_new_parent.mkdir()
     (tmp_path / "link-new-parent").symlink_to(real_new_parent)
-    new_repo = _make_repo(real_new_parent, _AWKWARD_DESTINATION_NAME)
+    scene = _runner_scene_base(tmp_path, new_repo_parent=real_new_parent, new_repo_name=_AWKWARD_DESTINATION_NAME)
     _stale_link(account, "hooks", tmp_path / "old-repo")
-    _write_roots_file(home, [str(tmp_path / "link-parent" / account.name), str(account)])
+    typed_account = tmp_path / "link-parent" / account.name
+    scene.write_roots_file((str(typed_account), typed_account), (str(account), account))
     return _AwkwardRunner(
-        home=home,
-        scratch=scratch,
+        home=scene.home,
+        scratch=scene.scratch,
         account=account,
         typed_new_path=tmp_path / "link-new-parent" / _AWKWARD_DESTINATION_NAME,
-        new_repo=new_repo,
-        expected_text=os.path.relpath(new_repo / _PACKAGE_ROOT / "hooks", account),
+        new_repo=scene.new_repo,
+        expected_text=os.path.relpath(scene.new_repo / _PACKAGE_ROOT / "hooks", account),
+        listed_dirs=scene.listed_dirs,
     )
 
 
@@ -786,15 +789,10 @@ def test_runner_resolves_symlinked_and_awkward_paths(tmp_path: Path) -> None:
 
     assert run.call_statuses == [0], run.stderr
     assert os.readlink(scene.account / "hooks") == scene.expected_text
-    assert [counts[1:] for counts in _outcomes(run.stdout)] == [(1, 0, 0, 0)]
-
-
-def test_runner_dedupes_a_dir_listed_twice(tmp_path: Path) -> None:
-    scene = _build_awkward_runner(tmp_path)
-
-    run = _run_runner(scene.home, scene.typed_new_path, scene.scratch)
-
-    assert [counts[0] for counts in _outcomes(run.stdout)] == [1]
+    # One outcome row, on line 1: the dir listed a second time, on line 2, is walked once.
+    assert _outcomes(run.stdout) == [(1, 1, 0, 0, 0)]
+    _assert_neither_stream_names_a_listed_dir(run, scene.listed_dirs, scene.home)
+    _assert_neither_stream_names_an_account(run)
 
 
 def test_runner_second_call_is_idempotent(tmp_path: Path) -> None:
@@ -848,48 +846,6 @@ def test_relative_path(tmp_path: Path, from_dir: str, to_path: str, expected: st
 
     assert run.call_statuses == [0], run.stderr
     assert run.call_outputs == [expected]
-
-
-# ---------------------------------------------------------------------------
-# Backup names: unique per move
-# ---------------------------------------------------------------------------
-
-
-def test_same_named_dangling_links_get_their_own_backups(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    (home / ".local" / "bin").mkdir(parents=True)
-    (home / ".claude").mkdir()
-    first_link = home / ".claude" / "dup-name"
-    second_link = home / ".local" / "bin" / "dup-name"
-    first_link.symlink_to(tmp_path / "gone-one")
-    second_link.symlink_to(tmp_path / "gone-two")
-
-    run = _run_sourced(
-        home,
-        [["_quarantine_if_dangling", str(first_link)], ["_quarantine_if_dangling", str(second_link)]],
-        cwd=tmp_path,
-    )
-
-    assert run.call_statuses == [0, 0], run.stderr
-    backups = sorted((home / ".claude-config-relocate-backup").glob("dup-name.*"))
-    assert sorted(os.readlink(backup) for backup in backups) == sorted([str(tmp_path / "gone-one"), str(tmp_path / "gone-two")])
-
-
-def test_a_failed_quarantine_move_leaves_no_placeholder(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
-    dangling = home / ".claude" / "dup-name"
-    dangling.symlink_to(tmp_path / "gone")
-    prelude = 'BACKUP="$HOME/.claude-config-relocate-backup"\n' + _intercepting_function(
-        "mv", '[[ "$destination" == "$BACKUP"/* ]]'
-    )
-
-    run = _run_sourced(home, [["_quarantine_if_dangling", str(dangling)]], cwd=tmp_path, prelude=prelude)
-
-    assert run.returncode == 1
-    assert f"could not move {dangling} into {home / '.claude-config-relocate-backup'}" in run.stderr
-    assert dangling.is_symlink() and os.readlink(dangling) == str(tmp_path / "gone")
-    assert _backup_entry_names(home) == []
 
 
 # ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import os
 import shutil
 import subprocess
 import textwrap
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,6 +22,8 @@ import pytest
 from helpers import link_bash_into
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "relocate-claude-config.sh"
+# The hang guard for the subprocess calls that pass it as `timeout`: a loop that never ends fails the test instead of stalling CI.
+_SUBPROCESS_TIMEOUT_SECONDS = 60
 
 # chmod 0o555 does not stop root from writing, so the unwritable-directory cases cannot fail as intended.
 requires_non_root = pytest.mark.skipif(os.geteuid() == 0, reason="root ignores the read-only modes this case relies on")
@@ -163,14 +165,23 @@ def _script_env(home: Path, *path_dirs: Path) -> dict[str, str]:
     return env
 
 
-def _run_script(*args: str, home: Path, bin_dir: Path | None = None) -> subprocess.CompletedProcess:
-    env = _script_env(home, *([bin_dir] if bin_dir is not None else []))
+def _run_script(
+    *args: str,
+    home: Path,
+    bin_dir: Path | None = None,
+    leading_path_dirs: Sequence[Path] = (),
+    timeout: float | None = None,
+) -> subprocess.CompletedProcess:
+    """Run the whole script against the fake `home`. `leading_path_dirs` (a shim dir, say) precede `bin_dir`
+    on PATH, and `timeout` ends a hung run as a failure."""
+    env = _script_env(home, *leading_path_dirs, *([bin_dir] if bin_dir is not None else []))
     return subprocess.run(
         [str(_SCRIPT), *args],
         capture_output=True,
         text=True,
         env=env,
         check=False,
+        timeout=timeout,
     )
 
 
@@ -619,6 +630,60 @@ class TestRepairQuarantineInvariant:
         # Nothing quarantined -- positive evidence must come BEFORE any ~/.claude write.
         assert not (home / ".claude-config-relocate-backup").exists()
 
+    def test_same_named_dangling_links_get_their_own_backups(self, tmp_path: Path) -> None:
+        """Run directly: two dangling links with one name, in different dirs, quarantined by consecutive calls."""
+        home = tmp_path / "home"
+        (home / ".local" / "bin").mkdir(parents=True)
+        (home / ".claude").mkdir()
+        first_link = home / ".claude" / "dup-name"
+        second_link = home / ".local" / "bin" / "dup-name"
+        first_link.symlink_to(tmp_path / "gone-one")
+        second_link.symlink_to(tmp_path / "gone-two")
+
+        result = subprocess.run(
+            ["bash", "-c", 'source "$1"; _quarantine_if_dangling "$2"; _quarantine_if_dangling "$3"',
+             "_", str(_SCRIPT), str(first_link), str(second_link)],
+            capture_output=True, text=True, check=False, env=_script_env(home), timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+        )
+
+        assert result.returncode == 0, result.stderr
+        backups = sorted((home / ".claude-config-relocate-backup").glob("dup-name.*"))
+        assert sorted(os.readlink(backup) for backup in backups) == sorted(
+            [str(tmp_path / "gone-one"), str(tmp_path / "gone-two")]
+        )
+
+    def test_a_failed_move_after_the_placeholder_leaves_no_placeholder(self, tmp_path: Path) -> None:
+        """Run directly, with `mv` failing for a destination in the backup dir: the real fault arrives only after
+        the placeholder file exists, which a read-only backup dir cannot reproduce."""
+        home = tmp_path / "home"
+        (home / ".claude").mkdir(parents=True)
+        dangling = home / ".claude" / "dup-name"
+        dangling.symlink_to(tmp_path / "gone")
+        backup_dir = home / ".claude-config-relocate-backup"
+        script = textwrap.dedent("""\
+            source "$1"
+            mv() {
+              if [[ "${!#}" == "$HOME/.claude-config-relocate-backup"/* ]]; then
+                printf 'mv: %s: Permission denied\\n' "${!#}" >&2
+                return 1
+              fi
+              command mv "$@"
+            }
+            if _quarantine_if_dangling "$2"; then :; fi
+            echo continued-after-call
+        """)
+
+        result = subprocess.run(
+            ["bash", "-c", script, "_", str(_SCRIPT), str(dangling)],
+            capture_output=True, text=True, check=False, env=_script_env(home), timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+        )
+
+        assert result.returncode == 1
+        assert "continued-after-call" not in result.stdout
+        assert f"could not move {dangling} into {backup_dir}" in result.stderr
+        assert dangling.is_symlink() and os.readlink(dangling) == str(tmp_path / "gone")
+        assert _backup_entry_names(home) == []
+
 
 # ---------------------------------------------------------------------------
 # Destination validation (both modes)
@@ -864,7 +929,9 @@ def _words_bash_reads_from(line: str) -> list[str]:
     return result.stdout.split("\0")[:-1]
 
 
-def _run_printed_retry_line(first_run_stderr: str, home: Path, bin_dir: Path) -> subprocess.CompletedProcess:
+def _run_printed_retry_line(
+    first_run_stderr: str, home: Path, bin_dir: Path, timeout: float | None = None
+) -> subprocess.CompletedProcess:
     """Run the line a failed run's stderr ends with, as a user would: bash
     resolves its command through PATH, so a missing installed copy fails here
     instead of falling through to a real copy elsewhere on PATH."""
@@ -873,7 +940,7 @@ def _run_printed_retry_line(first_run_stderr: str, home: Path, bin_dir: Path) ->
     return subprocess.run(
         ["bash", "-c", _last_nonempty_line(first_run_stderr)],
         capture_output=True, text=True, check=False,
-        env=_script_env(home, home / ".local" / "bin", bin_dir),
+        env=_script_env(home, home / ".local" / "bin", bin_dir), timeout=timeout,
     )
 
 

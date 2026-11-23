@@ -24,14 +24,23 @@ from ._declared_dirs_helpers import (
     _write_roots_file,
 )
 from .test_relocate_claude_config import (
-    _SCRIPT,
     _claude_shim,
     _make_repo,
     _relocation_args_for_mode,
     _run_printed_retry_line,
+    _run_script,
     _script_env,
     _stow,
 )
+
+
+def _installed_checkout(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """A home with `old-repo` stowed into it, plus the claude shim dir. Returns (home, old_repo, bin_dir)."""
+    home = tmp_path / "home"
+    old_repo = _make_repo(tmp_path, "old-repo")
+    _stow(old_repo, home, with_claude_skills=True)
+    bin_dir, _, _ = _claude_shim(tmp_path)
+    return home, old_repo, bin_dir
 
 
 @dataclass
@@ -46,10 +55,7 @@ class _ListedAccounts:
 
 
 def _build_listed_accounts(tmp_path: Path, mode: str) -> _ListedAccounts:
-    home = tmp_path / "home"
-    old_repo = _make_repo(tmp_path, "old-repo")
-    _stow(old_repo, home, with_claude_skills=True)
-    bin_dir, _, _ = _claude_shim(tmp_path)
+    home, old_repo, bin_dir = _installed_checkout(tmp_path)
     other_repo = _make_repo(tmp_path, "other-repo")
     accounts = {name: tmp_path / name for name in ("acct-a", "acct-b", "acct-c", "acct-unlisted")}
     old_texts = {
@@ -92,11 +98,7 @@ def test_both_modes_repoint_listed_dirs_and_report_each(tmp_path: Path, mode: st
     scene = _build_listed_accounts(tmp_path, mode)
     acct_a = scene.accounts["acct-a"]
 
-    result = subprocess.run(
-        [str(_SCRIPT), *scene.args],
-        capture_output=True, text=True, check=False, env=_script_env(scene.home, scene.bin_dir),
-        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
-    )
+    result = _run_script(*scene.args, home=scene.home, bin_dir=scene.bin_dir, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
 
     assert result.returncode == 0, result.stderr
     assert (acct_a / "hooks").resolve() == (scene.new_repo / _PACKAGE_ROOT / "hooks").resolve()
@@ -130,10 +132,7 @@ def _stow_into_account(old_repo: Path, account: Path, home: Path, *, real_skills
 
 @pytest.mark.parametrize("mode", ["primary", "repair"])
 def test_both_modes_repoint_links_that_real_stow_wrote(tmp_path: Path, mode: str) -> None:
-    home = tmp_path / "home"
-    old_repo = _make_repo(tmp_path, "old-repo")
-    _stow(old_repo, home, with_claude_skills=True)
-    bin_dir, _, _ = _claude_shim(tmp_path)
+    home, old_repo, bin_dir = _installed_checkout(tmp_path)
     account = tmp_path / "acct-stowed"
     _stow_into_account(old_repo, account, home)
     stow_written_links = {"hooks": _PACKAGE_ROOT, "scripts": _PACKAGE_ROOT, "skills": _SKILLS_ROOT}
@@ -145,11 +144,7 @@ def test_both_modes_repoint_links_that_real_stow_wrote(tmp_path: Path, mode: str
     _write_roots_file(home, [str(account), str(nested_account)])
     new_repo, args = _relocation_args_for_mode(tmp_path, home, old_repo, mode)
 
-    result = subprocess.run(
-        [str(_SCRIPT), *args],
-        capture_output=True, text=True, check=False, env=_script_env(home, bin_dir),
-        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
-    )
+    result = _run_script(*args, home=home, bin_dir=bin_dir, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
 
     assert result.returncode == 0, result.stderr
     for name, root in stow_written_links.items():
@@ -181,10 +176,7 @@ def _write_failing_mv_shim(shim_dir: Path, failing_destination: Path, manifest: 
 
 @pytest.mark.parametrize("mode", ["primary", "repair"])
 def test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it(tmp_path: Path, mode: str) -> None:
-    home = tmp_path / "home"
-    old_repo = _make_repo(tmp_path, "old-repo")
-    _stow(old_repo, home, with_claude_skills=True)
-    bin_dir, _, _ = _claude_shim(tmp_path)
+    home, old_repo, bin_dir = _installed_checkout(tmp_path)
     failing_account = tmp_path / "acct-a"
     passing_account = tmp_path / "acct-b"
     failing_text = _stale_link(failing_account, "hooks", old_repo)
@@ -196,10 +188,8 @@ def test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it(tmp_path: Path, 
     _write_failing_mv_shim(tmp_path / "shim-bin", failing_account / "hooks", manifest, manifest_record)
     assert not manifest.exists() or manifest.read_text().strip() != str(new_repo)
 
-    first_run = subprocess.run(
-        [str(_SCRIPT), *args],
-        capture_output=True, text=True, check=False, env=_script_env(home, tmp_path / "shim-bin", bin_dir),
-        timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+    first_run = _run_script(
+        *args, home=home, bin_dir=bin_dir, leading_path_dirs=[tmp_path / "shim-bin"], timeout=_SUBPROCESS_TIMEOUT_SECONDS
     )
 
     assert first_run.returncode == 3, first_run.stderr
@@ -214,7 +204,7 @@ def test_a_failed_dir_exits_3_and_the_printed_retry_repoints_it(tmp_path: Path, 
     assert (home / ".claude" / "hooks").resolve() == (new_repo / _PACKAGE_ROOT / "hooks").resolve()
     assert manifest_record.read_text() == manifest.read_text()
 
-    retry = _run_printed_retry_line(first_run.stderr, home, bin_dir)
+    retry = _run_printed_retry_line(first_run.stderr, home, bin_dir, timeout=_SUBPROCESS_TIMEOUT_SECONDS)
 
     assert retry.returncode == 0, retry.stderr
     assert (failing_account / "hooks").resolve() == (new_repo / _PACKAGE_ROOT / "hooks").resolve()
