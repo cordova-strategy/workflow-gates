@@ -359,10 +359,77 @@ name `build_parser()` reaches bare. `context_composition.py` reads `_READ_SCOPE_
 ### `read_cost.py`
 
 The read-cost command: `cmd_read_cost`, its `_add_read_cost_subparser` registration, and every helper
-used only by it. Imports `corpus`, `pricing`, `redaction`, `render`, `scope`, `session_pricing`, and `subagent_mix`
-all by module (attribute access). `cli.py` reads `_add_read_cost_subparser` bare. Cross-module private
-reads include `session_pricing._usage_is_invalid`, `redaction._repo_tracked_agent_type_names`, and
-`subagent_mix._WITHHELD_AGENT_TYPE_LABEL`.
+used only by it. Imports `corpus`, `pricing`, `publication_scope`, `redaction`, `render`, `scope`, `session_pricing`,
+and `subagent_mix` all by module (attribute access). `cli.py` reads `_add_read_cost_subparser` bare. Cross-module
+private reads include `session_pricing._usage_is_invalid`, `redaction._repo_tracked_agent_type_names`,
+`subagent_mix._WITHHELD_AGENT_TYPE_LABEL`, and the single-account root, scope refusal and scope header from
+`publication_scope`, called with the `read-cost` label.
+
+`_scan_window` also reads each Read's structured `toolUseResult.file` fields into `_ReadEvent`, with a
+`structured_status` naming the first failed check when they are absent. It records failed Read calls as
+`_FailedRead` entries, each classified by `limit_refusal` without keeping the error text, and collects the
+`toolUseID` of each `read_truncation_notice` attachment. None of this changes the printed report. The unit caption
+and the skipped-input line are separate functions, so another command can print them over its own counters.
+`_read_call` is the one Read predicate (tool name, path rule, id rule and whole-file test) that `_scan_window` and
+`reviewer_reads.py`'s round-window count share.
+
+### `publication_scope.py`
+
+The scope a command's figures may be published under: one account, the working directory's repository only.
+`_single_account_roots`, `_refuse_wider_scope` and `_scope_header` take the command label, which prefixes the
+refusals and titles the header. `_this_repo_ledger_files` selects the review-ledger files named for one of the
+checkout's worktree paths, hashing each path as printed and as resolved with `_ledger_repo_hash`, which repeats the
+formula of `_marker_lib_repo_hash` in `hooks/_lib.sh`. It lists the directory through
+`scope._list_dir_recording_gaps` into the caller's counter and opens no file. Imports `scope` by module (attribute
+access). Cross-module reads are `scope.config_dir`, `scope.TRANSCRIPT_CONFIG_DIRS_LABEL` and the private
+`scope._list_dir_recording_gaps`.
+
+### `ledger_dispositions.py`
+
+The review ledger's terminal dispositions over this checkout's ledger files. It owns `count_ledger_dispositions`, which
+takes the config root, the worktree paths, the window and the scanned session ids, and returns a
+`LedgerDispositionCounts` of aggregates only.
+
+- It reads each file `publication_scope._this_repo_ledger_files` selects through `author_outcome._read_ledger_rows_from_file`, with stderr held in a buffer.
+- A file is unreadable when a point-in-time `os.lstat` by name finds a symlink, a named pipe or any other non-regular entry, which is refused unopened. A hard link and a swap between the check and the open are not detected, and the ledger writer's own check has the same limits.
+- `publication_scope._this_repo_ledger_files` drops a directory, or a symlink to a directory, without counting it.
+- A file is also unreadable when its read printed anything, because that reader prints the file's path.
+- A file whose read raises `ValueError` or `RecursionError` is unreadable too, and the exception reaches no output.
+- The row reduction and the supersession rule are in the module docstring. `docs/transcript-analysis.md`'s `reviewer-reads` section states them under "Review-ledger dispositions".
+- The module takes no transcript gap counter, so an unreadable ledger directory shows only as its `directory_state`.
+
+Imports, all by module (attribute access): `author_outcome`, `corpus` and `publication_scope`.
+
+Cross-module private reads:
+- `author_outcome._read_ledger_rows_from_file`, its disposition and `carry` constants, `_SESSION_ID_PATTERN` and `_REVIEW_LEDGER_DIRNAME`;
+- `corpus._parse_ts`;
+- `publication_scope._this_repo_ledger_files` and `_GAP_LEDGER_DIR`.
+
+### `reviewer_reads.py`
+
+The reviewer-reads command: `cmd_reviewer_reads`, its `_add_reviewer_reads_subparser` registration, the per-window
+accumulation of each Read's outcome, and the report.
+
+- It scans the main thread and each reviewer subagent window through `read_cost._scan_window`, which pairs the calls.
+- It classifies each whole-file call from the structured fields that scan carries, in one precedence order.
+- It decides the follow-up and coverage figures per window over line intervals, in one pass over each path's reads.
+- Its round-window count finds Read calls through `read_cost._read_call`, the predicate `_scan_window` applies.
+- `_usable_record` reduces the record fields the shared consumers read. Its docstring lists them, and `docs/transcript-analysis.md`'s `reviewer-reads` section states them under "Malformed records". Fields outside that list are not checked.
+- It calls `scope._repo_worktree_paths` once and seeds `args._this_repo_slugs` from the result, so the transcript scope and the ledger scope use the same worktree paths and both iterators over the scope share one resolution.
+- A second, subagent-inclusive iterator over the same root feeds `reviewer_yield.compute_reviewer_yield_data`. An `AttributeError`, `TypeError`, `ValueError` or `RecursionError` from that pass ends it with a fixed notice, because `reviewer_yield` and `corpus` read some fields unguarded. The `RecursionError` catch is reachable through a `.meta.json` sidecar, and a transcript line nested past the decoder's stack aborts the run in the shared corpus parser before this pass.
+- It keeps its own untracked-agent-type fold, because `read_cost._fold_untracked_agent_types` merges read-cost's row type.
+
+`cli.py` reads `_add_reviewer_reads_subparser` bare.
+
+Imports, all by module (attribute access): `author_outcome`, `corpus`, `ledger_dispositions`, `pricing`, `publication_scope`, `read_cost`, `redaction`, `render`, `review_rounds`, `reviewer_yield`, `scope` and `subagent_mix`.
+
+Cross-module private reads:
+- `read_cost`'s scanner, event and weight helpers, `_read_call`, `_file_kind`, `_SeenIds`, `_skipped_input_line` and `_print_unit_caption`;
+- `reviewer_yield._is_reviewer_subagent_type`, `_REVIEWER_YIELD_INSUFFICIENT` and its verdict constants;
+- `redaction._repo_tracked_agent_type_names`;
+- `subagent_mix._WITHHELD_AGENT_TYPE_LABEL`;
+- `pricing._MODEL_BASE_INPUT_RATES`, `_cache_read_equivalent_weights` and `_warn_if_subagent_format_drift`;
+- the single-account root, scope refusal and scope header from `publication_scope`, called with the `reviewer-reads` label.
 
 ### `ledger_common.py`
 
@@ -806,7 +873,9 @@ the existing tests live.
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
 scan-traversal, scan-gap, and glob-selection classes are tested in
-`tests/test_transcript_scope_scan.py`, and the rest of `scope.py` in
+`tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
+`tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
+`tests/test_transcript_scope_active_account.py`, and the rest of `scope.py` in
 `tests/test_transcript_scope.py`. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`
 because it walks every subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
 in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py` selects as a `SKILL.md`

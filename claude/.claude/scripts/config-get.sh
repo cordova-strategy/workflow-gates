@@ -27,11 +27,8 @@ set -uo pipefail
 # reports as its own exit code 3 instead) — see _config.sh's header for the
 # matching note on that side.
 #
-# No `set` subcommand and no other writing verb — this is
-# read-only, full stop: shipping a writer here would give any caller of
-# this script an unmediated path to the same protected state file
-# claude-config.toml's own write path (migrate-legacy-config.sh, _config_set)
-# is deliberately narrow about.
+# No `set` subcommand and no other writing verb — this is read-only, full
+# stop. The write command is config-set.sh, a separate script.
 # Delegates to _config.sh's _config_enabled, which is the single bash
 # definition of config-key resolution — this script adds no logic of its
 # own beyond argument validation and the exit-code mapping above.
@@ -39,14 +36,14 @@ set -uo pipefail
 . "$(dirname "$0")/../hooks/_config.sh" || exit 3
 
 if [ "$#" -ne 1 ]; then
-  echo "config-get.sh: usage: config-get.sh <key> — exactly one argument (no writing verb; see docs/config-file.md)" >&2
+  echo "config-get.sh: usage: config-get.sh <key> — exactly one argument (no writing verb; see docs/config-file.md \"Writing a value\" for how to write a key)" >&2
   exit 2
 fi
 
 KEY="$1"
 
 if [ "$KEY" = "set" ]; then
-  echo "config-get.sh: unknown subcommand 'set' — this script has no set subcommand and no other writing verb. Use install.sh's interactive opt-in prompt or migrate-legacy-config.sh to change a key." >&2
+  echo "config-get.sh: unknown subcommand 'set' — this script has no set subcommand and no other writing verb. See docs/config-file.md \"Writing a value\" for how to change a key." >&2
   exit 2
 fi
 

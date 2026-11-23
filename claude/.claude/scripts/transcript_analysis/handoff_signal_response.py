@@ -557,16 +557,17 @@ def cmd_handoff_signal_response(args: argparse.Namespace) -> None:
     cost-ledger) accepts the same tradeoff.
     """
     redact: bool = not bool(getattr(args, "no_redact", False))
-    roots = scope.resolve_scan_roots(args)
-    multi_root = len(roots) > 1
     sample_n: int = getattr(args, "sample", 0) or 0
+    # Only a --sample run narrows to the active account.
+    active_account_only = scope._narrows_to_active_account(args) and bool(sample_n)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
+    multi_root = len(roots) > 1
     context_turns: int = getattr(args, "context_turns", 0) or 0
 
     if not redact and multi_root:
         print(
             "handoff-signal-response: --no-redact is refused when more than one root is in scope;"
-            " drop --no-redact or scope to a single root (e.g. --this-repo with no additional"
-            " declared roots)",
+            " drop --no-redact, or run --sample without --this-repo or --all-accounts so one root is read",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -581,7 +582,11 @@ def cmd_handoff_signal_response(args: argparse.Namespace) -> None:
         print(scope._DO_NOT_PUBLISH_BANNER, file=sys.stderr)
 
     session_iter, scope_label = scope._resolve_project_scope(args, "handoff-signal-response", roots=roots)
-    scope.print_resolved_scope("handoff-signal-response", scope_label, roots)
+    scope.print_resolved_scope(
+        "handoff-signal-response", scope_label, roots, active_account_only=active_account_only,
+    )
+    if sample_n and multi_root:
+        print(scope._DO_NOT_PUBLISH_BANNER, file=sys.stderr)
 
     seed: int | None = getattr(args, "seed", None)
 
@@ -654,13 +659,14 @@ def _add_handoff_signal_response_subparser(subparsers: argparse._SubParsersActio
             " /handoff followed each one, split by marker context. Redacted by default."
         ),
     )
-    scope._add_project_scope_args(p_handoff_signal_response)
+    scope._add_project_scope_args(p_handoff_signal_response, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_handoff_signal_response)
     p_handoff_signal_response.add_argument(
         "--no-redact", action="store_true",
         help=(
             "Emit raw session IDs in --sample curation cards instead of a run-scoped opaque"
-            " label, and print the DO NOT PUBLISH banner. Refused when scope resolves to more"
-            " than one root -- narrow to a single root first, e.g. with --this-repo."
+            " label, and print the DO NOT PUBLISH banner. Refused when more than one root is in"
+            " scope; a --sample run reads one account unless --this-repo or --all-accounts is passed."
         ),
     )
     p_handoff_signal_response.add_argument(

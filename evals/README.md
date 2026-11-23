@@ -759,6 +759,9 @@ scripts/venv-run.sh python3 evals/run_review_bench.py freeze --k 10 --campaign-s
 # Compute a campaign's verdicts:
 scripts/venv-run.sh python3 evals/run_review_bench.py analyze \
   --reviewer-records-path <reviewer.jsonl> --judge-records-path <judge.jsonl> --k 10
+
+# Simulate the false-adopt and power rates of the sign-flip test and fixture t-interval on synthetic data (no model, no spend):
+scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --replicates 200
 ```
 
 `mine-pr-comments` needs an authenticated `gh` for github.com. The ambient
@@ -1509,13 +1512,111 @@ Reading `summarize`'s primary outcome:
 A paired difference is meaningful when the `toolkit` arm's figure is at least
 20% above or below the `bare` arm's.
 
+`summarize` also reports a secondary outcome, Python docstring lines per 100
+added non-test code lines. It covers only the tasks the primary difference
+pairs, so a task with no valid run in one arm enters neither arm's rate. It
+prints each arm's rate pooled over the paired tasks, the merged commits'
+(reference) rate over the same tasks, and for each paired task the `toolkit` and
+`bare` rates. A one-arm campaign (`--arm` with a single arm) has no paired
+task, so every rate in the secondary outcome prints `n/a`. A task's rate is its
+valid runs' mean docstring lines over their mean code lines. The pooled rate
+weights each task by its code lines. The rates carry no interval.
+
+`summarize` then reports two further secondary outcomes that separate how
+often an agent writes a docstring from how long each one is. Both cover Python
+class and function docstrings in non-test files, over the primary difference's
+paired tasks. Each prints the `toolkit` figure, the `bare` figure, the merged
+commits' (reference) figure and the `toolkit - bare` difference with a 95%
+bootstrap interval and the count of resamples dropped because an arm's
+denominator summed to zero. Both pool as the primary outcome does: a ratio of
+sums over each task's mean per valid run. Neither carries a threshold.
+
+- Words per new docstring is the words in new docstrings over the count of new
+  docstrings. A new docstring is a class or function docstring that has a
+  non-empty line range and whose lines are all added.
+  - A module docstring is not one.
+  - A one-line docstring on its `def` line is not one, since its line is also
+    code.
+  - A docstring that gains lines inside an existing one is not one.
+  - A docstring written whole onto an existing definition is one.
+
+  The share below counts a definition as undocumented when its one-line
+  docstring shares its `def` or `class` line, since that docstring is not
+  counted as new.
+- The share of new definitions with a new docstring is the count of new
+  definitions whose docstring is new over the count of new definitions. A new
+  definition is a class or function, methods and nested ones included, whose
+  `def` or `class` line and the first line of whose first body statement are
+  both added. A signature edit alone is no new definition. A docstring added
+  to an existing definition without a signature edit enters the first figure
+  and not this one, so the share stays between 0 and 1.
+
+The counts see added line numbers only, so a rewritten line reads as a new
+one. The cases that follow from this are:
+
+- An edit to both a definition's `def` or `class` line and the first line of
+  its body counts that definition as new.
+- An edit to a signature together with a line inserted at the top of its body
+  counts that definition as new.
+- An edit to a definition whose body sits on its `def` line counts that
+  definition as new.
+- An edit to a one-line docstring on its own line counts that docstring as new.
+- Git's line alignment can also misattribute added lines, so a new
+  definition's first body line can read as unchanged and the definition goes
+  uncounted. This is a limit of the line-set approach, and the counts are noisy
+  at that edge.
+
+A multi-line docstring is new under the rule in the words-per-new-docstring
+bullet above. The tests in `evals/test_replay_bench_comment_metrics.py` pin the
+rewritten-line cases.
+
+A Python file the parser rejects adds nothing to either figure, while the
+primary outcome's code lines still include it. A figure prints:
+
+- `n/a` when no paired task exists.
+- `n/a` when its denominator sums to zero.
+- `n/a`, for the reference, when the reference is unavailable or lacks the
+  paired tasks.
+- `not measured`, with the count of paired tasks lacking the counts, when any
+  valid run of a paired task, or a reference entry, predates the counts.
+
+A campaign or task set recorded before the counts keeps its records and reads
+`not measured`. Mining a task set again records the counts for the reference.
+
+Start, resume and summarize a campaign from checkouts that all have the
+`python_definition_counts` key or all lack it. A checkout that lacks the key
+still loads a task set mined with it, drops the counts and computes a different
+`task_set_hash`.
+
+Reading these two figures, and only these, since the 20% rule above stays the
+primary outcome's alone:
+
+- A nonzero dropped count means the interval covers only the resamples in
+  which neither arm's denominator summed to zero. A large share dropped makes
+  the readings below unreliable, because the surviving resamples over-represent
+  the tasks that carry the denominator.
+- A gap whose 95% interval covers zero is a null.
+- Any other gap is read with its sign: `toolkit` below `bare` means the
+  toolkit lowers the figure.
+- An effect on only some tasks can read as a null, because the interval also
+  carries the variation between tasks.
+
+The per-task lines and their task IDs stay in local output. So do the `run`
+progress lines and the halt messages, which print the same IDs beside per-task
+spend and ok and missing counts. An ID is two parts joined by a hyphen: the
+first 8 hex digits of the SHA-256 of the source repository's path, then the
+first 12 hex digits of the task's commit, unhashed. The commit half is not
+hashed, so it names a commit in any public repository. A per-task figure
+therefore identifies a repository and a commit.
+
 This file's "Why local only — never CI" section applies: every run is a paid
 `claude -p` session. The bench needs the Python floor stated in the
 repository root's `README.md` § "Requirements", git 2.32 or newer,
 Claude Code 2.1.271 or newer and `direnv` on `PATH`. Run it through
 `scripts/venv-run.sh python3`. Results are not a publication instrument,
 because the runner refuses no wider corpus. The design lives in
-`.claude/plans/docstring-verbosity-experiment.md`.
+`.claude/plans/docstring-verbosity-experiment.md`, and the design of the two
+per-docstring figures in `.claude/plans/replay-bench-per-docstring-metrics.md`.
 
 ### Usage
 
@@ -1582,6 +1683,19 @@ once the set changes.
   limit below 1 is refused.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
+- Re-mine a task set after any change to the fixture rule below. The rule fixes
+  each task's changed paths and reference metrics at mining time, and neither
+  the task-set hash nor the manifest records it, so a resume does not refuse a
+  set mined under another rule.
+- A task's fixture drops the entries that would load a checkout's own
+  instructions, each matched case-insensitively:
+  - Everywhere, every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`. At the
+    root, also the `.claude` directory and the `.mcp.json` file.
+  - A `.claude` directory below the root keeps its `scripts` subdirectory and
+    loses every other entry, so a commit that changes only files under
+    `claude/.claude/scripts/` stays a task.
+  - A `.claude` nested under a kept `scripts` subdirectory goes in full.
+  - A changed path the fixture drops does not count as a task's changed path.
 - `tasks` prints the kept and skipped counts by reason, the largest kept tasks
   by base-tree size and by entry count, and every raw author and committer
   identity among the commits examined, so you can see whom the trust list
@@ -1694,7 +1808,8 @@ states the same constraint.
 
 `smoke` runs one block of one run per arm (`toolkit` and `bare`) on the task
 you name, and takes no `--k`. It prints its nominal cost ceiling before the
-first launch. For each run it prints the status, instruction loads by class,
+first launch. For each run it prints the status, an `empty final text` line
+when the run ended with no text, instruction loads by class,
 the first-turn prompt size, the Bash commands, out-of-fixture paths, the
 permission-denial count, the allow-list Reads, the change's metrics, the cost,
 the fixture-build seconds and the wall clock. A smoke run removes the
@@ -1763,10 +1878,58 @@ The `campaign <id>` line, the uncharged-attempts line, a resume's spend line,
 the ceiling line and each progress line are flushed as they print, so a
 detached run's redirected output shows them as they happen.
 
+The `campaign <id>` line ends with the runner commit: the `HEAD` of the checkout
+the bench's code runs from, which need not be the config checkout that
+`read_environment_record` probes. It adds
+`with uncommitted changes under evals/` when `git status` lists a change or an
+untracked file there that the repository's own ignore rules do not ignore,
+namely its tracked `.gitignore` files and `.git/info/exclude`. No
+global ignore file applies, including the default `~/.config/git/ignore`, so a
+file that only a global ignore file ignores counts as untracked. The process
+reads the commit and the flag once, at the start of `run`'s campaign, before it
+reads each account's environment and before its first block. `summarize`
+prints the same clause on its `campaign '<id>'` line. The runner commit is
+recorded and never compared:
+
+- The manifest holds it as `runner_commit` and `runner_dirty` from the first
+  start, and each run record holds the reading of the process that ran its
+  block, the same reading for every block of that process.
+- The reading describes the checkout when the process took it, after the
+  process had loaded the bench's code, read the task set and checked each repo.
+  A branch switch, pull or `evals/` edit made while the process runs changes
+  the checkout and leaves the reading as it was.
+- A new campaign prints this checkout's reading. A resume prints the manifest's
+  and adds this checkout's reading when it differs. A manifest lacking either
+  runner field pins no reading, so its resume prints this checkout's reading
+  alone, because the later blocks run under it.
+- `summarize` names every distinct reading across the manifest and the run
+  records, with the number of records at each, when they disagree. Records
+  with no reading are listed as `no runner reading` once any other reading
+  exists, so a campaign that mixes the two never prints one lone commit. A
+  manifest lacking either runner field prints `runner commit not recorded`
+  when no run record holds a reading either.
+- An edit to `evals/` between a start and a resume halts nothing.
+- A manifest that lacks `runner_commit` or `runner_dirty` still resumes.
+- A reading that git could not produce is null in the manifest and record, and
+  prints as unreadable.
+- A stored commit that is not a full hex object name, or a stored flag that is
+  not a boolean, reads as unreadable in the manifest. A run record holding
+  either is refused as unreadable.
+- The flag has these limits:
+  - The bench imports a config-dir helper from `claude/.claude/scripts/`, so an
+    uncommitted edit there does not set it.
+  - An entry marked `skip-worktree` or `assume-unchanged` does not set it.
+  - It holds no digest of the uncommitted diff.
+
+An older checkout refuses a run record written by this one, because it refuses a
+record with an unknown key, and this one adds `runner_commit`, `runner_dirty`
+and `empty_final_text`.
+
 After each block `run` prints one progress line: the task, each arm's `ok` and
-`missing` counts, the arms with no valid run and their reasons, the tasks
-dropped per arm since this invocation started, the block's spend, and the
-cumulative and per-account spend against their stops. A halt prints
+`missing` counts, the arms with no valid run and their reasons, the runs with
+no text and no captured change per arm, the tasks dropped per arm since this
+invocation started, the block's spend, and the cumulative and per-account spend
+against their stops. A halt prints
 `halted: <reason>` and exits 1. Before each block `run` halts if the block's
 ceiling would carry the cumulative total or the block's account past its stop.
 
@@ -1843,6 +2006,28 @@ missing with its reason.
     `arm-leak` and `fixture-instruction-load`.
   - `result-error`, `budget` and `api-error-final-record` count as reaching the
     end.
+- A run whose transcript's last text block is blank or absent is not a failure
+  here, unlike a review bench run's `empty-findings`, because a replay run's
+  deliverable is the change it leaves in the tree:
+  - Its change is captured and measured as for any other valid run, it never
+    retries, and the record's `empty_final_text` flag is set.
+  - `summarize` counts these runs per arm in its diagnostics line, over the
+    arm's valid runs as the `no non-test code line` count is. A run that fails a
+    later check keeps the flag in its record and stays out of that count.
+  - A run that changed nothing and ended with no text is `ok` with no code line.
+    It never counts toward a failed block, so it never trips the failed-blocks
+    halt. `smoke` still passes it. It is named, with no effect on the
+    outcome, in these places:
+    - The `run` progress line, as the arm's count of runs with no text and no
+      captured change, meaning an empty final text and no changed path.
+    - The `smoke` printout, as a `no deliverable` line before the verdict.
+    - In `summarize`, the diagnostics count of runs with no non-test code line.
+    - In `summarize`, the paired outcome's exclusion for no non-test code line
+      in an arm.
+  - Every other check still applies, including `api-error-final-record`, whose
+    final record is an error message and not an empty turn.
+  - A run that narrated in an earlier turn and then ended on a tool-only or
+    thinking-only turn has a last text block, so its flag stays clear.
 
 ### Accepted residuals
 
@@ -1875,6 +2060,20 @@ missing with its reason.
   the command changed into, a path built from a variable other than `$HOME` or
   `$PWD`, a glob, a case variant of a path on a case-insensitive volume, and a
   Bash write outside the fixture, which is never an `out-of-fixture-write`.
+- **Nested `.claude/scripts` tasks.** A task that changes
+  `claude/.claude/scripts/**` has a live copy that the account's config dir
+  links to as `<config dir>/scripts/**`. Both arms launch on that config dir,
+  so every residual in this item applies to both. A Read, a Glob or a Bash
+  command that names that alias path reaches the same leak checks as the live
+  path. Two shapes are invisible to the checks:
+  - A Bash command that reaches the file only through a relative path after
+    changing directory, such as `cd ~ && cd .claude && cat scripts/<changed file>`.
+  - A read whose path starts from the `CLAUDE_CONFIG_DIR` variable and continues
+    into `scripts`, because the Bash scan expands only `~`, `$HOME` and `$PWD`.
+
+  It is unverified whether the Bash tool inherits `CLAUDE_CONFIG_DIR`, which the
+  launch sets in the session's environment for an account that has it. The bench
+  adds no permission rule that denies the alias.
 - **Uncommitted toolkit edits.** The environment drift check compares the CLI
   version and the config checkout's `HEAD` commit. It cannot see an uncommitted
   edit to a toolkit file the `toolkit` arm reads live.

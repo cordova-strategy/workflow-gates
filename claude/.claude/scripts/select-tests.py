@@ -8,8 +8,10 @@ Usage: select-tests.py [pytest args...]
 """
 import json
 import os
+import shlex
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +20,16 @@ from typing import NamedTuple
 from _config import ConfigSchemaEmptyError, ConfigSchemaRowTruncatedError, config_enabled
 from _config_dir import config_dir
 from _skill_auxiliary_files import SKILL_AUXILIARY_MD_NAMES
+from _timing_split import (
+    PARALLEL_PASS,
+    XDIST_WORKER_ENV_VAR,
+    PassPlan,
+    PytestPass,
+    merge_pass_exit_codes,
+    plan_passes,
+    scan_timing_marks,
+    skips_serial_pass,
+)
 
 # Hang-detection backstop, not a measured worst case.
 # Sized between post-crash-sessions.py's 5.0s and 25.0s timeouts.
@@ -187,6 +199,14 @@ TRANSCRIPT_REVIEW_TRACE_SPAWN_ROUNDS_TEST_PATH = "claude/.claude/scripts/tests/t
 # than its containing domain.
 TICKET_REFERENCE_DISCIPLINE_TEST_PATH = "claude/.claude/hooks/tests/test_ticket_reference_discipline.py"
 
+# test_code_file_size.py counts every tracked .py and .sh file and reads
+# CODE_FILE_SIZE_EXCEPTIONS_TOML, so a change to any such file or to the table
+# selects it. SUPPLEMENTARY_RULES adds it for the former and
+# CROSS_DOMAIN_EXCEPTIONS for the latter. A change to CODE_FILE_SIZE_MODULE_PATH also selects test_select_tests.py.
+CODE_FILE_SIZE_TEST_PATH = "claude/.claude/tests/test_code_file_size.py"
+CODE_FILE_SIZE_EXCEPTIONS_TOML = "code-file-size-exceptions.toml"
+CODE_FILE_SIZE_MODULE_PATH = "claude/.claude/tests/code_file_size.py"
+
 SELECT_TESTS_SCRIPT = "claude/.claude/scripts/select-tests.py"
 
 # test_select_tests.py's own TestCrossDomainReadCompleteness parses every
@@ -211,6 +231,10 @@ HANDOFF_SKILL_MD = "claude-skills/skills/handoff/SKILL.md"
 
 # Import dependency of SKILLS_TESTS_DIR's tests; see _skill_auxiliary_files.py's docstring.
 SKILL_AUXILIARY_FILES_MODULE = "claude/.claude/scripts/_skill_auxiliary_files.py"
+
+# Import dependency of PYTEST_COLLECTION_CONFIG_TEST_PATH's timing-marker guard, which calls its scan and marker expressions.
+TIMING_SPLIT_MODULE = "claude/.claude/scripts/_timing_split.py"
+PYTEST_COLLECTION_CONFIG_TEST_PATH = "claude/.claude/tests/test_pytest_collection_config.py"
 
 # marker.sh's `clear-stale` arm shells out to this script; its end-to-end
 # coverage (TestMarkerScriptClearStale) lives in HOOKS_TESTS_DIR's
@@ -375,6 +399,7 @@ SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES: frozenset[str] = frozenset({
     "claude/.claude/scripts/tests/test_diff_size_ack.py",
     "claude/.claude/scripts/tests/test_review_ledger_lib.py",
     "claude/.claude/scripts/tests/test_review_pr_lib.py",
+    "claude/.claude/scripts/tests/test_transcript_publication_scope.py",
 })
 
 CODE_REVIEW_SKILL_MD = "claude-skills/skills/code-review/SKILL.md"
@@ -520,6 +545,10 @@ ROOT_SKILLS_DIR = ".claude/skills"
 # claudeMdExcludes entry by path. test_review_pr_post.py (SCRIPTS_TESTS_DIR)
 # also reads it, for its permissions.allow entries.
 ROOT_SETTINGS_JSON = ".claude/settings.json"
+
+# test_design_decision_files.py (HOOKS_TESTS_DIR) checks that a
+# docs/design-decisions link to this file resolves.
+RGIGNORE = ".rgignore"
 
 # test_statusline_command.py (CLAUDE_TESTS_DIR) reads this file by path.
 # test_shellcheck.py (HOOKS_TESTS_DIR) also lints it as part of its
@@ -776,6 +805,8 @@ DOMAIN_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
 # validator scripts and eval runner it exercises.
 # SKILL_AUXILIARY_FILES_MODULE: SKILLS_TESTS_DIR's tests import the
 # module, and that import is invisible to path-constant scanning.
+# TIMING_SPLIT_MODULE: PYTEST_COLLECTION_CONFIG_TEST_PATH imports the module
+# by name, which path-constant scanning cannot see.
 # CONFIG_MODULE: every HOOKS_TESTS_IMPORTING_CONFIG and
 # SKILLS_TESTS_IMPORTING_CONFIG member imports it by name.
 # CONFIG_DIR_MODULE: same shape as CONFIG_MODULE's row, but each group
@@ -901,6 +932,7 @@ DOMAIN_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
 # ROOT_SETTINGS_JSON: see each constant's own comment above for its citation.
 # STATUSLINE_COMMAND_SH: see its own comment above for citation.
 # CONFIG_KEYS_PSV: see its own comment above for citation.
+# RGIGNORE: see its own comment above for citation.
 # _is_py_source_under_claude_or_plugins: see its own comment above for
 # citation. Selects TICKET_REFERENCE_DISCIPLINE_TEST_PATH directly.
 # _is_test_tree_packaging_change: see its own comment above for citation.
@@ -977,6 +1009,7 @@ CROSS_DOMAIN_EXCEPTIONS: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ..
     (lambda p: p == MEASURE_MAIN_SESSION_RULE_ADHERENCE, (SELECT_TESTS_TEST_PATH,)),
     (_is_skill_management_or_evals_change, (SKILLS_TESTS_DIR,)),
     (lambda p: p == SKILL_AUXILIARY_FILES_MODULE, (SKILLS_TESTS_DIR,)),
+    (lambda p: p == TIMING_SPLIT_MODULE, (PYTEST_COLLECTION_CONFIG_TEST_PATH,)),
     (
         lambda p: p == CONFIG_MODULE,
         tuple(sorted(HOOKS_TESTS_IMPORTING_CONFIG | SKILLS_TESTS_IMPORTING_CONFIG)),
@@ -1059,11 +1092,30 @@ CROSS_DOMAIN_EXCEPTIONS: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ..
     (lambda p: _is_under(p, ROOT_RULES_DIR), (SKILLS_TESTS_DIR, HOOKS_TESTS_DIR)),
     (lambda p: _is_under(p, ROOT_SKILLS_DIR), (SKILLS_TESTS_DIR,)),
     (lambda p: p == ROOT_SETTINGS_JSON, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR)),
+    (lambda p: p == RGIGNORE, (HOOKS_TESTS_DIR,)),
     (lambda p: p == STATUSLINE_COMMAND_SH, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR, CLAUDE_TESTS_DIR)),
     (lambda p: p == CONFIG_KEYS_PSV, (HOOKS_TESTS_DIR, SCRIPTS_TESTS_DIR, SKILLS_TESTS_DIR)),
     (_is_py_source_under_claude_or_plugins, (TICKET_REFERENCE_DISCIPLINE_TEST_PATH,)),
     (_is_test_tree_packaging_change, (CLAUDE_TESTS_DIR,)),
     (_is_test_source_change, (SELECT_TESTS_TEST_PATH,)),
+    (lambda p: p == CODE_FILE_SIZE_EXCEPTIONS_TOML, (CODE_FILE_SIZE_TEST_PATH,)),
+)
+
+
+def _is_code_file_change(path: str) -> bool:
+    return path.endswith((".py", ".sh"))
+
+
+# Same shape as the rule tables above, but a match here adds targets without
+# marking the path matched. A root-level .py or .sh path therefore still falls
+# open to the full suite, and a domain-selected one also runs the size check.
+# Two blind spots remain, and the full run in CI catches both:
+# - A new unstaged file selects the size check, but the check counts only staged files.
+# - A rename lists only the new path, so renaming a row's file out of .py/.sh goes unselected.
+SUPPLEMENTARY_RULES: tuple[tuple[Callable[[str], bool], tuple[str, ...]], ...] = (
+    (_is_code_file_change, (CODE_FILE_SIZE_TEST_PATH,)),
+    # test_select_tests.py imports claude/.claude/tests/code_file_size.py for its COUNTED_SUFFIXES contract test.
+    (lambda p: p == CODE_FILE_SIZE_MODULE_PATH, (SELECT_TESTS_TEST_PATH,)),
 )
 
 
@@ -1084,6 +1136,8 @@ def select_pytest_targets(changed_paths: Iterable[str]) -> SelectionResult:
     - the diff is empty
     - a global-trigger path is present (a domain match can never suppress it)
     - any changed path matches no rule at all
+
+    main adds SUPPLEMENTARY_RULES' targets to this result through add_supplementary_targets.
     """
     changed = list(changed_paths)
     if not changed:
@@ -1111,6 +1165,21 @@ def select_pytest_targets(changed_paths: Iterable[str]) -> SelectionResult:
         return SelectionResult(FULL_SUITE_TARGETS, True, "unmatched-path", tuple(unmatched_paths))
 
     return SelectionResult(tuple(sorted(targets)), False, "domain-selected")
+
+
+def add_supplementary_targets(selection: SelectionResult, changed_paths: Iterable[str]) -> SelectionResult:
+    """Add the targets of every SUPPLEMENTARY_RULES row that matches a changed path.
+
+    A full-suite selection passes through unchanged, since every rule-table target sits under a full-suite root.
+    """
+    if selection.is_full_suite:
+        return selection
+    targets = set(selection.target_paths)
+    for path in changed_paths:
+        for predicate, supplementary_targets in SUPPLEMENTARY_RULES:
+            if predicate(path):
+                targets.update(supplementary_targets)
+    return selection._replace(target_paths=tuple(sorted(targets)))
 
 
 # --- Git plumbing -------------------------------------------------------
@@ -1176,8 +1245,6 @@ def compute_changed_paths(repo_root: Path, *, run=subprocess.run) -> list[str]:
 
 
 # --- pytest invocation ----------------------------------------------------
-
-XDIST_WORKER_ENV_VAR = "PYTEST_XDIST_AUTO_NUM_WORKERS"
 
 # Below two workers, xdist's own per-worker spawn/IPC overhead outweighs
 # any parallelism gained.
@@ -1333,6 +1400,46 @@ def run_pytest(
     return result.returncode
 
 
+def _pass_header(planned_pass: PytestPass) -> str:
+    return f"select-tests: {planned_pass.name} pass: {shlex.join(planned_pass.added_options)}"
+
+
+def _pass_summary(exit_codes: list[int], pass_seconds: list[float], merged_exit_code: int) -> str:
+    parallel_summary = f"select-tests: parallel pass exited {exit_codes[0]} in {pass_seconds[0]:.1f}s"
+    if len(exit_codes) == 1:
+        return f"{parallel_summary}; serial pass skipped; exiting {merged_exit_code}"
+    return (
+        f"{parallel_summary}, serial pass exited {exit_codes[1]} in {pass_seconds[1]:.1f}s; "
+        f"exiting {merged_exit_code}"
+    )
+
+
+def run_pass_plan(
+    pass_plan: PassPlan, resolved_targets: list[str], *, repo_root: Path, env: dict[str, str],
+) -> int:
+    is_split = pass_plan.unsplit_reason is None
+    if not is_split:
+        print(f"select-tests: one pass, not split: {pass_plan.unsplit_reason}", file=sys.stderr)
+    exit_codes: list[int] = []
+    pass_seconds: list[float] = []
+    for planned_pass in pass_plan.passes:
+        if is_split:
+            print(_pass_header(planned_pass), file=sys.stderr)
+        # build_pytest_argv resolves resolved_targets again internally; safe
+        # because resolve_target_paths is idempotent on its own output, pinned
+        # by test_idempotent_on_its_own_output.
+        pytest_argv = build_pytest_argv(resolved_targets, planned_pass.pytest_args, repo_root=repo_root)
+        started_at = time.monotonic()
+        exit_codes.append(run_pytest(pytest_argv, cwd=repo_root, env=env))
+        pass_seconds.append(time.monotonic() - started_at)
+        if planned_pass.name == PARALLEL_PASS and skips_serial_pass(exit_codes[-1]):
+            break
+    merged_exit_code = merge_pass_exit_codes(exit_codes)
+    if is_split:
+        print(_pass_summary(exit_codes, pass_seconds, merged_exit_code), file=sys.stderr)
+    return merged_exit_code
+
+
 # --- Fallback-reason instrumentation -------------------------------------
 
 SELECTION_LOG_FILENAME = ".test-selection-log.jsonl"
@@ -1393,7 +1500,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"select-tests: {exc}; falling back to the full suite", file=sys.stderr)
         selection = SelectionResult(FULL_SUITE_TARGETS, True, "git-unavailable")
     else:
-        selection = select_pytest_targets(changed_paths)
+        selection = add_supplementary_targets(select_pytest_targets(changed_paths), changed_paths)
 
     resolved_targets = resolve_target_paths(selection.target_paths, repo_root=repo_root)
 
@@ -1438,11 +1545,12 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
 
-    # build_pytest_argv resolves resolved_targets again internally; safe
-    # because resolve_target_paths is idempotent on its own output, pinned
-    # by test_idempotent_on_its_own_output.
-    pytest_argv = build_pytest_argv(resolved_targets, passthrough_args, repo_root=repo_root)
-    return run_pytest(pytest_argv, cwd=repo_root, env=size_result.env)
+    pass_plan = plan_passes(
+        passthrough_args,
+        auto_num_workers=size_result.env.get(XDIST_WORKER_ENV_VAR),
+        scan_selection=lambda: scan_timing_marks(resolved_targets, passthrough_args, repo_root=repo_root),
+    )
+    return run_pass_plan(pass_plan, resolved_targets, repo_root=repo_root, env=size_result.env)
 
 
 if __name__ == "__main__":

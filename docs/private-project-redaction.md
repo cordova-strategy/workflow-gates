@@ -10,7 +10,7 @@ enforcement. For the high-level three-tier overview, see the
 ## The three scans
 
 The hook runs in claude-config and its forks (origin URL contains
-`claude-config`), and in any other repo that
+`claude-config` or `workflow-gates`), and in any other repo that
 commits `.claude/private-projects-optin`; see
 [Opting in another repository](#opting-in-another-repository). Its content
 scans are silent everywhere else.
@@ -145,6 +145,27 @@ re-run and check.
   consulting `~/.claude/transcript-config-dirs`. It prints aggregates
   only. A new figure from it still takes the check under "New figures
   against the grandfathered set" below.
+- `transcript-analysis.py reviewer-reads --this-repo`, run from this
+  repository's checkout with an explicit `--since` and `--until`,
+  refuses `--projects` and a top-level `--config-dir` and reads the
+  active config directory alone, without consulting
+  `~/.claude/transcript-config-dirs`. It prints aggregates only.
+  - Its ledger section opens only regular files in
+    `<config-dir>/review-narrative-ledger/` named for one of this
+    checkout's worktree paths, by a point-in-time `lstat` that refuses
+    a symlink or named pipe unopened but detects neither a hard link
+    nor a swap between the check and the open.
+  - Both halves of its scope rest on path identity, not repository
+    identity. It does not exclude a live worktree path of this
+    checkout that another repository's checkout occupied earlier (that
+    checkout's sessions and ledger files then match as this
+    repository's), ledger rows appended from this checkout about work
+    elsewhere, a checkout of any
+    repository whose path maps to the same project-directory slug as one
+    of this checkout's worktrees, or a subagent file under an in-scope
+    session, whatever repository the subagent worked in.
+  - A new figure from it still takes the check under "New figures
+    against the grandfathered set" below.
 - A subcommand with no scope refusal of its own is not a publication
   instrument. Route it through the next section instead.
 
@@ -183,8 +204,14 @@ Machine-wide, multi-account, and cross-machine questions are worth
 asking. They are not worth publishing. Measure them with the same
 tools at their wider scope — `cost` without `--summary` (add
 `--share-only` to keep raw absolutes out of the agent's context),
-`pr-cost --all-accounts`, or any subcommand at its default machine-wide
-scope. Report the figures to the owner in session or through another
+`pr-cost --all-accounts`, any narrowed `transcript-analysis` command
+under `--all-accounts`, or under `--this-repo` over more than one
+declared root (the list is in `docs/transcript-analysis.md` under
+"Corpus scope: the declared-roots file"), or any other subcommand at
+its default machine-wide scope. `--this-repo` together with a single
+top-level `--config-dir` reads one account, but no narrowed run is a
+publication instrument, that one included.
+Report the figures to the owner in session or through another
 non-public channel.
 
 Publish nothing computed from such a read: no total, no rate, no
@@ -413,7 +440,7 @@ silently skippable.
 # matching):
 cat > "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/private-projects.md" <<'EOF'
 # Project names blocked from commits / PR titles / PR bodies in
-# claude-config and its forks (origin URL contains `claude-config`), and
+# claude-config and its forks (origin URL contains `claude-config` or `workflow-gates`), and
 # repos opted in via .claude/private-projects-optin. Match semantics +
 # what to put in this file: see docs/private-project-redaction.md in the
 # claude-config repo.
@@ -557,7 +584,7 @@ GH-1371).
 
 ## Opting in another repository
 
-In a repo whose origin URL does not contain `claude-config`, the content scans
+In a repo whose origin URL contains neither `claude-config` nor `workflow-gates`, the content scans
 are silent by default.
 Committing `.claude/private-projects-optin` at the repo's toplevel runs the
 whole hook there: all three scans, with no per-scan switch.
@@ -688,12 +715,12 @@ marker.
 ## For fork contributors
 
 Forks of `claude-config` inherit the same hook (the scoping check passes for
-any `claude-config` substring in the origin URL), so a fork whose origin URL
-contains `claude-config` needs no marker. A fork renamed so its URL lacks that
-substring gets silent content scans. The marker is no substitute, because the
+any `claude-config` or `workflow-gates` substring in the origin URL), so a fork whose origin URL
+contains either needs no marker. A fork renamed so its URL lacks both
+substrings gets silent content scans. The marker is no substitute, because the
 marker arm also scans `claude/.claude/hooks/tests/`, so a commit adding those
 tests' synthetic tokens (tracker IDs, a private-range IPv4 literal, other
-structural fixtures) denies. Keep `claude-config` in a fork's origin URL.
+structural fixtures) denies. Keep `claude-config` or `workflow-gates` in a fork's origin URL.
 A fork user can drop their own `<config-dir>/private-projects.md` and
 contribute back without their project names ever ending up in a PR they open
 against the upstream. `install-dev.sh` requires that file to exist before it

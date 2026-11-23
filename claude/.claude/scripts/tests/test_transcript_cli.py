@@ -154,7 +154,7 @@ class TestConfigDirFlag:
 
 
 _REFUSING_SUBCOMMANDS_WITHOUT_THEIR_OWN_CONFIG_DIR_FLAG = (
-    "cost-counts", "period-cost", "review-cost-by-size", "read-cost",
+    "cost-counts", "period-cost", "review-cost-by-size", "read-cost", "reviewer-reads",
 )
 _SUBCOMMANDS_WITH_THEIR_OWN_CONFIG_DIR_FLAG = tuple(
     name for name in scope._SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR
@@ -482,3 +482,117 @@ class TestProjectsFlagHasNoArgparseType:
             if action.type is not None
         ]
         assert typed == []
+
+
+_NARROWED_SUBCOMMANDS = (
+    "review-trace", "judgment-pair", "sessions", "skill-invocation", "buckets", "duration", "struggle",
+    "audit-routing", "audit-routing-samples", "turn-shape-samples", "turn-shape-holdout-samples",
+    "handoff-signal-response",
+)
+# Each keeps its own --all-accounts registration and help text, specific to its ledger.
+_LEDGER_SUBCOMMANDS_WITH_OWN_ALL_ACCOUNTS = ("pr-cost", "review-cost-by-size")
+
+
+class TestAllAccountsFlagRegistration:
+    def test_subcommands_registering_all_accounts_are_exactly_the_narrowed_ones_plus_the_two_ledger_ones(self):
+        registrants = {
+            name for name, subparser in _subparsers_by_name(cli.build_parser()).items()
+            if "--all-accounts" in subparser._option_string_actions
+        }
+        assert registrants == set(_NARROWED_SUBCOMMANDS) | set(_LEDGER_SUBCOMMANDS_WITH_OWN_ALL_ACCOUNTS)
+
+    def test_subcommands_with_the_pooled_this_repo_help_are_the_narrowed_ones_besides_skill_invocation(self):
+        """skill-invocation builds its own --this-repo, whose help says it is a no-op."""
+        with_pooled_help = {
+            name for name, subparser in _subparsers_by_name(cli.build_parser()).items()
+            if "--this-repo" in subparser._option_string_actions
+            and subparser._option_string_actions["--this-repo"].help == scope._POOLED_THIS_REPO_HELP
+        }
+        assert with_pooled_help == set(_NARROWED_SUBCOMMANDS) - {"skill-invocation"}
+
+    @pytest.mark.parametrize("subcommand", _NARROWED_SUBCOMMANDS)
+    def test_narrowed_subcommands_all_accounts_help_says_the_output_is_not_for_publication(self, subcommand):
+        all_accounts_help = _subparsers_by_name(cli.build_parser())[subcommand]._option_string_actions[
+            "--all-accounts"
+        ].help
+
+        assert "not for publication" in all_accounts_help
+
+
+# Copies of the mode predicates the three mode-split commands apply beside `_narrows_to_active_account`.
+# Nothing ties them to the command modules, so a deliberate predicate change needs this table updated too.
+_MODE_SPLIT_NARROWING_SWITCH = {
+    "review-trace": lambda parsed: not parsed.deny_summary,
+    "skill-invocation": lambda parsed: bool(parsed.projects),
+    "handoff-signal-response": lambda parsed: bool(parsed.sample),
+}
+# review-trace's bare run is its timeline, which narrows.
+_POOLED_BY_CLI_DEFAULT = ("skill-invocation", "handoff-signal-response")
+
+
+class TestNarrowedCommandsCliDefaults:
+    @pytest.mark.parametrize("subcommand", _NARROWED_SUBCOMMANDS)
+    def test_bare_invocation_narrows_to_the_active_account_unless_the_mode_default_pools(self, subcommand):
+        parsed = cli.build_parser().parse_args([subcommand])
+        mode_narrows = _MODE_SPLIT_NARROWING_SWITCH.get(subcommand, lambda _parsed: True)(parsed)
+
+        narrows_by_default = scope._narrows_to_active_account(parsed) and mode_narrows
+
+        assert narrows_by_default is (subcommand not in _POOLED_BY_CLI_DEFAULT)
+
+
+class TestAllAccountsBesideTopLevelConfigDir:
+    """The top-level --config-dir names one account, so main() refuses it beside --all-accounts, which asks
+    for every account, rather than print one account's rows as if they were complete."""
+
+    @pytest.mark.parametrize("subcommand", _NARROWED_SUBCOMMANDS)
+    def test_all_accounts_with_top_level_config_dir_exits_2_naming_the_contradiction(
+        self, monkeypatch, tmp_path, capsys, subcommand,
+    ):
+        monkeypatch.setattr(scope, "PROJECTS_DIR", scope.PROJECTS_DIR)
+        named_account = tmp_path / "named-account"
+        (named_account / "projects").mkdir(parents=True)
+        monkeypatch.setattr(
+            sys, "argv", ["transcript-analysis.py", "--config-dir", str(named_account), subcommand, "--all-accounts"],
+        )
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert captured.err == (
+            f"{subcommand}: --all-accounts is refused with the top-level --config-dir, which names one account;"
+            " drop one of them\n"
+        )
+        assert captured.out == ""
+
+    def test_the_same_buckets_argv_without_all_accounts_prints_the_seeded_branch(
+        self, monkeypatch, tmp_path, capsys,
+    ):
+        # Positive control for the refusal tests above: the same seeded account is readable without the flag.
+        monkeypatch.setattr(scope, "PROJECTS_DIR", scope.PROJECTS_DIR)
+        named_account = tmp_path / "named-account"
+        project_dir = named_account / "projects" / "-home-user-testrepo"
+        project_dir.mkdir(parents=True)
+        _write_jsonl(project_dir / "s.jsonl", [_asst("claude-sonnet-4-6", branch="feat-named-account")])
+        monkeypatch.setattr(sys, "argv", ["transcript-analysis.py", "--config-dir", str(named_account), "buckets"])
+
+        cli.main()
+
+        assert "feat-named-account" in capsys.readouterr().out
+
+
+class TestAbsoluteProjectsThroughMain:
+    def test_buckets_with_an_absolute_projects_value_exits_2_before_any_output(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(scope, "PROJECTS_DIR", tmp_path / "projects")
+        (tmp_path / "projects").mkdir()
+        monkeypatch.setattr(sys, "argv", ["transcript-analysis.py", "buckets", "--projects", "/abs/path"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert "not an absolute path" in captured.err
