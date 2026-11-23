@@ -3,7 +3,7 @@
 *2026-10-29.*
 
 **Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated. The second window runs under that section's values and rules, dated as its "The six values" bullet states. That bears on these sites:
-- The "Unit" bullet under "Pre-registration, fixed before enabling": rows count only for sessions in the new section's analysis set.
+- The "Unit" bullet under "Pre-registration, fixed before enabling": rows count toward the figures the decision rule compares with a value only for sessions in the new section's analysis set.
 - The "Primary metric" bullet: the same narrowing, and out-of-set `challenge:` tags count in no stratum.
 - The "Tag-coverage guardrail" bullet: its `/review-pr` exclusion applies per round.
 - The "Window and sample floor" bullet: the floor applies per stratum, and "chosen, not sourced from any data" no longer holds for the second window's sample floor.
