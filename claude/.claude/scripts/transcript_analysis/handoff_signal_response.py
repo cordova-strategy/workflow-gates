@@ -556,21 +556,14 @@ def cmd_handoff_signal_response(args: argparse.Namespace) -> None:
     by the main loop. Every other two-pass subcommand in this file (e.g.
     cost-ledger) accepts the same tradeoff.
     """
-    redact: bool = not bool(getattr(args, "no_redact", False))
     sample_n: int = getattr(args, "sample", 0) or 0
     # Only a --sample run narrows to the active account.
     active_account_only = scope._narrows_to_active_account(args) and bool(sample_n)
     roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     multi_root = len(roots) > 1
     context_turns: int = getattr(args, "context_turns", 0) or 0
+    redact: bool = scope.resolve_redaction(args, roots, "handoff-signal-response")
 
-    if not redact and multi_root:
-        print(
-            "handoff-signal-response: --no-redact is refused when more than one root is in scope;"
-            " drop --no-redact, or run --sample without --this-repo or --all-accounts so one root is read",
-            file=sys.stderr,
-        )
-        sys.exit(2)
     if context_turns and not sample_n:
         print("handoff-signal-response: --context-turns requires --sample", file=sys.stderr)
         sys.exit(2)

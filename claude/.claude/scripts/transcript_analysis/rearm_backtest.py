@@ -347,17 +347,9 @@ def _rearm_backtest_report(args: argparse.Namespace, today: date, roots: Sequenc
     and the threshold computation itself are held fixed and printed as such,
     so a reader can't mistake "spacing-only" for "everything."
     """
-    redact: bool = not bool(getattr(args, "no_redact", False))
     scan_roots: Sequence[Path] = roots if roots is not None else (scope.PROJECTS_DIR,)
     multi_root = len(scan_roots) > 1
-
-    if not redact and multi_root:
-        print(
-            "rearm-backtest: --no-redact is refused when more than one root is in scope"
-            " (--config-dir was given); drop --no-redact or scope to a single profile",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    redact: bool = scope.resolve_redaction(args, scan_roots, "rearm-backtest")
     if not redact:
         print(scope._DO_NOT_PUBLISH_BANNER)
         print(scope._DO_NOT_PUBLISH_BANNER, file=sys.stderr)
@@ -591,8 +583,8 @@ def _add_rearm_backtest_subparser(subparsers: argparse._SubParsersAction) -> Non
             " --no-redact has no effect on most of its content, but at single-root scope it"
             " prints the literal .handoff-nudge.log path (instead of an account-N label) in the"
             " per-root log-size line. It still prints the DO NOT PUBLISH banner and enforces the"
-            " same multi-root refusal as cost, for CLI parity. Refused when --config-dir puts"
-            " more than one root in scope."
+            " same multi-root refusal as cost, for CLI parity. Refused whenever"
+            " more than one root is in scope."
         ),
     )
     p_rearm_backtest.add_argument(
