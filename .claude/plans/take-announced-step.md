@@ -14,7 +14,7 @@ Ask: "I think #2 could work." — the engineer chose option 2 from the session's
 
 Add one bullet to `claude/.claude/CLAUDE.md` under `# Main session` → `## Working Style`, directly after the "Walk the user through…" bullet (line 129), where the engineer chose to place it (row 7). The bullet requires a message that names the session's next step to carry that step's tool call. It lets the turn end on a named step only when an existing authority makes the step wait, or when work the session started that the step needs is still running. It defers to the rules that already govern waits instead of restating them, and its line-129 neighbor is one of them (row 4). One `_PLACEMENTS` row pins the bullet in Main session, under a one-line comment that names the record explaining why. One bullet in the groups design record names the placement as an exception to that record's tool-capability test, and one CHANGELOG entry records the change.
 
-The placement departs from the groups record's tool-capability test (rows 9 and 10), and the engineer's placement answer settles it (row 7).
+The placement departs from the groups record's tool-capability test (rows 9 and 10), and the engineer's placement answer settles it (row 7). The change also replaces the category-list comment at line 101 of the groups test with a one-line label (M2, row 30).
 
 The bullet, verbatim:
 
@@ -48,8 +48,8 @@ Alternatives weighed:
 **Mechanisms:**
 - **M1.** Insert the bullet above as a new line after `claude/.claude/CLAUDE.md:129`. No other line in the file changes. It is the lightest primitive for the root: a prose rule with no hook or script.
   anchors: root, row1, row2, row3, row4, row5, row6, row7, row8, row14, row15, row16, row23, row26, row27, row28, row29
-- **M2.** Add `("take-the-named-step", "**Take the next step you name.**", "main"),` to `_PLACEMENTS` in `claude/.claude/hooks/tests/test_global_claude_md_groups.py`, after the `no-permission-asking-on-finished-work` row (which ends at line 138), among the autonomy rows under the line-101 comment. The one-line comment under Critical files sits directly above it. It reuses the parametrized `test_pinned_bullet_sits_in_its_group` (`:282-302`), so no test function is added. It lands before M1, so the row is seen to fail first (Verification step 2).
-  anchors: row7, row9, row16, row17, row24
+- **M2.** Add `("take-the-named-step", "**Take the next step you name.**", "main"),` to `_PLACEMENTS` in `claude/.claude/hooks/tests/test_global_claude_md_groups.py`, after the `no-permission-asking-on-finished-work` row (which ends at line 138), among the Main-session rows under the line-101 comment. M2 also replaces that comment with the one-line label `# Main-session-only bullets.` (row 30). The one-line comment under Critical files sits directly above the new row. It reuses the parametrized `test_pinned_bullet_sits_in_its_group` (`:282-302`), so no test function is added. It lands before M1, so the row is seen to fail first (Verification step 2).
+  anchors: row7, row9, row16, row17, row24, row30
 - **M3.** Add one bullet to the groups record's "Placement tests" list, after `docs/design-decisions/global-claude-md-agent-core-and-main-session-groups.md:24`, so the record names the exception instead of silently contradicting the file (text under Critical files).
   anchors: row7, row8, row9, row10, row11, row12, row13, row25
 - **M4.** Add a CHANGELOG entry (text under Critical files).
@@ -95,7 +95,7 @@ Alternatives weighed:
    - The bullet sits below `# Main session`, and the Agent Core text scans read only lines above that heading, so they do not reach it.
 
    [verified: claude/.claude/hooks/tests/test_global_claude_md_groups.py:27-42, :52-176, :243-256, :259-279, :350-363, :393-412]
-17. The pin earns its row because the placement departs from row 9's test. A later editor applying that test could move the bullet into Agent Core, and the `"main"` branch fails that move. The row joins the autonomy rows under the line-101 comment ("autonomy grants"), beside the proceed-clause row, since both bar a pause on work the session can continue. The row pins placement only: an edit that widens or drops the "only when" sentence, or restores "the decision is the user's", passes every test. The session declined a clause-level row at plan review. The failure message at `:299-302` does not say the placement is a deliberate exception, so a comment above the row names the record that does. An editor who hits the failure is therefore not left to flip the row to `"core"`. [verified: claude/.claude/hooks/tests/test_global_claude_md_groups.py:101-138, :298-302]
+17. The pin earns its row because the placement departs from row 9's test. A later editor applying that test could move the bullet into Agent Core, and the `"main"` branch fails that move. The row joins the Main-session rows under the line-101 comment, beside the proceed-clause row, since both bar a pause on work the session can continue. The line-101 comment is replaced with a bare label (M2, row 30). The row pins placement only: an edit that widens or drops the "only when" sentence, or restores "the decision is the user's", passes every test. A clause-level row is set aside under Alternatives. The failure message at `:299-302` does not say the placement is a deliberate exception, so a comment above the row names the record that does. An editor who hits the failure is therefore not left to flip the row to `"core"`. [verified: claude/.claude/hooks/tests/test_global_claude_md_groups.py:101-138, :298-302]
 18. CHANGELOG entries sit under `## [Unreleased]` → `### Changed` as a bold sentence with nested bullets, and an edit to an existing file under `claude/.claude/` is live on `git pull`. [verified: CHANGELOG.md:5-9; repo CLAUDE.md § "Working in this repo"]
 19. The engineer's answer on measurement. [engineer-verified: "Private rescan, no repo change (Recommended)"]
 20. That option's meaning, in the session's description: rerun the local transcript scan on sessions after the bullet lands, and report the comparison to the engineer in chat only, committing and publishing nothing from it. [unverified: the session's own option description]
@@ -108,13 +108,17 @@ Alternatives weighed:
 27. A step gated on an answer only the user can give ("I'll do X once you pick") needs no new item in the closed list. Agent Core's options bullet makes the choice the user's when the session can write the sentence naming why it is a genuine decision (`:49`). When that sentence cannot be written, the same bullet sends the session to the sensible default (`:55`). The "CLAUDE.md" item therefore lets a genuine question make the step wait. It still excludes an offer the agent made up. An item such as "the decision is the user's" would admit that offer (row 6). An `AskUserQuestion` call does not make a message compliant by itself, because it is not the named step's tool call. A made-up question asked through it still breaks the bullet's first sentence, while a genuine one is covered through `:49`. [verified: claude/.claude/CLAUDE.md:49, :55; the bullet text above]
 28. The engineer's answer on the running-work clause, put to them at plan review after round 2 flagged that it postdates their hedged-offer answer (row 5). [engineer-verified: "Keep the clause (Recommended)"]
 29. The engineer's answer on the bullet's trigger, a message that "names your next step", which is wider than the session's description of option 2 (a message that reports a finished unit and names the next step). [engineer-verified: "Keep the wider trigger (Recommended)"]
+30. The engineer's answer on M2's replacement of the line-101 comment, put to them after code review rounds 1 and 2 each flagged that comment's category list. The engineer was asked whether to keep the replacement or revert it, and answered in their own words. [engineer-verified: "Ask the architect."] `plan-architect` then recommended keeping the replacement, because Agent Core's "Don't restate the code" bullet makes a category list of the rows below it a restatement. The label replaces one comment line with one line, so the diff stays small. That recommendation is the architect's, not the engineer's. The engineer has not confirmed that it settles keep-or-revert. [verified: `claude/.claude/CLAUDE.md:116` states the "Don't restate the code" bullet] [unverified: the architect's recommendation is relayed, so confirm it settles the question]
 
 ## Critical files
 
 Line numbers below cite each file before the change.
 
 - `claude/.claude/CLAUDE.md`: insert the M1 bullet as a new line after line 129, so it becomes line 130.
-- `claude/.claude/hooks/tests/test_global_claude_md_groups.py`: insert these two lines after line 138, before the bullet lands (M2). Reuse `test_pinned_bullet_sits_in_its_group` (`:282-302`) and `_index_of_only_line_containing` (`:243-256`) as they stand.
+- `claude/.claude/hooks/tests/test_global_claude_md_groups.py`, in this order:
+  - Insert the two lines in the block below after line 138, before the bullet lands (M2).
+  - Replace the one-line comment at line 101 with `    # Main-session-only bullets.`.
+  - Reuse `test_pinned_bullet_sits_in_its_group` (`:282-302`) and `_index_of_only_line_containing` (`:243-256`) as they stand.
 
 ```python
     # Kept in Main session against the tool-capability test; global-claude-md-agent-core-and-main-session-groups.md says why.
@@ -138,7 +142,7 @@ Line numbers below cite each file before the change.
 
 One `code-writer` dispatch covers all four files, since each carries the bullet's text, its fragment, or its name. It lands M2 before M1, so Verification step 2 sees the row fail first.
 
-Projected diff: 8 lines (8 additions, 0 deletions).
+Projected diff: 10 lines (9 additions, 1 deletion).
 
 ## Verification
 
