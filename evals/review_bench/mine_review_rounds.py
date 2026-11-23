@@ -169,12 +169,44 @@ def _later_round_citations(
 
 @dataclass
 class _RoundEntry:
+    """An entry for a window with an empty branch or no timestamp carries
+    identity fields only; its `scope_keys`, `later_citations` and
+    `session_writes` are empty, so no citation or edit event comes from it."""
+
     jsonl: Path
-    records: list[dict]
-    dispatch_index: dict[str, tuple[Path, str | None]]
     window: tuple[int, int, str]
     branch: str
     ts: float | None
+    scope_keys: dict[str, str]
+    later_citations: dict[str, _CitationHit]
+    # (record index, normalized target) for every main-thread code write in
+    # the session; every entry of one session that has both a branch and a
+    # timestamp shares the same list.
+    session_writes: list[tuple[int, str]]
+
+
+def _main_thread_write_events(records: list[dict]) -> list[tuple[int, str]]:
+    """(record index, normalized target) for every code write in `records`.
+    Each target is normalized with its own record's `cwd`.
+    Targets go through the citation normalizer, so each one equals the key a
+    citation of the same file yields, a `:line` suffix included."""
+    events: list[tuple[int, str]] = []
+    for index, rec in enumerate(records):
+        if rec.get("type") != "assistant":
+            continue
+        cwd = rec.get("cwd") or ""
+        for block in (rec.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if block.get("name") not in corpus._CODE_WRITE_TOOLS:
+                continue
+            target = reviewer_yield._code_write_target_path(block.get("input") or {})
+            if not target:
+                continue
+            key = reviewer_yield._normalize_cited_path(target, cwd)
+            if key is not None:
+                events.append((index, key))
+    return events
 
 
 def _collect_round_entries(session_iter) -> list[_RoundEntry]:
@@ -186,6 +218,9 @@ def _collect_round_entries(session_iter) -> list[_RoundEntry]:
     kept window, narrowing that round's `_round_scope` reads and moving
     `_main_thread_edited_between`'s start. Windows come from undeduped
     records, so they can differ from the deduped round consumers' windows.
+
+    No entry holds its session's parsed records, so those are freed as the
+    session iterator advances.
     """
     entries: list[_RoundEntry] = []
     for jsonl, records in session_iter:
@@ -193,15 +228,30 @@ def _collect_round_entries(session_iter) -> list[_RoundEntry]:
         if not windows:
             continue
         branches = review_rounds._session_record_branches(records, windows)
-        dispatch_index, _meta_errors = corpus._index_subagent_dispatches(jsonl)
-        for window in windows:
-            open_idx = window[0]
-            if review_rounds.round_opened_by_spawn(records[open_idx]):
+        kept_windows = [
+            (window, branches[window[0]], corpus._parse_ts(records[window[0]].get("timestamp")))
+            for window in windows
+            if not review_rounds.round_opened_by_spawn(records[window[0]])
+        ]
+        # `mine()` never matches a round with an empty branch or no timestamp,
+        # so only a window with both pays for the session-wide reads.
+        if any(branch and ts is not None for _window, branch, ts in kept_windows):
+            dispatch_index, _meta_errors = corpus._index_subagent_dispatches(jsonl)
+            reviewer_scans = reviewer_yield._scan_reviewer_transcripts(records, dispatch_index)
+            session_writes = _main_thread_write_events(records)
+        for window, branch, ts in kept_windows:
+            if not branch or ts is None:
+                entries.append(_RoundEntry(
+                    jsonl=jsonl, window=window, branch=branch, ts=ts,
+                    scope_keys={}, later_citations={}, session_writes=[],
+                ))
                 continue
-            ts = corpus._parse_ts(records[open_idx].get("timestamp"))
+            window_dispatch_ids = _reviewer_dispatch_tool_use_ids(_window_records(records, window))
             entries.append(_RoundEntry(
-                jsonl=jsonl, records=records, dispatch_index=dispatch_index,
-                window=window, branch=branches[open_idx], ts=ts,
+                jsonl=jsonl, window=window, branch=branch, ts=ts,
+                scope_keys=_round_scope(records, window, dispatch_index),
+                later_citations=_later_round_citations(reviewer_scans, window_dispatch_ids),
+                session_writes=session_writes,
             ))
     return entries
 
@@ -218,26 +268,12 @@ def _main_thread_edited_between(earlier: _RoundEntry, later: _RoundEntry, key: s
     missed.
     Always False when the rounds come from different transcripts, since
     cross-session timing isn't comparable.
-    Each write target is normalized with its own record's `cwd` first,
-    because a raw ":line" citation never equals a write target.
     """
     if earlier.jsonl != later.jsonl:
         return False
     start = earlier.window[1]  # earlier round's own window_end
     end = later.window[0]  # later round's own window open_idx
-    for rec in earlier.records[start:end]:
-        if rec.get("type") != "assistant":
-            continue
-        cwd = rec.get("cwd") or ""
-        for block in (rec.get("message") or {}).get("content") or []:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
-                continue
-            if block.get("name") not in corpus._CODE_WRITE_TOOLS:
-                continue
-            target = reviewer_yield._code_write_target_path(block.get("input") or {})
-            if target and reviewer_yield._normalize_cited_path(target, cwd) == key:
-                return True
-    return False
+    return any(start <= index < end and target == key for index, target in earlier.session_writes)
 
 
 # --- Fixture-commit resolution -----------------------------------------------
@@ -577,15 +613,10 @@ def _branch_citation_events(branch_entries: list[_RoundEntry]) -> list[_Citation
     """Every (later round, earlier round, cited path) match on one branch,
     from the transcripts alone."""
     ordered = sorted(branch_entries, key=lambda e: e.ts if e.ts is not None else float("inf"))
-    scopes = [_round_scope(e.records, e.window, e.dispatch_index) for e in ordered]
-    scan_cache: dict[Path, dict[str, reviewer_yield._ReviewerTranscriptScan]] = {}
     events: list[_CitationEvent] = []
 
     for later_idx, later in enumerate(ordered):
-        if later.jsonl not in scan_cache:
-            scan_cache[later.jsonl] = reviewer_yield._scan_reviewer_transcripts(later.records, later.dispatch_index)
-        later_tool_use_ids = _reviewer_dispatch_tool_use_ids(_window_records(later.records, later.window))
-        citations = _later_round_citations(scan_cache[later.jsonl], later_tool_use_ids)
+        citations = later.later_citations
         if not citations or later.ts is None:
             continue
 
@@ -593,7 +624,7 @@ def _branch_citation_events(branch_entries: list[_RoundEntry]) -> list[_Citation
             earlier = ordered[earlier_idx]
             if earlier.ts is None or not (earlier.ts < later.ts):
                 continue
-            for key in sorted(citations.keys() & scopes[earlier_idx].keys()):
+            for key in sorted(citations.keys() & earlier.scope_keys.keys()):
                 hit = citations[key]
                 events.append(_CitationEvent(
                     raw_citation=hit.raw_citation, excerpt=hit.excerpt,

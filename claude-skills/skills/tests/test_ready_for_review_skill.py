@@ -222,18 +222,10 @@ def test_ready_for_review_step2_takes_the_fallback_git_diff_base_from_the_recipe
     assert "baseRefName" not in step2_text
 
 
-def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review_rows() -> None:
-    """Step 4 must name the rerun that recovers the plan-review rows the omit flag drops.
-
-    Step 4 runs both calls under the Bash tool's ten-minute ceiling and waits for either one the harness moves to the background.
-    """
-    step_4_heading = "## 4. Skill-procedural-fidelity review (halt on findings)"
-    step_4_text = _heading_section_text(_skill_file("ready-for-review"), step_4_heading)
-    for literal in ("without `--omit-plan-review-spawns`", "`round=plan-review`"):
-        assert literal in step_4_text, (
-            f"ready-for-review step 4 no longer carries {literal!r}"
-        )
-    step_4_raw_text = _raw_heading_section_text(_skill_file("ready-for-review"), step_4_heading)
+def test_ready_for_review_step_4_fidelity_call_declares_ceiling_wait_rerun_and_halt() -> None:
+    """Step 4 carries the fidelity call's ten-minute ceiling and its background-wait, killed-call re-run and halt
+    bullets."""
+    step_4_raw_text = _raw_heading_section_text(_skill_file("ready-for-review"), _READY_FOR_REVIEW_STEP4_HEADING)
     for fidelity_call_clause, fidelity_call_context in (
         (
             "List invocations and the reviewer-spawn timeline with one foreground Bash call with "
@@ -259,6 +251,16 @@ def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review
             step_4_raw_text,
             context=f"ready-for-review step 4 no longer carries {fidelity_call_context}",
         )
+
+
+def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review_rows() -> None:
+    """Step 4 must name the rerun that recovers the plan-review rows the omit flag drops."""
+    step_4_text = _heading_section_text(_skill_file("ready-for-review"), _READY_FOR_REVIEW_STEP4_HEADING)
+    for literal in ("without `--omit-plan-review-spawns`", "`round=plan-review`"):
+        assert literal in step_4_text, (
+            f"ready-for-review step 4 no longer carries {literal!r}"
+        )
+    step_4_raw_text = _raw_heading_section_text(_skill_file("ready-for-review"), _READY_FOR_REVIEW_STEP4_HEADING)
     _assert_pinned_clause_right_bounded(
         "**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun "
         "`python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` "

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from helpers import stub_git_worktree_listing, worktree_porcelain
-from transcript_analysis import cli, corpus, pricing, review_rounds, review_trace, scope
+from transcript_analysis import cli, corpus, cost, pricing, review_rounds, review_trace, scope
 
 from .conftest import (
     _agent_use,
@@ -175,6 +175,39 @@ def test_cost_parses_every_session_outside_summary_or_under_since(prefilter_corp
     assert any(_session_id_of(p, prefilter_corpus) == "s-other" for p in spies.read), (
         f"{argv}: the run skipped s-other, whose branches the exclusions table or --since coverage warning read"
     )
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["cost", "--this-repo", "--branches", "other-branch", "--summary", "--since", "3650d"],
+        ["cost", "--this-repo", "--branches", "other-branch"],
+    ],
+    ids=["summary-since", "full-report"],
+)
+def test_spawn_side_drift_warns_without_the_sidechain_re_read_outside_the_prefiltered_summary(
+    fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys, argv,
+):
+    """Outside the prefiltered summary every session is parsed, so the canary reads the whole scope and needs no re-read."""
+    stub_repo_tracked_agent_types()
+    stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+    root = fake_projects.parent
+    # A spawn and no subagent file anywhere in the scope: the drift signature the canary exists to catch.
+    _write_session(root / "-repo-main", "s-other", [
+        _priced(_MODEL, input=1_000, branch="other-branch", ts=_attr_ts(0), content=[_agent_use("spawn-1", "general-purpose")]),
+    ])
+    _write_session(root / "-repo-main--claude-worktrees-gone", "s-feature", [
+        _priced(_MODEL, input=1_000, branch=_FILTERED_BRANCH, ts=_attr_ts(1)),
+    ])
+    monkeypatch.setattr(
+        cost, "_admitted_scope_holds_a_sidechain_turn",
+        lambda *_args, **_kwargs: pytest.fail("the sidechain re-read ran outside the prefiltered summary"),
+    )
+
+    status, _stdout = _run_command(argv, capsys, monkeypatch)
+
+    assert status == 0
+    assert pricing._subagent_format_drift_detected is True, f"{argv}: the spawn-side drift warning did not fire"
 
 
 @pytest.mark.parametrize(

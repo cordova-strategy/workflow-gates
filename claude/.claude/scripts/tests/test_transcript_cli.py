@@ -482,3 +482,29 @@ class TestProjectsFlagHasNoArgparseType:
             if action.type is not None
         ]
         assert typed == []
+
+
+class TestThisRepoHelpStatesTheSharedScope:
+    # review-cost-by-size's --this-repo selects its own scope, so it passes its own help.
+    _OWN_SCOPE_HELP_SUBCOMMANDS = {"review-cost-by-size"}
+
+    def test_every_this_repo_help_and_skill_invocations_projects_help_carry_the_shared_scope_statement(self):
+        """Walks every subparser build_parser() registers, so a subcommand that hand-writes its scope help,
+        or one added later with `--this-repo`, cannot drift from scope._THIS_REPO_SCOPE_HELP."""
+        subparsers = _subparsers_by_name(cli.build_parser())
+        scope_help_by_flag = {
+            (subcommand, option_string): action.help
+            for subcommand, subparser in subparsers.items()
+            for action in subparser._actions
+            for option_string in action.option_strings
+            if option_string == "--this-repo" or (subcommand == "skill-invocation" and option_string == "--projects")
+        }
+        assert ("skill-invocation", "--projects") in scope_help_by_flag
+        assert {subcommand for subcommand, option in scope_help_by_flag if option == "--this-repo"} >= (
+            self._OWN_SCOPE_HELP_SUBCOMMANDS | {"buckets", "skill-invocation"}
+        )
+        missing_shared_statement = [
+            flag for flag, help_text in scope_help_by_flag.items()
+            if flag[0] not in self._OWN_SCOPE_HELP_SUBCOMMANDS and scope._THIS_REPO_SCOPE_HELP not in (help_text or "")
+        ]
+        assert missing_shared_statement == []

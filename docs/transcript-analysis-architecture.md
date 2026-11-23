@@ -874,7 +874,7 @@ the existing tests live.
 `corpus.py`'s, `pricing.py`'s, `redaction.py`'s, and `render.py`'s tests live in
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
-scan-traversal, scan-gap, and glob-selection classes are tested in
+scan-traversal, scan-gap, glob-selection, and branch-prefilter-gap classes are tested in
 `tests/test_transcript_scope_scan.py`. Its `--this-repo` worktree-prefix admission and the resolved-scope header's
 live/unlisted counts are tested in `tests/test_transcript_scope_worktree_admission.py`, and the rest of `scope.py` in
 `tests/test_transcript_scope.py`. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`

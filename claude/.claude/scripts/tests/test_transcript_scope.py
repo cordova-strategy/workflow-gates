@@ -1,5 +1,6 @@
-"""scope.py's tests other than the scan-traversal, scan-gap and glob-selection classes in test_transcript_scope_scan.py,
-and the worktree-prefix admission and live/unlisted count classes in test_transcript_scope_worktree_admission.py."""
+"""scope.py's tests other than the scan-traversal, scan-gap, glob-selection and branch-prefilter-gap classes
+in test_transcript_scope_scan.py, and the worktree-prefix admission and live/unlisted count classes
+in test_transcript_scope_worktree_admission.py."""
 import argparse
 import importlib.util
 import os
