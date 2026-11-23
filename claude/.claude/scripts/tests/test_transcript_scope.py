@@ -1,5 +1,4 @@
-"""scope.py's tests other than the scan-traversal, scan-gap and glob-selection classes in test_transcript_scope_scan.py
-and the absolute --projects value class in test_transcript_scope_absolute_projects.py."""
+"""scope.py's tests that no test_transcript_scope_<seam>.py sibling holds."""
 import argparse
 import importlib.util
 import os

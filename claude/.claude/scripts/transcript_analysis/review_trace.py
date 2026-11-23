@@ -789,7 +789,7 @@ def cmd_review_trace(args: argparse.Namespace) -> None:
     deny_summary: bool = bool(getattr(args, "deny_summary", False))
     skill_filter: str | None = getattr(args, "skill", None) or None
     omit_plan_review_spawns: bool = bool(getattr(args, "omit_plan_review_spawns", False))
-    # --deny-summary pools every declared account; the timeline reads the active account unless widened.
+    # Only the timeline narrows to the active account; --deny-summary never does.
     active_account_only = scope._narrows_to_active_account(args) and not deny_summary
     roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "review-trace", include_subagents=True, roots=roots)

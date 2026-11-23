@@ -558,7 +558,7 @@ def cmd_handoff_signal_response(args: argparse.Namespace) -> None:
     """
     redact: bool = not bool(getattr(args, "no_redact", False))
     sample_n: int = getattr(args, "sample", 0) or 0
-    # The aggregate report pools every declared account; a --sample run reads the active account unless widened.
+    # Only a --sample run narrows to the active account.
     active_account_only = scope._narrows_to_active_account(args) and bool(sample_n)
     roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     multi_root = len(roots) > 1

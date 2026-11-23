@@ -68,9 +68,8 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     --branches scopes to named branches, matching each record's attributed branch
     (scope._attributed_branch): a subagent record counts under the branch its
     dispatching main thread was on, never its own gitBranch. --projects scopes to
-    project dirs. Left unset, it defaults to this repo's own project dirs across
-    every declared account, and an explicit glob is the escape hatch for a cross-repo
-    read.
+    project dirs. Left unset, it defaults to this repo's own project dirs, and an
+    explicit glob is the escape hatch for a cross-repo read.
     """
     branch_filter = scope._branch_filter(args)
     include_subagents = bool(getattr(args, "include_subagents", False))
@@ -80,10 +79,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # namespace with no path separator at all), so the control is WHAT records
     # are read, not scrubbing names after the fact. The default (--projects unset)
     # scopes the read to this repo's own project dirs (_repo_scoped_project_slugs).
-    # That default still reads every declared account. No run of this command is a
-    # publication instrument (docs/transcript-analysis.md, Limits). An explicit
-    # --projects is an escape hatch for corpus analysis; the caller then owns the
-    # output's scope.
+    # No run of this command is a publication instrument
+    # (docs/transcript-analysis.md, Limits). An explicit --projects is an escape
+    # hatch for corpus analysis; the caller then owns the output's scope.
     #
     # Skill names from --include-subagents can come from a cross-repo subagent,
     # so treat that output as local-only (docs/transcript-analysis.md, Limits).
@@ -93,8 +91,7 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # _normalize_skill_name collapses this repo's own worktree-qualified spellings
     # for row-hygiene. Neither is the security boundary — scoping is.
     projects_arg = getattr(args, "projects", None)
-    # The default scope (no --projects) is this repo's worktrees across every declared account, so only an
-    # explicit glob narrows.
+    # Only an explicit --projects glob narrows to the active account.
     active_account_only = scope._narrows_to_active_account(args) and bool(projects_arg)
     roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
 

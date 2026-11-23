@@ -669,6 +669,12 @@ class TestSkillInvocationArgparseWiring:
         parsed = cli.build_parser().parse_args(["skill-invocation"])
         assert parsed.projects is None
 
+    def test_projects_and_all_accounts_parse_together_on_skill_invocation(self):
+        """--all-accounts sits outside the --projects/--this-repo mutex group, so it parses beside --projects."""
+        parsed = cli.build_parser().parse_args(["skill-invocation", "--projects", "*", "--all-accounts"])
+        assert parsed.projects == "*"
+        assert parsed.all_accounts is True
+
 
 class TestSkillInvocationAccountScope:
     """An explicit --projects glob reads the active account alone, and --all-accounts reads the glob in every
