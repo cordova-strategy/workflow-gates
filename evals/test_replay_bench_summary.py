@@ -52,7 +52,8 @@ def metrics(
 
 
 def definition_counts(new_docstrings, new_docstring_words, new_definitions, documented_new_definitions) -> dict:
-    """The non-test counts as given. The test-scope counts are nonzero and differ from them, so a read of the test scope fails."""
+    """The non-test counts as given. The test-scope counts (61, 977, 53, 47) are arbitrary synthetic sentinels, nonzero and
+    different from the non-test counts, so a read of the test scope fails."""
     return {
         "non_test": {
             "new_docstrings": new_docstrings, "new_docstring_words": new_docstring_words,
@@ -947,8 +948,13 @@ class TestThePerDocstringFigures:
     def test_the_printed_difference_line_carries_the_difference_the_interval_bounds_and_the_dropped_count(
         self, campaign, figure,
     ):
-        """Kills: printing the unmeasured count, a literal 0 or the kept count as the dropped count, swapping the
-        interval bounds, and printing the difference where the interval goes."""
+        """Kills:
+        - printing the unmeasured count as the dropped count
+        - printing a literal 0 as the dropped count
+        - printing the kept count as the dropped count
+        - swapping the interval bounds
+        - printing the difference where the interval goes
+        """
         runs_by_task = {
             "both-arms-high": ([definition_counts(3, 30, 3, 2)], [definition_counts(3, 12, 3, 1)]),
             "both-arms-low": ([definition_counts(2, 20, 2, 1)], [definition_counts(4, 40, 4, 3)]),
@@ -1042,8 +1048,10 @@ class TestThePerDocstringFigures:
     def test_a_task_recorded_before_the_counts_leaves_each_arm_and_the_difference_not_measured_with_the_count_of_tasks(
         self, campaign, figure,
     ):
-        """Kills: counting a task that both arms lack twice in the difference, and printing the unmeasured count as
-        its own total."""
+        """Kills:
+        - counting a task that both arms lack twice in the difference
+        - printing the unmeasured count as its own total
+        """
         add_counted_block(campaign, "old", toolkit=[None], bare=[None])
         add_counted_block(campaign, "new", toolkit=[definition_counts(2, 20, 2, 1)], bare=[definition_counts(1, 5, 1, 1)])
 
@@ -1210,7 +1218,9 @@ class TestThePerDocstringFiguresAsValues:
         assert share.difference.difference == pytest.approx(toolkit_share - bare_share)
 
     def test_the_reference_is_a_ratio_of_sums_over_the_paired_tasks_with_an_entry(self):
-        """Kills: a mean of per-task ratios, and pooling a reference task that is not paired.
+        """Kills:
+        - a mean of per-task ratios
+        - pooling a reference task that is not paired
 
         The tasks' words per docstring are 10 and 20 and their shares 1/2 and 1/4, so a mean of ratios gives 15 and 3/8.
         """
@@ -1230,6 +1240,32 @@ class TestThePerDocstringFiguresAsValues:
 
         assert outcomes[WORDS_FIGURE].reference.ratio == pytest.approx((30 + 40) / (3 + 2))
         assert outcomes[SHARE_FIGURE].reference.ratio == pytest.approx((1 + 1) / (2 + 4))
+
+    @pytest.mark.parametrize("figure", BOTH_FIGURES)
+    def test_the_unmeasured_and_task_counts_count_each_task_once_per_figure(self, figure):
+        """Kills:
+        - counting a task that both arms lack twice in the difference's unmeasured count
+        - counting a task with one run lacking the counts as measured for its arm
+        - a reference total that is not the paired tasks with a reference entry
+
+        The reference holds the unpaired task and omits `one-toolkit-run-old`, so the reference total is 2 of 3 paired tasks.
+        """
+        blocks = counted_blocks({
+            "both-arms-old": ([None], [None]),
+            "one-toolkit-run-old": ([definition_counts(2, 20, 2, 1), None], [definition_counts(1, 5, 1, 1)]),
+            "measured": ([definition_counts(2, 20, 2, 1)], [definition_counts(1, 5, 1, 1)]),
+        })
+        reference = {
+            task_id: {"python_definition_counts": definition_counts(3, 30, 2, 1)}
+            for task_id in ("both-arms-old", "measured", "unpaired")
+        }
+
+        outcome = figure_outcomes(blocks, reference)[figure]
+
+        assert (outcome.arms["toolkit"].unmeasured, outcome.arms["toolkit"].task_count) == (2, 3)
+        assert (outcome.arms["bare"].unmeasured, outcome.arms["bare"].task_count) == (1, 3)
+        assert (outcome.difference.unmeasured, outcome.difference.task_count) == (2, 3)
+        assert (outcome.reference.unmeasured, outcome.reference.task_count) == (0, 2)
 
     @pytest.mark.parametrize(
         ("figure", "numerator_index", "denominator_index"),

@@ -1530,10 +1530,16 @@ sums over each task's mean per valid run. Neither carries a threshold.
 
 - Words per new docstring is the words in new docstrings over the count of new
   docstrings. A new docstring is a class or function docstring that has a
-  non-empty line range and whose lines are all added. A module docstring is
-  not one. A one-line docstring on its `def` line is not one, since its line
-  is also code. A docstring that gains lines inside an existing one is not
-  one. A docstring written whole onto an existing definition is one.
+  non-empty line range and whose lines are all added.
+  - A module docstring is not one.
+  - A one-line docstring on its `def` line is not one, since its line is also
+    code.
+  - A docstring that gains lines inside an existing one is not one.
+  - A docstring written whole onto an existing definition is one.
+
+  The share below counts a definition as undocumented when its one-line
+  docstring shares its `def` or `class` line, since that docstring is not
+  counted as new.
 - The share of new definitions with a new docstring is the count of new
   definitions whose docstring is new over the count of new definitions. A new
   definition is a class or function, methods and nested ones included, whose
@@ -1543,13 +1549,23 @@ sums over each task's mean per valid run. Neither carries a threshold.
   and not this one, so the share stays between 0 and 1.
 
 The counts see added line numbers only, so a rewritten line reads as a new
-one. An edit to both a definition's `def` or `class` line and the first line of
-its body, an edit to a signature together with a line inserted at the top of
-its body, or an edit to a definition whose body sits on its `def` line,
-therefore counts that definition as new. An edit to a one-line docstring on its
-own line counts that docstring as new. A multi-line docstring counts as new
-only when every one of its lines is added. The tests in
-`evals/test_replay_bench_comment_metrics.py` pin each of these cases.
+one. The cases that follow from this are:
+
+- An edit to both a definition's `def` or `class` line and the first line of
+  its body counts that definition as new.
+- An edit to a signature together with a line inserted at the top of its body
+  counts that definition as new.
+- An edit to a definition whose body sits on its `def` line counts that
+  definition as new.
+- An edit to a one-line docstring on its own line counts that docstring as new.
+- Git's line alignment can also misattribute added lines, so a new
+  definition's first body line can read as unchanged and the definition goes
+  uncounted. This is a limit of the line-set approach, and the counts are noisy
+  at that edge.
+
+A multi-line docstring is new under the rule in the words-per-new-docstring
+bullet above. The tests in `evals/test_replay_bench_comment_metrics.py` pin the
+rewritten-line cases.
 
 A Python file the parser rejects adds nothing to either figure, while the
 primary outcome's code lines still include it. A figure prints:
