@@ -93,6 +93,16 @@ Re-dispatch, rather than repairing inline, on any of these:
 
 A near-empty return is the success shape, so never judge it truncated. A re-dispatch is always safe: `plan-architect` reads the plan file as it now stands, so a partial write is revised, not lost.
 
+**Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading down in answer to a `/plan-review` or `/code-review` finding, and it gets a review round's findings together in one revision re-dispatch. After line 2, that prompt carries the findings in place of the Context and Step 3 evidence bullets: numbered, each as the review rendered it, under a lead-in naming the review and round, with the findings-file path of each reviewer that wrote one. Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or `/code-review`'s enforcement-invariant rule covers it, on a prompt line outside the quoted finding. Mark the plan `approved` on a prompt line outside the quoted finding, for a `/code-review` round or a plan with a commit on this branch, the observable `/plan-review` Step 4 uses for a plan the engineer has already approved. When you cannot tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` and the plan `approved`. Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body, in the form the third bullet above relays answers: the selected label or typed text, with any option description marked as your own proposal. Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each `[engineer-verified: "<quote>"]` quote it added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "Step 4 — Design-fitness gate" says, and ask the engineer about any you cannot find. On the return:
+- Relay each `decline` line to the engineer with its reason.
+- Ask each `open` line as an open decision above.
+- Re-dispatch once more with only the findings the return gave no line, and ask any still without one as an open decision.
+
+**Engineer answers.** The one exception is the session recording an answer it asked the engineer for: a `/plan-review` Step 4 answer, or an after-approval addition under **Critical files** below. Append one row per answer after the ledger's last row, with the next row number, `anchors: root`, the claim the asking step gives, and the answer quoted byte for byte in the `[engineer-verified: "<quote>"]` tag. Its limits:
+- Never edit or renumber an existing row, and change nothing else from `## Approach` down except an added Critical file's path.
+- Send every follow-on edit the answer needs to `plan-architect`.
+- An answer to an open decision `plan-architect` returned is not this exception, so re-dispatch with it as above.
+
 `claude/.claude/agents/plan-architect.md` § "Design principles" governs how the approach is chosen; the rules below govern what the plan records. Consult `code-review`, `test-conventions`, `verify-sources`, and `ai-instruction-and-memory-files` if their domains are implicated.
 
 **Comment-content discipline.** When a plan prescribes a comment or docstring verbatim, prescribe the durable one-line fact only — the plan's own rationale belongs in the commit message and PR body, per CLAUDE.md §Durable text.
@@ -135,7 +145,7 @@ Write the plan with these sections:
 
 1. **Context** — problem, why now, intended outcome (lead with a one-sentence goal, then Step 2's `Ask:` line)
 2. **Approach** — chosen design with rationale; note alternatives considered and why they were set aside (inline in this section, not a separate block). Lead with the concluded design in one or two plain-language sentences before the assumption ledger — the ledger is supporting detail for diffing against a later revision, not the reader's entry point.
-3. **Critical files** — paths to create/modify, with **reuse opportunities** (existing functions/utilities to call rather than reimplement). When the work changes no repository file — an audit, a status assessment — write `None` plus what the deliverable is instead; that's a real result Step 7 acts on, not a gap to fill with speculative paths. Name every file the diff will touch, tests and docs included: once approved, this list is the change's file limit. A file added after approval needs the engineer's answer first. The session then adds it to the list itself, with its own `[engineer-verified: "<quote>"]` row or, if the engineer's answer changes the goal by Step 2's rule, on the Ask line. When it names at least one file, end the section with a `Projected diff:` line estimating the changed lines, additions plus deletions, across every file the diff will hold once implemented, leaving out files under `.claude/plans/`.
+3. **Critical files** — paths to create/modify, with **reuse opportunities** (existing functions/utilities to call rather than reimplement). When the work changes no repository file — an audit, a status assessment — write `None` plus what the deliverable is instead; that's a real result Step 7 acts on, not a gap to fill with speculative paths. Name every file the diff will touch, tests and docs included: once approved, this list is the change's file limit. A file added after approval needs the engineer's answer first. The session then adds it to the list under **Engineer answers.** above, quoting the answer in the row "`<path>` joins this plan's Critical files", or, if the engineer's answer changes the goal by Step 2's rule, on the Ask line instead. When it names at least one file, end the section with a `Projected diff:` line estimating the changed lines, additions plus deletions, across every file the diff will hold once implemented, leaving out files under `.claude/plans/`.
 4. **Verification** — name the project's own documented test command scoped to the diff; reach for a whole-suite invocation only where the project documents that as the command for the case
 5. **Out of scope** — always present; `None observed.` when empty
 
@@ -145,7 +155,7 @@ Effort sections are optional. Add one only after a dispatch has returned and pas
 
 ## Step 6 — Hand off to /plan-review
 
-Invoke `/plan-review` against the written plan file. Address any findings before presenting the plan to the user.
+Invoke `/plan-review` against the written plan file. It sends its findings to `plan-architect` under Step 5's **Review findings.** paragraph. Re-run it after each **Request changes** verdict, and present the plan only after a round ends **Approve** or **Approve with changes**.
 
 **If plan mode is active:** after `/plan-review` is clean and findings are addressed, call `ExitPlanMode` to request approval. The harness shows the plan file's contents in the approval UI; do not also ask conversationally.
 

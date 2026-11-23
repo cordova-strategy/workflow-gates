@@ -46,6 +46,10 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - **Migration:** a declaration that read `untrusted-input` now reads `caller=operator-only` and `input=untrusted`, and one that read `adversarial` now reads `caller=other-callers` and `input=untrusted`, each with `agent=cooperative`.
   - **Migration:** a project layer or prompt that matches the old tag no longer matches.
   - The change is live on `git pull`.
+- **Only `plan-architect` now edits a plan's sections in answer to `/plan-review` and `/code-review` findings.** The rule lives in `plan-it/SKILL.md` Step 5's **Review findings.** paragraph, and `plan-architect` accepts, declines or opens each finding before it edits.
+  - A plan-prose-only `/plan-review` round now always ends **Approve with changes**, and its completion marker follows the `plan-architect` dispatch.
+  - `/code-review` and `review-orchestrator` send an ADDRESS row's plan edit to `plan-architect` instead of fixing it inline or through `code-writer`.
+  - The session still appends one templated row for each answer it asked the engineer for.
 - **The documented `claude-config.toml` append one-liners now start with a newline, `.gitignore` covers six more legacy sentinel filenames, and `git-feature-branch-sync`'s explicit `--force-with-lease` recipe uses a pre-rewrite SHA.**
   - Every `printf 'key = value\n' >> .../claude-config.toml` copy in `README.md`, `docs/`, and the `advance-past-commit-stall.sh` block reason is now `printf '\nkey = value\n'`. Without the leading newline, a file lacking a trailing newline fused the new key onto its last line, and `_config.sh` skipped both as a malformed line. `docs/config-file.md` states the requirement.
   - **Migration:** a one-liner copied before this change still fuses lines on such a file. Re-copy it from the docs, or add the leading `\n`.

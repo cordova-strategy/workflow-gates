@@ -443,6 +443,7 @@ def _scope_exempt_change_type_row_text(skill_md_path: Path) -> str:
 
 
 _STEP4_HEADING = "## Step 4 — Design-fitness gate"
+_PLAN_IT_STEP5_HEADING = "## Step 5 — Architecture design"
 
 
 def _section_between(
@@ -487,14 +488,42 @@ def _raw_heading_section_text(skill_md_path: Path, heading: str) -> str:
     return "".join(lines[start_idx:end_idx])
 
 
+def _raw_subsection_text(skill_md_path: Path, heading: str) -> str:
+    """Whitespace-preserving text under `heading`, ending at the next line starting with `#` of any level.
+
+    `_raw_heading_section_text` ends only at a `## ` line, so a `###` heading's
+    section there spans its later sibling and child subsections.
+    """
+    lines = skill_md_path.read_text().splitlines(keepends=True)
+    start_idx, _section_end_idx = _section_between(lines, heading, skill_md_path)
+    end_idx = next(
+        (index for index in range(start_idx + 1, len(lines)) if lines[index].startswith("#")),
+        len(lines),
+    )
+    return "".join(lines[start_idx:end_idx])
+
+
+# A markdown list item's opening: `-`, `*` or `1.` followed by whitespace.
+_LIST_MARKER_RE = re.compile(r"(?:[-*]|\d+\.)\s")
+
+
 def _assert_pinned_clause_right_bounded(
-    pinned_text: str, raw_section_text: str, *, context: str
+    pinned_text: str,
+    raw_section_text: str,
+    *,
+    context: str,
+    closes_bullet_run: bool = False,
 ) -> None:
     """Assert `pinned_text`'s right edge in `raw_section_text` lands on a
     structural boundary (section end, blank line, or a `-` bullet or `#`
     heading marker on the next line) rather than mid-sentence, so a
     contradicting clause appended right after the pinned text is caught
     instead of silently matching as a substring.
+
+    `closes_bullet_run` is for a pin that spans a whole list: a following `-`
+    bullet is then the list continuing, so only a blank line or the section's
+    end counts as a boundary. A blank line followed by a list marker is the
+    same loose list continuing, so it is no boundary either.
     """
     pattern = r"\s+".join(re.escape(word) for word in pinned_text.split())
     match = re.search(pattern, raw_section_text)
@@ -503,10 +532,18 @@ def _assert_pinned_clause_right_bounded(
     )
     remainder = raw_section_text[match.end() :]
     same_line_rest = remainder.lstrip(" \t")
+    next_line_starts_a_boundary_marker = (
+        not closes_bullet_run
+        and same_line_rest.startswith("\n")
+        and same_line_rest[1:2] in ("-", "#")
+    )
+    blank_line_continues_the_list = (
+        closes_bullet_run and _LIST_MARKER_RE.match(same_line_rest.lstrip()) is not None
+    )
     boundary_ok = (
         remainder.strip() == ""
-        or same_line_rest.startswith("\n\n")
-        or (same_line_rest.startswith("\n") and same_line_rest[1:2] in ("-", "#"))
+        or (same_line_rest.startswith("\n\n") and not blank_line_continues_the_list)
+        or next_line_starts_a_boundary_marker
     )
     assert boundary_ok, (
         f"{context}: pinned clause is followed by unbounded trailing "
@@ -569,6 +606,20 @@ def _all_doc_paths() -> list[Path]:
 
 _PLAN_ARCHITECT_PATH = _AGENTS_DIR / "plan-architect.md"
 _PLAN_ARCHITECT_CONSULT_HEADING = "## MODE=consult"
+
+# The finding-line verbs `plan-architect` returns and the marks a dispatcher puts on its own prompt line.
+# The charter, plan-it Step 5 and the review orchestrator each name them, so a rename fails every site.
+_PLAN_ARCHITECT_FINDING_LINE_ACCEPT = "accept"
+_PLAN_ARCHITECT_FINDING_LINE_DECLINE = "decline"
+_PLAN_ARCHITECT_FINDING_LINE_OPEN = "open"
+_PLAN_ARCHITECT_FINDING_LINE_VERBS = (
+    _PLAN_ARCHITECT_FINDING_LINE_ACCEPT,
+    _PLAN_ARCHITECT_FINDING_LINE_DECLINE,
+    _PLAN_ARCHITECT_FINDING_LINE_OPEN,
+)
+_PLAN_ARCHITECT_BLOCKING_MARK = "blocking"
+_PLAN_ARCHITECT_APPROVED_MARK = "approved"
+_PLAN_ARCHITECT_MARKS = (_PLAN_ARCHITECT_BLOCKING_MARK, _PLAN_ARCHITECT_APPROVED_MARK)
 
 
 _MALFORMED_YAML_SKILL = "---\ndescription: bad: colon: here\n---\nbody\n"
