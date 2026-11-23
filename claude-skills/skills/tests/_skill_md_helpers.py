@@ -55,6 +55,12 @@ def _skill_file(skill_name: str) -> Path:
     return candidate  # let read_text() surface the FileNotFoundError
 
 
+_CODE_REVIEW_SKILL_PATH = _skill_file("code-review")
+_PLAN_REVIEW_SKILL_PATH = _skill_file("plan-review")
+_ROUTING_MD_PATH = _skill_file("plan-review").parent / "ROUTING.md"
+_ROUTING_ROLES_HEADING = "## Reviewer roles"
+
+
 def _all_skill_md_paths() -> list[Path]:
     """Every SKILL.md under the stowed skills dir and plugin skill dirs."""
     paths = sorted(SKILLS_DIR.glob("*/SKILL.md"))

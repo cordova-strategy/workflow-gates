@@ -149,11 +149,12 @@ The row claims, one per Step 4 answer kind:
 
 > Invoke `/plan-review` against the written plan file. It sends its findings to `plan-architect` under Step 5's **Review findings.** paragraph. Re-run it after each **Request changes** verdict, and present the plan only after a round ends **Approve** or **Approve with changes**.
 
-**M7 — pins, decision record, changelog** (anchors: row 11, row 19, row 20, row 21). The pins are text tripwires on prose that sessions and agents follow. The bullets below give each test file's invariants and bounds, and the test files hold the pinned literals.
+**M7 — pins, decision record, changelog** (anchors: row 11, row 19, row 20, row 21, row 39, row 40). The pins are text tripwires on prose that sessions and agents follow. The bullets below give each test file's invariants and bounds, and the test files hold the pinned literals.
 - `claude-skills/skills/tests/_skill_md_helpers.py`:
   - `_assert_pinned_clause_right_bounded` (`_skill_md_helpers.py:490`) gains a `closes_bullet_run` option. Its default bound accepts a clause that ends before a line starting `-` or `#`, so a bullet appended after a pinned list still passes. With the option, only the section's end or a blank line not followed by a list marker, as `_LIST_MARKER_RE` defines one, closes the clause, so the pin holds the whole list.
   - `_raw_subsection_text` ends a `###` section at the next `#` line.
-  - `_PLAN_IT_STEP5_HEADING` moves here from `test_plan_pipeline_skills.py`, and `_PLAN_ARCHITECT_*` constants for the finding-line verbs and the `blocking` and `approved` marks join it, so both test files below share them.
+  - `_PLAN_IT_STEP5_HEADING` moves here from `test_plan_pipeline_skills.py`, and `_PLAN_ARCHITECT_*` constants for the finding-line verbs and the `blocking` and `approved` marks join it, so `test_plan_pipeline_skills.py` and `test_plan_architect_routing_contracts.py` share them.
+  - `_CODE_REVIEW_SKILL_PATH`, `_PLAN_REVIEW_SKILL_PATH`, `_ROUTING_MD_PATH` and `_ROUTING_ROLES_HEADING` move here from `test_review_dispatch_contracts.py`, so it and `test_plan_architect_routing_contracts.py` share them and no test module imports from another.
 - `claude-skills/skills/tests/test_plan_pipeline_skills.py`:
   - `_PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES` gains six entries:
     - M1's lead paragraph.
@@ -172,9 +173,15 @@ The row claims, one per Step 4 answer kind:
     - The decision and run tests' failure messages say to re-run Cell A and its adversarial cells by hand, as `rerun_note` does for the prose cells (`test_review_dispatch_contracts.py:286-289`).
   - Token tests pin that the charter names each finding-line verb and mark in backticks, and that Step 5's **Review findings.** paragraph names both marks and the `decline` and `open` lines.
   - A pointer test pins that Step 5's **Quote provenance.** pointer resolves to a `plan-review` Step 4 paragraph covering quotes added or changed since the plan's last commit.
-  - Seeded tests run `closes_bullet_run` on synthetic sections. An appended bullet or sentence fails, and a blank line or the section's end passes. The default bound still accepts a following bullet. A bullet inserted anywhere in a pinned run fails.
+  - Seeded tests run `closes_bullet_run` on synthetic sections:
+    - An appended bullet or sentence fails.
+    - A blank line or the section's end passes.
+    - The default bound still accepts a following bullet.
+    - A bullet inserted anywhere in a pinned run fails.
 - `claude-skills/skills/tests/test_review_dispatch_contracts.py`:
   - `approve_with_changes_literal` becomes `_PLAN_REVIEW_PROSE_ONLY_ROUND_BULLET`, M3's whole rewritten bullet, right-bounded in Output format, so an appended verdict sentence that depends on what is accepted fails.
+  - Its four path and heading constants move to `_skill_md_helpers.py`, and it imports them from there.
+- New `claude-skills/skills/tests/test_plan_architect_routing_contracts.py` holds the routing pins, so `test_review_dispatch_contracts.py` stays within the 1,000-line limit (row 40). It imports its `plan-review`, `code-review` and `ROUTING.md` path and heading constants from `_skill_md_helpers.py`, their one home. It holds:
   - `_PLAN_ARCHITECT_ROUTING_SITES` and `_PLAN_ARCHITECT_ROUTING_FEED_SITES` pin each routing sentence inside its own section through `_assert_site_carries_pinned_phrase`, right-bounded where the sentence ends a paragraph or list item. Each failure message names the cell to re-run or says no cell covers the site. The sites:
     - `plan-review`'s Record-completion dispatch paragraph and its Plan prose dispatch bullet.
     - `plan-it` Step 6.
@@ -282,6 +289,9 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 36. The review-round hardening stays in this plan's scope: the `approved` mark, the engineer-answer block, the Quote provenance check, finding text as evidence, the decline and `open` rules, the `HALT:` catch-all and Cells A-i to A-iv. `[engineer-verified: "Keep in this plan"]` — anchors: root
 37. The design record gains a section giving each review-round protection's cooperative failure. `[engineer-verified: "Add the section (Recommended)"]` — anchors: root
 38. The design record's Measurement note names Cell A as Verification step 7's own fixture, because step 7 now carries Cell A. `[verified: docs/design-decisions/plan-architect-decides-review-findings.md Measurement note; Verification step 7]` Applied as a consult-decided correction, not an engineer answer. — anchors: M7
+39. `claude-skills/skills/tests/test_plan_architect_routing_contracts.py` joins this plan's Critical files. `[engineer-verified: "Move new tests to a new file (Recommended)"]` — anchors: root
+40. `claude/.claude/tests/test_code_file_size.py` fails a tracked `.py` file past 1,000 lines that has no exception row, and `test_review_dispatch_contracts.py` with the routing pins ran past that limit. `[verified: claude/.claude/tests/test_code_file_size.py:1, 367; line counts of both test files]` — anchors: M7
+41. Row 40's counts: `test_review_dispatch_contracts.py` held 1,201 lines at commit `243c63d7`, before the routing pins moved out. `[verified: git show 243c63d7:claude-skills/skills/tests/test_review_dispatch_contracts.py | wc -l prints 1201]` `test_review_dispatch_contracts.py` holds 817 lines now. `test_plan_architect_routing_contracts.py` holds 402 lines. The 377 lines of `test_plan_architect_routing_contracts.py` after its docstring and imports on lines 1-25, added to the 817, make 1,194. `[verified: Grep line counts of the working tree; test_plan_architect_routing_contracts.py:1-25]` — anchors: row 40
 
 ## Critical files
 
@@ -296,7 +306,8 @@ One `code-writer` dispatch implements every file below. The routing wording recu
 - `claude/.claude/agents/review-orchestrator.md` — modify item 6 (M4).
 - `claude-skills/skills/tests/test_plan_pipeline_skills.py` — modify (M7).
 - `claude-skills/skills/tests/test_review_dispatch_contracts.py` — modify (M7).
-- `claude-skills/skills/tests/_skill_md_helpers.py` — modify: a `closes_bullet_run` option on `_assert_pinned_clause_right_bounded` for pinning a whole bullet run, plus `_raw_subsection_text`, `_LIST_MARKER_RE`, `_PLAN_IT_STEP5_HEADING` and the `_PLAN_ARCHITECT_*` constants (M7).
+- `claude-skills/skills/tests/test_plan_architect_routing_contracts.py` — create (M7).
+- `claude-skills/skills/tests/_skill_md_helpers.py` — modify: a `closes_bullet_run` option on `_assert_pinned_clause_right_bounded` for pinning a whole bullet run, plus `_raw_subsection_text`, `_LIST_MARKER_RE`, `_PLAN_IT_STEP5_HEADING`, the four `plan-review`, `code-review` and `ROUTING.md` path and heading constants, and the `_PLAN_ARCHITECT_*` constants (M7).
 - `docs/design-decisions/plan-architect-decides-review-findings.md` — create (M7).
 - `CHANGELOG.md` — modify (M7).
 
@@ -306,13 +317,13 @@ Reuse rather than reimplement:
 - `review-orchestrator`'s `HALT:` channel and the dispatcher's step-2 staging.
 - `_PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES`, `_PLAN_IT_STEP5_CONTEXT_CHECK_AND_GRAMMAR_LITERALS`, `_assert_pinned_clause_right_bounded` and `_heading_section_text` in the test helpers.
 
-Projected diff: about 990 changed lines, from the shipped diff's 951 added and 38 deleted lines against the merge base outside `.claude/plans/`.
+Projected diff: about 1,020 changed lines against the merge base outside `.claude/plans/`: the session's count of about 579 added and 43 deleted lines in tracked files, plus the new test file's 402 lines.
 
 ## Verification
 
 1. From the worktree root, `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. It selects the skills, agents and docs domains, including `test_skill_citation_grammar.py`, which resolves the new `` `plan-it/SKILL.md` § "Step 5 — Architecture design" `` and `` `code-review/SKILL.md` § "Finding disposition" `` citations.
 2. `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` is clean.
-3. `git grep -n -F -e "Address any findings" -e "Apply each one you accept" -e "the plan author revises" -e "Record each answer on its own ledger row quoting it" -e "What's been applied stays inline regardless" -e "The session then adds it to the list itself" -- ':!.claude/plans' ':!CHANGELOG.md' ':!claude-skills/skills/tests/test_review_dispatch_contracts.py'` prints nothing. The excluded test file holds the six phrases on purpose, in `_REMOVED_SECOND_PLAN_WRITER_PHRASES`, and its parametrized test is the standing check that each stays out of its site.
+3. `git grep -n --untracked -F -e "Address any findings" -e "Apply each one you accept" -e "the plan author revises" -e "Record each answer on its own ledger row quoting it" -e "What's been applied stays inline regardless" -e "The session then adds it to the list itself" -- ':!.claude/plans' ':!CHANGELOG.md' ':!claude-skills/skills/tests/test_plan_architect_routing_contracts.py'` prints nothing. `--untracked` also reads files not yet staged, and `.gitignore`d paths such as `agent-reviews/` stay out. The excluded test file holds the six phrases on purpose, in `_REMOVED_SECOND_PLAN_WRITER_PHRASES`, and its parametrized test is the standing check that each stays out of its site.
 4. `wc -l claude-skills/skills/code-review/SKILL.md claude-skills/skills/subagent-delegation/SKILL.md claude-skills/skills/plan-it/SKILL.md` prints 546 and 218, the merge-base counts, and at most 200, the cap, for `plan-it/SKILL.md`.
 5. Steps 6-8 are behavior cells, under six rules:
    - Each is a foreground dispatch on fixtures hand-authored in a scratchpad outside the repository and never committed.
@@ -376,12 +387,14 @@ Projected diff: about 990 changed lines, from the shipped diff's 951 added and 3
   - M5's row append has no runtime check that its quote is byte-exact or that no existing row changed, the same as today's Step 4 row. M5 only narrows that row to a template.
   - M1's relay reuses Step 5's existing open-decision relay (`plan-it/SKILL.md:77`), and this plan measures neither.
   - M1's post-dispatch **Quote provenance.** check. No cell plays the session's steps after a `plan-architect` return.
-  - The charter's decline of a fix above `## Approach`. No Cell A finding asks for one, so Cell A's Context-digest bar catches only an unprompted edit there. At runtime, Step 5's **Context hash.** stops the run on any edit above that heading. No cell checks that a decline reason cites the `[engineer-verified]` row it rests on.
+  - The charter's decline of a fix above `## Approach`. No Cell A finding asks for one, so Cell A's Context-digest bar catches only an unprompted edit there. At runtime, Step 5's **Context hash.** stops the run on any edit above that heading.
+  - The charter's rule that a decline reason resting on an engineer decision cites the `[engineer-verified]` row it rests on. No cell checks it.
   - The charter's allow path for an `[engineer-verified]` tag. Cells A-ii and A-ii-bare test only the refusal of a tag a finding body orders, so A-ii's bar also passes for an architect that never writes a tag.
   - M6's loop points at the route Cell V measures.
   - `review-orchestrator` item 6 and the dispatcher's `HALT:` step are pinned by text only. No cell plays the routed flow, whose routing key ships off (`review-orchestrator-routing-gate.md:73`).
   - Cell C samples only the contradiction route among the rules M4's clause reaches.
   - M4's enforcement-invariant sentence is pinned by text only. It ends a `blocking` ADDRESS row in a stop-and-ask when the row's `plan-architect` return is `open` or `decline`. Cell A measures the architect's `open` on a `blocking` finding it would decline (finding 6), and no cell plays the session's handling of that return.
+- Deriving Verification step 3's six phrases from `_REMOVED_SECOND_PLAN_WRITER_PHRASES`. The step runs once, at implementation, and the tuple stays the phrases' durable home. Nothing ties the two copies, so an entry later dropped from the tuple leaves the other five cases green.
 - A hook, or a rule in `code-writer.md`, enforcing the single-writer rule (row 3).
 - `claude/.claude/CLAUDE.md` § "Plan Review"'s "address them first" (row 24). `/plan-review` now routes its own findings, so the line stays true, and that file loads into every session's context.
 - Reviewer prompts that ask for hardening layers. M2's decline standard handles such findings at the architect (row 7).
