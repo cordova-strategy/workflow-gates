@@ -139,7 +139,7 @@ limit_for() {
     # Hosts the review-orchestrator dispatch protocol, whose one home is this skill.
     claude-skills/skills/subagent-delegation/SKILL.md)
       echo 218 ;;
-    # Hosts the handoff template, which check-handoff.py and the compaction hooks' tests read from this file.
+    # Hosts the handoff template: check-handoff.py reads its preamble fixture and the compaction hooks' tests read its headings and §3.5 list.
     claude-skills/skills/handoff/SKILL.md)
       echo 220 ;;
     *)
