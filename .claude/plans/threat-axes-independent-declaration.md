@@ -95,7 +95,7 @@ Declaration block: review as you would without this declaration, and drop no fin
   - A definition in `docs/hooks.md` that both skills cite is not installed where the skills run (G2).
   - A co-located auxiliary file in `code-review` to relieve its cap is the use the repo rule forbids (row 6).
 
-  The copy is `CLAUDE.md`'s named exception for instructional prose that must stand alone, and the identity test with M1's block constant stops the copies drifting. `code-review/SKILL.md` stays at 546 of 550 lines (G3).
+  The copy is `CLAUDE.md`'s named exception for instructional prose that must stand alone. The identity test with M1's block constant stops the copies drifting. `code-review/SKILL.md` stays at 546 of 550 lines (G3).
 
   anchors: row5, row6, row7, row8
 - **M3. Agent, caller and input together.** The `agent` item's last sentence puts a steered-or-hostile-agent finding beyond declaration only under `agent=cooperative`, `caller=operator-only` and `input=trusted`, the cell the old `cooperative` rung named (row 9). Every steered-or-hostile-agent finding the old ladder kept in scope therefore stays in scope:
@@ -237,6 +237,7 @@ Declaration block: review as you would without this declaration, and drop no fin
     - place the sentence in `ROUTING.md:53` and `code-review/SKILL.md:276`, outside the declaration block, pinned in `_DECLARATION_WIRING_CLAUSES`.
 
     The question's wording, which rests on intent and lists no behaviors, is also the session's [unverified].
+30. [engineer-verified: "Add file, apply clause (Recommended)"] The quote covers only adding `claude-skills/skills/plan-review/SKILL.md` to Critical files and applying the three-field clause at line 92 where `code-review/SKILL.md:63` carries it. It answered a code-review round-2 question about that file, which the plan's row 9 had treated as pass-through. The option's description, "Add plan-review/SKILL.md to scope, apply the same clause at :92 and pin it", is the session's [unverified].
 
 ## Critical files
 
@@ -244,6 +245,7 @@ One `code-writer` dispatch. Every file shares the declaration vocabulary, and th
 
 - `claude-skills/skills/code-review/SKILL.md` — M1 (lines 57, 63, 276-279), M3's question sentence (276), M4 (260, 273) and M5 (408). It stays at 546 lines, since every edit lands on an existing physical line.
 - `claude-skills/skills/plan-review/ROUTING.md` — M1 (lines 11, 14, 46-49, 53), M3's question sentence (53) and M4 (9, 35).
+- `claude-skills/skills/plan-review/SKILL.md` — line 92's over-elaboration marker takes the same three-field clause as `code-review/SKILL.md:63`, edited in place with no line growth (row 30).
 - `claude/.claude/agents/skill-fidelity-reviewer.md` — M4, line 106.
 - `claude-skills/skills/tests/test_review_dispatch_contracts.py` — M1's, M3's, M4's and M5's constants and entries. Add no new helper or test function.
 - `CLAUDE.md` — M6, in place on line 105.

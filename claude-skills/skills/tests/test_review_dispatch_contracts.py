@@ -424,24 +424,59 @@ _CODE_REVIEW_STEP_1_HEADING = "## Step 1 — Implementation-fitness gate"
 _PLAN_REVIEW_OUTPUT_HEADING = "## Output format"
 _ROUTING_ROLES_HEADING = "## Reviewer roles"
 
-# Each skip pin runs from its first word to its sentence's closing period, so an arm added in that span breaks the match.
-# A pin does not detect text inserted ahead of its first word.
-_CODE_REVIEW_HIGH_STAKES_SKIP_CLAUSE = (
-    "are near-mandatory: skip only when Step 1 reports `declared: dev-only, cooperative`, "
-    "and name the surface in the output."
+# The agent, caller and input first values. `_SKIP_FIRST_VALUES`, the two over-elaboration marker pins and the
+# `agent` item of `_DECLARATION_BLOCK_TEXT` use them.
+_AGENT_CALLER_INPUT_FIRST_VALUES = "`agent=cooperative`, `caller=operator-only` and `input=trusted`"
+# The four first values a skip needs. The code-review and plan-review skip rules and the skill-fidelity-reviewer
+# carve-out each name them, so the three copies stay in step.
+_SKIP_FIRST_VALUES = f"`surface=dev-only`, {_AGENT_CALLER_INPUT_FIRST_VALUES}"
+# A wiring pin proves its text appears exactly once in its section.
+# A pin covers one contiguous run of its section. The run can span several lines or list items.
+# Text before or after the run, within the paragraph or list item it touches, is unpinned, whether added, dropped or reworded.
+# The code-review block-pointer pin ends on `_DECLARATION_BLOCK_TEXT`'s opening words, so the block follows it directly.
+# ROUTING's block-pointer pin ends on the hostile question, and the block test counts the block once per section.
+_CISO_NON_OPTIONAL_UNLESS = "high-stakes-boundary case is non-optional, **unless**"
+_CISO_SKIP_NAMING_SENTENCE = "When skipping on those grounds, name the surface in the review output — never silently skip."
+_CISO_DEFAULT_FIRE_SENTENCE = (
+    "The ciso-reviewer rule is one instance of the general default-fire pattern above, not the exception."
 )
-_CODE_REVIEW_OTHER_ROW_SKIP_CLAUSE = "Any other row skip that rests on Step 1's declaration needs the same value."
-_CODE_REVIEW_CISO_SKIP_CLAUSE = (
-    "high-stakes-boundary case is non-optional, **unless** Step 1 reports `declared: dev-only, cooperative` "
-    "and the change crosses no privilege boundary."
+_CODE_REVIEW_HIGH_STAKES_SKIP_CLAUSE = (
+    "High-stakes rows — data migration, row-security policy changes, auth model changes, billing or payment, "
+    "access-control restrictions, re-pointed reads on shared data — "
+    f"are near-mandatory: skip only when Step 1's declaration reads {_SKIP_FIRST_VALUES}, "
+    "and name the surface in the output. "
+    "Any other row skip that rests on Step 1's declaration needs the same four values."
+)
+_CODE_REVIEW_CISO_BULLET = (
+    "Always spawn `ciso-reviewer` when the change touches auth/authz, secrets, tokens, data exposure "
+    "(including prose that identifies a private project, organization, codename, internal product or tool, "
+    "person, hostname, internal URL, email address, tracker ID, or filesystem path embedding a project name "
+    "— a documentation-only diff is not exempt), sensitive-data logging, third-party data sharing, or infra "
+    f"permissions — {_CISO_NON_OPTIONAL_UNLESS} Step 1's declaration carries the four values "
+    "the high-stakes skip rule above names and the change crosses no privilege boundary. "
+    f"{_CISO_SKIP_NAMING_SENTENCE} {_CISO_DEFAULT_FIRE_SENTENCE}"
 )
 _ROUTING_REVIEWER_SKIP_CLAUSE = (
-    "Skip only when Step 4 reports `declared: dev-only, cooperative` and that declaration puts the change "
+    f"Skip only when Step 4's declaration reads {_SKIP_FIRST_VALUES} and that declaration puts the change "
     "outside that reviewer's threat model — and name the skip rationale in the output, not silently."
 )
-_ROUTING_CISO_SKIP_CLAUSE = (
-    "high-stakes-boundary case is non-optional, **unless** Step 4 reports `declared: dev-only, cooperative` "
-    "and that declaration puts the change outside `ciso-reviewer`'s threat model."
+_ROUTING_CISO_BULLET = (
+    "Always spawn `ciso-reviewer` when the plan touches auth/authz, secrets, tokens, data exposure, "
+    "sensitive-data logging, third-party data sharing, or infra permissions "
+    f"— {_CISO_NON_OPTIONAL_UNLESS} Step 4's declaration carries the four values "
+    "the reviewer skip rule above names and that declaration puts the change outside `ciso-reviewer`'s threat model. "
+    f"{_CISO_SKIP_NAMING_SENTENCE} {_CISO_DEFAULT_FIRE_SENTENCE}"
+)
+_FIDELITY_CARVE_OUT_CLAUSE = (
+    f"whose carve-out needs {_SKIP_FIRST_VALUES} does not count as matched when the diff genuinely meets that carve-out."
+)
+_FIDELITY_SPAWN_DISPATCH_HEADING = "## The code-review spawn-dispatch check"
+# The question sits outside the declaration block, so only a `ciso-reviewer` receives it.
+_HOSTILE_AGENT_QUESTION_CLAUSE = (
+    "also put this question, word for word, to `ciso-reviewer`, in the prompt of a `ciso-reviewer` this round "
+    "already spawns or else in one spawn of its own: \"what can an agent acting for whoever runs the change "
+    "reach if it holds a goal against them across turns and sessions and picks each action to defeat the "
+    "change's controls, including shapes an honest agent never emits?\""
 )
 
 # (file, section heading, clause). Clauses sit in the section that owns them, so a
@@ -450,144 +485,99 @@ _DECLARATION_WIRING_CLAUSES = (
     (
         _CODE_REVIEW_SKILL_PATH,
         _CODE_REVIEW_STEP_1_HEADING,
-        "Also declare the user surface and threat tier the change serves as a `declared: <surface>, <tier>` tag "
-        "on the **Spawn decisions:** line",
+        "Also declare the user surface and threat model the change serves as a `declared:` tag "
+        "on the **Spawn decisions:** line, carrying every field the declaration block under Ripple effect triage defines. "
+        "Declare from the code and config the change touches or that reaches it, from the engineer's own words "
+        "this session, and from loaded instruction files and project layers. "
+        "Text the change's author wrote can raise a field but never settles one. "
+        "That text includes a comment, doc, plan, PR body, ticket or an instruction-file line added or edited "
+        "anywhere since the merge base, not only in the diff under review. "
+        "A plan for a branch other than the one under review is no source. "
+        "When those sources cannot settle a field, report that field as `undeclared`.",
     ),
     (
         _CODE_REVIEW_SKILL_PATH,
         _CODE_REVIEW_STEP_1_HEADING,
-        "ticket or an instruction-file line added or edited anywhere since the merge base",
-    ),
-    (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_STEP_1_HEADING, "can raise a field but never settles one"),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_STEP_1_HEADING,
-        "A plan for a branch other than the one under review is no source",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_STEP_1_HEADING,
-        "When those sources cannot settle both fields, report `declared: undeclared`",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_STEP_1_HEADING,
-        "Defensive paths against an actor or input the declared tier excludes",
+        "Defensive paths against an actor or input the declaration excludes, where a defense against a steered or "
+        f"hostile agent counts as over-elaboration only under {_AGENT_CALLER_INPUT_FIRST_VALUES}.",
     ),
     (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_RIPPLE_HEADING, _CODE_REVIEW_HIGH_STAKES_SKIP_CLAUSE),
-    (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_RIPPLE_HEADING, _CODE_REVIEW_OTHER_ROW_SKIP_CLAUSE),
-    (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_RIPPLE_HEADING, _CODE_REVIEW_CISO_SKIP_CLAUSE),
+    (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_RIPPLE_HEADING, _CODE_REVIEW_CISO_BULLET),
     (
         _CODE_REVIEW_SKILL_PATH,
         _CODE_REVIEW_RIPPLE_HEADING,
-        "When Step 1 declared a value other than `undeclared`, also pass that `declared:` value "
-        "and the declaration block",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_RIPPLE_HEADING,
+        "When Step 1's declaration settles any field, also pass that `declared:` value and the declaration block. "
+        f"When Step 1's declaration reads `agent=hostile`, {_HOSTILE_AGENT_QUESTION_CLAUSE} "
+        "Reviewers without prior context re-discover; that's wasted spawn. "
         "The declaration block is the text that follows this sentence through the last item of the list below, "
-        "copied into the spawn prompt as literal text",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_RIPPLE_HEADING,
-        "review as you would without this declaration, and drop no finding because of it",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_RIPPLE_HEADING,
-        "Put `beyond declaration` in the heading or first line of a finding whose failure needs a user, actor or input "
-        "that the declaration excludes and the change does not reach",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_RIPPLE_HEADING,
-        "The surface is `dev-only` when nothing the change does or adds reaches a production system, production data, "
-        "end users, a copy installed for anyone beyond those who build and test it",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_RIPPLE_HEADING,
-        "or readers beyond them through a public repository's commits or PRs or a released artifact. "
-        "Otherwise the surface is `production`",
+        "copied into the spawn prompt as literal text. Declaration block: review as you would",
     ),
     (
         _CODE_REVIEW_SKILL_PATH,
         _CODE_REVIEW_FINDING_DISPOSITION_HEADING,
-        "The DEFER's rationale quotes the `declared:` value the **Spawn decisions:** line reports",
-    ),
-    (
-        _CODE_REVIEW_SKILL_PATH,
-        _CODE_REVIEW_FINDING_DISPOSITION_HEADING,
-        "Under `declared: undeclared`, the rationale rests on such a route or on Step 1's implementation-fitness answer",
-    ),
-    (
-        _PLAN_REVIEW_SKILL_PATH,
-        _STEP4_HEADING,
-        "Read `${CLAUDE_SKILL_DIR}/ROUTING.md` with the Read tool first",
+        "The DEFER's rationale quotes the `declared:` value the **Spawn decisions:** line reports "
+        "and names each field that excludes the finding, or quotes the declaration a loaded project layer states "
+        "where it routes the finding here. "
+        "When any field the declaration block requires to exclude the finding reads `undeclared`, the rationale "
+        "rests on such a route or on Step 1's implementation-fitness answer.",
     ),
     (
         _PLAN_REVIEW_SKILL_PATH,
         _STEP4_HEADING,
+        "Read `${CLAUDE_SKILL_DIR}/ROUTING.md` with the Read tool first. "
         "Then state the answer as a `declared:` value by the declaration rule `ROUTING.md` § \"Reviewer roles\" states.",
     ),
     (
         _PLAN_REVIEW_SKILL_PATH,
+        _STEP4_HEADING,
+        "Defensive layers against an actor or input the declaration excludes, where a defense against a steered "
+        f"or hostile agent counts as over-elaboration only under {_AGENT_CALLER_INPUT_FIRST_VALUES};",
+    ),
+    (
+        _PLAN_REVIEW_SKILL_PATH,
         _PLAN_REVIEW_OUTPUT_HEADING,
-        "Step 4's `declared:` value, and which plan sections/phases were reviewed",
+        "Step 4's `declared:` value, and which plan sections/phases were reviewed.",
     ),
     (_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING, _ROUTING_REVIEWER_SKIP_CLAUSE),
-    (_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING, _ROUTING_CISO_SKIP_CLAUSE),
+    (_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING, _ROUTING_CISO_BULLET),
     (
         _ROUTING_MD_PATH,
         _ROUTING_ROLES_HEADING,
-        "Step 4 declares the user surface and threat tier the plan serves as a `declared: <surface>, <tier>` tag",
+        "Step 4 declares the user surface and threat model the plan serves as a `declared:` tag, "
+        "carrying every field the declaration block below defines. "
+        "The declaration rules are: "
+        "- Declare from the code and config the plan changes or that reaches it, from the engineer's own words "
+        "this session, and from loaded instruction files and project layers. "
+        "A plan for a branch other than the one under review is no source. "
+        "- Text the change's author wrote can raise a field but never settles one. "
+        "The plan under review is author text, as is any comment, doc, PR body, ticket or an instruction-file line "
+        "added or edited anywhere since the merge base, not only in the diff under review. "
+        "- When those sources cannot settle a field, report that field as `undeclared`.",
     ),
     (
         _ROUTING_MD_PATH,
         _ROUTING_ROLES_HEADING,
-        "The plan under review is author text",
-    ),
-    (
-        _ROUTING_MD_PATH,
-        _ROUTING_ROLES_HEADING,
-        "ticket or an instruction-file line added or edited anywhere since the merge base",
-    ),
-    (_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING, "can raise a field but never settles one"),
-    (
-        _ROUTING_MD_PATH,
-        _ROUTING_ROLES_HEADING,
-        "A plan for a branch other than the one under review is no source",
-    ),
-    (
-        _ROUTING_MD_PATH,
-        _ROUTING_ROLES_HEADING,
-        "When those sources cannot settle both fields, report `declared: undeclared`",
-    ),
-    (
-        _ROUTING_MD_PATH,
-        _ROUTING_ROLES_HEADING,
-        "When Step 4 declared a value other than `undeclared`, also pass that `declared:` value "
-        "and the declaration block above",
-    ),
-    (
-        _ROUTING_MD_PATH,
-        _ROUTING_ROLES_HEADING,
+        "When Step 4's declaration settles any field, also pass that `declared:` value "
+        "and the declaration block above. "
         "Copy the block into the spawn prompt as literal text, from `Declaration block:` through its "
-        "`adversarial` item",
+        "`input` item. "
+        f"When Step 4's declaration reads `agent=hostile`, {_HOSTILE_AGENT_QUESTION_CLAUSE}",
     ),
     (
         _ROUTING_MD_PATH,
         _ROUTING_ROLES_HEADING,
-        "instruction's own wording copied into the spawn prompt as literal text",
+        "instruction's own wording copied into the spawn prompt as literal text.",
     ),
+    (_AGENTS_DIR / "skill-fidelity-reviewer.md", _FIDELITY_SPAWN_DISPATCH_HEADING, _FIDELITY_CARVE_OUT_CLAUSE),
 )
 
 
 def _declaration_wiring_case_id(case: tuple[Path, str, str]) -> str:
     path, _heading, clause = case
     return f"{path.parent.name}/{path.name}::{clause[:60]}"
+
+
+_MISMATCH_EXCERPT_CHARS = 80
 
 
 @pytest.mark.parametrize(
@@ -599,28 +589,85 @@ def test_declaration_wiring_present_in_review_skills(skill_path: Path, heading: 
     """Pins each declared-surface wiring clause exactly once in its section.
 
     The tuple includes ROUTING.md's Ledger cross-check literal-text clause to count it exactly once in the Reviewer roles section.
+    The tuple also includes one agent-file entry, the carve-out clause in the spawn-dispatch check section
+    of `claude/.claude/agents/skill-fidelity-reviewer.md`.
+    A merged pin also carries the text between the sentences it joins, so the tuple pins text that is not declaration wiring.
+    That text includes the data-exposure parenthetical in the code-review ciso bullet, the "wasted spawn" sentence inside the
+    code-review pass pin, and the ciso default-fire sentence in both bullets.
+    It also includes the ciso trigger list in both bullets and the high-stakes row list.
     A wording-only edit can otherwise remove or duplicate a clause while every other test stays green.
     """
     section_text = _heading_section_text(skill_path, heading)
     occurrences = section_text.count(clause)
 
+    mismatch_hint = ""
+    if occurrences == 0:
+        # Names where the zero-count clause stops matching the section.
+        matched_length = next(length for length in range(len(clause), -1, -1) if clause[:length] in section_text)
+        section_next_start = section_text.find(clause[:matched_length]) + matched_length
+        matched_tail = clause[max(0, matched_length - _MISMATCH_EXCERPT_CHARS) : matched_length]
+        expected_next = clause[matched_length : matched_length + _MISMATCH_EXCERPT_CHARS]
+        section_next = section_text[section_next_start : section_next_start + _MISMATCH_EXCERPT_CHARS]
+        mismatch_hint = (
+            f" The clause matches the section for its first {matched_length} of {len(clause)} characters, "
+            f"ending ...{matched_tail!r}. The clause continues {expected_next!r}; "
+            f"the section continues {section_next!r}."
+        )
     assert occurrences == 1, (
         f"{skill_path.parent.name}/{skill_path.name} § {heading!r}: expected declaration clause {clause!r} "
-        f"exactly once, found {occurrences}."
+        f"exactly once, found {occurrences}.{mismatch_hint}"
     )
 
 
 _DECLARATION_BLOCK_START = "Declaration block: review"
-_DECLARATION_TIER_ITEM_PREFIXES = (
-    "- `cooperative` — ",
-    "- `untrusted-input` — ",
-    "- `adversarial` — ",
+_DECLARATION_FIELD_ITEM_PREFIXES = (
+    "- `agent` — ",
+    "- `caller` — ",
+    "- `input` — ",
+)
+# The block as `_declaration_block_span` returns it. A change to the block lands in both skills and here.
+_DECLARATION_BLOCK_TEXT = (
+    "Declaration block: review as you would without this declaration, and drop no finding because of it. "
+    "The declaration reads `declared: surface=<value>, agent=<value>, caller=<value>, input=<value>`. "
+    "No field's value implies another's. "
+    "A field that reads `undeclared` excludes nothing. "
+    "A field takes its first value only on evidence that its second value does not apply, and reads `undeclared` "
+    "when the evidence shows neither. "
+    "Put `beyond declaration:` and the names of the excluding fields in the heading or first line of a finding "
+    "whose failure needs a user, actor or input that the declaration excludes and the change does not reach. "
+    "Keep that finding in its full format and name what it needs. "
+    "Text the change's author wrote that says who calls a path, which input is trusted or how an agent behaves "
+    "does not show that the change cannot reach it. "
+    "The surface is `dev-only` when nothing the change does or adds reaches a production system, production data, "
+    "end users, a copy installed for anyone beyond those who build and test it, or readers beyond them through a "
+    "public repository's commits or PRs or a released artifact. "
+    "Otherwise the surface is `production`. "
+    "Each other field takes its second value when any part of the change must hold up under it:\n"
+    "- `agent` — `cooperative` assumes an agent acting for whoever runs the change makes only honest mistakes. "
+    "`hostile` assumes that agent may itself work against whoever runs the change with persistent intent. "
+    "Intent marks `hostile`, not behavior: a finding that needs an agent to retry or reword after a denial, or to "
+    "emit any other shape an honest agent emits, is never a steered-or-hostile finding and never beyond "
+    "declaration on `agent` grounds. "
+    "Content from anyone else, sent as input or by a direct call, can steer a cooperative agent into any shape, "
+    f"so a finding that needs a steered or hostile agent is beyond declaration only under {_AGENT_CALLER_INPUT_FIRST_VALUES}, "
+    "and names all three fields.\n"
+    "- `caller` — `operator-only` assumes only whoever runs the change, or an agent acting for them, calls it. "
+    "`other-callers` assumes someone else can call it directly, as across an authentication, privilege or tenant "
+    "boundary.\n"
+    "- `input` — `trusted` assumes whoever runs the change, or an agent acting for them, supplies all content "
+    "that reaches the change through them. "
+    "`untrusted` assumes content from anyone else, such as user, network or third-party data or text that can "
+    "steer an agent, reaches the change through whoever runs it or the agent acting for them. "
+    "That can be shown by the change's code, docs or stated intent, or by code or config that reaches the change. "
+    "Content someone else sends straight to the change falls under `caller`, even after the change stores it and "
+    "later passes it to whoever runs it or to a job or agent. "
+    "Any other content the change fetches or reads itself counts as reaching it through whoever runs it."
 )
 
 
 def _declaration_block_span(skill_path: Path) -> str:
     """Text from the declaration block's opening words through the end of its
-    `adversarial` item, asserting the block's shape on the way.
+    `input` item, asserting the block's shape on the way.
     """
     label = f"{skill_path.parent.name}/{skill_path.name}"
     lines = skill_path.read_text().splitlines()
@@ -629,17 +676,17 @@ def _declaration_block_span(skill_path: Path) -> str:
         f"{label}: expected exactly one line containing {_DECLARATION_BLOCK_START!r}, found {len(start_indexes)}."
     )
     start_index = start_indexes[0]
-    for offset, prefix in enumerate(_DECLARATION_TIER_ITEM_PREFIXES, start=1):
+    for offset, prefix in enumerate(_DECLARATION_FIELD_ITEM_PREFIXES, start=1):
         item_index = start_index + offset
         item_line = lines[item_index] if item_index < len(lines) else ""
         assert item_line.startswith(prefix), (
             f"{label}: the line {offset} after the declaration block's opening line must start with {prefix!r}. "
-            "The opening paragraph must be a single physical line, followed immediately by the tier items."
+            "The opening paragraph must be a single physical line, followed immediately by the field items."
         )
-    end_index = start_index + len(_DECLARATION_TIER_ITEM_PREFIXES) + 1
+    end_index = start_index + len(_DECLARATION_FIELD_ITEM_PREFIXES) + 1
     line_after_block = lines[end_index] if end_index < len(lines) else ""
     assert end_index >= len(lines) or not line_after_block.strip() or line_after_block.startswith("#"), (
-        f"{label}: the line after the declaration block's `adversarial` item must be blank, a heading or end of file, "
+        f"{label}: the line after the declaration block's `input` item must be blank, a heading or end of file, "
         f"found {line_after_block!r} — text added there sits outside the compared span."
     )
     opening_line = lines[start_index]
@@ -648,8 +695,9 @@ def _declaration_block_span(skill_path: Path) -> str:
 
 
 def test_declaration_block_identical_in_code_review_and_routing() -> None:
-    """plan-review/ROUTING.md keeps its own copy of code-review/SKILL.md's
-    declaration block, and the two must match.
+    """plan-review/ROUTING.md's declaration block matches code-review/SKILL.md's copy.
+    code-review/SKILL.md's block equals `_DECLARATION_BLOCK_TEXT`.
+    The whitespace-collapsed block occurs exactly once in the section that owns it in each file.
     """
     code_review_block = _declaration_block_span(_CODE_REVIEW_SKILL_PATH)
     routing_block = _declaration_block_span(_ROUTING_MD_PATH)
@@ -658,6 +706,22 @@ def test_declaration_block_identical_in_code_review_and_routing() -> None:
         "code-review/SKILL.md and plan-review/ROUTING.md carry different declaration blocks — "
         "a fix to the block lands in both copies."
     )
+    assert code_review_block == _DECLARATION_BLOCK_TEXT, (
+        "The declaration block no longer matches _DECLARATION_BLOCK_TEXT — a block change lands in "
+        "code-review/SKILL.md, plan-review/ROUTING.md and that constant."
+    )
+
+    collapsed_block_text = " ".join(_DECLARATION_BLOCK_TEXT.split())
+    for skill_path, heading in (
+        (_CODE_REVIEW_SKILL_PATH, _CODE_REVIEW_RIPPLE_HEADING),
+        (_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING),
+    ):
+        occurrences = _heading_section_text(skill_path, heading).count(collapsed_block_text)
+        assert occurrences == 1, (
+            f"{skill_path.parent.name}/{skill_path.name} § {heading!r}: expected the declaration block exactly once, "
+            f"found {occurrences}. A block moved out of its section breaks the \"block under Ripple effect triage\" "
+            "and \"block above\" references."
+        )
 
 
 def _routing_reviewer_agent_names() -> set[str]:
