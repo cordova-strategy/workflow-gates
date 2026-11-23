@@ -102,6 +102,11 @@ _WORKTREE_SLUG_INFIX = "--claude-worktrees-"
 class _RepoProjectDirMatcher(NamedTuple):
     """The `--this-repo` admission rule for one project-dir name.
 
+    This is the minimization control for any caller that must scope a transcript read to this repo: output built from
+    it is routinely quoted into public PR descriptions, and transcripts under ~/.claude/projects/ span every project
+    on the machine. docs/transcript-analysis.md "Scoping to this repo" states what it admits and "Over-inclusions" the
+    cases it admits beyond this repo.
+
     Comparison is plain `str`, never `fnmatch` or `Path.glob`, so a glob metacharacter in the machine's home or
     username path cannot widen the match.
     """
@@ -137,14 +142,8 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     worktree's directory carries no live slug, so `_RepoProjectDirMatcher`, built from these slugs, also admits the
     names that extend the first slug with `_WORKTREE_SLUG_INFIX`.
 
-    `_RepoProjectDirMatcher` is the minimization control for any caller that must
-    scope a transcript read to this repo: output built from it is routinely
-    quoted into public PR descriptions, and transcripts under
-    ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo" states
-    what it admits and "Over-inclusions" the cases it admits beyond this repo.
-    A subagent file
-    under an in-repo session is read regardless of the repo the subagent worked
-    in, so scoping alone does not bound skill names under `--include-subagents`.
+    A subagent file under an in-repo session is read regardless of the repo the subagent worked in, so scoping alone
+    does not bound skill names under `--include-subagents`.
     The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
     sibling `<repo>-fork` and every main-checkout subdirectory defeat.
 
@@ -695,7 +694,8 @@ def _resolve_project_scope(
     `gitBranch` field of its files holds one of them.
     Only a caller whose output reads no record outside its `--branches` filter passes it.
     The glob arms ignore it, so they only run slower.
-    A skip never changes a figure such a caller prints.
+    A skip never changes a figure such a caller prints, except that `cost --summary`'s `PRICING INTEGRITY` banner can
+    print less (`docs/transcript-analysis.md` § "cost").
     """
     if roots is None:
         roots = (_projects_dir(),)

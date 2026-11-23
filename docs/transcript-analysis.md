@@ -68,6 +68,7 @@ The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.
 - skill names, from `skill-invocation` and `review-trace`
 - reviewer types, from `review-trace`
 - review and user text, from `judgment-pair`
+- per-round dated dollar series and spawn counts, from `review-round-cost`
 - raw transcript paths, from `sessions --paths`, and the one absolute path per session that `review-trace` prints
 
 **What `--this-repo` does not cover, and the documented fallback:**
@@ -93,8 +94,8 @@ The three gaps after "Other clones of this repo" are silent under-coverage, not 
 **Over-inclusions.** Four cases are over-inclusions that `--this-repo` reads as this repo's. The resolved-scope header's count is not a check for them:
 
 - A slug collision: any checkout, of this repo or not, whose path maps to the same project-directory slug as one of this checkout's worktrees, such as `/w/app.v2` and `/w/app-v2`. Its sessions share that project directory, so the count does not move. `cost --summary` counts them under its `this repository only` caption. Its scanned-files count includes them whatever the branch and date filters, while priced sessions, priced turns, tokens, and dollars include only their turns whose branch and timestamp match those filters. The "Transcript files scanned" and "Of those, unreadable" columns are the `cost --summary` figures that move whatever the branch and date filters.
-- A repo cloned under `<main>/.claude/worktrees/`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory. `cost --summary` counts it under its `this repository only` caption.
-- A prefix lookalike: a path whose slug starts with the prefix, such as a sibling directory named `<repo>--claude-worktrees-x`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory.
+- A repo cloned under `<main>/.claude/worktrees/`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory. `cost --summary` counts it under its `this repository only` caption. Its scanned-files count includes every transcript file of such a directory, whatever the branch and date filters, and `pr-cost-section.sh` publishes that count.
+- A prefix lookalike: a path whose slug starts with the prefix, such as a sibling directory named `<repo>--claude-worktrees-x`. It adds to the unlisted count, which cannot tell it from a removed worktree's directory. `cost --summary` counts it under the same caption, and its scanned-files count moves with every transcript file of the directory, whatever the branch and date filters.
 - A same-named earlier branch: a `--branches` filter matches a removed worktree's sessions on an earlier branch of the same name. Those sessions sit in a removed worktree's directory, which the count already includes, so only a `--branches` figure moves.
 
 `cost --config-dir` does not refuse `--this-repo`: since `--this-repo`'s admission rule is derived from `git worktree list` alone, it is root-independent, so `cost --config-dir DIR --this-repo` unions across the default corpus and every `--config-dir` extra the same way `--this-repo` does everywhere else. See the `cost` section below for the full `--config-dir` contract.
@@ -717,10 +718,12 @@ Like `subagents` and `skill-pair`, `cost` calls `_warn_if_subagent_format_drift`
 
 Under `--this-repo --summary --branches` without `--since`, `cost` skips parsing a session only when no `gitBranch` field in its transcript files holds a filtered branch name, as `cost-counts`, `skill-invocation` and `review-trace` do with `--branches` in the `--this-repo` scope. A `cost` figure in doubt can be checked against `cost`'s full report run with the same `--this-repo --branches`, which never skips a session.
 
-Detail by topic:
+Detail of the `PRICING INTEGRITY` narrowing, the spawn-side re-read and the other effects of the skip:
 
-- In that mode the `PRICING INTEGRITY` banner narrows on both canary sides: usage drift, and spawns with no subagent turn. The usage-drift side reads only the sessions `cost` parses. The spawn side can stay silent when the parsed sessions hold no spawn, even if a skipped session holds spawns with no subagent turn.
-- The spawn-without-subagent-turn re-read runs when the parsed sessions hold spawns but no subagent turn, and it drops the spawn-side `WARNING` and banner trigger if any admitted session holds a subagent turn. That re-read parses the admitted sessions again, skipped ones included, up to the first one that holds a subagent turn. Its sidechain test counts raw sidechain records, not deduped turns. A usage-drift warning in a parsed session still raises the banner.
+- In that mode the `PRICING INTEGRITY` banner narrows on both canary sides: usage drift, and spawns with no subagent turn. The usage-drift side reads only the sessions `cost` parses, so a usage-drift warning in a parsed session still raises the banner. The spawn side can stay silent when the parsed sessions hold no spawn, even if a skipped session holds spawns with no subagent turn.
+- The spawn-without-subagent-turn re-read runs when the parsed sessions hold spawns but no subagent turn. It drops the spawn-side `WARNING` and banner trigger if any admitted session holds a subagent turn.
+- That re-read parses the admitted sessions again, skipped ones included, up to the first one that holds a subagent turn.
+- The re-read's sidechain test counts raw sidechain records, not deduped turns.
 - A malformed record in a session these four commands skip, such as a line that is not a JSON object, does not abort them. A record the parser cannot read in a skipped session the re-read reaches still aborts the run.
 - `cost` and `cost-counts` print their non-contiguous-merge NOTICE and usage-drift WARNING lines only for the sessions they parse.
 

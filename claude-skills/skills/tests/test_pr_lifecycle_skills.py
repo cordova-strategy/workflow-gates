@@ -575,14 +575,26 @@ class TestPrDescriptionCostSectionWiring:
 
     def test_declares_call_ceiling_wait_and_kill_reading(self):
         body = self._body()
-        _assert_pinned_clause_right_bounded(
-            "Resolve the section with one foreground Bash call with `timeout: 600000`. "
-            "If the harness moves the call to the background, start no second copy, and read "
-            "its exit status and stdout as below once its completion notification arrives. "
-            "A harness timeout kill is not an exit status, so re-run a killed call once:",
-            body,
-            context="pr-description no longer carries the cost call's ceiling, wait and re-run sentences",
-        )
+        for cost_call_clause, cost_call_context in (
+            (
+                "Resolve the section with one foreground Bash call with `timeout: 600000`:",
+                "the cost call's ceiling",
+            ),
+            (
+                "- **Moved to the background by the harness:** start no second copy, and read its exit status "
+                "and stdout as below once its completion notification arrives.",
+                "the cost call's background wait",
+            ),
+            (
+                "- **Killed by the harness timeout:** a kill is not an exit status, so re-run a killed call once.",
+                "the cost call's re-run of a killed call",
+            ),
+        ):
+            _assert_pinned_clause_right_bounded(
+                cost_call_clause,
+                body,
+                context=f"pr-description no longer carries {cost_call_context}",
+            )
         _assert_pinned_clause_right_bounded(
             "- **Exit 3, or a call the harness killed twice:** the cost report failed or never "
             "finished — omit the block and note in the body that the report failed to generate, "

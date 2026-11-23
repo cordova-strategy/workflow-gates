@@ -234,22 +234,52 @@ def test_ready_for_review_step_4_has_the_rerun_that_recovers_omitted_plan_review
             f"ready-for-review step 4 no longer carries {literal!r}"
         )
     step_4_raw_text = _raw_heading_section_text(_skill_file("ready-for-review"), step_4_heading)
+    for fidelity_call_clause, fidelity_call_context in (
+        (
+            "List invocations and the reviewer-spawn timeline with one foreground Bash call with "
+            "`timeout: 600000`:",
+            "the fidelity call's ceiling",
+        ),
+        (
+            "- If the harness moves the call to the background, start no second copy, "
+            "and use its exit status and stdout once its completion notification arrives.",
+            "the fidelity call's background wait",
+        ),
+        (
+            "- A harness timeout kill is not an exit status, so re-run a killed call once.",
+            "the fidelity call's re-run of a killed call",
+        ),
+        (
+            "- Halt and report only if the re-run is killed too or any call exits nonzero.",
+            "the fidelity call's halt condition",
+        ),
+    ):
+        _assert_pinned_clause_right_bounded(
+            fidelity_call_clause,
+            step_4_raw_text,
+            context=f"ready-for-review step 4 no longer carries {fidelity_call_context}",
+        )
     _assert_pinned_clause_right_bounded(
-        "List invocations and the reviewer-spawn timeline with one foreground Bash call with "
-        "`timeout: 600000`. If the harness moves the call to the background, start no second copy, "
-        "and use its exit status and stdout once its completion notification arrives. "
-        "A harness timeout kill is not an exit status, so re-run a killed call once, "
-        "and halt and report only if the re-run is killed too or any call exits nonzero:",
+        "**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun "
+        "`python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` "
+        "without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`, "
+        "and the first call's background rule above applies. `<branch>` is the current branch name. "
+        "`--this-repo` is required: branch names aren't unique across repos, and omitting it leaks "
+        "another repo's same-named branch in as false spawn evidence.",
         step_4_raw_text,
-        context="ready-for-review step 4 no longer carries the fidelity call's ceiling, wait, re-run and halt",
+        context="ready-for-review step 4's rerun no longer carries its command, ceiling, background wait, "
+        "or --this-repo scoping",
     )
-    rerun_ceiling = "as one foreground Bash call with `timeout: 600000`"
-    assert rerun_ceiling in step_4_text, f"ready-for-review step 4's rerun no longer carries {rerun_ceiling!r}"
     _assert_pinned_clause_right_bounded(
-        "If the harness moves the rerun to the background, start no second copy, and wait for its "
-        "completion notification. A killed or failed rerun leaves the finding standing; say so in the report.",
+        "- Report to the human any row there of the missing reviewer type that reads "
+        "`round=plan-review`, since the fidelity view dropped it.",
         step_4_raw_text,
-        context="ready-for-review step 4's rerun no longer carries its wait and standing-finding sentences",
+        context="ready-for-review step 4's rerun no longer reports the recovered plan-review rows",
+    )
+    _assert_pinned_clause_right_bounded(
+        "- A killed or failed rerun leaves the finding standing; say so in the report.",
+        step_4_raw_text,
+        context="ready-for-review step 4's rerun no longer carries its standing-finding rule",
     )
 
 

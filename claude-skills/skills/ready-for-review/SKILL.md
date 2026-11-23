@@ -94,14 +94,15 @@ Run `/code-review` against that diff, invoking the skill with args "unrouted <pa
 
 ## 4. Skill-procedural-fidelity review (halt on findings)
 
-Check that skills this branch invoked were executed, not silently abbreviated — an independent observer, so a rationalization in the working session can't wave the deviation through. List invocations and the reviewer-spawn timeline with one foreground Bash call with `timeout: 600000`. If the harness moves the call to the background, start no second copy, and use its exit status and stdout once its completion notification arrives. A harness timeout kill is not an exit status, so re-run a killed call once, and halt and report only if the re-run is killed too or any call exits nonzero:
+Check that skills this branch invoked were executed, not silently abbreviated — an independent observer, so a rationalization in the working session can't wave the deviation through. List invocations and the reviewer-spawn timeline with one foreground Bash call with `timeout: 600000`:
 
 ```bash
 ~/.claude/scripts/skill-fidelity-report.sh
 ```
 
-`skill-invocation` defaults to this repo (omit `--projects`); `review-trace` defaults machine-wide, so `--this-repo` is required — branch names aren't unique across repos, and omitting it leaks another repo's same-named branch in as false spawn evidence.
-
+- If the harness moves the call to the background, start no second copy, and use its exit status and stdout once its completion notification arrives.
+- A harness timeout kill is not an exit status, so re-run a killed call once.
+- Halt and report only if the re-run is killed too or any call exits nonzero.
 - Empty list → state no skills were invoked on this branch and continue (an affirmative no-op, not a silent skip).
 - Otherwise, resolve the diff-file artifact, which is the same cumulative diff step 3 reviews. If step 3 ran this turn, reuse the path its `DIFF_FILE:` line already named — do not recompute it; a second invocation resolves a fresh diff that can differ from the one step 3 recorded as the review subject. If step 3 was skipped via the cache-hit branch, nothing was computed this turn: run `~/.claude/scripts/pr-diff-against-base.sh --diff-file > /dev/null` yourself as its own Bash call — it prints `DIFF_FILE: <path>` on stderr and no diff bytes on stdout. Either way, if no `DIFF_FILE:` path is available, halt — do not dispatch and do not fall back to pasted diff text. Quote the script's own stderr line in the halt report when one is present, naming the actual cause: an unresolvable config dir, a failed `mkdir`, or a failed `mv`. Name a likely skill/script version mismatch only when no such line appeared.
 - Otherwise, before dispatch, run `~/.claude/scripts/findings-path-suffix.sh` and take its printed `<suffix>` (the script's last line of output, so ignore any earlier warning line) — the script also adds `agent-reviews/` to the repo's ignore list (see `docs/design-decisions.md` §12 for the append's duplicate-tolerance). Spawn `skill-fidelity-reviewer` **synchronously** with: the list; the path the `DIFF_FILE:` line named, written out as literal text — never a range expression and never the command that produced it, since the agent has `Read` but no `Bash`; the plan path if one exists; the `review-trace` output; and `findings_path: agent-reviews/skill-fidelity-reviewer-<suffix>.md`. `Read` the findings file after it returns.
@@ -110,7 +111,9 @@ Name the pipeline's own skills **out of scope** in the prompt (the agent body al
 
 **Halt on a silent-abbreviation finding.** The escape hatch is stating the deviation with a rationale — a low bar; that fix stays inline, prose only. A finding needing an actual code change follows step 3's `code-writer` route, not a separate dispatch. Fix it in a new commit (staged-diff `/code-review` + marker gate), return to step 2, and do not re-run this step on its own output.
 
-**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`. `<branch>` is the current branch name. Report to the human any row there of the missing reviewer type that reads `round=plan-review`, since the fidelity view dropped it. If the harness moves the rerun to the background, start no second copy, and wait for its completion notification. A killed or failed rerun leaves the finding standing; say so in the report.
+**Spawn-dispatch `[SILENT-SKIP]`.** Before acting on one, rerun `python3 ~/.claude/scripts/transcript-analysis.py review-trace --this-repo --branches <branch>` without `--omit-plan-review-spawns`, as one foreground Bash call with `timeout: 600000`, and the first call's background rule above applies. `<branch>` is the current branch name. `--this-repo` is required: branch names aren't unique across repos, and omitting it leaks another repo's same-named branch in as false spawn evidence.
+- Report to the human any row there of the missing reviewer type that reads `round=plan-review`, since the fidelity view dropped it.
+- A killed or failed rerun leaves the finding standing; say so in the report.
 
 ## 5. PR description (unconditional; warn + fix)
 
@@ -135,7 +138,6 @@ With a PR open, launch the CI watch now (see "CI watch (out-of-band)" below), wh
 - Any of steps 1–6 did not run, or ended in an outcome its own text does not define as complete. Only these outcomes count as complete without full execution: step 2's scope-exception skip, step 2's skip of undefined commands, step 2's reported cache hit, step 3's reported cache hit, step 4's empty-list no-op, and step 5's already-in-sync report (see Completion). With no PR open, step 5 is also incomplete unless it reported a `BODY_FILE:` path whose file exists and is non-empty; that file check applies only to a reported path when no PR is open.
 - A dispatched subagent never writes this marker; it reports to its caller.
 - The user asked you to present findings without finishing the gate.
-- This session deferred via step 1's context-budget check.
 - You are not in a git repository, or the branch has no PR and no remote tracking (nothing to gate).
 
 Otherwise, record the completed gate:
@@ -159,8 +161,6 @@ Create it ready for review, not `--draft`: this gate has already verified the wo
 ```
 ~/.claude/scripts/marker.sh deactivate ready-for-review
 ```
-
-Removes only this session's file. If the skill errors before reaching this step, the gate will evict the orphan automatically once the session's process ends — the hook checks PID liveness on each gate hit.
 
 ## Completion
 

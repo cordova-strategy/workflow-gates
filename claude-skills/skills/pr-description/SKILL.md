@@ -86,12 +86,14 @@ Machine-managed, delimited by `<!-- pr-cost:start -->` / `<!-- pr-cost:end -->` 
 
 When the script below exits 0, its block is pre-cleared for publication (the account's `pr-cost-disclosure` sentinel is the standing approval), so embed it without asking for per-PR approval — see `docs/private-project-redaction.md` § "Publishing a tooling measurement".
 
-Resolve the section with one foreground Bash call with `timeout: 600000`. If the harness moves the call to the background, start no second copy, and read its exit status and stdout as below once its completion notification arrives. A harness timeout kill is not an exit status, so re-run a killed call once:
+Resolve the section with one foreground Bash call with `timeout: 600000`:
 
 ```bash
 ~/.claude/scripts/pr-cost-section.sh
 ```
 
+- **Moved to the background by the harness:** start no second copy, and read its exit status and stdout as below once its completion notification arrives.
+- **Killed by the harness timeout:** a kill is not an exit status, so re-run a killed call once.
 - **Exit 0:** enabled and the branch resolved cleanly — stdout is the finished
   `## Cost (list-price estimate)` block, with its delimiters, heading, tables,
   and reproducibility trailer already in it. Embed that stdout **verbatim** and
@@ -108,7 +110,8 @@ Resolve the section with one foreground Bash call with `timeout: 600000`. If the
   to generate, unlike exit 1's silent deletion.
 
 The sentinel check (`<config-dir>/pr-cost-disclosure`, trimmed and lowercased, exactly `dollars`) is per Claude account, not per repo: cost is an organizational fact, and each account is its own billing entity.
-Resolves that one config-dir path only — never unions it with `$HOME/.claude`, or one account's opt-in would activate disclosure under another; do not pre-check the sentinel yourself, the script performs that check internally.
+Resolves that one config-dir path only — never unions it with `$HOME/.claude`, or one account's opt-in would activate disclosure under another.
+Do not pre-check the sentinel yourself; the script performs that check internally.
 **One deliberate narrowing:** a sentinel consisting of a blank line followed by `dollars` reads as
 two lines and is judged disabled, where a whitespace-collapsing read would have judged it enabled
 — in the direction this gate already prefers (under-disclosing over guessing). Session/turn counts,

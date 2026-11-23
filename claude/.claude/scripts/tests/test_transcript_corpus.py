@@ -412,10 +412,11 @@ _OTHER_BRANCH_LINE = b'{"type":"user","gitBranch":"other-branch"}\n'
 _ONE_MIB = 1024 * 1024
 _BOUNDED_TIME_BYTES = 4 * _ONE_MIB
 _BOUNDED_TIME_CEILING_SECONDS = 10
-# A quadratic-in-run-length pattern scans a run this long in seconds, so it fails the short ceiling
-# instead of hanging on a 4 MiB run; a linear scan takes milliseconds.
-_LONG_RUN_BYTES = 36 * 1024
-_LONG_RUN_CEILING_SECONDS = 2
+# Sized so a branch-field pattern led by `.*` or `[ \t\r]*` takes about 4 to 11 s on these shapes and fails the 1 s
+# ceiling in seconds, where a 4 MiB run would hang it for hours. The shipped linear pattern takes milliseconds.
+_LONG_RUN_BYTES = 64 * 1024
+_REPEATED_SHAPE_BYTES = 40 * 1024
+_LONG_RUN_CEILING_SECONDS = 1
 
 
 def _write_raw_session(jsonl: Path, main_lines: list[bytes], subagent_files: list[list[bytes]] | None = None) -> None:
@@ -587,12 +588,12 @@ class TestBranchPrefilter:
         ("shape", "expected_carried", "ceiling_seconds"),
         [
             (b'"gitBranch"' + b" " * _LONG_RUN_BYTES, True, _LONG_RUN_CEILING_SECONDS),
-            ((b'"gitBranch"' + b" " * 64) * (_BOUNDED_TIME_BYTES // 75), True, _BOUNDED_TIME_CEILING_SECONDS),
+            ((b'"gitBranch"' + b" " * 64) * (_REPEATED_SHAPE_BYTES // 75), True, _LONG_RUN_CEILING_SECONDS),
             (b'"gitBranch":' + b" " * _LONG_RUN_BYTES, True, _LONG_RUN_CEILING_SECONDS),
             (
-                (b'"gitBranch":' + b" " * 64 + b"x") * (_BOUNDED_TIME_BYTES // 77),
+                (b'"gitBranch":' + b" " * 64 + b"x") * (_REPEATED_SHAPE_BYTES // 77),
                 True,
-                _BOUNDED_TIME_CEILING_SECONDS,
+                _LONG_RUN_CEILING_SECONDS,
             ),
             (b'"gitBranch":"' + b"a" * _BOUNDED_TIME_BYTES, True, _BOUNDED_TIME_CEILING_SECONDS),
             (b'"gitBranch":"other-branch"\n' * (_BOUNDED_TIME_BYTES // 27), False, _BOUNDED_TIME_CEILING_SECONDS),
