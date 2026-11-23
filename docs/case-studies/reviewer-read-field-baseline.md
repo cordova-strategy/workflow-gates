@@ -186,8 +186,8 @@ Rerun this the same way after #1115 and compare like with like.
   - `publication_scope`
   - the corpus-selection functions `scope._repo_worktree_paths`, `scope._path_to_project_slug` and `scope._resolve_project_scope`
   - `reviewer_yield._is_reviewer_subagent_type`
-  - `author_outcome._read_ledger_rows_from_file`
-  - `author_outcome._SESSION_ID_PATTERN`
+  - `review_ledger._read_ledger_rows_from_file`
+  - `review_ledger._SESSION_ID_PATTERN`, which with `review_ledger._read_ledger_rows_from_file` lived in `author_outcome` at instrument commit `e5e1f34f573a`
 - **Review-skill mix:** compare the per-skill `round_windows` counts in the report's "Main-thread Reads inside review-round windows" section.
 
 #1115's body was read on 2026-11-22 for this section and for the Prose limitation.

@@ -1,6 +1,6 @@
-"""author_outcome's ledger reader and index on a line that makes json.loads raise past a decode error."""
+"""review_ledger's reader and index on a line that makes json.loads raise past a decode error."""
 import pytest
-from transcript_analysis import author_outcome
+from transcript_analysis import review_ledger
 
 from ._ledger_reader_helpers import HOSTILE_LINES, LINES_OVER_DECODER_LIMITS
 from .conftest import _ledger_row, _write_branch_ledger_file, _write_ledger_file
@@ -22,7 +22,7 @@ class TestReaderFlag:
         _append_line(ledger_path, line)
 
         with pytest.raises(decoder_exception):
-            author_outcome._read_ledger_rows_from_file(ledger_path)
+            review_ledger._read_ledger_rows_from_file(ledger_path)
 
     @pytest.mark.parametrize("line", HOSTILE_LINES)
     def test_the_line_is_skipped_and_its_neighbours_are_kept_when_asked(
@@ -32,7 +32,7 @@ class TestReaderFlag:
         _append_line(ledger_path, line)
         _append_line(ledger_path, '{"round": 2, "disposition": "DEFER"}')
 
-        rows, opened = author_outcome._read_ledger_rows_from_file(ledger_path, skip_lines_over_decoder_limits=True)
+        rows, opened = review_ledger._read_ledger_rows_from_file(ledger_path, skip_lines_over_decoder_limits=True)
 
         assert opened is True
         assert [row["round"] for row in rows] == [1, 2]
@@ -57,7 +57,7 @@ class TestSessionLookupOverAFileWithSuchALine:
             tmp_path, "b" * 64, [_ledger_row(round=3, disposition="DEFER", session_id="sess-1")],
         )
 
-        entries, any_file_found = author_outcome._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
 
         assert any_file_found is True
         assert sorted(row["round"] for _, row in entries) == [1, 2, 3]
@@ -66,7 +66,7 @@ class TestSessionLookupOverAFileWithSuchALine:
         ledger_path = _write_ledger_file(tmp_path, "sess-1", [])
         _append_line(ledger_path, line)
 
-        entries, any_file_found = author_outcome._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
 
         assert entries == []
         assert any_file_found is True
@@ -74,19 +74,19 @@ class TestSessionLookupOverAFileWithSuchALine:
     def test_the_file_is_parsed_once_across_two_lookups_sharing_an_index(self, tmp_path, monkeypatch, line):
         poisoned_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
         _append_line(poisoned_path, line)
-        real_read = author_outcome._read_ledger_rows_from_file
+        real_read = review_ledger._read_ledger_rows_from_file
         parsed_paths = []
 
         def _counting_read(ledger_path, **reader_options):
             parsed_paths.append(ledger_path)
             return real_read(ledger_path, **reader_options)
 
-        monkeypatch.setattr(author_outcome, "_read_ledger_rows_from_file", _counting_read)
+        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", _counting_read)
         session_jsonl = self._session_jsonl(tmp_path)
         ledger_indexes = {}
 
         for _ in range(2):
-            entries, _ = author_outcome._read_ledger_row_entries_for_session(session_jsonl, ledger_indexes)
+            entries, _ = review_ledger._read_ledger_row_entries_for_session(session_jsonl, ledger_indexes)
             assert [row["round"] for _, row in entries] == [1]
 
         assert parsed_paths == [poisoned_path]

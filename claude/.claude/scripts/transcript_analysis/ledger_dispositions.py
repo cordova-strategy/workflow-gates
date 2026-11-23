@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import NamedTuple
 
-from transcript_analysis import author_outcome, corpus, publication_scope
+from transcript_analysis import author_outcome, corpus, publication_scope, review_ledger
 
 _DIRECTORY_PRESENT = "present"
 _DIRECTORY_ABSENT = "absent"
@@ -117,7 +117,7 @@ def _reduce_row(row: dict) -> tuple[_LedgerRow | None, str | None]:
     session_id = row.get("session_id")
     if "session_id" in row and not isinstance(session_id, str):
         return None, "session_id"
-    if not isinstance(session_id, str) or not author_outcome._SESSION_ID_PATTERN.fullmatch(session_id):
+    if not isinstance(session_id, str) or not review_ledger._SESSION_ID_PATTERN.fullmatch(session_id):
         session_id = None
     return _LedgerRow(disposition, row_id, ref, decided_by, event_epoch, session_id), None
 
@@ -138,8 +138,8 @@ def _read_file_rows(ledger_file: Path) -> list[dict] | None:
     reader_stderr = io.StringIO()
     try:
         with contextlib.redirect_stderr(reader_stderr):
-            rows, opened = author_outcome._read_ledger_rows_from_file(ledger_file)
-    except author_outcome._DECODER_LIMIT_ERRORS:
+            rows, opened = review_ledger._read_ledger_rows_from_file(ledger_file)
+    except review_ledger._DECODER_LIMIT_ERRORS:
         # The reader lets these propagate unless asked to skip the line. The exception is dropped, never reported.
         return None
     if not opened or reader_stderr.getvalue():
@@ -198,7 +198,7 @@ def count_ledger_dispositions(
     The ledger directory's listing gaps are reported through `directory_state`, never to a caller's transcript gap counter.
     The result holds two mutable dicts, which callers read and never mutate.
     """
-    ledger_dir = config_dir_root / author_outcome._REVIEW_LEDGER_DIRNAME
+    ledger_dir = config_dir_root / review_ledger._REVIEW_LEDGER_DIRNAME
     listing_gaps: Counter[str] = Counter()
     ledger_files = publication_scope._this_repo_ledger_files(ledger_dir, worktree_paths, listing_gaps)
     tally = _Tally()

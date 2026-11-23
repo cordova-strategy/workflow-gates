@@ -372,7 +372,6 @@ SKILLS_TESTS_IMPORTING_SKILL_EVALS_RUNNER: frozenset[str] = frozenset({
 # HOOKS_TESTS_MODULES_IMPORTED_BY_SCRIPTS_TESTS member by name, directly, through
 # a SCRIPTS_TESTS_DIR helper module, or through another hooks-tree module this set lists.
 SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES: frozenset[str] = frozenset({
-    "claude/.claude/scripts/tests/test_author_outcome.py",
     "claude/.claude/scripts/tests/test_config_parser_parity.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_generate.py",
     "claude/.claude/scripts/tests/test_cursor_adapter_install_prerequisites.py",
@@ -400,6 +399,7 @@ SCRIPTS_TESTS_IMPORTING_HOOKS_TESTS_MODULES: frozenset[str] = frozenset({
     "claude/.claude/scripts/tests/test_review_ledger_lib.py",
     "claude/.claude/scripts/tests/test_review_pr_lib.py",
     "claude/.claude/scripts/tests/test_transcript_publication_scope.py",
+    "claude/.claude/scripts/tests/test_transcript_review_ledger.py",
 })
 
 CODE_REVIEW_SKILL_MD = "claude-skills/skills/code-review/SKILL.md"
