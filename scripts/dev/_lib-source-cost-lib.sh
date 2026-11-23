@@ -44,6 +44,8 @@ lsc_flag_value_ok() {
 
 # lsc_parse_clusters <cluster-file> — prints one row per data line, in file order.
 lsc_parse_clusters() {
+  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  local LC_ALL=C
   local cluster_file=$1
   local line line_number=0 pipes cluster file first last
   local label_pattern='^[a-z0-9-]+$' name_pattern='^[A-Za-z_][A-Za-z0-9_]*$'
@@ -110,6 +112,8 @@ lsc_check_syntax() {
 # _config.sh beside it, so one child reports both files' anchors.
 # Source health is judged by the pre-flight, not here.
 lsc_lookup_starts() {
+  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  local LC_ALL=C
   local source_dir=$1 rows=$2
   local line_number file first last name start path reported lookup_script
   local -a anchors=()
@@ -161,6 +165,8 @@ LOOKUP_EOF
 # file order. A definition line reads exactly `<name>() {` or `<name>() (`.
 # shellcheck disable=SC2004  # shellcheck reads the nameref as an indexed array; an associative subscript needs its $.
 lsc_index_definitions() {
+  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  local LC_ALL=C
   local -n index_source_lines=$1
   local -n index_by_name=$2
   local -n index_all_lines=$3
