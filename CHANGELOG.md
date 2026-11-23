@@ -22,6 +22,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - `caller=other-callers` no longer implies untrusted input. A finding that needs content from someone who cannot call the change, passed in through whoever runs it, with no agent steered, is now beyond declaration under `caller=other-callers, input=trusted`.
   - When the declaration reads `agent=hostile`, one fixed hostile-agent question goes to `ciso-reviewer`, in a spawn the round already makes or in one of its own.
   - The hook `# tier-threat-model:` line keeps its grammar.
+  - The project-layer gate waivers and `CLAUDE.md` § "Hook threat model" do not read the review's `agent` field, so `agent=hostile` changes no gate-tier waiver or routing. `docs/hooks.md` § "Threat-model tiers" still decides what a gate's tier line waives.
   - `CLAUDE.md` § "Hook threat model" now states that `cooperative` says nothing about whether a gate's input is trusted. It also gives a worked example of a steered agent.
   - **Migration:** a skip that needed `declared: dev-only, cooperative` now needs `surface=dev-only`, `agent=cooperative`, `caller=operator-only` and `input=trusted`. `agent=hostile` blocks every skip that rests on the declaration.
   - **Migration:** a declaration that read `untrusted-input` now reads `caller=operator-only` and `input=untrusted`, and one that read `adversarial` now reads `caller=other-callers` and `input=untrusted`, each with `agent=cooperative`.

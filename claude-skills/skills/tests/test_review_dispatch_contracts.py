@@ -424,8 +424,8 @@ _CODE_REVIEW_STEP_1_HEADING = "## Step 1 — Implementation-fitness gate"
 _PLAN_REVIEW_OUTPUT_HEADING = "## Output format"
 _ROUTING_ROLES_HEADING = "## Reviewer roles"
 
-# Each field name, value and the `undeclared` token the pins name is defined once here.
-# `_DECLARATION_BLOCK_TEXT` builds the same text from the same constants, so renaming one in only one place fails a test.
+# The field and value constants below are shared by the pins and by `_DECLARATION_BLOCK_TEXT`.
+# That text is built from them, so renaming one in only one place fails a test.
 _SURFACE_FIELD = "surface"
 _AGENT_FIELD = "agent"
 _CALLER_FIELD = "caller"
@@ -645,7 +645,8 @@ _DECLARATION_BLOCK_TEXT = (
     f"{_CALLER_FIELD}=<value>, {_INPUT_FIELD}=<value>`. "
     "No field's value implies another's. "
     f"A field that reads `{_UNDECLARED_VALUE}` excludes nothing. "
-    "A field takes its first value only on evidence that its second value does not apply, "
+    "A field takes its first value, the narrow one its item or the surface sentence lists first, "
+    "only on evidence that its second value does not apply, "
     f"and reads `{_UNDECLARED_VALUE}` when the evidence shows neither. "
     "Put `beyond declaration:` and the names of the excluding fields in the heading or first line of a finding "
     "whose failure needs a user, actor or input that the declaration excludes and the change does not reach. "
