@@ -77,6 +77,19 @@ class TestRootCountDescActiveAccountOnly:
             "1 root (~/.claude/transcript-config-dirs present but unreadable)"
         )
 
+    def test_present_roots_file_contributing_nothing_keeps_the_old_clause_only_when_not_narrowed(
+        self, tmp_path, monkeypatch,
+    ):
+        roots_file = tmp_path / "roots"
+        roots_file.write_text("")
+        monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(roots_file))
+        one_root = [tmp_path / "acct-a" / "projects"]
+        widened_header = scope._resolved_scope_header("buckets", "*", one_root, active_account_only=False)
+        narrowed_header = scope._resolved_scope_header("buckets", "*", one_root, active_account_only=True)
+        assert "declared but contributed no additional root" in widened_header
+        assert ACTIVE_ACCOUNT_CLAUSE not in widened_header
+        assert ACTIVE_ACCOUNT_CLAUSE in narrowed_header
+
     def test_two_roots_still_read_two_roots_under_the_keyword(self, tmp_path, monkeypatch):
         roots = _two_declared_roots(tmp_path, monkeypatch)
         assert scope._root_count_desc(roots, active_account_only=True) == "2 roots"
