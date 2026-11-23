@@ -15,9 +15,10 @@ from transcript_analysis import corpus, redaction, render, scope
 
 def cmd_buckets(args: argparse.Namespace) -> None:
     branch_filter = scope._branch_filter(args)
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "buckets", roots=roots)
-    scope.print_resolved_scope("buckets", scope_label, roots)
+    scope.print_resolved_scope("buckets", scope_label, roots, active_account_only=active_account_only)
 
     branch_data: dict[str, dict] = defaultdict(
         lambda: {
@@ -79,6 +80,7 @@ def _add_buckets_subparser(subparsers: argparse._SubParsersAction) -> None:
     binding cmd_buckets through set_defaults(func=...).
     """
     p_buckets = subparsers.add_parser("buckets", help="Assistant turns bucketed by branch × model family.")
-    scope._add_project_scope_args(p_buckets)
+    scope._add_project_scope_args(p_buckets, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_buckets)
     p_buckets.add_argument("--branches", metavar="B1,B2,...", help="Branch name filter (default: all)")
     p_buckets.set_defaults(func=cmd_buckets)
