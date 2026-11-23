@@ -32,7 +32,8 @@ def cmd_judgment_pair(args: argparse.Namespace) -> None:
     filtered by where the invocation itself happened.
     """
     branch_filter = scope._branch_filter(args)
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "judgment-pair", roots=roots)
 
     since_ts, until_epoch = scope._parse_absolute_window_args(args, "judgment-pair")
@@ -155,7 +156,7 @@ def cmd_judgment_pair(args: argparse.Namespace) -> None:
             output_blocks.append(block)
 
     if not output_blocks:
-        scope.print_resolved_scope("judgment-pair", scope_label, roots)
+        scope.print_resolved_scope("judgment-pair", scope_label, roots, active_account_only=active_account_only)
         print("No judgment pairs found.")
         return
 
@@ -166,10 +167,12 @@ def cmd_judgment_pair(args: argparse.Namespace) -> None:
         # only the file written. The scope header is still prepended to the
         # file's content so a saved/curated file stays self-documenting about
         # its scope even if pasted elsewhere without the terminal output.
-        header = scope._resolved_scope_header("judgment-pair", scope_label, roots)
+        header = scope._resolved_scope_header(
+            "judgment-pair", scope_label, roots, active_account_only=active_account_only,
+        )
         Path(out_path).write_text(header + "\n" + output_text + "\n")
     else:
-        scope.print_resolved_scope("judgment-pair", scope_label, roots)
+        scope.print_resolved_scope("judgment-pair", scope_label, roots, active_account_only=active_account_only)
         print(output_text)
 
 
@@ -184,7 +187,8 @@ def _add_judgment_pair_subparser(subparsers: argparse._SubParsersAction) -> None
             " where a review skill was invoked."
         ),
     )
-    scope._add_project_scope_args(p_jp)
+    scope._add_project_scope_args(p_jp, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_jp)
     p_jp.add_argument("--branches", metavar="B1,B2,...")
     p_jp.add_argument("--since", metavar="DATE", type=scope._iso_date, help="Inclusive start date (YYYY-MM-DD)")
     p_jp.add_argument("--until", metavar="DATE", type=scope._iso_date, help="Inclusive end date (YYYY-MM-DD)")

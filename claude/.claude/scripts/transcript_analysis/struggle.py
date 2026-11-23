@@ -46,9 +46,10 @@ STRUGGLE_PHRASES: list[str] = [
 
 def cmd_struggle(args: argparse.Namespace) -> None:
     branch_filter = scope._branch_filter(args)
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "struggle", roots=roots)
-    scope.print_resolved_scope("struggle", scope_label, roots)
+    scope.print_resolved_scope("struggle", scope_label, roots, active_account_only=active_account_only)
 
     branch_data: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
 
@@ -91,5 +92,6 @@ def _add_struggle_subparser(subparsers: argparse._SubParsersAction) -> None:
     """
     p_struggle = subparsers.add_parser("struggle", help="Correction/frustration signal phrases in user turns, split by model.")
     p_struggle.add_argument("--branches", metavar="B1,B2,...")
-    scope._add_project_scope_args(p_struggle)
+    scope._add_project_scope_args(p_struggle, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_struggle)
     p_struggle.set_defaults(func=cmd_struggle)

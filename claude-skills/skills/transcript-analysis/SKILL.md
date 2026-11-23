@@ -19,6 +19,13 @@ The toolkit lives at `~/.claude/scripts/transcript-analysis.py`. Run it directly
 
 Before quoting a corpus-wide statistic from this toolkit's output, include the resolved-scope header line verbatim in what you report, and if that line reads "1 root (no ~/.claude/transcript-config-dirs declared)", ask the user whether other Claude accounts exist before treating the number as complete.
 
+Add one of these to the same command to widen a run whose header reads `1 root (active account only; --this-repo or --all-accounts also reads ~/.claude/transcript-config-dirs)`:
+
+- `--all-accounts` reads every declared account with no repository bound.
+- `--this-repo` reads every declared account and bounds the run to this repo's live worktrees. It replaces `--projects`, and a branch or PR question passes it, since that branch may have been worked from another account.
+
+Widen only for a question that needs accounts beyond the active one, not as a routine rerun. Widened output is not for publication: report it to the owner, never in a public artifact (see `docs/private-project-redaction.md` § "A wider corpus goes to the owner, never into a public artifact"). `--this-repo` together with a single top-level `--config-dir` reads one account. Quoting output publicly needs that bound, but it does not make the run a publication instrument (see `docs/private-project-redaction.md` § "This repository, one account").
+
 **"I found nothing" is one of those statistics.** A zero-match run is the case most likely to be a scoping failure rather than a real result, so quote its header too before reporting the absence — never report an empty result without stating the corpus it was empty across.
 
 `cost --summary` prints no resolved-scope header; it states its scope on its own `Scope:` line instead, in the form `Scope: this repository only, <branches>. This account only, <window>.` It is always scoped to this repository, the given branch filter (or all branches), and the active account only, so quote that line rather than asking about other repos, branches, or accounts.
@@ -29,8 +36,8 @@ Before quoting a corpus-wide statistic from this toolkit's output, include the r
 |----------|-----------|
 | Which branches exist? What models were used on each? | `buckets` |
 | Did a branch converge or thrash during test debugging? | `fail-seq --branches <branch>` |
-| Did the user express frustration more with one model? | `struggle --branches <branch>` |
-| How much logged time was active vs idle gaps? | `duration --branches <branch>` |
+| Did the user express frustration more with one model? | `struggle --this-repo --branches <branch>` |
+| How much logged time was active vs idle gaps? | `duration --this-repo --branches <branch>` |
 | How much work went through subagents vs the main thread? | `subagents --branches <branch>` |
 | Map branches to PRs; count per-author review comments | `pr-link --branches <branch>` |
 | Which sessions ran review skills, hit a hook denial, or spawned reviewer agents? | `review-trace` |
@@ -87,9 +94,9 @@ Use `--corrections-only` to strip initial prompts when you only want the steerin
 
 ## Caveats
 
-- Most subcommands' default scope unions all config dirs in `~/.claude/transcript-config-dirs`; `docs/transcript-analysis.md`'s "Corpus scope: the declared-roots file" section names some that read the active account only.
+- The default scope of `fail-seq`, `subagents`, `pr-link` and the other commands that read every declared account union all config dirs in `~/.claude/transcript-config-dirs`. `docs/transcript-analysis.md`'s "Corpus scope: the declared-roots file" section lists the narrowed commands, which read the active account unless `--this-repo` or `--all-accounts` widens them.
 - Most subcommands print the resolved-scope header, even at one root or zero matches; `cost --summary` prints its own `Scope:` line instead — see "Scope confirmation" above.
-- Redaction covers only `cost`, `cost-trend`, `context-distribution`, `audit-routing`, and `cache-rebuild`; every other subcommand prints raw project labels, branch names, or paths.
+- Redaction differs by subcommand. Treat a subcommand's output as unredacted unless `docs/transcript-analysis.md` documents its redaction.
 - `--branches` filters records by `gitBranch` string only, never by project dir or root — under a multi-root scope it pools same-named branches across every declared account into one tally, with no per-account signal.
 - The `N failed` count is a coarse proxy: it matches any `N failed` in tool output, including pre-existing failures and intentional baseline runs. Treat the sequence view as the primary read; the aggregate rate is corroborating.
 - Subagent (`isSidechain`) turns are excluded from `fail-seq` and `struggle` — reviewer, `Explore`, and `code-writer` agents are not the debugging surface these subcommands measure.
@@ -100,12 +107,12 @@ Use `--corrections-only` to strip initial prompts when you only want the steerin
 - `judgment-pair` captures what the human said immediately after a review output. Tool-result turns, `isMeta` injections, `isCompactSummary` records, and task notifications between the review and the user reply are automatically skipped. Use `--out` to save output to a file for offline curation.
 - `--corrections-only` and `struggle` false-flag forwarded `<task-notification>` subagent-summary text as human corrections (see GH-752) — verify a flagged turn is inside an actual human message before treating it as one.
 - `user-input` prints raw prompt text verbatim regardless of `--redact` — that flag anonymizes project labels and session IDs only, matching every other `--redact` implementation in this file (none scrub message content). Review output before pasting it anywhere public.
-- `audit-routing --redact` remaps project names to anonymized labels for public reporting — use this flag when posting output to GitHub issues.
+- `audit-routing --redact` remaps project names and session IDs to anonymized labels. That makes labels safe, not figures or the scope header (root count, raw `--projects` value); `docs/private-project-redaction.md` § "Publishing a tooling measurement" governs which figures reach a public issue.
 - `cost` redacts project names and session IDs by default (the opposite of `audit-routing`'s opt-in `--redact`) — pass `--no-redact` only for local use, never for output headed to a public issue.
 - `cost`'s default redaction makes labels safe, not figures. Under a multi-root scope its totals, rates, and medians are pooled absolutes across accounts, which `docs/private-project-redaction.md` § "Publishing a tooling measurement" keeps out of every public artifact — report them to the owner instead. `--summary` is the one mode scoped for publication; `--share-only` keeps raw absolutes out of the agent's context on a wider read that stays private.
 - `cost --config-dir` unions extra account profiles into one report on top of the declared-roots default; `--this-repo` and `--no-redact` are refused in that mode. Redacted labels (`private-project-N`, `account-N`) are comparable between two reports only when the same declared-roots file produced both — a changed root set renumbers every ordinal (each run still prints a corpus fingerprint).
-- `--projects` defaults to `*` — every project across every declared root; scope it with `--this-repo` or an explicit glob (see `docs/transcript-analysis.md`'s "Scoping to this repo" section for the derivation and its gaps). `buckets`' Date range column describes whatever the glob matched rather than a bounded window — `buckets` takes no `--since`/`--until`; use `review-trace --since/--until` for a bounded window.
-- `review-trace` output is not publish-safe under the default multi-root scope — each event line's branch string can carry a ticket ID or project name. No flag currently guarantees single-account scope on `buckets`, `review-trace`, `fail-seq`, `struggle`, `duration`, `subagents`, or `pr-link` short of an explicit single `--config-dir` — `--this-repo` does not imply single-account scope, since it unions across every declared root by default. Name `--config-dir` as the one narrowing control before quoting any of these seven anywhere public.
+- `--projects` defaults to `*`, every project. Scope it with `--this-repo` or an explicit glob (see `docs/transcript-analysis.md`'s "Scoping to this repo" section for the derivation and its gaps). The default reads the active account only on the subcommands `docs/transcript-analysis.md` § "Corpus scope: the declared-roots file" lists and every declared root on the rest. `buckets`' Date range column describes whatever the glob matched rather than a bounded window — `buckets` takes no `--since`/`--until`; use `review-trace --since/--until` for a bounded window.
+- `review-trace` output is not publish-safe at its default scope — each event line's branch string can carry a ticket ID or project name. `review-trace`'s timeline, `buckets`, `struggle`, and `duration` read the active account unless `--this-repo` or `--all-accounts` widens them. `fail-seq`, `pr-link`, `review-trace --deny-summary`, and `handoff-signal-response` without `--sample` pool every declared account. An explicit single top-level `--config-dir` is the one control that bounds a run to one named account — `--this-repo` does not imply single-account scope, since it unions across every declared root. Bound the run with `--this-repo` and a single top-level `--config-dir` (see "Scope confirmation" above) before quoting any of these anywhere public. The bound does not make a run a publication instrument. No `skill-invocation` run is a publication instrument, with or without `--projects` or `--config-dir`.
 
 ## Writing up a finding for a durable or public document
 
@@ -123,7 +130,7 @@ Use `--corrections-only` to strip initial prompts when you only want the steerin
 ## Example usage
 
 ```bash
-# Survey all branches
+# Survey all branches in the active account (add --all-accounts for every declared account)
 python3 ~/.claude/scripts/transcript-analysis.py buckets
 
 # Check if a branch's debugging loop converged

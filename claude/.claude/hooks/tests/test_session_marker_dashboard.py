@@ -26,6 +26,7 @@ from helpers import (
     HOOKS_DIR,
     TRAVERSAL_SESSION_ID,
     plant_traversal_canary,
+    session_start_registered_timeouts,
 )
 
 from .conftest import _review_ledger_path
@@ -904,3 +905,17 @@ class TestSessionMarkerDashboardLedgerSummary:
         ctx = _additional_context(result)
         assert "plan-review-active" in ctx
         assert "findings recorded" not in ctx
+
+
+class TestSessionMarkerDashboardRegistration:
+    def test_registered_with_a_ten_second_timeout(self):
+        """The hook reads stdin without a cap, so the registered timeout is the only bound on that read.
+
+        The harness default is 600 s (docs/hooks.md § "Gate deadlock recovery").
+        10 s is a chosen ceiling matching the sibling compact hooks' registered timeout.
+        It is not derived from this hook's own cap sum.
+        """
+        timeouts = session_start_registered_timeouts(SESSION_MARKER_DASHBOARD_HOOK.name)
+
+        assert timeouts == [10]
+        assert type(timeouts[0]) is int

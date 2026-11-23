@@ -478,6 +478,7 @@ class TestCallersStopWhenConfigShFails:
             pytest.param("cleanup-idle-open-pr-worktrees.sh", 1, id="cleanup-idle-open-pr-worktrees"),
             pytest.param("cleanup-merged-branches.sh", 1, id="cleanup-merged-branches"),
             pytest.param("config-get.sh", 3, id="config-get"),
+            pytest.param("config-set.sh", 3, id="config-set"),
             pytest.param("resume-context-same-session.sh", 1, id="resume-context-same-session"),
         ],
     )

@@ -109,8 +109,15 @@ def _docstring_lines_without_shared_code(docstring: ast.Expr, source_lines: Sequ
     return range(first_line + bool(code_precedes), last_line + 1 - bool(code_follows))
 
 
-def _python_docstring_lines(source: str, *, stats: _MineStats | None = None) -> frozenset[int]:
-    """1-based line numbers of docstring text in `source`.
+_DocstringOwner = ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+
+
+def _python_docstring_owners(
+    source: str, *, stats: _MineStats | None = None,
+) -> list[tuple[_DocstringOwner, range | None]]:
+    """Each module, class and function node of `source` with its docstring's line range
+    as `_docstring_lines_without_shared_code` trims it, or None for a node with no docstring.
+    A parse failure returns an empty list.
 
     The parse is uncapped, so a multi-MB generated file costs seconds and
     substantial memory per (fix commit, file)."""
@@ -124,12 +131,12 @@ def _python_docstring_lines(source: str, *, stats: _MineStats | None = None) -> 
     except (SyntaxError, ValueError, RecursionError, MemoryError):
         if stats is not None:
             stats.python_docstring_parse_failures += 1
-        return frozenset()
+        return []
     # Not splitlines(): it also splits on `\x0c`, which ast and git count as part of its line.
     source_lines = source.split("\n")
-    lines: set[int] = set()
+    owners: list[tuple[_DocstringOwner, range | None]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef):
+        if not isinstance(node, _DocstringOwner):
             continue
         first = node.body[0] if node.body else None
         if (
@@ -137,8 +144,21 @@ def _python_docstring_lines(source: str, *, stats: _MineStats | None = None) -> 
             and isinstance(first.value, ast.Constant)
             and isinstance(first.value.value, str)
         ):
-            lines.update(_docstring_lines_without_shared_code(first, source_lines))
-    return frozenset(lines)
+            owners.append((node, _docstring_lines_without_shared_code(first, source_lines)))
+        else:
+            owners.append((node, None))
+    return owners
+
+
+def _docstring_line_numbers(owners: Sequence[tuple[_DocstringOwner, range | None]]) -> frozenset[int]:
+    return frozenset(
+        number for _node, docstring_range in owners if docstring_range is not None for number in docstring_range
+    )
+
+
+def _python_docstring_lines(source: str, *, stats: _MineStats | None = None) -> frozenset[int]:
+    """1-based line numbers of docstring text in `source`."""
+    return _docstring_line_numbers(_python_docstring_owners(source, stats=stats))
 
 
 def _docstring_lines_at(
