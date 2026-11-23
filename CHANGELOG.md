@@ -6,6 +6,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **`check-skill-length.sh` gives `handoff/SKILL.md` a line cap of 220, above the 200-line default.** The template stays in the skill because `check-handoff.py` and the compaction hooks' tests read its preamble, section headings and §3.5 list from that file. Other skills' caps are unchanged. The change is live on `git pull`.
 - **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.

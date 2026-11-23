@@ -139,6 +139,9 @@ limit_for() {
     # Hosts the review-orchestrator dispatch protocol, whose one home is this skill.
     claude-skills/skills/subagent-delegation/SKILL.md)
       echo 218 ;;
+    # Hosts the handoff template, which check-handoff.py and the compaction hooks' tests read from this file.
+    claude-skills/skills/handoff/SKILL.md)
+      echo 220 ;;
     *)
       echo 200 ;;
   esac
