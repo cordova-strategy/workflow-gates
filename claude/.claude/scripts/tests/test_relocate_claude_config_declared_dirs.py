@@ -723,8 +723,8 @@ def test_runner_reads_glob_characters_in_the_checkout_path_literally(
     inside = scene.new_repo / "acct-inside"
     inside.mkdir()
     inside_link_text = _stale_link(inside, "hooks", tmp_path / "old-repo")
-    # An unquoted checkout path would match this sibling's path as a pattern in the inside-checkout test.
-    # Only the brackets row, whose path holds a space, fails when the checkout-walk operands are unquoted.
+    # An unquoted checkout path would read as a pattern in the `[[ "$dir_real" == "$new_real"/* ]]`
+    # containment test in `relink_declared_dirs` and match this sibling, skipping it wrongly.
     sibling = tmp_path / glob_matched_sibling / "acct-sibling"
     sibling.mkdir(parents=True)
     _stale_link(sibling, "hooks", tmp_path / "old-repo")

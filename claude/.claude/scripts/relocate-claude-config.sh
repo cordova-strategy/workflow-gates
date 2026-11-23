@@ -709,8 +709,8 @@ _walk_declared_position() {
   done
 }
 
-# Re-point every dangling link of this repo's layout in the listed dir $2 (a
-# physical path) to its position under the checkout $1. $3 is the dir's line in
+# Re-point each dangling link in the listed dir $2 (a physical path) whose text
+# ends in the path of its position under the checkout $1. $3 is the dir's line in
 # the roots file, and the package roots follow. The body is a subshell, so the
 # shopt change and the counters end with it. Callers run it as an `if`
 # condition, where errexit is off, so each step checks its own status.
