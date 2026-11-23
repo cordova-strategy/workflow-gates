@@ -519,7 +519,7 @@ class TestMultiRootFormatOutliers:
         assert lines[0] == "JUDGMENT PAIR SOURCES (*; 2 roots)"
         header_lines = [ln for ln in lines if ln.startswith("JUDGMENT PAIR SOURCES")]
         assert len(header_lines) == 1
-        assert ACTIVE_ROOT_SENTINEL in content and DECLARED_ROOT_SENTINEL in content  # one block per root's session
+        assert ACTIVE_ROOT_SENTINEL in content and DECLARED_ROOT_SENTINEL in content
 
     def test_judgment_pair_out_file_header_names_the_active_account_read(
         self, tmp_path, monkeypatch
