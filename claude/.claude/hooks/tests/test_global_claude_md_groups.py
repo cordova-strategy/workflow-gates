@@ -98,7 +98,7 @@ _PLACEMENTS = [
     ("think-through-before-writing", "Think through your proposed approach", "core"),
     ("worktree-edit-write-targeting", "Edit and Write must also target the worktree path", "core"),
     ("script-first-bash-recipes", "**Script-first for multi-step Bash recipes;", "core"),
-    # Main-session-only bullets: autonomy grants, dispatch rules, the output-preferences read, and clear-stale.
+    # Main-session-only bullets.
     (
         "autonomous-shipping",
         "**Autonomous shipping: a request to do work is the ask.**",
@@ -136,6 +136,8 @@ _PLACEMENTS = [
         _PROCEED_CLAUSE,
         "main",
     ),
+    # take-the-named-step stays in Main session; global-claude-md-agent-core-and-main-session-groups.md says why.
+    ("take-the-named-step", "**Take the next step you name.**", "main"),
     ("respond-to-open-pr-comments", "Always respond to open PR comments", "main"),
     ("prescribed-dispatch", "**A prescribed dispatch is an authorized dispatch.**", "main"),
     # Each relayed-text row pins one clause's presence, so the rows are not redundant.
