@@ -143,6 +143,7 @@ TEST_FILES = (
     "test_transcript_scope_scan.py",
     "test_transcript_publication_scope.py",
     "test_transcript_ledger_dispositions.py",
+    "test_transcript_ledger_reader_decode_limits.py",
     "test_transcript_reviewer_reads.py",
     "test_transcript_reviewer_reads_report.py",
     "test_transcript_reviewer_reads_command.py",

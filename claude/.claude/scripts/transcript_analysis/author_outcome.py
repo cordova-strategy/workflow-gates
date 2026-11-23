@@ -262,7 +262,14 @@ def _config_dir_root_for_session(jsonl: Path) -> Path:
     return jsonl.parent.parent.parent
 
 
-def _read_ledger_rows_from_file(ledger_path: Path) -> tuple[list[dict], bool]:
+# json.loads raises these two, which are not decode errors, for an integer over the interpreter's digit limit
+# (ValueError) and for a line nested past the decoder's stack (RecursionError).
+_DECODER_LIMIT_ERRORS = (ValueError, RecursionError)
+
+
+def _read_ledger_rows_from_file(
+    ledger_path: Path, *, skip_lines_over_decoder_limits: bool = False,
+) -> tuple[list[dict], bool]:
     """(every JSON row from one ledger file, in file order; whether the
     file itself could be opened at all). A malformed or undecodable line
     (e.g. a torn multibyte write) is skipped, not fatal, mirroring
@@ -271,7 +278,17 @@ def _read_ledger_rows_from_file(ledger_path: Path) -> tuple[list[dict], bool]:
     zero valid rows still reports opened=True. opened=False only when open()
     itself raised OSError -- e.g. the file matched a caller's earlier
     directory listing but was deleted or became unreadable before this
-    call."""
+    call.
+
+    A line over the decoder's limits (_DECODER_LIMIT_ERRORS) is skipped the
+    same way when skip_lines_over_decoder_limits is true. When it is false
+    the error propagates, which is what ledger_dispositions._read_file_rows
+    relies on to count the whole file unreadable."""
+    skipped_line_errors = (
+        (json.JSONDecodeError, UnicodeDecodeError, *_DECODER_LIMIT_ERRORS)
+        if skip_lines_over_decoder_limits
+        else (json.JSONDecodeError, UnicodeDecodeError)
+    )
     rows: list[dict] = []
     try:
         # Binary mode so a line that is not valid UTF-8 fails on its own
@@ -283,7 +300,7 @@ def _read_ledger_rows_from_file(ledger_path: Path) -> tuple[list[dict], bool]:
                     continue
                 try:
                     row = json.loads(raw)
-                except (json.JSONDecodeError, UnicodeDecodeError):
+                except skipped_line_errors:
                     continue
                 if isinstance(row, dict):
                     rows.append(row)
@@ -373,7 +390,7 @@ class _LedgerIndex:
             if signature is not None and cached is not None and cached[0] == signature and cached[2]:
                 parsed_files[ledger_path] = cached
                 continue
-            rows, opened = _read_ledger_rows_from_file(ledger_path)
+            rows, opened = _read_ledger_rows_from_file(ledger_path, skip_lines_over_decoder_limits=True)
             parsed_files[ledger_path] = (signature, rows, opened)
             changed = True
         if changed or parsed_files.keys() != self._parsed_files.keys():

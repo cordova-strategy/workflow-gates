@@ -1420,9 +1420,9 @@ class TestComputeAuthorOutcomesLedgerFilesResolution:
         real_read = ao._read_ledger_rows_from_file
         parsed_paths: list[Path] = []
 
-        def _counting_read(ledger_path):
+        def _counting_read(ledger_path, **reader_options):
             parsed_paths.append(ledger_path)
-            return real_read(ledger_path)
+            return real_read(ledger_path, **reader_options)
 
         monkeypatch.setattr(ao, "_read_ledger_rows_from_file", _counting_read)
 
@@ -1461,9 +1461,9 @@ class TestLedgerIndex:
         real_read = ao._read_ledger_rows_from_file
         read_paths: list[Path] = []
 
-        def _fails_on_first_read(ledger_path):
+        def _fails_on_first_read(ledger_path, **reader_options):
             read_paths.append(ledger_path)
-            return ([], False) if len(read_paths) == 1 else real_read(ledger_path)
+            return ([], False) if len(read_paths) == 1 else real_read(ledger_path, **reader_options)
 
         monkeypatch.setattr(ao, "_read_ledger_rows_from_file", _fails_on_first_read)
         index = self._index_over(tmp_path)
