@@ -1,4 +1,4 @@
-"""The ledger reader's handling of a line that makes json.loads raise past a decode error."""
+"""author_outcome's ledger reader and index on a line that makes json.loads raise past a decode error."""
 import pytest
 from transcript_analysis import author_outcome
 
@@ -61,6 +61,15 @@ class TestSessionLookupOverAFileWithSuchALine:
 
         assert any_file_found is True
         assert sorted(row["round"] for _, row in entries) == [1, 2, 3]
+
+    def test_a_file_holding_only_the_line_is_present_and_empty(self, tmp_path, line):
+        ledger_path = _write_ledger_file(tmp_path, "sess-1", [])
+        _append_line(ledger_path, line)
+
+        entries, any_file_found = author_outcome._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
+
+        assert entries == []
+        assert any_file_found is True
 
     def test_the_file_is_parsed_once_across_two_lookups_sharing_an_index(self, tmp_path, monkeypatch, line):
         poisoned_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])

@@ -139,9 +139,8 @@ def _read_file_rows(ledger_file: Path) -> list[dict] | None:
     try:
         with contextlib.redirect_stderr(reader_stderr):
             rows, opened = author_outcome._read_ledger_rows_from_file(ledger_file)
-    except (ValueError, RecursionError):
-        # json.loads raises ValueError for an integer over the interpreter's digit limit and RecursionError for a line
-        # nested past the decoder's stack, and the reader catches neither. The exception is dropped, never reported.
+    except author_outcome._DECODER_LIMIT_ERRORS:
+        # The reader lets these propagate unless asked to skip the line. The exception is dropped, never reported.
         return None
     if not opened or reader_stderr.getvalue():
         return None

@@ -2,13 +2,11 @@
 import pytest
 
 OVER_LIMIT_INTEGER_LINE = '{"id": ' + "1" * 5000 + "}"
-# 3,000,000 brackets nest well past the decoder's stack: 200,000 already raise RecursionError on CPython 3.14.
+# Nested far past any interpreter's recursion limit, so no stack size or version change makes this line parse.
 DEEPLY_NESTED_LINE = "[" * 3_000_000 + "]" * 3_000_000
-LINES_OVER_DECODER_LIMITS = [
-    pytest.param(DEEPLY_NESTED_LINE, RecursionError, id="deeply-nested"),
-    pytest.param(OVER_LIMIT_INTEGER_LINE, ValueError, id="integer-over-the-digit-limit"),
+_CASES = [
+    ("deeply-nested", DEEPLY_NESTED_LINE, RecursionError),
+    ("integer-over-the-digit-limit", OVER_LIMIT_INTEGER_LINE, ValueError),
 ]
-HOSTILE_LINES = [
-    pytest.param(DEEPLY_NESTED_LINE, id="deeply-nested"),
-    pytest.param(OVER_LIMIT_INTEGER_LINE, id="integer-over-the-digit-limit"),
-]
+LINES_OVER_DECODER_LIMITS = [pytest.param(line, error, id=case_id) for case_id, line, error in _CASES]
+HOSTILE_LINES = [pytest.param(line, id=case_id) for case_id, line, _ in _CASES]
