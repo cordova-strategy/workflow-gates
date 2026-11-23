@@ -33,6 +33,8 @@ lsc_stop() {
 # lsc_flag_value_ok <value> [<minimum>] — minimum defaults to 1.
 # The nine-digit cap keeps the comparison inside bash's integer range.
 lsc_flag_value_ok() {
+  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
+  local LC_ALL=C
   local value=${1-} minimum=${2:-1}
   [[ $value =~ ^[1-9][0-9]{0,8}$ ]] || return 1
   (( value >= minimum ))
@@ -44,7 +46,7 @@ lsc_flag_value_ok() {
 
 # lsc_parse_clusters <cluster-file> — prints one row per data line, in file order.
 lsc_parse_clusters() {
-  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
   local LC_ALL=C
   local cluster_file=$1
   local line line_number=0 pipes cluster file first last
@@ -112,7 +114,7 @@ lsc_check_syntax() {
 # _config.sh beside it, so one child reports both files' anchors.
 # Source health is judged by the pre-flight, not here.
 lsc_lookup_starts() {
-  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
   local LC_ALL=C
   local source_dir=$1 rows=$2
   local line_number file first last name start path reported lookup_script
@@ -134,7 +136,7 @@ shift
 for name; do declare -F "$name" || true; done
 LOOKUP_EOF
   )
-  reported=$("$BASH" -c "$lookup_script" lookup "$source_dir/_lib.sh" "${anchors[@]}" </dev/null) || true
+  reported=$(LC_ALL=C "$BASH" -c "$lookup_script" lookup "$source_dir/_lib.sh" "${anchors[@]}" </dev/null) || true
   while read -r name start path; do
     if [[ $name =~ ^[A-Za-z_][A-Za-z0-9_]*$ && -n ${is_anchor[$name]+set} && $start =~ ^[0-9]+$ ]]; then
       start_of[$name]=$start
@@ -165,7 +167,7 @@ LOOKUP_EOF
 # file order. A definition line reads exactly `<name>() {` or `<name>() (`.
 # shellcheck disable=SC2004  # shellcheck reads the nameref as an indexed array; an associative subscript needs its $.
 lsc_index_definitions() {
-  # A letter range in a pattern follows the locale's collation, which can reject a valid ASCII name.
+  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
   local LC_ALL=C
   local -n index_source_lines=$1
   local -n index_by_name=$2
@@ -417,6 +419,8 @@ lsc_write_lines() {
 # Fills the first array with the lines outside every range and the second with
 # the lines inside, each in file order.
 lsc_partition_lines() {
+  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
+  local LC_ALL=C
   local source_file=$1
   local -n kept_lines=$2
   local -n moved_lines=$3

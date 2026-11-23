@@ -12,26 +12,30 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import REPO_ROOT
+from helpers import REPO_ROOT, installed_locale_where, locale_that_widens_ascii_ranges
 
 from .conftest import _clean_env
 
 _LIB_UNDER_TEST = REPO_ROOT / "scripts" / "dev" / "_lib-source-cost-lib.sh"
 
 
-def _run_bash(script_body: str) -> subprocess.CompletedProcess:
+def _run_bash(script_body: str, lc_all: str | None = None) -> subprocess.CompletedProcess:
     """Source the lib, then run script_body under `set -euo pipefail`.
 
     A bare call that returns nonzero aborts the shell with that status, which
-    is how the stop cases observe their exit code.
+    is how the stop cases observe their exit code. lc_all, when given, is
+    exported into the shell's environment.
     """
     full_script = f"set -euo pipefail\n. {shlex.quote(str(_LIB_UNDER_TEST))}\n{script_body}\n"
+    env = _clean_env(BASH_ENV=None, ENV=None)
+    if lc_all is not None:
+        env["LC_ALL"] = lc_all
     return subprocess.run(
         ["bash", "-c", full_script],
         capture_output=True,
         text=True,
         check=False,
-        env=_clean_env(BASH_ENV=None, ENV=None),
+        env=env,
     )
 
 
@@ -1172,3 +1176,122 @@ def test_report_arm_lines_stop_when_a_reference_arm_is_absent():
     result = _run_bash(_FOLDED_MINIMUMS + "lsc_report_arm_lines sample_minimums 2 baseline minus-x")
 
     _assert_stop(result, "report", "no arm labeled full, the reference of minus-x")
+
+
+# ---------------------------------------------------------------------------
+# Locale-pinned patterns
+# ---------------------------------------------------------------------------
+
+_NON_ASCII_LETTER_NAME = "café"
+_ASCII_LABEL_WITH_EVERY_LETTER = "abcdefghijklmnopqrstuvwxyz0123456789-"
+_ASCII_NAME_WITH_EVERY_LETTER = "abcdefghijklmnopqrstuvwxyz_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+_ARABIC_INDIC_DIGIT_THREE = "٣"
+
+
+def _locale_that_widens_digit_ranges() -> str:
+    """Unlike the letter probe, this skips under CI too: no runner is known to ship a locale that widens a digit range."""
+    absent_message = "no installed locale makes a bracket range accept a non-ASCII digit"
+    try:
+        return installed_locale_where(
+            '[[ "$1" =~ ^[1-9]+$ && "$1" =~ ^[0-9]+$ ]]',
+            _ARABIC_INDIC_DIGIT_THREE,
+            absent_message=absent_message,
+        )
+    except pytest.fail.Exception:
+        pytest.skip(absent_message)
+
+
+def test_parse_clusters_matches_ascii_only_under_a_locale_that_widens_ranges(tmp_path):
+    widening_locale = locale_that_widens_ascii_ranges()
+    non_ascii_cluster_file = tmp_path / "non-ascii.psv"
+    _write_lines(non_ascii_cluster_file, [f"alpha|_lib.sh|{_NON_ASCII_LETTER_NAME}|alpha_two"])
+    ascii_cluster_file = tmp_path / "ascii.psv"
+    _write_lines(
+        ascii_cluster_file,
+        [f"{_ASCII_LABEL_WITH_EVERY_LETTER}|_lib.sh|{_ASCII_NAME_WITH_EVERY_LETTER}|{_ASCII_NAME_WITH_EVERY_LETTER}"],
+    )
+
+    rejected = _run_bash(f"lsc_parse_clusters {shlex.quote(str(non_ascii_cluster_file))}", lc_all=widening_locale)
+    accepted = _run_bash(f"lsc_parse_clusters {shlex.quote(str(ascii_cluster_file))}", lc_all=widening_locale)
+
+    _assert_stop(rejected, "cluster-file", f"{non_ascii_cluster_file}:1:")
+    assert _stdout_lines(accepted) == [
+        f"1|{_ASCII_LABEL_WITH_EVERY_LETTER}|_lib.sh|{_ASCII_NAME_WITH_EVERY_LETTER}|{_ASCII_NAME_WITH_EVERY_LETTER}"
+    ]
+
+
+def test_lookup_matches_ascii_only_under_a_locale_that_widens_ranges(tmp_path):
+    widening_locale = locale_that_widens_ascii_ranges()
+    non_ascii_source_dir = _make_source_dir(
+        tmp_path / "non-ascii-src", lib_lines=[f"{_NON_ASCII_LETTER_NAME}() {{", "  :", "}"]
+    )
+    ascii_source_dir = _make_source_dir(
+        tmp_path / "ascii-src", lib_lines=[f"{_ASCII_NAME_WITH_EVERY_LETTER}() {{", "  :", "}"]
+    )
+    non_ascii_rows = f"1|first|_lib.sh|{_NON_ASCII_LETTER_NAME}|{_NON_ASCII_LETTER_NAME}"
+    ascii_rows = f"1|first|_lib.sh|{_ASCII_NAME_WITH_EVERY_LETTER}|{_ASCII_NAME_WITH_EVERY_LETTER}"
+
+    rejected = _run_bash(
+        f"lsc_lookup_starts {shlex.quote(str(non_ascii_source_dir))} {shlex.quote(non_ascii_rows)}",
+        lc_all=widening_locale,
+    )
+    accepted = _run_bash(
+        f"lsc_lookup_starts {shlex.quote(str(ascii_source_dir))} {shlex.quote(ascii_rows)}",
+        lc_all=widening_locale,
+    )
+
+    _assert_stop(rejected, "lookup", f"PSV line 1: {_NON_ASCII_LETTER_NAME} is not defined after sourcing _lib.sh")
+    assert _stdout_lines(accepted) == [f"{_ASCII_NAME_WITH_EVERY_LETTER} 1 _lib.sh"]
+
+
+def test_index_definitions_matches_ascii_only_under_a_locale_that_widens_ranges(tmp_path):
+    widening_locale = locale_that_widens_ascii_ranges()
+    span_file = tmp_path / "span-file.sh"
+    _write_lines(span_file, [f"{_NON_ASCII_LETTER_NAME}() {{", f"{_ASCII_NAME_WITH_EVERY_LETTER}() {{"])
+
+    result = _run_bash(
+        f"mapfile -t file_lines < {shlex.quote(str(span_file))}\n"
+        "declare -A definitions_by_name=()\n"
+        "declare -a all_definition_lines=()\n"
+        "lsc_index_definitions file_lines definitions_by_name all_definition_lines\n"
+        f'echo "${{#definitions_by_name[@]}}|${{definitions_by_name[{_ASCII_NAME_WITH_EVERY_LETTER}]}}"\n'
+        'echo "${all_definition_lines[*]}"',
+        lc_all=widening_locale,
+    )
+
+    assert _stdout_lines(result) == ["1|2", "2"]
+
+
+def test_flag_value_ok_matches_ascii_digits_only_under_a_locale_that_widens_ranges():
+    widening_locale = _locale_that_widens_digit_ranges()
+    non_ascii_digits = _ARABIC_INDIC_DIGIT_THREE * 2
+
+    rejected = _run_bash(f"lsc_flag_value_ok {shlex.quote(non_ascii_digits)}", lc_all=widening_locale)
+    accepted = _run_bash("lsc_flag_value_ok 123456789", lc_all=widening_locale)
+
+    assert rejected.returncode == 1
+    # A value that slipped past the pattern would fail later in the arithmetic comparison, with a message on stderr.
+    assert rejected.stderr == ""
+    assert accepted.returncode == 0, accepted.stderr
+
+
+def _partition_with_ranges(source_file: Path, ranges: str, lc_all: str) -> subprocess.CompletedProcess:
+    return _run_bash(
+        "declare -a kept=() moved=()\n"
+        f"lsc_partition_lines {shlex.quote(str(source_file))} kept moved {ranges}\n"
+        'echo "${kept[*]}"\n'
+        'echo "${moved[*]}"',
+        lc_all=lc_all,
+    )
+
+
+def test_partition_lines_matches_ascii_digits_only_under_a_locale_that_widens_ranges(tmp_path):
+    widening_locale = _locale_that_widens_digit_ranges()
+    source_file = _numbered_file(tmp_path / "source.sh", count=12)
+    non_ascii_range = f"{_ARABIC_INDIC_DIGIT_THREE * 2}-{_ARABIC_INDIC_DIGIT_THREE}"
+
+    rejected = _partition_with_ranges(source_file, non_ascii_range, widening_locale)
+    accepted = _partition_with_ranges(source_file, "10-12 2-3", widening_locale)
+
+    _assert_stop(rejected, "arm", f"bad range: {non_ascii_range}")
+    assert _stdout_lines(accepted) == ["l1 l4 l5 l6 l7 l8 l9", "l2 l3 l10 l11 l12"]

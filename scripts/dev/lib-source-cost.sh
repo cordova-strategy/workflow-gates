@@ -7,6 +7,7 @@
 # cost_ms is an arm's figure_ms minus its reference's, and saving_ms is the reference's minus the arm's.
 # floor_ms is the applied floor, and verdict is above when the delta's absolute value reaches it.
 # Read dirname= and commit= before posting a report publicly: both print local values as resolved.
+# The script sources and runs the measured checkout's _config.sh and _lib.sh, so run it only in a checkout you trust.
 #
 # Reading a before/after pair taken from two runs that no loop interleaves:
 #   Compare full's cost_ms across the two runs, never its figure_ms.
