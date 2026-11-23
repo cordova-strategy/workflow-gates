@@ -557,8 +557,8 @@ def _add_all_accounts_arg(parser: argparse.ArgumentParser) -> None:
         help=(
             "Read every account ~/.claude/transcript-config-dirs declares, not the active account's"
             " alone. It adds no repository bound; --this-repo bounds the run to this repo."
-            " The output carries every declared account's raw names, paths and text and is not"
-            " for publication (see docs/private-project-redaction.md)."
+            " The output is not for publication"
+            " (see docs/private-project-redaction.md)."
         ),
     )
 

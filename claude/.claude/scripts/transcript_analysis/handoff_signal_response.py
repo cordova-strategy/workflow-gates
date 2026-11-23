@@ -666,8 +666,7 @@ def _add_handoff_signal_response_subparser(subparsers: argparse._SubParsersActio
         help=(
             "Emit raw session IDs in --sample curation cards instead of a run-scoped opaque"
             " label, and print the DO NOT PUBLISH banner. Refused when more than one root is in"
-            " scope; a --sample run without --this-repo or --all-accounts reads the active account"
-            " alone."
+            " scope; a --sample run reads one account unless --this-repo or --all-accounts is passed."
         ),
     )
     p_handoff_signal_response.add_argument(

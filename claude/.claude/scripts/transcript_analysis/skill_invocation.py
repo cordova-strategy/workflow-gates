@@ -273,10 +273,11 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope = p_skill_inv.add_mutually_exclusive_group()
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
-        help="Project-dir glob. Default: this repo's own worktrees only, read across every declared account. "
+        help="Project-dir glob. Default: this repo's own worktrees only, read across every declared account "
+             "unless a top-level --config-dir names one. "
              "No run of this command is a publication instrument (docs/transcript-analysis.md, Limits). "
              "Passing an explicit glob is an escape hatch — output is then not scoped to this repo. "
-             "An explicit glob reads the active account only, unless --all-accounts.",
+             "An explicit glob reads one account unless --all-accounts is passed.",
     )
     p_skill_inv_scope.add_argument(
         "--this-repo", action="store_true",

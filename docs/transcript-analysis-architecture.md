@@ -873,7 +873,8 @@ the existing tests live.
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
 scan-traversal, scan-gap, and glob-selection classes are tested in
-`tests/test_transcript_scope_scan.py`, and the rest of `scope.py` in
+`tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
+`tests/test_transcript_scope_absolute_projects.py`, and the rest of `scope.py` in
 `tests/test_transcript_scope.py`. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`
 because it walks every subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
 in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py` selects as a `SKILL.md`
