@@ -2436,8 +2436,7 @@ def test_hook_threat_model_section_names_every_tier_token() -> None:
 
 _HOOK_THREAT_MODEL_SECTION = (
     "This repo's hooks default to guarding a **cooperative** agent that makes "
-    "honest mistakes, not one attacking the gate. A tier line states agent intent, "
-    "input trust and reversibility as independent axes, so `cooperative` says "
+    "honest mistakes, not one attacking the gate, and `cooperative` says "
     "nothing about whether the gate's input is trusted. A review finding that needs a "
     "command or staged-content shape a cooperative agent would never emit is not "
     "a defect in a gate whose `# tier-threat-model:` line is present but omits "
@@ -2446,8 +2445,7 @@ _HOOK_THREAT_MODEL_SECTION = (
     "this framework. A gate that lists `untrusted-input` gets no such waiver, "
     "because content read from outside the session can steer a cooperative agent "
     "into any shape. For example, a cooperative agent that follows a fetched page "
-    "telling it to pipe an installer into a shell is steered, not hostile, and a "
-    "gate listing `untrusted-input` waives no finding on that shape. A gate is at "
+    "telling it to pipe an installer into a shell is steered, not hostile. A gate is at "
     "least as strict as any gate whose header names "
     "it as that gate's backstop against evasion. A shared helper function is "
     "never relaxed just because one of its many callers denies less. A gate that "

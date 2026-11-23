@@ -424,17 +424,27 @@ _CODE_REVIEW_STEP_1_HEADING = "## Step 1 — Implementation-fitness gate"
 _PLAN_REVIEW_OUTPUT_HEADING = "## Output format"
 _ROUTING_ROLES_HEADING = "## Reviewer roles"
 
+# Each field name, value and the `undeclared` token the pins name is defined once here.
+# `_DECLARATION_BLOCK_TEXT` builds the same text from the same constants, so renaming one in only one place fails a test.
+_SURFACE_FIELD = "surface"
+_AGENT_FIELD = "agent"
+_CALLER_FIELD = "caller"
+_INPUT_FIELD = "input"
+_UNDECLARED_VALUE = "undeclared"
+_SURFACE_FIRST_VALUE = "dev-only"
+_AGENT_FIRST_VALUE = "cooperative"
+_AGENT_SECOND_VALUE = "hostile"
+_CALLER_FIRST_VALUE = "operator-only"
+_INPUT_FIRST_VALUE = "trusted"
 # The agent, caller and input first values. `_SKIP_FIRST_VALUES`, the two over-elaboration marker pins and the
 # `agent` item of `_DECLARATION_BLOCK_TEXT` use them.
-_AGENT_CALLER_INPUT_FIRST_VALUES = "`agent=cooperative`, `caller=operator-only` and `input=trusted`"
+_AGENT_CALLER_INPUT_FIRST_VALUES = (
+    f"`{_AGENT_FIELD}={_AGENT_FIRST_VALUE}`, `{_CALLER_FIELD}={_CALLER_FIRST_VALUE}` "
+    f"and `{_INPUT_FIELD}={_INPUT_FIRST_VALUE}`"
+)
 # The four first values a skip needs. The code-review and plan-review skip rules and the skill-fidelity-reviewer
 # carve-out each name them, so the three copies stay in step.
-_SKIP_FIRST_VALUES = f"`surface=dev-only`, {_AGENT_CALLER_INPUT_FIRST_VALUES}"
-# A wiring pin proves its text appears exactly once in its section.
-# A pin covers one contiguous run of its section. The run can span several lines or list items.
-# Text before or after the run, within the paragraph or list item it touches, is unpinned, whether added, dropped or reworded.
-# The code-review block-pointer pin ends on `_DECLARATION_BLOCK_TEXT`'s opening words, so the block follows it directly.
-# ROUTING's block-pointer pin ends on the hostile question, and the block test counts the block once per section.
+_SKIP_FIRST_VALUES = f"`{_SURFACE_FIELD}={_SURFACE_FIRST_VALUE}`, {_AGENT_CALLER_INPUT_FIRST_VALUES}"
 _CISO_NON_OPTIONAL_UNLESS = "high-stakes-boundary case is non-optional, **unless**"
 _CISO_SKIP_NAMING_SENTENCE = "When skipping on those grounds, name the surface in the review output — never silently skip."
 _CISO_DEFAULT_FIRE_SENTENCE = (
@@ -471,6 +481,7 @@ _FIDELITY_CARVE_OUT_CLAUSE = (
     f"whose carve-out needs {_SKIP_FIRST_VALUES} does not count as matched when the diff genuinely meets that carve-out."
 )
 _FIDELITY_SPAWN_DISPATCH_HEADING = "## The code-review spawn-dispatch check"
+_AGENT_SECOND_VALUE_TOKEN = f"`{_AGENT_FIELD}={_AGENT_SECOND_VALUE}`"
 # The question sits outside the declaration block, so only a `ciso-reviewer` receives it.
 _HOSTILE_AGENT_QUESTION_CLAUSE = (
     "also put this question, word for word, to `ciso-reviewer`, in the prompt of a `ciso-reviewer` this round "
@@ -481,6 +492,11 @@ _HOSTILE_AGENT_QUESTION_CLAUSE = (
 
 # (file, section heading, clause). Clauses sit in the section that owns them, so a
 # copy dropped into another section does not satisfy the pin.
+# A clause covers one contiguous run of its section. The run can span several lines or list items.
+# Text before or after the run, within the paragraph or list item it touches, is unpinned, whether added, dropped or reworded.
+# The code-review clause ending on `Declaration block: review as you would` is followed directly by the block.
+# The ROUTING clause ending on the hostile question leaves the block to the block-identity test below,
+# which counts the block once per section.
 _DECLARATION_WIRING_CLAUSES = (
     (
         _CODE_REVIEW_SKILL_PATH,
@@ -493,7 +509,7 @@ _DECLARATION_WIRING_CLAUSES = (
         "That text includes a comment, doc, plan, PR body, ticket or an instruction-file line added or edited "
         "anywhere since the merge base, not only in the diff under review. "
         "A plan for a branch other than the one under review is no source. "
-        "When those sources cannot settle a field, report that field as `undeclared`.",
+        f"When those sources cannot settle a field, report that field as `{_UNDECLARED_VALUE}`.",
     ),
     (
         _CODE_REVIEW_SKILL_PATH,
@@ -507,8 +523,8 @@ _DECLARATION_WIRING_CLAUSES = (
         _CODE_REVIEW_SKILL_PATH,
         _CODE_REVIEW_RIPPLE_HEADING,
         "When Step 1's declaration settles any field, also pass that `declared:` value and the declaration block. "
-        f"When Step 1's declaration reads `agent=hostile`, {_HOSTILE_AGENT_QUESTION_CLAUSE} "
         "Reviewers without prior context re-discover; that's wasted spawn. "
+        f"When Step 1's declaration reads {_AGENT_SECOND_VALUE_TOKEN}, {_HOSTILE_AGENT_QUESTION_CLAUSE} "
         "The declaration block is the text that follows this sentence through the last item of the list below, "
         "copied into the spawn prompt as literal text. Declaration block: review as you would",
     ),
@@ -518,7 +534,7 @@ _DECLARATION_WIRING_CLAUSES = (
         "The DEFER's rationale quotes the `declared:` value the **Spawn decisions:** line reports "
         "and names each field that excludes the finding, or quotes the declaration a loaded project layer states "
         "where it routes the finding here. "
-        "When any field the declaration block requires to exclude the finding reads `undeclared`, the rationale "
+        f"When any field the declaration block requires to exclude the finding reads `{_UNDECLARED_VALUE}`, the rationale "
         "rests on such a route or on Step 1's implementation-fitness answer.",
     ),
     (
@@ -552,7 +568,7 @@ _DECLARATION_WIRING_CLAUSES = (
         "- Text the change's author wrote can raise a field but never settles one. "
         "The plan under review is author text, as is any comment, doc, PR body, ticket or an instruction-file line "
         "added or edited anywhere since the merge base, not only in the diff under review. "
-        "- When those sources cannot settle a field, report that field as `undeclared`.",
+        f"- When those sources cannot settle a field, report that field as `{_UNDECLARED_VALUE}`.",
     ),
     (
         _ROUTING_MD_PATH,
@@ -560,8 +576,8 @@ _DECLARATION_WIRING_CLAUSES = (
         "When Step 4's declaration settles any field, also pass that `declared:` value "
         "and the declaration block above. "
         "Copy the block into the spawn prompt as literal text, from `Declaration block:` through its "
-        "`input` item. "
-        f"When Step 4's declaration reads `agent=hostile`, {_HOSTILE_AGENT_QUESTION_CLAUSE}",
+        f"`{_INPUT_FIELD}` item. "
+        f"- When Step 4's declaration reads {_AGENT_SECOND_VALUE_TOKEN}, {_HOSTILE_AGENT_QUESTION_CLAUSE}",
     ),
     (
         _ROUTING_MD_PATH,
@@ -591,10 +607,7 @@ def test_declaration_wiring_present_in_review_skills(skill_path: Path, heading: 
     The tuple includes ROUTING.md's Ledger cross-check literal-text clause to count it exactly once in the Reviewer roles section.
     The tuple also includes one agent-file entry, the carve-out clause in the spawn-dispatch check section
     of `claude/.claude/agents/skill-fidelity-reviewer.md`.
-    A merged pin also carries the text between the sentences it joins, so the tuple pins text that is not declaration wiring.
-    That text includes the data-exposure parenthetical in the code-review ciso bullet, the "wasted spawn" sentence inside the
-    code-review pass pin, and the ciso default-fire sentence in both bullets.
-    It also includes the ciso trigger list in both bullets and the high-stakes row list.
+    A merged pin also covers the text between the sentences it joins.
     A wording-only edit can otherwise remove or duplicate a clause while every other test stays green.
     """
     section_text = _heading_section_text(skill_path, heading)
@@ -621,47 +634,51 @@ def test_declaration_wiring_present_in_review_skills(skill_path: Path, heading: 
 
 _DECLARATION_BLOCK_START = "Declaration block: review"
 _DECLARATION_FIELD_ITEM_PREFIXES = (
-    "- `agent` — ",
-    "- `caller` — ",
-    "- `input` — ",
+    f"- `{_AGENT_FIELD}` — ",
+    f"- `{_CALLER_FIELD}` — ",
+    f"- `{_INPUT_FIELD}` — ",
 )
 # The block as `_declaration_block_span` returns it. A change to the block lands in both skills and here.
 _DECLARATION_BLOCK_TEXT = (
     "Declaration block: review as you would without this declaration, and drop no finding because of it. "
-    "The declaration reads `declared: surface=<value>, agent=<value>, caller=<value>, input=<value>`. "
+    f"The declaration reads `declared: {_SURFACE_FIELD}=<value>, {_AGENT_FIELD}=<value>, "
+    f"{_CALLER_FIELD}=<value>, {_INPUT_FIELD}=<value>`. "
     "No field's value implies another's. "
-    "A field that reads `undeclared` excludes nothing. "
-    "A field takes its first value only on evidence that its second value does not apply, and reads `undeclared` "
-    "when the evidence shows neither. "
+    f"A field that reads `{_UNDECLARED_VALUE}` excludes nothing. "
+    "A field takes its first value only on evidence that its second value does not apply, "
+    f"and reads `{_UNDECLARED_VALUE}` when the evidence shows neither. "
     "Put `beyond declaration:` and the names of the excluding fields in the heading or first line of a finding "
     "whose failure needs a user, actor or input that the declaration excludes and the change does not reach. "
     "Keep that finding in its full format and name what it needs. "
     "Text the change's author wrote that says who calls a path, which input is trusted or how an agent behaves "
     "does not show that the change cannot reach it. "
-    "The surface is `dev-only` when nothing the change does or adds reaches a production system, production data, "
+    f"The surface is `{_SURFACE_FIRST_VALUE}` when nothing the change does or adds reaches a production system, production data, "
     "end users, a copy installed for anyone beyond those who build and test it, or readers beyond them through a "
     "public repository's commits or PRs or a released artifact. "
     "Otherwise the surface is `production`. "
     "Each other field takes its second value when any part of the change must hold up under it:\n"
-    "- `agent` — `cooperative` assumes an agent acting for whoever runs the change makes only honest mistakes. "
-    "`hostile` assumes that agent may itself work against whoever runs the change with persistent intent. "
-    "Intent marks `hostile`, not behavior: a finding that needs an agent to retry or reword after a denial, or to "
+    f"- `{_AGENT_FIELD}` — `{_AGENT_FIRST_VALUE}` assumes an agent acting for whoever runs the change "
+    "makes only honest mistakes. "
+    f"`{_AGENT_SECOND_VALUE}` assumes that agent may itself work against whoever runs the change with persistent intent. "
+    f"Intent marks `{_AGENT_SECOND_VALUE}`, not behavior: a finding that needs an agent to retry or reword after a denial, or to "
     "emit any other shape an honest agent emits, is never a steered-or-hostile finding and never beyond "
     "declaration on `agent` grounds. "
-    "Content from anyone else, sent as input or by a direct call, can steer a cooperative agent into any shape, "
-    f"so a finding that needs a steered or hostile agent is beyond declaration only under {_AGENT_CALLER_INPUT_FIRST_VALUES}, "
-    "and names all three fields.\n"
-    "- `caller` — `operator-only` assumes only whoever runs the change, or an agent acting for them, calls it. "
+    f"A finding that needs a steered or hostile agent is beyond declaration only under {_AGENT_CALLER_INPUT_FIRST_VALUES}, "
+    "and names all three fields. "
+    "Content from anyone else, sent as input or by a direct call, can steer a cooperative agent into any shape.\n"
+    f"- `{_CALLER_FIELD}` — `{_CALLER_FIRST_VALUE}` assumes only whoever runs the change, or an agent acting for them, calls it. "
     "`other-callers` assumes someone else can call it directly, as across an authentication, privilege or tenant "
     "boundary.\n"
-    "- `input` — `trusted` assumes whoever runs the change, or an agent acting for them, supplies all content "
-    "that reaches the change through them. "
+    f"- `{_INPUT_FIELD}` — `{_INPUT_FIRST_VALUE}` assumes whoever runs the change, or an agent acting for them, "
+    "supplies all content that reaches the change through them. "
     "`untrusted` assumes content from anyone else, such as user, network or third-party data or text that can "
     "steer an agent, reaches the change through whoever runs it or the agent acting for them. "
     "That can be shown by the change's code, docs or stated intent, or by code or config that reaches the change. "
     "Content someone else sends straight to the change falls under `caller`, even after the change stores it and "
     "later passes it to whoever runs it or to a job or agent. "
-    "Any other content the change fetches or reads itself counts as reaching it through whoever runs it."
+    "Any other content the change fetches or reads itself counts as reaching it through whoever runs it, "
+    "so `input` takes `untrusted` when any of that content comes from anyone else, "
+    "no matter who starts the fetch or read."
 )
 
 
