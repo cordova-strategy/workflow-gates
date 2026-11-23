@@ -3,10 +3,8 @@
 # PostToolUse Write|Edit|MultiEdit hook: when the content just written to a
 # .py/.sh file looks like a hand-rolled transcript-corpus glob
 # (`projects/*/*.jsonl`-shaped), name `transcript-analysis.py` via
-# `additionalContext` — it already unions across every config root declared
-# in `~/.claude/transcript-config-dirs` by default, which a one-off glob
-# almost never does. See `.claude/plans/transcript-parsing-guardrails.md`
-# for the incident this backstops.
+# `additionalContext`, because a one-off glob almost never covers every config root.
+# See `.claude/plans/transcript-parsing-guardrails.md` for the incident this backstops.
 #
 # The harness does not support `additionalContext` on `PreToolUse` at all,
 # so this fires one step later than ideal: after the write, before the
@@ -123,7 +121,7 @@ esac
 TRANSCRIPT_GLOB_PATTERN='projects/\*.*\.jsonl'
 grep -qE "$TRANSCRIPT_GLOB_PATTERN" <<< "$CONTENT" || exit 0
 
-ADDITIONAL_CONTEXT="This file's content looks like a hand-rolled transcript-corpus glob (a projects/*/*.jsonl shape). transcript-analysis.py already unions across every config root declared in ~/.claude/transcript-config-dirs by default — invoke the transcript-analysis skill instead of a one-off script, which silently covers only one root."
+ADDITIONAL_CONTEXT="Invoke the transcript-analysis skill instead of a one-off script. This file's content looks like a hand-rolled transcript-corpus glob (a projects/*/*.jsonl shape), which silently covers only one root. transcript-analysis.py's fail-seq, subagents, pr-link and the other commands that read every declared account take the union of every config root declared in ~/.claude/transcript-config-dirs by default, while its narrowed commands, which print raw names, paths or text, read the active account unless --this-repo or --all-accounts is passed (the list is in docs/transcript-analysis.md under Corpus scope: the declared-roots file)."
 
 # shellcheck disable=SC2016 # single-quoted on purpose: $ctx is a jq --arg binding, not a shell variable; double-quoting would expand it in the shell before jq sees it. Bare `jq` suppresses this itself, but the _lib_jq wrapper that carries the timeout backstop is opaque to shellcheck's jq awareness.
 _lib_jq -n --arg ctx "$ADDITIONAL_CONTEXT" \

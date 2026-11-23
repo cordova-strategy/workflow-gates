@@ -1257,6 +1257,37 @@ class TestPythonDocstringLines:
         assert stats.python_docstring_parse_failures == 1
 
 
+class TestPythonDocstringOwners:
+    @staticmethod
+    def _owner_ranges_by_name(source: str) -> dict[str, range | None]:
+        return {
+            "<module>" if isinstance(node, mine_szz.ast.Module) else node.name: docstring_range
+            for node, docstring_range in mine_szz._python_docstring_owners(source)
+        }
+
+    def test_an_undocumented_function_pairs_with_none(self):
+        assert self._owner_ranges_by_name("def f():\n    return 1\n")["f"] is None
+
+    def test_a_documented_function_pairs_with_its_trimmed_range(self):
+        source = 'def f():\n    """Summary.\n\n    Detail.\n    """\n    return 1\n'
+        assert self._owner_ranges_by_name(source)["f"] == range(2, 6)
+
+    def test_a_one_line_docstring_on_the_def_line_pairs_with_an_empty_range_distinct_from_none(self):
+        docstring_range = self._owner_ranges_by_name('def f(): """Summary."""\n')["f"]
+        assert docstring_range is not None
+        assert len(docstring_range) == 0
+
+    def test_a_module_node_is_returned_with_its_docstring_range(self):
+        assert self._owner_ranges_by_name('"""Module."""\nx = 1\n')["<module>"] == range(1, 2)
+
+    def test_a_parse_failure_returns_no_owners_and_counts_one_attempt_and_one_failure(self):
+        stats = mine_szz._MineStats()
+
+        assert mine_szz._python_docstring_owners("x = = 1\n", stats=stats) == []
+        assert stats.python_docstring_parse_attempts == 1
+        assert stats.python_docstring_parse_failures == 1
+
+
 def _mine_szz_summary_counters(stderr: str) -> dict[str, int]:
     (summary_line,) = (line for line in stderr.splitlines() if line.startswith("mine-szz:"))
     fields = summary_line.removeprefix("mine-szz:").split(", ")
