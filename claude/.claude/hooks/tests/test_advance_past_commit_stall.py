@@ -11,6 +11,7 @@ exit 0 with empty stdout — this is a fail-silent Stop hook, never a gate.
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
@@ -24,6 +25,8 @@ from helpers import (
     AUTONOMOUS_SHIPPING_STATEMENT_LEAD,
     CANARY_CONTENT,
     HOOKS_DIR,
+    REPO_ROOT,
+    SCRIPTS_DIR,
     TRAVERSAL_SESSION_ID,
     assert_ignored_by_repo_gitignore,
     build_path_without,
@@ -811,10 +814,81 @@ def test_config_row_false_disables_when_no_legacy_file_exists(isolated_home, dir
     assert result is None
 
 
+_REASON_LEAD_BEFORE_CONFIG_DIR = "To disable this for the config dir "
+_REASON_LEAD_AFTER_CONFIG_DIR = (
+    " (the command acts on the config dir its own shell resolves; "
+    "if its `wrote` line names a different directory, report that to the engineer): "
+)
+_QUALIFIER_VARIABLE = "_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER"
+_DISABLE_COMMAND = "~/.claude/scripts/config-set.sh commit_stall_block false"
+_STOW_SOURCE_SETTINGS_PATH = REPO_ROOT / "claude" / ".claude" / "settings.json"
+
+
+@functools.cache
+def _engineer_only_qualifier() -> str:
+    """The qualifier text as `_config.sh` defines it, the one wording the reason must carry.
+    Read on first use, so a failure names the test that needs it, not module collection."""
+    result = subprocess.run(
+        ["bash", "-c", f'. "$1"; printf "%s" "${_QUALIFIER_VARIABLE}"', "bash", str(HOOKS_DIR / "_config.sh")],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout, f"_config.sh defines no {_QUALIFIER_VARIABLE}"
+    return result.stdout
+
+
+def _link_config_set_script(isolated_home: Path) -> None:
+    """`isolated_home` links only the hooks lib chain, so the `~/.claude/scripts/` the reason names is made here."""
+    scripts_dir = isolated_home / ".claude" / "scripts"
+    scripts_dir.mkdir()
+    (scripts_dir / "config-set.sh").symlink_to(SCRIPTS_DIR / "config-set.sh")
+
+
+def _disable_command_from(reason: str, hook_config_dir: Path) -> str:
+    """The reason's disable command, after checking it is the one an ask rule names, qualified, scoped to the
+    config dir the hook blocks from, and not an append."""
+    lead = f"{_REASON_LEAD_BEFORE_CONFIG_DIR}{hook_config_dir}{_REASON_LEAD_AFTER_CONFIG_DIR}"
+    qualifier_and_lead, disable_command = reason.split(lead, 1)
+    assert qualifier_and_lead.endswith(f"{_engineer_only_qualifier()} ")
+    assert disable_command == _DISABLE_COMMAND
+    ask_rules = json.loads(_STOW_SOURCE_SETTINGS_PATH.read_text())["permissions"]["ask"]
+    assert f"Bash({disable_command})" in ask_rules
+    assert ">>" not in reason
+    assert ".commit-stall-block-disabled" not in reason
+    return disable_command
+
+
+def test_reason_names_no_setter_command_when_the_library_defines_no_qualifier(isolated_home, dirty_repo, tmp_path):
+    """A `_config.sh` that predates the qualifier leaves the variable empty, so the reason must not
+    carry an unqualified off-switch. The hook omits `set -u`, so nothing else would stop the expansion."""
+    isolated_hooks_dir = tmp_path / "isolated-hooks"
+    isolated_hooks_dir.mkdir()
+    (isolated_hooks_dir / ADVANCE_HOOK.name).symlink_to(ADVANCE_HOOK)
+    (isolated_hooks_dir / "_lib.sh").symlink_to(HOOKS_DIR / "_lib.sh")
+    (isolated_hooks_dir / "config-keys.psv").symlink_to(HOOKS_DIR / "config-keys.psv")
+    library_lines = (HOOKS_DIR / "_config.sh").read_text().splitlines(keepends=True)
+    older_library_lines = [line for line in library_lines if not line.startswith(f"{_QUALIFIER_VARIABLE}=")]
+    assert len(older_library_lines) < len(library_lines), f"_config.sh has no {_QUALIFIER_VARIABLE} assignment"
+    (isolated_hooks_dir / "_config.sh").write_text("".join(older_library_lines))
+
+    result = run_hook_stop(
+        isolated_hooks_dir / ADVANCE_HOOK.name,
+        stop_input(ISSUE_QUOTE_QUESTION, session_id="s", prompt_id="p1", cwd=str(dirty_repo)),
+        cwd=dirty_repo,
+        home=isolated_home,
+    )
+
+    assert result is not None, "the block itself must still fire"
+    assert _DISABLE_COMMAND not in result["reason"]
+    assert "config-set.sh" not in result["reason"]
+
+
 def test_reason_disable_instruction_disables_the_hook_when_run_beside_a_scaffolded_config_row(
     isolated_home, dirty_repo
 ):
     """The instruction the agent relays must take effect: the config row, not the legacy file."""
+    _link_config_set_script(isolated_home)
     config_toml = isolated_home / ".claude" / "claude-config.toml"
     config_toml.write_text("commit_stall_block = true\n")
     first = _fire(
@@ -823,13 +897,11 @@ def test_reason_disable_instruction_disables_the_hook_when_run_beside_a_scaffold
         home=isolated_home,
     )
     assert first is not None, "sanity check: the scaffolded `= true` row alone must not disable the hook"
-    reason = first["reason"]
-    assert ".commit-stall-block-disabled" not in reason
-    disable_command = reason.split("To disable this on this machine: ", 1)[1]
+    disable_command = _disable_command_from(first["reason"], isolated_home / ".claude")
 
     subprocess.run(["bash", "-c", disable_command], check=True)
 
-    assert config_toml.read_text().splitlines()[-1] == "commit_stall_block = false"
+    assert config_toml.read_text() == "commit_stall_block = false\n", "the row is rewritten in place, not appended"
     second = _fire(
         stop_input(ISSUE_QUOTE_QUESTION, session_id="s", prompt_id="p2", cwd=str(dirty_repo)),
         cwd=dirty_repo,
@@ -838,10 +910,11 @@ def test_reason_disable_instruction_disables_the_hook_when_run_beside_a_scaffold
     assert second is None
 
 
-def test_reason_disable_instruction_keeps_the_new_row_on_its_own_line_when_the_file_lacks_a_trailing_newline(
+def test_reason_disable_instruction_keeps_the_new_row_on_its_own_line_when_the_last_line_is_unterminated(
     isolated_home, dirty_repo
 ):
-    """An append onto a final line with no newline must not fuse into a malformed row that the reader skips."""
+    """The new row lands on its own line after an unterminated last line."""
+    _link_config_set_script(isolated_home)
     config_toml = isolated_home / ".claude" / "claude-config.toml"
     config_toml.write_text("handoff_nudge = false")
     first = _fire(
@@ -850,20 +923,63 @@ def test_reason_disable_instruction_keeps_the_new_row_on_its_own_line_when_the_f
         home=isolated_home,
     )
     assert first is not None, "sanity check: an unrelated row must not disable the hook"
-    disable_command = first["reason"].split("To disable this on this machine: ", 1)[1]
+    disable_command = _disable_command_from(first["reason"], isolated_home / ".claude")
 
     subprocess.run(["bash", "-c", disable_command], check=True)
 
-    assert config_toml.read_text().splitlines()[-2:] == [
-        "handoff_nudge = false",
-        "commit_stall_block = false",
-    ]
+    assert config_toml.read_text() == "handoff_nudge = false\ncommit_stall_block = false\n"
     second = _fire(
         stop_input(ISSUE_QUOTE_QUESTION, session_id="s", prompt_id="p2", cwd=str(dirty_repo)),
         cwd=dirty_repo,
         home=isolated_home,
     )
     assert second is None
+
+
+def test_reason_disable_command_writes_the_config_dir_its_own_shell_resolves_not_the_hooks(
+    isolated_home, dirty_repo, tmp_path
+):
+    """The hook blocks from config dir A. The command run under config dir B writes B's file and leaves A's hook armed;
+    only the command run under A disables it. Both dirs sit outside `<isolated_home>/.claude`, since the hook stays
+    silent for a missing config dir."""
+    _link_config_set_script(isolated_home)
+    config_dir_a = tmp_path / "config-dir-a"
+    config_dir_b = tmp_path / "config-dir-b"
+    config_dir_a.mkdir()
+    config_dir_b.mkdir()
+
+    def fire_under_a(prompt_id: str) -> dict | None:
+        return _fire(
+            stop_input(ISSUE_QUOTE_QUESTION, session_id="s", prompt_id=prompt_id, cwd=str(dirty_repo)),
+            cwd=dirty_repo,
+            home=isolated_home,
+            extra_env={"CLAUDE_CONFIG_DIR": str(config_dir_a)},
+        )
+
+    def run_command_under(config_dir: Path, disable_command: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["bash", "-c", disable_command],
+            capture_output=True,
+            text=True,
+            check=True,
+            env={**os.environ, "CLAUDE_CONFIG_DIR": str(config_dir)},
+        )
+
+    first = fire_under_a("p1")
+    assert first is not None
+    disable_command = _disable_command_from(first["reason"], config_dir_a)
+
+    under_b = run_command_under(config_dir_b, disable_command)
+
+    assert (config_dir_b / "claude-config.toml").read_text() == "commit_stall_block = false\n"
+    assert str(config_dir_b / "claude-config.toml") in under_b.stderr
+    assert not (config_dir_a / "claude-config.toml").exists()
+    assert not (isolated_home / ".claude" / "claude-config.toml").exists()
+    assert fire_under_a("p2") is not None, "a command that wrote B's file must leave A's hook blocking"
+
+    run_command_under(config_dir_a, disable_command)
+
+    assert fire_under_a("p3") is None
 
 
 def test_denied_root_logs_a_root_denied_line(isolated_home, non_repo_dir):

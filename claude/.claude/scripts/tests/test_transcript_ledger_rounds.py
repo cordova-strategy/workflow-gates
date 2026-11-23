@@ -603,6 +603,8 @@ class TestWriterBuiltRoundRepricesToItsStoredDollars:
         """The reader re-prices a round from its token splits and ignores the stored micro-dollars, so the splits must
         cover exactly the turns the writer priced. The first round holds a turn of every pricing variant, both
         cache-write classes and a dispatch, plus an unpriceable-model turn whose tokens must stay out of the splits.
+        It also holds a Haiku 5.5 turn per long-prompt variant and two lower-tier Haiku 5.5 turns whose prompts sum
+        past the tier threshold, so the re-price must tier each turn and not each stored group.
         A later round before the merge sits in a session file that sorts first, so the kept order is the writer's time
         order. A third round opens after the merge, so the writer's after_merge flag must reach the reader."""
         branch = "feat"
@@ -621,6 +623,19 @@ class TestWriterBuiltRoundRepricesToItsStoredDollars:
                 inference_geo="us",
             ),
             _priced_with_classes(_UNPRICED_MODEL, 500_000, branch=branch, ts="2026-08-01T10:04:00.000Z"),
+            _priced_with_classes("claude-haiku-5-5", 30_000, branch=branch, ts="2026-08-01T10:04:10.000Z"),
+            _priced_with_classes(
+                "claude-haiku-5-5", 31_000, branch=branch, ts="2026-08-01T10:04:20.000Z", speed="fast",
+            ),
+            _priced_with_classes(
+                "claude-haiku-5-5", 32_000, branch=branch, ts="2026-08-01T10:04:30.000Z", inference_geo="us",
+            ),
+            _priced_with_classes(
+                "claude-haiku-5-5", 33_000, branch=branch, ts="2026-08-01T10:04:40.000Z", speed="fast",
+                inference_geo="us",
+            ),
+            _priced_with_classes("claude-haiku-5-5", 14_000, branch=branch, ts="2026-08-01T10:04:50.000Z"),
+            _priced_with_classes("claude-haiku-5-5", 14_100, branch=branch, ts="2026-08-01T10:04:55.000Z"),
             _user_msg("thanks", branch=branch, ts="2026-08-01T10:05:00.000Z"),
         ])
         dispatched_turn = _priced_with_classes(
@@ -656,8 +671,13 @@ class TestWriterBuiltRoundRepricesToItsStoredDollars:
         assert main_input_tokens == [100_001, 700_001]
         assert read.after_merge_rounds == {"code-review": 1}
         read_round = read_rounds[0]
-        assert set(read_round["main_tokens"]) == {"claude-sonnet-5"}
-        assert set(read_round["main_tokens"]["claude-sonnet-5"]) == set(pricing._PRICING_VARIANTS)
+        assert set(read_round["main_tokens"]) == {"claude-sonnet-5", "claude-haiku-5-5"}
+        sonnet_variants = set(read_round["main_tokens"]["claude-sonnet-5"])
+        haiku_variants = set(read_round["main_tokens"]["claude-haiku-5-5"])
+        assert sonnet_variants == {"standard", "fast", "us_geo", "fast_us_geo"}
+        assert sonnet_variants | haiku_variants == set(pricing._PRICING_VARIANTS)
+        haiku_standard_group = read_round["main_tokens"]["claude-haiku-5-5"]["standard"]
+        assert sum(haiku_standard_group[cls] for cls in ("input", "cache_read", "cache_write_5m", "cache_write_1h")) > 100_000
         assert set(read_round["agent_tokens"]["claude-sonnet-5"]) == {"fast"}
         assert read_round["unpriced_turns"] == 1
         stored_dollars = (read_round["main_usd_micros"] + read_round["agent_usd_micros"]) / 1_000_000

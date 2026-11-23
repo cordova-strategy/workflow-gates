@@ -29,6 +29,7 @@ tmp_path_retention_policy = "failed"
 tmp_path_retention_count = 1
 markers = [
   "timing: asserts a wall-clock bound, or needs serial isolation to avoid subprocess-spawn contention flakiness; run serially (-m timing -n0) — see claude/.claude/tests/test_pytest_collection_config.py",
+  "saturates_cpu: starts one busy process per CPU core, and is always applied together with timing. select-tests.py's serial pass deselects it, and CI's serial step runs it.",
 ]
 # Setting norecursedirs replaces pytest's built-in default list rather than
 # extending it, so all nine defaults are restated here alongside the repo's own entries —
