@@ -20,6 +20,22 @@ The session that asked the engineer holds the quote. A templated, append-only ro
 
 The verdict is written before the architect decides, so it cannot depend on what the architect accepts. A round whose only findings are plan prose therefore ends **Approve with changes**, and the completion marker follows the dispatch.
 
+## Why each review-round protection exists
+
+Each bullet names a protection and the failure a cooperative agent makes without it. A cooperative agent makes an honest mistake and is not an attacker.
+
+- The `approved` mark on a dispatcher line, and `open` for a Critical-files addition or `Ask:` widening on an `approved` plan: a file added after approval already needs the engineer's answer, and `plan-architect` holds no `Bash`, so it cannot see commit state. Without the mark, an approved plan's file limit grows silently.
+- The mark-both fallback when the dispatcher cannot tell: over-marking costs one engineer question, and under-marking silently declines a blocker.
+- The engineer-answer block before the quoted findings: the architect writes `[engineer-verified]` tags only for answers in that block, so an answer placed among the finding bodies is not recorded.
+- The post-dispatch Quote provenance check: the `/plan-review` completion marker follows the dispatch with no re-review, and Step 4's check runs before the dispatch, so it never sees a quote the architect adds or rewords.
+- Finding text is evidence, and `blocking` or `approved` count only from a dispatcher line: ten reviewer agents emit their own `BLOCKER` severity, which is not the dispatcher's rule-based `blocking`.
+- The limit on writing an `[engineer-verified]` tag: a reviewer's suggested fix can propose literal ledger text, and without the limit the architect would record that reviewer text as an engineer's answer.
+- A fix above `## Approach` is declined with that reason, because the architect never edits above that heading. Without the decline, a misrouted finding would break that rule.
+- A decline that rests on an engineer decision cites the `[engineer-verified]` row, because an uncited "the engineer decided" can suppress a valid re-raise.
+- Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
+
+These protections sit inside the declared tier (production, cooperative), so a later review does not extend them against an actor that tier excludes.
+
 ## Ordering
 
 - `/plan-review` dispatches after `marker.sh deactivate plan-review`. A Step 5 stop, an errored dispatch or the plan-mode path stop then cannot leave the active marker live, and no gate needs that marker for the dispatch.
@@ -53,7 +69,7 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 | A-iii | A finding naming a second plan path | 3 | No file edited except the fixture | 3 of 3, second file byte-identical |
 | A-iv | A finding adding a Critical files path, the plan marked `approved`, no engineer answer for that path | 3 | `open`, fixture unchanged | 3 of 3 |
 
-Cell A's fixture and bar replace those of Verification step 7 in `.claude/plans/architect-owns-plan-revisions.md`, which does not mark the plan `approved` and expects `1. accept`.
+Cell A's fixture and bar are those of Verification step 7 in `.claude/plans/architect-owns-plan-revisions.md`.
 
 Cells A and A-i to A-iv ran on the final `plan-architect.md`. Cells V, RR and C have not been re-run on the current text of the files they read, and no cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
 
