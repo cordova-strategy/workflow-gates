@@ -706,6 +706,45 @@ def test_runner_skips_home_claude_and_the_checkout_and_bounds_ancestors(tmp_path
     _assert_neither_stream_names_an_account(run)
 
 
+@pytest.mark.parametrize(
+    ("checkout_parent", "checkout_name", "glob_matched_sibling"),
+    [
+        pytest.param("", "new*", "newer-parent", id="star"),
+        pytest.param("", "new?", "newx", id="question-mark"),
+        pytest.param("Projects [old]", "repo", "Projects o/repo", id="brackets"),
+    ],
+)
+def test_runner_reads_glob_characters_in_the_checkout_path_literally(
+    tmp_path: Path, checkout_parent: str, checkout_name: str, glob_matched_sibling: str
+) -> None:
+    parent = tmp_path / checkout_parent
+    parent.mkdir(exist_ok=True)
+    scene = _runner_scene_base(tmp_path, new_repo_parent=parent, new_repo_name=checkout_name)
+    inside = scene.new_repo / "acct-inside"
+    inside.mkdir()
+    inside_link_text = _stale_link(inside, "hooks", tmp_path / "old-repo")
+    # An unquoted checkout path would match this sibling's path as a pattern in the inside-checkout test.
+    # Only the brackets row, whose path holds a space, fails when the checkout-walk operands are unquoted.
+    sibling = tmp_path / glob_matched_sibling / "acct-sibling"
+    sibling.mkdir(parents=True)
+    _stale_link(sibling, "hooks", tmp_path / "old-repo")
+    checkout_link_text = _stale_link(scene.new_repo, "hooks", tmp_path / "old-repo")
+    scene.write_roots_file((str(inside), inside), (str(sibling), sibling), (str(scene.new_repo), scene.new_repo))
+
+    run = _run_runner(scene.home, scene.new_repo, scene.scratch)
+
+    assert run.call_statuses == [0], run.stderr
+    for line in (1, 3):
+        skip_line = f"the dir on line {line} of {_ROOTS_LABEL} lies inside the checkout, which this command never re-links"
+        assert skip_line in run.stdout
+    assert os.readlink(inside / "hooks") == inside_link_text
+    assert os.readlink(scene.new_repo / "hooks") == checkout_link_text
+    assert _outcomes(run.stdout) == [(2, 1, 0, 0, 0)]
+    assert (sibling / "hooks").resolve() == (scene.new_repo / _PACKAGE_ROOT / "hooks").resolve()
+    _assert_neither_stream_names_a_listed_dir(run, scene.listed_dirs, scene.home)
+    _assert_neither_stream_names_an_account(run)
+
+
 def _failing_mv_for(account: Path) -> str:
     return (
         f"ACCT={shlex.quote(str(account))}\n"
@@ -839,6 +878,12 @@ def test_runner_resets_declared_rows_on_each_call(tmp_path: Path) -> None:
         pytest.param("/a/b/c", "/a", "../..", id="target-is-an-ancestor"),
         pytest.param("/a/b", "/a/b", ".", id="equal-paths"),
         pytest.param("/a b/c", "/a b/d e", "../d e", id="path-with-a-space"),
+        pytest.param("/a/x*", "/a/xy/d", "../xy/d", id="star-in-start-is-not-a-pattern"),
+        pytest.param("/a/x?", "/a/xy/d", "../xy/d", id="question-mark-in-start-is-not-a-pattern"),
+        pytest.param("/a/[b]", "/a/[b]/c", "c", id="brackets-in-start-match-literally"),
+        pytest.param("/a/[b]", "/a/b/c", "../b/c", id="brackets-in-start-do-not-match-a-member"),
+        pytest.param("/a/x*", "/a/x*/d", "d", id="star-in-start-with-target-beneath-is-not-a-pattern"),
+        pytest.param("/a/[b]", "/a/[b]", ".", id="brackets-in-equal-paths-match-literally"),
     ],
 )
 def test_relative_path(tmp_path: Path, from_dir: str, to_path: str, expected: str) -> None:
