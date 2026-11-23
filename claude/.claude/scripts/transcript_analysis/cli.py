@@ -199,6 +199,16 @@ def main() -> None:
                 file=sys.stderr,
             )
             sys.exit(2)
+        # --all-accounts asks for every account while --config-dir names one. Only the narrowed
+        # commands reach this check: pr-cost and review-cost-by-size, the other --all-accounts
+        # registrants, are members of the refusal tuple above and exit before it.
+        if getattr(parsed, "all_accounts", False):
+            print(
+                f"{parsed.subcommand}: --all-accounts is refused with the top-level --config-dir,"
+                " which names one account; drop one of them",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         # Every other subcommand's scan roots funnel through scope.resolve_scan_roots,
         # which reads parsed.config_dir directly for its override branch rather
         # than through this reassignment, so this cannot diverge from a

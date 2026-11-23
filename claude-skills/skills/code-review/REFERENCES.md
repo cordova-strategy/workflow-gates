@@ -215,7 +215,6 @@ fetched by a `verify-sources` subagent 2026-09-25; re-verify by
 2026-12-25, since this is the harness's own tool behavior rather than a
 versioned spec — plus the live Read result quoted above.
 
-Cited from `docs/design-decisions/code-file-line-limit.md` as a
-feasibility coincidence, not a quality threshold: this cap is the Read
-tool's own window, not evidence that 1,000 lines is where defects
-start.
+Cited from `docs/design-decisions/code-file-line-limit.md` as the
+measurement behind reading a file whole in one default Read call, a second
+basis for the 1,000-line limit.

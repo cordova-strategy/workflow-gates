@@ -139,6 +139,8 @@ GH-1119 lists the plan defaults and consequences below for the engineer to see w
 - Closing condition: the PR that brings the file to 1,000 lines or fewer.
 - For a closure file below, the body also carries the four windows and names #1114 and #1115 as where to read the review bench campaign's current state.
 
+**Superseded 2026-11-20:** this paragraph's instruction to file the proposed issues is not followed. No per-file issue is filed, and the exception table is the split backlog (`docs/design-decisions/code-file-line-limit.md`).
+
 **Harness closure.** The review bench hashes a set of files when it freezes its baseline, and a change to any of them after the freeze invalidates that baseline. The set comes from `compute_harness_closure()` in `evals/review_bench/analysis.py`, which walks imports statically from the bench's runner, adjudicator and analysis modules. A closure file that is also an offender carries `; closure-windows` after its tracking value or reason. The windows, from `.claude/plans/measure-review-quality.md:364-368, :376`:
 - Before the smoke campaign, splitting is free.
 - After the smoke campaign and before `freeze`, splitting is allowed but forces a re-smoke.
