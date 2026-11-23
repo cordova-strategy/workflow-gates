@@ -11,12 +11,8 @@ Imports corpus, pricing, render, review_ledger, review_rounds, and scope by modu
 (attribute access, not by name). This matches review_rounds.py's own
 cross-module discipline (see scope.py's own top-of-file comment for why).
 
-Classifies each round by reading its own review-narrative-ledger files
-directly, through review_ledger. Rows are attributed to a session by their own `session_id`
-field, or by the session id in the filename for a row without one. Session
-ids are globally unique (UUIDs), and a branch-keyed file holds several
-sessions' rows, so this is a per-root index over every ledger file, not a
-1:1 point lookup. The transcript is still the sole source for round-open positions,
+Classifies each round from its review-narrative-ledger rows, which review_ledger reads,
+attributes to sessions and indexes per config-dir root. The transcript is still the sole source for round-open positions,
 dispatch completion ordering, and the marker-write fallback signal. Only
 the disposition/authoring-agent values move to the ledger.
 

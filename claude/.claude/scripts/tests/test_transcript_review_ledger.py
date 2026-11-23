@@ -128,8 +128,8 @@ class TestLedgerRowAttribution:
 
 
 class TestReadLedgerRowEntriesForSession:
-    """_write_ledger_file/_ledger_row (the conftest fixtures every other
-    test in this file uses) can only ever produce valid-JSON lines, so they
+    """_write_ledger_file/_ledger_row (the conftest fixtures other
+    tests in this file use) can only ever produce valid-JSON lines, so they
     can't exercise the malformed-line/unreadable-file tolerance
     _read_ledger_rows_from_file's own docstring claims -- these
     write the ledger file directly instead."""
@@ -254,6 +254,40 @@ class TestReadLedgerRowEntriesForSession:
         assert [row["round"] for _file_index, row in entries] == [1]
         assert listed_dirs == [ledger_dir]
 
+    def test_an_index_shared_across_lookups_sees_a_new_file_and_appended_rows_and_parses_an_unchanged_file_once(
+        self, tmp_path, monkeypatch,
+    ):
+        ledger_dir = tmp_path / "review-narrative-ledger"
+        ledger_dir.mkdir(parents=True)
+        first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
+        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
+        jsonl.parent.mkdir(parents=True)
+        jsonl.write_text("")
+        real_read = review_ledger._read_ledger_rows_from_file
+        parsed_paths = []
+
+        def _counting_read(ledger_path, **reader_options):
+            parsed_paths.append(ledger_path)
+            return real_read(ledger_path, **reader_options)
+
+        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", _counting_read)
+        ledger_indexes = {}
+
+        first_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+        unchanged_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+        assert parsed_paths == [first_path]
+        assert len(unchanged_entries) == len(first_entries) == 1
+
+        with first_path.open("a") as ledger_file:
+            ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
+        second_path = _write_branch_ledger_file(
+            tmp_path, "b" * 64, [_ledger_row(round=3, disposition="DEFER", session_id="sess-1")],
+        )
+        grown_entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
+
+        assert sorted(row["round"] for _file_index, row in grown_entries) == [1, 2, 3]
+        assert sorted(parsed_paths, key=str) == sorted([first_path, first_path, second_path], key=str)
+
     def test_a_file_with_no_session_slot_yields_no_rows_for_the_session_named_like_its_stem(self, tmp_path):
         """`notes.jsonl` has no session-id slot, so rows without a `session_id` belong to no session,
         including the one whose id equals the file's stem."""
@@ -289,8 +323,8 @@ class TestReadLedgerRowEntriesForSession:
         supplied, not the shared constant default) event_time values that
         invert filename/glob order -- repo_hash "0"*64 sorts first by
         filename, but carries the LATER event_time, while "f"*64 sorts last
-        by filename and carries the EARLIER one. Every row in every fixture used
-        elsewhere in this file shares one fixed event_time, which makes
+        by filename and carries the EARLIER one. A fixture row that supplies no
+        event_time of its own shares one fixed event_time, which makes
         Python's stable sort fall back to file-encounter order and would
         silently mask a broken sort key. Mirrors
         test_show_merges_the_branch_and_session_files_in_event_time_order
@@ -355,7 +389,9 @@ class TestReviewLedgerSubprocessIntegration:
     """Runs the real review-ledger.sh append subprocess and reads it back
     through the same reader functions other tests exercise only against a
     hand-maintained fixture, pinning writer/reader schema agreement by
-    actual execution instead of two independently maintained copies."""
+    actual execution instead of two independently maintained copies.
+    Some tests also classify the rows with author_outcome._classify_round,
+    so they pin the reader-to-classifier hand-off as well."""
 
     SESSION_ID = "subprocess-integration-session"
 
