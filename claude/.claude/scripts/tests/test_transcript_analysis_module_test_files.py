@@ -11,7 +11,6 @@ TESTS_DIR = REPO_ROOT / "claude" / ".claude" / "scripts" / "tests"
 
 # Modules whose tests live in a file named for something else, mapped to that file.
 MODULES_TESTED_ELSEWHERE = {
-    "author_outcome": "test_author_outcome.py",
     "cache_rebuild_rules": "test_transcript_cache_rebuild_ttl_rules.py",
 }
 
