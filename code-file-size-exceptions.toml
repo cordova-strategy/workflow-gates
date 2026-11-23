@@ -35,7 +35,7 @@ verdict = "split pending"
 seam = "Test-class families `TestParseSkillFrontmatter`, `TestExtractGoverningRule`, `TestDetectDispatch`, `TestBuildDispatchCommand` and `TestRaiseIfBlockedPromptStream`"
 
 ["claude/.claude/hooks/_config.sh"]
-ceiling = 1337
+ceiling = 1393
 verdict = "split pending"
 seam = "Writer half (`_config_set`, `_config_scaffold`, `_config_quote_value_for_write`) apart from the reader (`_config_resolve`, `_config_lookup`); the writer sibling must stay independent of `_lib.sh`"
 issue = 1117
@@ -51,7 +51,7 @@ verdict = "split pending"
 seam = "Bash write-scan (`_bash_marker_fragment_candidates`, `_bash_marker_redirect_candidates`, `_script_op_scan`) apart from the shape matcher (`_marker_shape_match`, `_shape_match_denial_reason`)"
 
 ["claude/.claude/hooks/tests/test_advance_past_commit_stall.py"]
-ceiling = 1527
+ceiling = 1643
 verdict = "split pending"
 seam = "Test families by concern: fire predicate (`test_fire_predicate_corpus`), pending-work detection (`test_dirty_tree_is_pending`), disable switches (`test_kill_switch_disables`), degraded environments (`test_jq_absent_exits_zero_empty_stdout`) and state sweep (`test_sweep_deletes_entries_older_than_30_days`)"
 
@@ -86,7 +86,7 @@ verdict = "split pending"
 seam = "Test-class families `TestCheckSkillLength` and `TestCheckSkillLengthMergeAwareBase`, with the merge builders (`_build_clean_merge_growing_skill`) moving with the second"
 
 ["claude/.claude/hooks/tests/test_config_lib.py"]
-ceiling = 2631
+ceiling = 3111
 verdict = "split pending"
 seam = "Test-class families following the reader and writer halves of `_config.sh`: resolution (`TestExitCodeContract`, `TestLegacyPolarity`, `TestUnionSemantics`), writer (`TestConfigSet`, `TestConfigScaffold`) and memoization (`TestMemoization`, `TestMemoizationUnionBranch`)"
 
@@ -132,7 +132,7 @@ verdict = "split pending"
 seam = "One test class, so the seam is test-method families inside `TestGuardSettingsSessionKeys`: top-level keys (`test_model_change_denies_commit`), nested keys (`test_nested_effort_level_added_where_env_absent_denies`), deny messages (`test_deny_message_names_both_nested_keys`) and passthrough (`test_non_commit_command_allows`)"
 
 ["claude/.claude/hooks/tests/test_hook_alignment.py"]
-ceiling = 3756
+ceiling = 3767
 verdict = "split pending"
 seam = "Test families by concern: class headers (`TestHookClassHeader`), gate behavior (`TestGateHookBehavior`), regex portability (`test_no_gnu_backslash_s_regex_extension`) and registration shape (`test_every_registered_hook_entry_has_type_and_command`)"
 issue = 1532
@@ -289,7 +289,7 @@ verdict = "split pending"
 seam = "Test-class families by install step: venv creation and recovery (`TestUnhealthyVenvIsRecreated`, `TestIdempotency`, `TestEnsurepipMissingDebian`), pinned interpreter (`TestPinnedInterpreter`, `TestPinnedInterpreterFailsToStart`), opt-in gate (`TestPrivateProjectsGate`), plugin step (`TestPyrightLspStep`, `TestConfirmPluginInstall`)"
 
 ["claude/.claude/scripts/tests/test_migrate_legacy_config.py"]
-ceiling = 1050
+ceiling = 1065
 verdict = "split pending"
 seam = "Test-class families by migration concern: migration matrix (`TestMigrationMatrixStateFileAbsent`, `TestMigrationMatrixStateFilePresentKeyRowPresent`), rerun safety (`TestHandEditSurvivesRerun`, `TestDoubleInvocationIdempotency`), delete prompt (`TestDeleteConfirmationPrompt`), enforcement-critical import (`TestTTYInvarianceOfEnforcementCriticalImport`, `TestEnforcementCriticalDirectionAwareImport`), failure isolation and validation (`TestPerKeyFailureIsolation`, `TestSchemaRowValidation`)"
 
@@ -469,12 +469,12 @@ verdict = "split pending"
 seam = "Lifecycle stages: capture (`_run_capture`, `_parse_capture_bytes`, `_load_capture_file`), session config-keys log reading (`_read_session_config_keys_log`), deny reconciliation (`_reconcile_denies`), compute (`_run_compute`, `_bootstrap_net`)"
 
 ["claude/.claude/scripts/transcript_analysis/scope.py"]
-ceiling = 1166
+ceiling = 1235
 verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 
 ["claude/.claude/tests/helpers.py"]
-ceiling = 4166
+ceiling = 4175
 verdict = "structural exception"
 reason = "#1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file. A helper used by one test tree goes in that tree's local module, not in helpers.py."
 
@@ -504,7 +504,7 @@ verdict = "split pending"
 seam = "Run records (`RunRecord`, `read_run_records`), transcript parsing (`extract_read_like_calls`, `extract_result_usage`), validity (`evaluate_run_validity`), run store (`RunStore`), campaign (`run_campaign`), environment record (`read_environment_record`)"
 
 ["evals/run_review_bench.py"]
-ceiling = 2351
+ceiling = 2421
 verdict = "split pending"
 seam = "Subcommands: mining (`cmd_mine_szz`, `cmd_mine_pr_comments`), confirm (`cmd_confirm`), judge (`cmd_judge`), analyze (`cmd_analyze`), freeze (`cmd_freeze`), spot-check (`cmd_spot_check_export`)"
 
@@ -544,7 +544,7 @@ verdict = "split pending"
 seam = "Run record and validity (`TestAValidRun`, `TestForgedLog`, `TestInstrumentReasons`), retry behavior (`TestRetryThenMissing`), worker failures (`TestWorkerFailures`, `TestAttemptsRunningTogether`), command line (`TestTheCommandLine`)"
 
 ["evals/test_replay_bench_summary.py"]
-ceiling = 1135
+ceiling = 1621
 verdict = "split pending"
 seam = "Test-class families by summary section: the primary and paired outcomes with run spread and exclusions (`TestThePrimaryOutcome`, `TestThePairedOutcomeAsValues`, `TestTheRunSpread`, `TestTheExclusionLine`), block and record handling (`TestCompleteAndIncompleteBlocks`, `TestARecordThatDoesNotParse`, `TestSummarizeCreatesNothing`), secondary outcomes and diagnostics (`TestSecondaryAndDiagnostics`, `TestThePairedSecondaryOutcome`), and the campaign, reference and spend lines (`TestTheCampaignLineNamesTheRunner`, `TestAnUnavailableReferenceNamesItsCause`, `TestAReadableReferenceIsReportedWithoutAWarning`, `TestSpendByAccount`)"
 
@@ -563,6 +563,11 @@ ceiling = 1597
 verdict = "split pending"
 seam = "Statistics (`TestPercentile`, `TestRecallCountsAndDropRule`, `TestFixtureClusterBootstrap`), verdicts (`TestArmRecallAndSensitivityVerdict`, `TestCertifyLaterArm`), harness closure (`TestHarnessClosure`, `TestHarnessClosureOverASyntheticTree`), freeze checks (`TestManifestAndFreezeChecks`, `TestCheckAgainstFrozenConditions`), report columns (`TestSecondaryReportColumns`, `TestBaselineReportFreezeIdentity`)"
 
+["evals/test_review_bench_calibrate.py"]
+ceiling = 1007
+verdict = "split pending"
+seam = "Calibration families (`TestScenarioDraws`, `TestSolver`, `TestDecideReplicate`, `TestDegenerateTermsFromPrecisionCounts`, `TestSummarizeCell`), sweep and workers (`TestSweep`, `TestWorkersAndSeeds`, `TestPlannedCellsReachTheirTrueDifference`), and the command and config (`TestCalibrateCommand`, `TestCalibrationConfig`)"
+
 ["evals/test_review_bench_cli.py"]
 ceiling = 7124
 verdict = "split pending"
@@ -574,7 +579,7 @@ verdict = "split pending"
 seam = "Fixture repos and artifacts (`TestBuildTwoCommitRepo`, `TestWriteBenchArtifacts`, `TestBuildSingleCommitRepo`), archive extraction (`TestExtractArchiveRefusesAGitPathComponent`, `TestExtractArchiveRefusesALinkIntoGit`, `TestExtractArchiveRefusesWritesThroughHarnessAndConfigPaths`), arm rendering (`TestRenderArmAgent`, `TestSnapshotArmAndInstallArm`)"
 
 ["evals/test_review_bench_mining.py"]
-ceiling = 6217
+ceiling = 6248
 verdict = "split pending"
 seam = "Candidate schema and description policy (`TestCandidateAndConfirmedDefectSchema`, `TestDescriptionPolicy`), SZZ miner (`TestMineSzz`, `TestMineSzzSkipsPythonDocstringLines`), review-round miner (`TestResolveDefectCommits`, `TestMineReviewRoundsCandidates`), PR-comment miner (`TestMinePrComments`, `TestClassifyReply`), confirm CLI (`TestConfirmCli`)"
 
