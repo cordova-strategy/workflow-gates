@@ -48,6 +48,19 @@ def _fake_transcript_path(config_dir_root: Path, session_id: str) -> Path:
     return jsonl
 
 
+def _grow_keeping_mtime(ledger_path: Path, before: os.stat_result) -> None:
+    """Change only the size half of the index signature."""
+    with ledger_path.open("a") as ledger_file:
+        ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
+    os.utime(ledger_path, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+
+def _rewrite_at_same_size_with_newer_mtime(ledger_path: Path, before: os.stat_result) -> None:
+    """Change only the mtime half of the index signature."""
+    ledger_path.write_text(ledger_path.read_text().replace('"round": 1', '"round": 7'))
+    os.utime(ledger_path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+
+
 class TestListLedgerFiles:
     def test_lists_jsonl_files_sorted_by_filename_and_skips_lock_files(self, tmp_path):
         ledger_dir = tmp_path / "review-narrative-ledger"
@@ -612,9 +625,15 @@ class TestLedgerIndex:
         assert sorted(row["round"] for _file_index, row in grown_entries) == [1, 2, 3]
         assert sorted(parsed_paths, key=str) == sorted([first_path, first_path, second_path], key=str)
 
-    @pytest.mark.parametrize("rewrite_at_same_size", [False, True], ids=["grown-same-mtime", "same-size-newer-mtime"])
+    @pytest.mark.parametrize(
+        ("change_one_signature_half", "expected_rounds"),
+        [
+            pytest.param(_grow_keeping_mtime, [1, 2], id="grown-same-mtime"),
+            pytest.param(_rewrite_at_same_size_with_newer_mtime, [7], id="same-size-newer-mtime"),
+        ],
+    )
     def test_a_changed_signature_half_alone_makes_the_index_re_read_the_file(
-        self, tmp_path, rewrite_at_same_size,
+        self, tmp_path, change_one_signature_half, expected_rounds,
     ):
         first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
         jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
@@ -625,13 +644,7 @@ class TestLedgerIndex:
         assert [row["round"] for _file_index, row in entries] == [1]
         before = first_path.stat()
 
-        if rewrite_at_same_size:
-            first_path.write_text(first_path.read_text().replace('"round": 1', '"round": 7'))
-            os.utime(first_path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
-        else:
-            with first_path.open("a") as ledger_file:
-                ledger_file.write(json.dumps(_ledger_row(round=2, disposition="DEFER")) + "\n")
-            os.utime(first_path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        change_one_signature_half(first_path, before)
         entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
 
-        assert sorted(row["round"] for _file_index, row in entries) == ([7] if rewrite_at_same_size else [1, 2])
+        assert sorted(row["round"] for _file_index, row in entries) == expected_rounds
