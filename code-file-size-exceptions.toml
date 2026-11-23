@@ -443,6 +443,11 @@ ceiling = 1977
 verdict = "split pending"
 seam = "Test-class families by helper: in-use detection (`TestWorktreeInUseIdlePath`, `TestWorktreeInUseLiveProcess`, `TestCollectProcessCwdsExcludesSelf`), resolution and listing (`TestResolveWorktreeForBranch`, `TestCollectAllWorktrees`, `TestWorktreeMatchesFilter`), state checks (`TestWorktreeIsClean`, `TestWorktreeRemovalVerdict`), ensure checks (`TestEnsureNameCheck`, `TestEnsureClassify`, `TestEnsureTargetCheck`, `TestEnsureDescribeRecord`)"
 
+["claude/.claude/scripts/transcript_analysis/author_outcome.py"]
+ceiling = 1013
+verdict = "split pending"
+seam = "Ledger reading (`_read_ledger_rows_from_file`, `_LedgerIndex`, `_read_ledger_row_entries_for_session`) apart from the per-round attribution that consumes it (`compute_author_outcomes`)"
+
 ["claude/.claude/scripts/transcript_analysis/cost.py"]
 ceiling = 1329
 verdict = "split pending"
