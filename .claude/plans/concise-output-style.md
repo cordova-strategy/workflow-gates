@@ -274,9 +274,11 @@ No mechanism below is heavier than the task: each is a one-key settings edit, on
   - the stowed `settings.json` now selects the Concise output style for the main conversation and forks, and other subagents are unaffected;
   - `README.md` § "Concise output style by default" describes it;
   - a user whose checkout's `settings.json` already sets `outputStyle` checks, after any pull, that the file holds exactly one `outputStyle` line, their own (row 42);
-  - a pull that git refuses because the checkout's `settings.json` holds any uncommitted change, an `outputStyle` line or a `/config`-written `model` alike, gets one next step: save a copy of the file outside the checkout, restore the tracked file, pull, then re-apply the saved edit from the copy. That git refuses such a pull is `[unverified]` (row 42);
-  - the bullet does not recommend `git stash`, because every worktree of the repo shares the stash stack;
+  - a pull that git refuses because the checkout's `settings.json` holds an uncommitted change, such as a `model` value that `/config` wrote, gets one next step: save your own lines elsewhere, run `git restore --source=HEAD --staged --worktree claude/.claude/settings.json`, pull, and re-apply only those lines. That git refuses such a pull is `[unverified]` (row 42);
+  - a user who keeps an `output-preferences.md` file is told that which instruction wins between it and Concise is unobserved (row 20);
   - it takes effect in sessions started after the pull. This follows the CHANGELOG bullet reading "**Takes effect** for a session only if that session started after you pulled this change." without its "only if", because whether a running session picks up a pulled value is unverified (row 28).
+
+  The bullet does not recommend `git stash`, because every worktree of the repo shares the stash stack.
 
   `anchors: row28`
 - **M7 — No edit to `claude/.claude/CLAUDE.md`.** `anchors: row21`
