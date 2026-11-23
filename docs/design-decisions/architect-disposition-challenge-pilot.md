@@ -233,7 +233,7 @@ The sibling record's "Why every return that is not a valid table stops" section 
 - **Added enable preconditions.** Every precondition the "Enabling, checking, disabling" section lists is also met afresh, carrying none from the first window. This note stands for the withheld-values file, because the six values are published here. The fixture set's pass/fail table is recorded in a private directory under the copies' modes. Four more apply:
   - The routing default's decision.
   - This note's merge.
-  - A passing dry run of the analysis-set selection. The dry run reads recent sessions on the enabling account whose ledger rows sit in files the path set selects, and keeps its output in a private directory under the copies' modes. It shows a passing session, an Opus-main session that fails and, under the `true` arm, one routed round's ledger rows joined to its main session.
+  - A passing dry run of the analysis-set selection. The dry run reads recent sessions on the enabling account whose ledger rows sit in files the path set selects, and keeps its output in a private directory under the copies' modes. Because the key is off before the enable, the dry run reads `architect_disposition_challenge_pilot` from each governing config-keys row but does not require it to be `true`. It shows a passing session, an Opus-main session that fails and, under the `true` arm, one routed round's ledger rows joined to its main session.
   - The first window's passed safety read.
 
 ## Ad-hoc key-on/key-off note, outside the pre-registration
