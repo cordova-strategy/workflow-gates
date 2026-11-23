@@ -563,11 +563,6 @@ ceiling = 1597
 verdict = "split pending"
 seam = "Statistics (`TestPercentile`, `TestRecallCountsAndDropRule`, `TestFixtureClusterBootstrap`), verdicts (`TestArmRecallAndSensitivityVerdict`, `TestCertifyLaterArm`), harness closure (`TestHarnessClosure`, `TestHarnessClosureOverASyntheticTree`), freeze checks (`TestManifestAndFreezeChecks`, `TestCheckAgainstFrozenConditions`), report columns (`TestSecondaryReportColumns`, `TestBaselineReportFreezeIdentity`)"
 
-["evals/test_review_bench_calibrate.py"]
-ceiling = 1007
-verdict = "split pending"
-seam = "Calibration families (`TestScenarioDraws`, `TestSolver`, `TestDecideReplicate`, `TestDegenerateTermsFromPrecisionCounts`, `TestSummarizeCell`), sweep and workers (`TestSweep`, `TestWorkersAndSeeds`, `TestPlannedCellsReachTheirTrueDifference`), and the command and config (`TestCalibrateCommand`, `TestCalibrationConfig`)"
-
 ["evals/test_review_bench_cli.py"]
 ceiling = 7124
 verdict = "split pending"
