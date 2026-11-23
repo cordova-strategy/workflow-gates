@@ -6,6 +6,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **A new Main session rule in the global `CLAUDE.md` has the main session and forks make the tool call for a next step they name, in the same message.** A message with no tool call ends the turn, so a step it only names never runs.
+  - The turn may end on a named step only when `CLAUDE.md`, the skill being followed, a fork's dispatcher, or a hold the engineer stated makes the step wait, or when work the session started that the step needs is still running. An offer to pause that the agent makes up does not count.
+  - Other dispatched agents do not follow it.
+  - The change is live on `git pull`.
+- **`check-skill-length.sh` gives `handoff/SKILL.md` a line cap of 220, above the 200-line default.** `check-handoff.py` reads its preamble fixture, and the compaction hooks' tests read its section headings and §3.5 list. The template therefore stays in the skill. Other skills' caps are unchanged. The change is live on `git pull`.
 - **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.
