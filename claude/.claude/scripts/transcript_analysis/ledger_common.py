@@ -135,6 +135,7 @@ def _publish_new_file(path: Path, text: str, temp_prefix: str, temp_suffix: str)
         return _PublishOutcome.CREATED
     finally:
         if tmp_name is not None:
+            # A failed unlink after a successful link leaves a second name for the file, and nothing reports it.
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
 

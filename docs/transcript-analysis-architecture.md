@@ -220,7 +220,8 @@ labels (`_fam`), markdown/table rendering, `_content_text`, `_fmt_usd`, `_pct_of
 `_first_command_args` with its two tag constants. Self-contained.
 `_is_fresh_user_prompt` has its one definition here, built
 on the other two predicates; `judgment_pair.py`, `review_rounds.py`'s round-window detection, and
-`period_cost.py`'s review windows read it, as does `compaction-context.py` (see "Sibling scripts").
+`period_cost.py`'s review windows read it, as do `correction_candidates.py` and `compaction-context.py` (see
+"Sibling scripts").
 `rearm_backtest.py`'s boundary detection reads
 `_is_main_thread_user_text`, which also accepts a task notification.
 
@@ -897,8 +898,8 @@ these underscore-prefixed names:
 - `review_rounds._SLASH_COMMAND_RE`.
 
 A rename of any of them breaks that script when it runs, so grep `compaction-context.py` before
-changing one. Tightening `_is_fresh_user_prompt_for_narrative` also narrows the prompts that script quotes and the
-prompts `correction_candidates.py` emits.
+changing one. Tightening `_is_fresh_user_prompt_for_narrative` or `render._is_fresh_user_prompt` also narrows the
+prompts that script quotes and the prompts `correction_candidates.py` emits.
 
 ## Tests
 
@@ -1105,18 +1106,21 @@ why. `TestIsFreshUserPrompt` lives in `tests/test_transcript_render.py` because 
 `render.py`, not the judgment-pair command.
 
 The correction-candidates command's tests split at the extraction seam:
-`tests/test_transcript_correction_candidates_extraction.py` covers verdicts, exchanges, context text,
-truncation, dedup, serialization, and the record key sets,
-`tests/test_transcript_correction_candidates_questions.py` covers the question entries and lines,
-`tests/test_transcript_correction_candidates_counts.py` covers the scope record's counters, the count
-relations, and robustness under field mutation,
-`tests/test_transcript_correction_candidates_canaries_and_aborts.py` covers what reaches the terminal and the
-scope record, and the corpus-abort messages, and
-`tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the
-written file through `main()`. `tests/_correction_candidates_helpers.py`, a plain module, not a test file
-itself, holds their shared builders. It imports the record builders from `tests/_compaction_context_helpers.py`,
-which executes `compaction-context.py`, so the `correction-candidates` args builder lives in `tests/conftest.py`,
-where `tests/test_transcript_analysis_multi_root_scope.py` imports it without importing this module.
+
+- `tests/test_transcript_correction_candidates_extraction.py` covers verdicts, exchanges, context text, truncation,
+  dedup, serialization, and the record key sets.
+- `tests/test_transcript_correction_candidates_questions.py` covers the question entries and lines.
+- `tests/test_transcript_correction_candidates_counts.py` covers the scope record's counters, the count relations,
+  and robustness under field mutation.
+- `tests/test_transcript_correction_candidates_canaries_and_aborts.py` covers what reaches the terminal and the
+  scope record, and the corpus-abort messages.
+- `tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the written
+  file through `main()`.
+
+`tests/_correction_candidates_helpers.py` holds the shared builders. It is a plain module, not a test file. The
+`correction-candidates` args builder lives in `tests/conftest.py` instead, because the helper module imports the
+record builders from `tests/_compaction_context_helpers.py`, which executes `compaction-context.py`. That keeps
+`tests/test_transcript_analysis_multi_root_scope.py` from importing the helper module.
 
 The session-signal command group splits at command seams, one test file per module:
 `tests/test_transcript_buckets.py`, `tests/test_transcript_fail_seq.py`,

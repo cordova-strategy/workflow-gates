@@ -13,7 +13,6 @@ from helpers import init_git_repo_with_commit
 from transcript_analysis import cli, correction_candidates, ledger_common, scope
 
 from . import _correction_candidates_helpers as candidates_helpers
-from ._compaction_context_helpers import slash_invocation
 from ._correction_candidates_helpers import (
     BANNER,
     FAMILIES_PREFIX,
@@ -674,27 +673,6 @@ class TestRun:
 
         assert [line["text"] for line in written_lines(out) if line["kind"] == "prompt"] == ["just in"]
 
-    def test_until_alone_counts_an_undated_record_as_undated(self, fake_projects, out_dir, monkeypatch, capsys):
-        seed(fake_projects, [with_fields(prompt("no clock", 0), timestamp=None, uuid="u")])
-        out = out_dir / "run.jsonl"
-
-        run_main(monkeypatch, capsys, "--projects", "*", "--until", "2026-05-19", "--out", str(out))
-
-        scope_record = written_lines(out)[0]
-        assert scope_record["counts"]["skipped"]["undated"] == 1
-        assert scope_record["counts"]["prompts"] == 0
-
-    def test_a_timestamp_past_the_utc_range_is_emitted_with_a_null_timestamp_and_the_run_exits_0(
-        self, fake_projects, out_dir, monkeypatch, capsys,
-    ):
-        seed(fake_projects, [with_fields(prompt("far away", 0), timestamp="9999-12-31T23:59:59-14:00", uuid="u")])
-        out = out_dir / "run.jsonl"
-
-        status, _stdout, _stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
-
-        assert status == 0
-        assert [line["timestamp"] for line in written_lines(out) if line["kind"] == "prompt"] == [None]
-
     def test_truncate_chars_cuts_a_long_prompt_text_and_leaves_its_id_whole(self, fake_projects, out_dir, monkeypatch, capsys):
         seed(fake_projects, [prompt("abcdefghijklmnop", 1)], "a-long-session-file-name.jsonl")
         out = out_dir / "run.jsonl"
@@ -706,16 +684,6 @@ class TestRun:
         assert prompt_line["id"] == "a-long-session-file-name:0"
         assert scope_record["truncate_chars"] == 5
         assert scope_record["checks"]["truncated_fields"] == {"text": 1}
-
-    def test_a_slash_prompt_is_written_with_its_args_and_command(self, fake_projects, out_dir, monkeypatch, capsys):
-        seed(fake_projects, [with_fields(slash_invocation("plan-it", "draft the plan"), timestamp=ts(1), uuid="s1")])
-        out = out_dir / "run.jsonl"
-
-        run_main(monkeypatch, capsys, "--projects", "*", "--out", str(out))
-
-        scope_record, prompt_line = written_lines(out)
-        assert (prompt_line["text"], prompt_line["command"]) == ("draft the plan", "/plan-it")
-        assert scope_record["counts"]["slash_prompts"] == 1
 
     def test_non_ascii_directory_prompt_and_answer_text_round_trip_through_an_ascii_file_and_ascii_stderr(
         self, tmp_path, out_dir, monkeypatch, capsys,

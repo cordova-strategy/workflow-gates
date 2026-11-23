@@ -381,6 +381,59 @@ class TestOriginStatePerFile:
         assert candidates == []
         assert counts["no_origin_after_origin"] == 1
 
+    # Only the task-notification shape is a recorded origin-bearing record; the assistant and tool-result
+    # shapes are synthetic and pin that the per-file update does not depend on a record's type.
+    @pytest.mark.parametrize(
+        "origin_bearing_record",
+        [
+            pytest.param(task_notification(), id="task-notification"),
+            pytest.param(with_fields(assistant_text("reply"), origin=HUMAN_ORIGIN), id="assistant-record"),
+            pytest.param(with_fields(tool_result_record(), origin=HUMAN_ORIGIN), id="tool-result-record"),
+        ],
+    )
+    def test_an_origin_bearing_record_that_is_not_a_typed_prompt_still_makes_a_later_origin_less_prompt_a_skip(
+        self, origin_bearing_record
+    ):
+        records = [
+            with_fields(origin_bearing_record, timestamp=ts(1), uuid="a1"),
+            with_fields(user_prompt("origin-less", origin=ABSENT), timestamp=ts(2), uuid="b1"),
+        ]
+
+        candidates, counts = scan(records)
+
+        assert candidates == []
+        assert counts["no_origin_after_origin"] == 1
+
+    @pytest.mark.parametrize("origin", [pytest.param(None, id="null-origin"), pytest.param(ABSENT, id="absent-origin")])
+    def test_a_null_origin_prompt_gets_the_verdict_of_an_absent_origin_with_no_origin_seen(self, origin):
+        candidates, counts = scan([with_fields(user_prompt("first", origin=origin), timestamp=ts(1), uuid="a1")])
+
+        assert [candidate.record["text"] for candidate in candidates] == ["first"]
+        assert counts["no_origin_after_origin"] == 0
+
+    @pytest.mark.parametrize("origin", [pytest.param(None, id="null-origin"), pytest.param(ABSENT, id="absent-origin")])
+    def test_a_null_origin_prompt_gets_the_verdict_of_an_absent_origin_after_an_origin_bearing_record(self, origin):
+        records = [
+            prompt("typed with origin", 1),
+            with_fields(user_prompt("origin-less", origin=origin), timestamp=ts(2), uuid="b1"),
+        ]
+
+        candidates, counts = scan(records)
+
+        assert [candidate.record["text"] for candidate in candidates] == ["typed with origin"]
+        assert counts["no_origin_after_origin"] == 1
+
+    def test_a_null_origin_record_does_not_make_a_later_origin_less_prompt_a_skip(self):
+        records = [
+            with_fields(user_prompt("null origin", origin=None), timestamp=ts(1), uuid="a1"),
+            with_fields(user_prompt("origin-less", origin=ABSENT), timestamp=ts(2), uuid="b1"),
+        ]
+
+        candidates, counts = scan(records)
+
+        assert [candidate.record["text"] for candidate in candidates] == ["null origin", "origin-less"]
+        assert counts["no_origin_after_origin"] == 0
+
 
 class TestInitialFlag:
     @pytest.mark.parametrize(

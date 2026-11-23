@@ -59,7 +59,7 @@ For question-driven routing ("which subcommand answers X?"), use the `/transcrip
      - It is skipped as `notification_text` when its text contains `task-notification>`.
      - Otherwise it is typed, as an older build wrote it.
 
-  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. A prompt-shaped record differs from a fresh user prompt by also excluding tool-result-keyed records. The origin rules decide its verdict, not whether it is prompt-shaped. `correction-candidates` differs from `compaction-context.py`'s rule in these ways:
+  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. A prompt-shaped record differs from a fresh user prompt by also excluding tool-result-keyed records. `correction-candidates` differs from `compaction-context.py`'s rule in these ways:
   - It skips a headless prompt.
   - It admits an older prompt with no `origin` in a file that has none.
   - It keeps a typed prompt that opens with a tag other than the five in rule 2.
@@ -712,7 +712,7 @@ The top-level `--config-dir PATH` narrows a run to that one root. It goes before
 - A checkout cloned under another directory name matches nothing, and the zero-session warning shows it.
 - At one root a nested glob such as `**` can match a subagent file as a session, and the preview then lists a `subagents` family.
 
-**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600` through a hidden `.correction-candidates-<random>` file beside `--out` that keeps `--out`'s extension. A killed run leaves at most that temp file, holding the full text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
+**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600` through a hidden `.correction-candidates-<random>` file beside `--out` that keeps `--out`'s extension. A killed run leaves at most that temp file, holding some or all of the text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
 
 A `--projects '*'` run has three costs:
 - It holds every candidate and the file's text in memory until the one publish.
@@ -769,7 +769,7 @@ After the header, a `--preview` prints the banner, the families line and the zer
 **What a candidate is.**
 - A line's context fields carry `text` blocks only. A plan shown for approval through a tool call, and a subagent's dispatch prompt, never reach a line, so their absence is not an absence of failures.
 - A record is **prompt-shaped** as Terms defines under "typed prompt". An **asking record** is a main-thread assistant record holding an `AskUserQuestion` `tool_use` block.
-- An **exchange** opens at every prompt-shaped record except an interrupt marker, local-command output and a bash-mode record. A typed prompt (a slash prompt included), a `slash_command` record, and a prompt skipped by the origin rules each open one. An interrupt opens none, so the interrupted exchange's text stays in front of the prompt that follows it. A task notification is not prompt-shaped and opens none. `exchange` is the 1-based ordinal of openings over the whole file. A prompt carries its own. A question carries the one it sits in, or 0 before the first opening.
+- An **exchange** opens at every prompt-shaped record except an interrupt marker, local-command output and a bash-mode record. An interrupt opens none, so the interrupted exchange's text stays in front of the prompt that follows it. A task notification is not prompt-shaped and opens none. `exchange` is the 1-based ordinal of openings over the whole file. A prompt carries its own. A question carries the one it sits in, or 0 before the first opening.
 - `preceding_assistant_text` is the text of the main-thread assistant records between the previous exchange opening, or the file's start, and the prompt. For a question it runs from its exchange's opening through the asking record. Records are joined by a blank line, and a record with no text adds nothing. It keeps its last N characters.
 - `following_assistant_text` is the same after the prompt, or after a question's answer record, up to the next exchange opening. It keeps its first N characters.
 - Both context fields, `exchange`, `initial` and `after_interrupt` follow file order, not the `parentUuid` chain. A branch the engineer abandoned may supply a replacement prompt's context text. Unverified: whether the transcript writer leaves an abandoned branch's records in the file.
@@ -908,8 +908,8 @@ Extraction runs first because transcripts expire. No step moves a file off the m
 
    - It passes when the kinds are `scope`, plus `prompt` and `question` when their counts are above zero, and the leak count is 0. A failure is a stop.
    - The `-I` flag keeps the session's working directory off the module search path, so a module planted there does not run.
-   - For the cross-check, ask the engineer for each root's literal path. The number of paths must equal the header's root count, and a mismatch is a stop. Type every path as a literal, and never reference `$CLAUDE_CONFIG_DIR`.
-   - For each root, run the pipeline with the glob unquoted, so the shell expands it, for example `cat <root>/projects/*-workflow-gates*/*.jsonl | grep -o -F '"name":"AskUserQuestion"' | wc -l`.
+   - For the cross-check, ask the engineer for each root's absolute path, with no `~`. The number of paths must equal the header's root count, and a mismatch is a stop. Type every path as a literal, and never reference `$CLAUDE_CONFIG_DIR`. Apply step 2's refusal bullet to each path, because the session types it inside double quotes as step 2 does.
+   - For each root, run the pipeline with `<root>` in double quotes and the glob unquoted, so the shell expands only the glob, for example `cat "<root>"/projects/*-workflow-gates*/*.jsonl | grep -o -F '"name":"AskUserQuestion"' | wc -l`.
    - Any stderr line from `cat` or the shell is a stop, because the pipeline still exits 0. Name the root. The check resumes only when the engineer corrects the path or says that root holds none of this repo's sessions.
    - The sum must be at least `ask_user_question_calls`. A sum below it, or a positive sum with `ask_user_question_calls` at 0, is a stop: report the sum, the count and each root's total verbatim, and edit nothing.
    - Report any excess with its possible sources: blocks in sidechain records, in uninterpretable records, or on undecodable lines; a project directory reached through two roots, which the run reads once; and the live session's own growth since the extraction.
