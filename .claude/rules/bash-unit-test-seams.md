@@ -21,9 +21,26 @@ Already-seamed libs, as precedent:
 **Naming: `_<topic>-lib.sh`.** `_stow_migration_lib.sh` is the older
 spelling and is not being renamed.
 
-**A new bare `_*-lib.sh` sidecar under `claude/.claude/hooks/` fails CI
-today.** `claude/.claude/hooks/tests/test_hook_alignment.py`'s
-`_all_hook_files()`/`_HELPER_LIBRARY_NAMES` excludes only two exact
-filenames, so any other file there gets swept in as a hook. Land a
-hook-side extraction inside the existing `_lib.sh` instead, until that
-guard is widened.
+**A `_`-prefixed `.sh` file in a hooks directory is a helper library, not a
+hook.** `is_helper_library` in `claude/.claude/tests/helpers.py` is the one
+rule the hook checks use to tell the two apart. A new `_<topic>-lib.sh` under
+`claude/.claude/hooks/` needs none of these to register it:
+
+- A `docs/hooks.md` entry.
+- A `# hook-class:` header.
+- An edit to the hook checks.
+
+A hook that sources the library needs nothing further when its tests use the
+shared builders `build_isolated_hook` and `symlink_hooks_lib_chain`. When its
+tests instead use a hand-built isolated hooks directory that symlinks or copies
+`_lib.sh` and `_config.sh` by name, also link or copy the library there.
+
+Checks that scan the content of every `.sh` file there still apply to it,
+exact-count pins included. Two tests in `claude/.claude/hooks/tests/` fail it
+unless both hold:
+
+- A hook, script, or other helper library sources it. A test does not count.
+- No `settings.json` or plugin `hooks.json` registers it as a command.
+
+The function-liveness test sources `_lib.sh` before each other library in
+`claude/.claude/hooks/`, so a library may depend on `_lib.sh` at source time.

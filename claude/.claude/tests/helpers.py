@@ -355,6 +355,16 @@ def _hook_class(hook: Path) -> str | None:
     return None
 
 
+def is_helper_library(file_name: str) -> bool:
+    """A `_`-prefixed `.sh` file in a hooks directory is a sourced helper library, not a hook."""
+    return file_name.startswith("_") and file_name.endswith(".sh")
+
+
+def helper_libraries(hooks_dir: Path) -> list[Path]:
+    """Return the sorted helper libraries directly in `hooks_dir`."""
+    return sorted(path for path in hooks_dir.glob("*.sh") if is_helper_library(path.name))
+
+
 # -- Shell-exec guard ---------------------------------------------------------
 #
 # A shipped shell file whose shebang is `#!/usr/bin/env bash` resolves bash
@@ -1246,7 +1256,7 @@ def build_isolated_hook(
     schema_text: str | None = None,
     extra_links: tuple[Path, ...] = (),
 ) -> Path:
-    """Symlink `hook` plus its _lib.sh/_config.sh dependencies, and each of
+    """Symlink `hook` plus every helper library, and each of
     `extra_links` under its own file name, into a directory whose
     config-keys.psv holds `schema_text`, or is absent when None. An absent
     schema makes `_config_schema_field` see an unreadable schema, so
@@ -1254,8 +1264,8 @@ def build_isolated_hook(
     isolated = tmp_path / "isolated-hooks"
     isolated.mkdir()
     (isolated / hook.name).symlink_to(hook)
-    (isolated / "_lib.sh").symlink_to(HOOKS_DIR / "_lib.sh")
-    (isolated / "_config.sh").symlink_to(HOOKS_DIR / "_config.sh")
+    for helper_library in helper_libraries(HOOKS_DIR):
+        (isolated / helper_library.name).symlink_to(helper_library)
     if schema_text is not None:
         (isolated / "config-keys.psv").write_text(schema_text)
     for extra_link in extra_links:
@@ -2620,9 +2630,8 @@ def install_resume_context_script(isolated_home: Path) -> Path:
 
 
 def symlink_hooks_lib_chain(hooks_dir: Path) -> None:
-    """Symlink _lib.sh and its two BASH_SOURCE-relative siblings,
-    _config.sh and config-keys.psv, into an arbitrary hooks_dir -- the
-    single source of truth for this three-symlink chain, called by every
+    """Symlink every helper library and config-keys.psv into an arbitrary
+    hooks_dir -- the single source of truth for this chain, called by every
     fixture/helper that needs a hooks/ dir where sourcing _lib.sh works.
 
     _lib.sh sources _config.sh from its own directory; BASH_SOURCE does
@@ -2632,8 +2641,8 @@ def symlink_hooks_lib_chain(hooks_dir: Path) -> None:
     BASH_SOURCE-relative path too. Idempotent, so a caller that already
     symlinked hooks/_lib.sh itself can call this unconditionally.
     """
-    _symlink_if_absent(hooks_dir / "_lib.sh", HOOKS_DIR / "_lib.sh")
-    _symlink_if_absent(hooks_dir / "_config.sh", HOOKS_DIR / "_config.sh")
+    for helper_library in helper_libraries(HOOKS_DIR):
+        _symlink_if_absent(hooks_dir / helper_library.name, helper_library)
     _symlink_if_absent(hooks_dir / "config-keys.psv", HOOKS_DIR / "config-keys.psv")
 
 
