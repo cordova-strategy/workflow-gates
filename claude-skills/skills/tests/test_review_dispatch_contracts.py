@@ -955,7 +955,10 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
         name="plan-review-plan-prose-dispatch",
         path=_PLAN_REVIEW_SKILL_PATH,
         heading="## Output format",
-        phrase="- Send them with the round's other findings in that one dispatch.",
+        phrase=(
+            "- Send them to `plan-architect` with the round's other findings, in the one revision "
+            "re-dispatch that \"Record review completion + deactivate\" names."
+        ),
         right_bounded=True,
         rerun_note=_NO_BEHAVIOR_CELL_NOTE,
     ),
@@ -1012,10 +1015,7 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
             "covers it or you cannot tell whether it does, and its "
             f"reviewer's findings-file path, naming `{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}` as its rule. The "
             "round goes on as after a stop-and-ask about one finding, and `code-writer` gets only the rest "
-            f"of its fix. A `{_PLAN_ARCHITECT_BLOCKING_MARK}` entry whose `plan-architect` return is "
-            f"{_PLAN_ARCHITECT_OPEN_OR_DECLINE_RETURN} ends in the skill's blocking stop-and-ask, which the "
-            "dispatcher asks. "
-            "Report any other inline-route row under `HALT:`."
+            "of its fix. Report any other inline-route row under `HALT:`."
         ),
         right_bounded=False,
         rerun_note=_NO_BEHAVIOR_CELL_NOTE,
@@ -1063,8 +1063,8 @@ _PLAN_ARCHITECT_ROUTING_FEED_SITES = (
         heading=_ROUTING_ROLES_HEADING,
         phrase=(
             "Each finding `plan-architect` accepted that round, as what's been applied, and each one it "
-            "declined, with its reason, stay inline regardless: `marker.sh write plan-review` records only "
-            "a content hash of the plan set, so there is no on-disk artifact for that half to point at."
+            "declined, with its reason, stay inline regardless. `marker.sh write plan-review` records only "
+            "a content hash of the plan set, so no on-disk artifact holds them."
         ),
         right_bounded=True,
         rerun_note=_behavior_cell_note("RR"),

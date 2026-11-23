@@ -6,11 +6,11 @@
 
 ## Why the architect decides
 
-Before this change, three routes let another writer change a plan's sections after a review: `/plan-review`'s session applied the prose fixes it accepted, `plan-it` Step 6 told an unnamed actor to address findings, and `/code-review` fixed a plan-file edit inline or through `code-writer`. Each added text that no engineer decision asked for, and each such edit gave the next review round something new to find. One writer that holds the plan's recorded decisions and its `## Out of scope` list can decline a finding that a defensive edit would only appease.
+The single-writer rule closes three routes by which another writer could change a plan's sections after a review: `/plan-review`'s session applying the prose fixes it accepted, `plan-it` Step 6 telling an unnamed actor to address findings, and `/code-review` fixing a plan-file edit inline or through `code-writer`. Each route could add text that no engineer decision asked for, and each such edit would give the next review round something new to find. One writer that holds the plan's recorded decisions and its `## Out of scope` list can decline a finding that a defensive edit would only appease.
 
 ## Why skill text and not a hook
 
-A `PreToolUse` hook sees a tool call's input and the calling agent's type, never the finding behind an edit. Allowing the session's own writes while denying a finding-driven one would need byte-offset matching over `old_string` in bash, the shape [plan-architect-writes-its-own-plan-sections.md](plan-architect-writes-its-own-plan-sections.md) already rejected. `require-plan-review.sh` re-arms on any plan edit made after `/plan-review` writes its completion marker, so a stray edit there costs a review round rather than shipping unreviewed, the same backstop [code-review-fix-route-plan-architect.md](code-review-fix-route-plan-architect.md) relies on. The marker hashes the plan as it stands when written, so it also covers any edit made earlier in that `/plan-review` run, and only skill text keeps a stray edit out of that window. The engineer chose skill text.
+A `PreToolUse` hook sees a tool call's input and the calling agent's type, never the finding behind an edit. Allowing the session's own writes while denying a finding-driven one would need byte-offset matching over `old_string` in bash, the shape [plan-architect-writes-its-own-plan-sections.md](plan-architect-writes-its-own-plan-sections.md) already rejected. `require-plan-review.sh` re-arms on any plan edit made after `/plan-review` writes its completion marker, so a stray edit there costs a review round rather than shipping unreviewed. [code-review-fix-route-plan-architect.md](code-review-fix-route-plan-architect.md) relies on the same backstop. The marker hashes the plan as it stands when written, so it also covers any edit made earlier in that `/plan-review` run, and only skill text keeps a stray edit out of that window. The engineer chose skill text.
 
 ## Why engineer answers are the one exception
 
@@ -31,7 +31,7 @@ Each review round with findings adds one Opus dispatch, plus at most one for fin
 
 ## Accepted residuals
 
-- The `code-review` ledger keeps a declined ADDRESS row as logged, as a rejected heavier-mechanism consult leaves it, except that a finding the enforcement-invariant rule covers ends in that rule's blocking stop-and-ask with its keep logged.
+- The `code-review` ledger keeps a declined ADDRESS row as logged, as a rejected heavier-mechanism consult leaves it. A finding the enforcement-invariant rule covers is the exception: it ends in that rule's blocking stop-and-ask with its keep logged.
 - A plan in a harness plan-mode file stops at Step 5's path refusal, so findings on it end there.
 - A plan without the four headings stops at `plan-shape.py check`.
 - A plan-edit `HALT:` runs the rest of a routed review loop inline, per [review-orchestrator-routing-gate.md](review-orchestrator-routing-gate.md).
@@ -55,7 +55,7 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 
 Cell A's fixture and bar replace those of Verification step 7 in `.claude/plans/architect-owns-plan-revisions.md`, which does not mark the plan `approved` and expects `1. accept`.
 
-Cells A and A-i to A-iv ran on the final `plan-architect.md`. Cells V, RR and C ran on earlier text of the files they read, and `code-review/SKILL.md`'s **Fix route:** line has since gained a sentence that their bars do not test.
+Cells A and A-i to A-iv ran on the final `plan-architect.md`. Cells V, RR and C have not been re-run on the current text of the files they read, and no cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
 
 Limits:
 - Each cell is a prose-following check on one fixture, not a measure of live rounds.

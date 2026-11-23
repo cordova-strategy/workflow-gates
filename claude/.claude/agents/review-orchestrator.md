@@ -28,9 +28,7 @@ effort: high
    and its reviewer's findings-file path, naming
    `plan-architect — plan revision` as its rule. The round goes on as after
    a stop-and-ask about one finding, and `code-writer` gets only
-   the rest of its fix. A `blocking` entry whose `plan-architect` return is
-   `open` or `decline` ends in the skill's blocking stop-and-ask, which the
-   dispatcher asks. Report any other inline-route row under `HALT:`.
+   the rest of its fix. Report any other inline-route row under `HALT:`.
    Never change the tree or the index yourself. Relay each **Still uncertain**
    entry of the `code-writer` return verbatim under `Not addressed:` for the
    dispatcher to handle per

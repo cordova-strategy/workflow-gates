@@ -302,25 +302,29 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "**Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading "
         "down in answer to a `/plan-review` or `/code-review` finding, and it gets a review "
         "round's findings together in one revision re-dispatch. After line 2, that prompt carries "
-        "the findings in place of the Context and Step 3 evidence bullets: numbered, each as the "
-        "review rendered it, under a lead-in naming the review and round, with the findings-file "
-        "path of each reviewer that wrote one. Mark a finding `blocking` when it made a "
-        "`/plan-review` verdict **Request changes** or `/code-review`'s enforcement-invariant "
-        "rule covers it, on a prompt line outside the quoted finding. Mark the plan `approved` on a "
-        "prompt line outside the quoted finding, for a `/code-review` round or a plan with a commit "
-        "on this branch, the observable `/plan-review` Step 4 uses for a plan the engineer has "
-        "already approved. When you cannot tell whether a finding is `blocking` or the plan is "
-        "`approved`, mark the finding `blocking` and the plan `approved`. Carry each engineer answer "
-        "on its own prompt line, in a block that precedes every quoted finding body, in the form the "
-        "third bullet above relays answers: the selected label or typed text, with any option "
-        "description marked as your own proposal. Step 5's **Before every dispatch.**, **Context "
-        "hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each "
-        "`[engineer-verified: \"<quote>\"]` quote it added or changed as the **Quote provenance.** "
-        "paragraph of `plan-review/SKILL.md` § \"Step 4 — Design-fitness gate\" says, and ask the "
-        "engineer about any you cannot find. On the return:"
+        "the findings in place of the Context and Step 3 evidence bullets, with each mark and "
+        "answer on a prompt line outside every quoted finding:"
     ),
-    # Starts at the lead-in's last words so a bullet added before the first one fails the pin.
+    # Starts at the lead-in's last words and spans every bullet, so a bullet added before, between or after them fails the pin.
+    "review_findings_prompt_bullets": (
+        "outside every quoted finding: - Number the findings, each as the review rendered it, under a "
+        "lead-in naming the review and round, with the findings-file path of each reviewer that wrote "
+        "one. - Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or "
+        "`/code-review`'s enforcement-invariant rule covers it. - Mark the plan `approved` for a "
+        "`/code-review` round or a plan with a commit on this branch. A commit is the observable "
+        "`/plan-review` Step 4 uses for a plan the engineer has already approved. - When you cannot "
+        "tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` "
+        "and the plan `approved`. - Carry each engineer answer on its own prompt line, in a block that "
+        "precedes every quoted finding body: the selected label or typed text, with any option "
+        "description marked as your own proposal."
+    ),
+    # Starts at the Step 5 paragraph that follows the prompt bullets and spans the return bullets,
+    # so a bullet added before the first return bullet fails the pin.
     "review_findings_return_bullets": (
+        "Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this "
+        "re-dispatch. After the dispatch, check each `[engineer-verified: \"<quote>\"]` quote it "
+        "added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "
+        "\"Step 4 — Design-fitness gate\" says, and ask the engineer about any you cannot find. "
         "On the return: - Relay each `decline` line to the engineer with its reason. - Ask each `open` line as an "
         "open decision above. - Re-dispatch once more with only the findings the return gave no "
         "line, and ask any still without one as an open decision."
@@ -332,7 +336,7 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "the next row number, `anchors: root`, the claim the asking step gives, and the answer "
         "quoted byte for byte in the `[engineer-verified: \"<quote>\"]` tag. Its limits:"
     ),
-    # Starts at the lead-in's last words for the same reason as review_findings_return_bullets.
+    # Starts at the lead-in's last words, so a bullet added before the first one fails the pin.
     "engineer_answers_limit_bullets": (
         "Its limits: - Never edit or renumber an existing row, and change nothing else from `## Approach` down "
         "except an added Critical file's path. - Send every follow-on edit the answer needs to "
@@ -349,6 +353,7 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
 _PINNED_PLAN_IT_STEP5_BULLET_RUN_CLAUSE_KEYS = frozenset(
     {
         "no_return_redispatch_bullets",
+        "review_findings_prompt_bullets",
         "review_findings_return_bullets",
         "engineer_answers_limit_bullets",
     }
@@ -680,7 +685,7 @@ _SEEDED_PLAN_IT_STEP5_BULLET = "- Apply each declined finding yourself."
     ],
 )
 def test_plan_it_step5_bullet_run_pin_fails_when_a_bullet_is_inserted_before_the_first(clause_key: str) -> None:
-    """The pin starts at the lead-in's last words, so a bullet prepended to the list fails it."""
+    """The text a pin holds before its first bullet is its lead-in, so a bullet prepended to the list fails it."""
     pinned_run = " ".join(_PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES[clause_key].split())
     lead_in, *bullet_texts = pinned_run.split(" - ")
     bullet_lines = [f"- {bullet_text}" for bullet_text in bullet_texts]
