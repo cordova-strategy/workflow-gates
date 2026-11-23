@@ -45,12 +45,13 @@ set -uo pipefail
 DENY_GATE_LABEL="CLAUDE.md length"
 
 # Byte limit: 31,744 bytes = 31 KiB (binary reading), a repo-owned ceiling
-# under the 32 KiB Codex project_doc_max_bytes truncation
+# under the 32 KiB Codex project_doc_max_bytes default
 # (claude-skills/skills/ai-instruction-and-memory-files/REFERENCES.md's
-# "Cross-vendor size table" section). Applies to every stow consumer's
-# CLAUDE.md/AGENTS.md, the same scope the 200-line check above already has.
-# The 31,744 figure is checked per file and says nothing about a combined
-# AGENTS.md chain (Codex's combined-size behavior is not verified here).
+# "Cross-vendor size table" and "OpenAI" sections; "OpenAI" quotes the vendor).
+# Applies to every stow consumer's CLAUDE.md/AGENTS.md, the same scope the
+# 200-line check above already has. The 31,744 figure is checked per file, but
+# Codex stops adding files once an AGENTS.md chain's combined size reaches that
+# 32 KiB default.
 # A raise past 32,768 bytes needs a new basis, not only a log line below.
 #
 # Dated log of prior values (one line per raise: date, old value, new value,
