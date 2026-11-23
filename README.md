@@ -344,7 +344,7 @@ To opt out, delete `.claude/worktree-required`.
 If you work across many repos and want enforcement everywhere without adding a marker to each, set the `worktree_required` config key:
 
 ```bash
-printf '\nworktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh worktree_required true
 ```
 
 See [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract. This activates enforcement for every git repo on your machine. Any repo that already has a committed `.claude/worktree-required` is unaffected (it was already enforcing). To exempt a specific repo from machine-level enforcement:
@@ -381,7 +381,7 @@ If the agent ends its turn asking whether you want to review the diff before it 
 `pr-description` can embed the PR body's cost block — branch-scoped session count, token volume, and list-price dollars from `transcript-analysis.py cost --summary`. Off by default; gated by the `pr_cost_disclosure` config key, scoped to the Claude account, not to the repo.
 
 ```bash
-printf '\npr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh pr_cost_disclosure dollars
 ```
 
 The key resolves to exactly one config dir (`$CLAUDE_CONFIG_DIR` if set and absolute, else `$HOME/.claude`) and its value (`dollars` vs. anything else) toggles the mode account-wide, so one account's opt-in never activates disclosure under another — see [`docs/config-file.md`](docs/config-file.md) for the file format and resolution precedence.
@@ -427,7 +427,7 @@ See [`docs/error-mode-nudge.md`](docs/error-mode-nudge.md) for the fire predicat
 `./install.sh` now offers this interactively on every run — the snippet below is the non-interactive/scripted alternative, not the only path.
 
 ```bash
-printf '\ncost_ledger_recording = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh cost_ledger_recording true
 ```
 
 See [`docs/cost-ledger.md`](docs/cost-ledger.md) for the ledger's default location, schema, and recording mechanics, and [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract.
