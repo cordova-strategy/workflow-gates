@@ -779,7 +779,6 @@ def shim_json(result: subprocess.CompletedProcess) -> dict:
     return json.loads(result.stdout.decode())
 
 
-# Both writers exec the stub once through `subprocess.run`, so write stubs before a test patches `subprocess`.
 def write_hook_script(path: Path, body: str) -> Path:
     return write_prewarmed_stub(path, "#!/usr/bin/env bash\n" + body)
 

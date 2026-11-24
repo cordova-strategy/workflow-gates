@@ -3122,6 +3122,7 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
     """Write `script` as an executable at `path`, exec it once, and return `path`.
 
     A newly written executable's first exec can outlast a scaled cap, so this pays that cost at write time.
+    The warm exec goes through `subprocess.run`, so write stubs before a test patches `subprocess`.
     A guard line after the shebang ends that exec before any body line runs.
     The exec's environment holds only PATH and the guard's variable, so no shell startup file or exported function runs first.
     The exec's PATH resolves `bash` the way `link_bash_into` does,
