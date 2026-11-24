@@ -277,13 +277,14 @@ _ENGINEER_ANSWERS_POINTER_SITES = (
 def test_engineer_answers_pointer_resolves_to_a_paragraph_in_plan_it_step_5(
     site_path: Path, heading: str, pointer_phrase: str
 ) -> None:
-    """The `**Engineer answers.**` paragraph of plan-it Step 5 specifies the one plan row the session writes itself.
+    """The `**Engineer answers.**` paragraph of plan-it Step 5 specifies what the session writes itself
+    for an engineer's answer: one row per answer, and an added Critical file's path.
 
     Its two pointers are pinned here, not in `_PLAN_ARCHITECT_ROUTING_SITES`, because they route nothing to `plan-architect`.
     """
     assert pointer_phrase in _heading_section_text(site_path, heading), (
-        f"{site_path}: {heading!r} no longer carries {pointer_phrase!r}, the pointer to the one "
-        "plan row the session may write itself."
+        f"{site_path}: {heading!r} no longer carries {pointer_phrase!r}, the pointer to what the "
+        "session may write itself for an engineer's answer."
     )
     plan_it_step5_lines = _raw_heading_section_text(
         _skill_file("plan-it"), _PLAN_IT_STEP5_HEADING

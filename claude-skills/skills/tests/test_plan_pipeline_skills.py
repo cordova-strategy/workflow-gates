@@ -617,7 +617,6 @@ _SEEDED_BULLET_RUN = "Lead:\n- First bullet.\n- Last bullet."
 def test_closes_bullet_run_accepts_only_a_blank_line_or_section_end_after_the_run(
     text_after_run: str, run_is_closed: bool
 ) -> None:
-    """A whole-list pin fails when a bullet or sentence follows the run."""
     raw_section = _SEEDED_BULLET_RUN + text_after_run
     pinned_run = " ".join(_SEEDED_BULLET_RUN.split())
     if run_is_closed:
@@ -641,7 +640,6 @@ def test_closes_bullet_run_accepts_only_a_blank_line_or_section_end_after_the_ru
 def test_default_right_bound_accepts_only_a_structural_boundary_after_the_pin(
     text_after_pin: str, pin_is_bounded: bool
 ) -> None:
-    """Without `closes_bullet_run`, the pin must end the section or precede a blank line or a line starting with `-` or `#`."""
     raw_section = "Pinned sentence." + text_after_pin
     if pin_is_bounded:
         _assert_pinned_clause_right_bounded("Pinned sentence.", raw_section, context="seeded")
