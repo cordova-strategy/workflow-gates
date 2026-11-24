@@ -249,7 +249,7 @@ verdict = "split pending"
 seam = "Liveness probes (`_ps_lstart`, `_entry_liveness`, `_boot_time`), evidence readers (`_read_registry`, `_read_lock`, `_scan_transcripts`, `_read_session_end_records`), classification (`_classify_session`), rendering (`render_report`, `render_json`)"
 
 ["claude/.claude/scripts/relocate-claude-config.sh"]
-ceiling = 1101
+ceiling = 1100
 verdict = "structural exception"
 reason = "install.sh installs it as a standalone real-file copy at ~/.local/bin/relocate-claude-config that must run while ~/.claude is broken, so it sources no sibling file and every split would change how it is installed (the script's header; install.sh's real-file-copy step)."
 

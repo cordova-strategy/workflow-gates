@@ -833,7 +833,6 @@ _repair_linked_worktrees() (
     GIT_CEILING_DIRECTORIES=/
   fi
 
-  # git resolves a relative recorded path from the checkout, so each existence test below must too.
   cd -- "$new_real" || return 1
   shopt -s nullglob
   _collect_worktree_candidates "$new_real/.claude/worktrees" 2
@@ -850,7 +849,7 @@ _repair_linked_worktrees() (
       fi
     done
     if ! $is_named; then
-      printf '[relocate-claude-config] git worktree repair also reaches %q, which this checkout records, and may write its .git file to name this checkout. If it belonged to another checkout, link it back with: git -C <other checkout> worktree repair %q. If it held no .git, git creates one making it a worktree of this checkout, and deleting that .git file undoes it.\n' "$record_path" "$record_path"
+      printf '[relocate-claude-config] git worktree repair also reaches %q, which this checkout records, and may write its .git file to name this checkout. If it belonged to another checkout, link it back with: git -C <other checkout> worktree repair %q. If it held no .git, git creates one making it a worktree of this checkout.\n' "$record_path" "$record_path"
     fi
   done
 

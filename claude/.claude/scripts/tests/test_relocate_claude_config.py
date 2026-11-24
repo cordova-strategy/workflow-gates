@@ -591,7 +591,7 @@ class TestPersonalSkillsRelinkFailure:
             in result.stderr
         )
         assert "Reminders:" in result.stderr
-        assert "worktree repair" in result.stderr
+        assert "git -C <new-path> worktree repair <path>" in result.stderr
         assert "also moves other dangling entries" in result.stderr
         assert _REMEDY_LEAD_IN in result.stderr
 

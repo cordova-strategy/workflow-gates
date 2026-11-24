@@ -177,7 +177,6 @@ class TestWholeScriptWorktreeRepair:
         assert "outside\\ worktree" in quoted_outside
         assert outside_reached[0].count(quoted_outside) == 2
         assert f"git -C <other checkout> worktree repair {quoted_outside}" in outside_reached[0]
-        assert "deleting that .git file undoes it" in outside_reached[0]
         assert "which does not exist" not in result.stdout + result.stderr
         repair_heading = f"repairing linked worktrees of {_bash_quote(str(new_root))}"
         assert repair_heading in result.stdout
@@ -246,14 +245,15 @@ class TestWholeScriptWorktreeRepair:
 
 
 class TestRepairLinkedWorktreesRunner:
-    def test_an_inherited_git_dir_does_not_redirect_the_repair(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize("name", ["GIT_DIR", "GIT_COMMON_DIR"])
+    def test_an_inherited_repository_variable_does_not_redirect_the_repair(self, tmp_path: Path, name: str) -> None:
         checkout = _make_git_checkout(tmp_path)
         _add_worktree(tmp_path, checkout, checkout / _WORKTREES / "w")
         decoy, decoy_worktree, decoy_before = _make_decoy_with_worktree(tmp_path)
         moved = tmp_path / "moved"
         checkout.rename(moved)
 
-        _, failures = _run_repair_runner(tmp_path, moved, prelude=f"export GIT_DIR={shlex.quote(str(decoy / '.git'))}")
+        _, failures = _run_repair_runner(tmp_path, moved, prelude=f"export {name}={shlex.quote(str(decoy / '.git'))}")
 
         assert _snapshot_admin_files(decoy, decoy_worktree) == decoy_before
         assert failures == []
@@ -283,7 +283,7 @@ class TestRepairLinkedWorktreesRunner:
         checkout = _make_repo(tmp_path)
         decoy, decoy_worktree, decoy_before = _make_decoy_with_worktree(tmp_path)
         assert (decoy / ".git" / "worktrees" / "w").is_dir()
-        # `git worktree repair` rewrites the admin `gitdir` file named by a stale candidate's basename.
+        # `git worktree repair` rewrites the admin `gitdir` file named by a stale candidate.
         stale_candidate = checkout / _WORKTREES / "w"
         stale_candidate.mkdir(parents=True)
         (stale_candidate / ".git").write_text("gitdir: /stale/path/.git/worktrees/w\n")
