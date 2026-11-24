@@ -1,0 +1,23 @@
+{
+ "packet_id": "p003",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Mirror Claude Code's own naming of project dirs under ~/.claude/projects/, which this repo cannot change."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Mirror Claude Code's own naming of project dirs under ~/.claude/projects/, which this repo cannot change."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"\"\"Mirror Claude Code's own naming of project dirs under ~/.claude/projects/, which this repo cannot change."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "The mapping is lossy, so two distinct paths can share a slug (see `_repo_scoped_project_slugs`)."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Mirror Claude Code's own naming of project dirs under ~/.claude/projects/, which this repo cannot change."
+ }
+}

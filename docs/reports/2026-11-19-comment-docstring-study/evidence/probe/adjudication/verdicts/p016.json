@@ -1,0 +1,23 @@
+{
+ "packet_id": "p016",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Rebuild `exc` from `errno` and `strerror` alone, dropping its path."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Rebuild `exc` from `errno` and `strerror` alone, dropping its path."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "that callers catch. Why the path is dropped: see"
+ },
+ "d": {
+  "pass": true,
+  "evidence": "docstring (scope.py:254-257), so point there instead of restating it."
+ },
+ "e": {
+  "pass": false,
+  "evidence": "Rebuilding from `errno` keeps the subclass (e.g. `PermissionError`)"
+ }
+}

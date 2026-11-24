@@ -89,7 +89,7 @@ Before evaluating gaps, answer three questions in order:
 2. **Is the design appropriately sized for the user pain it solves on that surface?** Gap-finding on an over-elaborate design elaborates it further (each finding closes a gap by adding more machinery), and the checklist won't surface "this whole design is the wrong shape."
 
 Markers of over-elaboration:
-- Defensive layers beyond the declared user surface and threat model; conditional logic for phases that may not arrive; layers duplicating an existing abstraction; granularity exceeding any consumer's need.
+- Defensive layers against an actor or input the declaration excludes, where a defense against a steered or hostile agent counts as over-elaboration only under `agent=cooperative`, `caller=operator-only` and `input=trusted`; conditional logic for phases that may not arrive; layers duplicating an existing abstraction; granularity exceeding any consumer's need.
 - Captured outputs / fields with no downstream reader.
 - "Could be done in N lines" stays valid even after personas shaped the plan.
 

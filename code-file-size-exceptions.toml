@@ -132,7 +132,7 @@ verdict = "split pending"
 seam = "One test class, so the seam is test-method families inside `TestGuardSettingsSessionKeys`: top-level keys (`test_model_change_denies_commit`), nested keys (`test_nested_effort_level_added_where_env_absent_denies`), deny messages (`test_deny_message_names_both_nested_keys`) and passthrough (`test_non_commit_command_allows`)"
 
 ["claude/.claude/hooks/tests/test_hook_alignment.py"]
-ceiling = 3767
+ceiling = 3770
 verdict = "split pending"
 seam = "Test families by concern: class headers (`TestHookClassHeader`), gate behavior (`TestGateHookBehavior`), regex portability (`test_no_gnu_backslash_s_regex_extension`) and registration shape (`test_every_registered_hook_entry_has_type_and_command`)"
 issue = 1532
@@ -494,7 +494,7 @@ verdict = "split pending"
 seam = "Agent frontmatter (`agent_frontmatter_model`, `agent_frontmatter_tools`), transcript parsing (`parse_subagent_dispatches`), subprocess execution (`execute_matrix_cell`), reporting (`result_to_dict`, `print_run_result`)"
 
 ["evals/review_bench/analysis.py"]
-ceiling = 1303
+ceiling = 1319
 verdict = "split pending"
 seam = "Verdicts (`recall_noninferiority_verdict`, `certify_later_arm`), bootstrap (`bootstrap_interval`), harness closure (`compute_harness_closure`), freeze checks (`check_freeze_preconditions`), secondary columns (`read_token_stats`)"
 
@@ -562,11 +562,6 @@ seam = "Judge input (`TestBlindOrdering`, `TestRecallJudgeInputLimitsTheFixDiffT
 ceiling = 1597
 verdict = "split pending"
 seam = "Statistics (`TestPercentile`, `TestRecallCountsAndDropRule`, `TestFixtureClusterBootstrap`), verdicts (`TestArmRecallAndSensitivityVerdict`, `TestCertifyLaterArm`), harness closure (`TestHarnessClosure`, `TestHarnessClosureOverASyntheticTree`), freeze checks (`TestManifestAndFreezeChecks`, `TestCheckAgainstFrozenConditions`), report columns (`TestSecondaryReportColumns`, `TestBaselineReportFreezeIdentity`)"
-
-["evals/test_review_bench_calibrate.py"]
-ceiling = 1007
-verdict = "split pending"
-seam = "Calibration families (`TestScenarioDraws`, `TestSolver`, `TestDecideReplicate`, `TestDegenerateTermsFromPrecisionCounts`, `TestSummarizeCell`), sweep and workers (`TestSweep`, `TestWorkersAndSeeds`, `TestPlannedCellsReachTheirTrueDifference`), and the command and config (`TestCalibrateCommand`, `TestCalibrationConfig`)"
 
 ["evals/test_review_bench_cli.py"]
 ceiling = 7124

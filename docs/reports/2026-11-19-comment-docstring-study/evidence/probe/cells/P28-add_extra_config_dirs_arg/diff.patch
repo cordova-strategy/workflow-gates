@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -716,6 +716,7 @@
+ 
+ 
+ def _add_extra_config_dirs_arg(parser: argparse.ArgumentParser, help_text: str) -> None:
++    """A subcommand calling this must also be in _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR."""
+     parser.add_argument("--config-dir", action="append", dest="extra_config_dirs", metavar="DIR", help=help_text)
+ 
+ 
