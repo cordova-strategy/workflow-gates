@@ -31,7 +31,7 @@ The five prompts below back only the five-sample cells and the Opus cells. Each 
 
 The subagent-brief prompt asks the session to delegate a review of `util.py` to a subagent and relay what it finds, with no edit. The commit-message prompt asks for a one-line docstring edit plus a commit message, with no git operation.
 
-Every count below holds on its one prompt and the one fixture. A single reader chose the content markers after reading the replies, so the counts are exploratory, and the markers are a subset of what Concise dropped, not a census.
+Every count below holds on its one prompt and the one fixture. A single reader chose the content markers after reading the replies, so the counts are exploratory. The markers are a subset of what Concise dropped, not a census.
 
 ### Length
 
