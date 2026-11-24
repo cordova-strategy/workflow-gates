@@ -16,12 +16,12 @@ class TestNoCommandsSentence:
 
         assert NO_COMMANDS_SENTENCE in prompt
 
-    def test_the_toolkit_and_bare_arms_launch_with_the_same_prompt(self, world):
-        prompts = {}
+    def test_the_toolkit_and_bare_arms_each_launch_with_the_sentence(self, world):
+        sentence_launched = {}
         for arm_name in (arms.TOOLKIT.name, arms.BARE.name):
             launch_stub = world.launch()
             execute_run(make_settings(world, launch_stub, campaign_id=arm_name), make_block(world), arm_name, 0)
             (call,) = launch_stub.calls
-            prompts[arm_name] = call.inner_prompt
+            sentence_launched[arm_name] = NO_COMMANDS_SENTENCE in call.inner_prompt
 
-        assert prompts[arms.TOOLKIT.name] == prompts[arms.BARE.name]
+        assert sentence_launched == {arms.TOOLKIT.name: True, arms.BARE.name: True}

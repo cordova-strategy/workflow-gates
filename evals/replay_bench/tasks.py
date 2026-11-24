@@ -832,6 +832,8 @@ def _evaluate_commit(
     if record.author_email not in trusted_authors:
         return SkipReason.UNTRUSTED_AUTHOR
     brief = record.message.strip()
+    # Splits on "\n" only, as git does for a subject line.
+    # The reserved-line check below uses splitlines(), which also splits on Unicode separators.
     holds_body = any(line.strip() for line in brief.split("\n")[1:])
     if len(record.parents) > 1:
         merged = _merged_commits(repo, record)

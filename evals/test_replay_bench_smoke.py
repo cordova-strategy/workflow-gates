@@ -252,7 +252,7 @@ class TestTheMarginsRuleTerm:
         assert exit_code == 0 and f"margin {expected:g} tokens" in capsys.readouterr().out
 
 
-class TestFailuresSmokeDoesNotRetry:
+class TestWhichFailuresSmokeRetries:
     def scenario_for_reason(self, world, reason):
         return {
             checks.REASON_ARM_LEAK: ("bare-writer", Scenario(log_lines=leaking_log_lines(world))),

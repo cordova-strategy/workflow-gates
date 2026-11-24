@@ -1691,10 +1691,13 @@ once the set changes.
   skipped for its line counts keeps that reason.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
-- Re-mine a task set after any change to the fixture rule below. The rule fixes
-  each task's changed paths and reference metrics at mining time, and neither
-  the task-set hash nor the manifest records it, so a resume does not refuse a
-  set mined under another rule.
+- Re-mine a task set after any change to the fixture rule below, to how
+  `tasks` selects commits, or to the inner prompt. The fixture rule fixes each
+  task's changed paths and reference metrics at mining time. The selection
+  checks also run only at mining time, and `--max-prompt-chars` measures the
+  prompt as it rendered then. Neither the task-set hash nor the manifest
+  records any of these, so a resume does not refuse a set mined under another
+  rule.
 - A task's fixture drops the entries that would load a checkout's own
   instructions, each matched case-insensitively:
   - Everywhere, every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`. At the
@@ -1816,7 +1819,8 @@ states the same constraint.
 
 `smoke` runs one block of one run per arm (`toolkit` and `bare`) on the task
 you name, and takes no `--k`. It prints its nominal cost ceiling before the
-first launch. For each run it prints the status, an `empty final text` line
+first launch. The ceiling counts two attempts per run, the most a smoke run can
+make. For each run it prints the status, an `empty final text` line
 when the run ended with no text, instruction loads by class,
 the first-turn prompt size, the Bash commands, out-of-fixture paths, the
 permission-denial count, the allow-list Reads, the change's metrics, the cost,
@@ -1840,10 +1844,6 @@ thumb, not a measured bound:
 - The change does not depend on a pruned path such as `CLAUDE.md` or `.claude/`.
   See the fixture rule in the Tasks section: a pruned path is absent from the
   fixture and does not count as a changed path.
-
-A smoke does not retry a timeout, and a `run` campaign retries one once. See
-"Retry and missing reasons" below for which other reasons never retry. The
-smoke's printed ceiling still counts two attempts per run as an upper bound.
 
 Each failed condition prints as `failed: <name>: <text>`, and the last line
 names the first one. A run that ended missing prints
@@ -1937,8 +1937,7 @@ recorded and never compared:
   it at launch from `evals/`, and no manifest field pins it. A resume prints
   this checkout's reading only when its commit or dirty flag differs from the
   manifest's, so a prompt edit made in a checkout that was dirty at both start
-  and resume prints nothing. A task set mined before the prompt gained its
-  no-commands sentence was length-checked against a shorter prompt.
+  and resume prints nothing.
 - A manifest that lacks `runner_commit` or `runner_dirty` still resumes.
 - A reading that git could not produce is null in the manifest and record, and
   prints as unreadable.

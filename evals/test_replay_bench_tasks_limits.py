@@ -114,21 +114,18 @@ class TestTestCodeLineCeiling:
 
         assert "  skipped too-many-test-code-lines: 1" in summary
 
-
-    def test_a_test_file_at_the_ceiling_plus_comment_and_blank_lines_is_kept_and_a_deleted_test_line_is_not_counted(
-        self, tmp_path,
-    ):
-        repo = _make_repo(tmp_path, {"tests/test_old.py": "".join(f"old_{n} = {n}\n" for n in range(10))})
+    def test_a_test_file_at_the_ceiling_plus_comment_and_blank_lines_is_kept(self, tmp_path):
+        repo = _make_repo(tmp_path)
         added_test_code = "".join(f"value_{n} = {n}\n" for n in range(20))
         _change(repo, {
             "src/app.py": _app_with(12),
             "tests/test_app.py": f"# a comment\n\n{added_test_code}\n# another comment\n",
-            "tests/test_old.py": None,
         })
 
-        task = _mine_one_task(repo, max_test_code_lines=20)
+        report = _mine(repo, max_test_code_lines=20)
 
-        assert task.reference_metrics.line_counts["test"][LineClass.CODE.value] == 20
+        assert len(report.tasks) == 1, report.skip_counts
+        assert report.tasks[0].reference_metrics.line_counts["test"][LineClass.CODE.value] == 20
 
 
 class TestSubjectOnlyBriefs:

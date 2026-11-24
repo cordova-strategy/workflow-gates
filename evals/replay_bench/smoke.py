@@ -27,7 +27,6 @@ from replay_bench.spend import SpendAppendError, SpendFile
 SMOKE_ARM_NAMES = (arms_mod.TOOLKIT.name, arms_mod.BARE.name)
 CONDITION_READ_GRANT_DENIED = "read-grant-denied"
 CONDITION_READ_GRANT_UNEXERCISED = "read-grant-unexercised"
-# The campaign's no-retry reasons, plus timeout: a campaign retries a timeout once, but smoke does not.
 # The printed nominal ceiling still counts two attempts per run, as an upper bound.
 SMOKE_NO_RETRY_REASONS = NO_RETRY_REASONS | {review_runner.MISSING_REASON_TIMEOUT}
 
