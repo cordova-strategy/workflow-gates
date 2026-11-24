@@ -891,6 +891,17 @@ class TestWording:
         assert review_cost_by_size._NO_PR_REPORTED_MESSAGE == _NO_PR_REPORTED_TEXT
         assert review_cost_by_size._NO_PR_RECORDED_MESSAGE == _NO_PR_RECORDED_TEXT
 
+    def test_a_row_is_selected_whatever_capture_scope_it_records_as_the_scope_unverified_notice_states(self):
+        """The notice says the report does not filter on the capture scope a row records, and a legacy row's scope is
+        the empty string, so a filter on scope would drop every row in an existing ledger."""
+        rows = [
+            _kept_row(pr_number, capture_scope=capture_scope)
+            for pr_number, capture_scope in ((41, "repo"), (42, "glob"), (43, ""))
+        ]
+        read = ledger_rounds.select_ledger_prs([rows], _ORIGIN_HOST, _ORIGIN_REPO)
+        assert [pr.number for pr in read.prs] == [41, 42, 43]
+        assert read.excluded == dict.fromkeys(ledger_rounds.EXCLUSION_REASONS, 0)
+
     @pytest.mark.parametrize(
         ("message_name", "cited_doc"),
         [

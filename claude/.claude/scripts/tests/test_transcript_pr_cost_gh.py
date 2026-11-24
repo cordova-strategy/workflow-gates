@@ -14,6 +14,7 @@ import pytest
 from transcript_analysis import ledger_common, pr_cost, pr_cost_ledger, scope
 
 from ._pr_cost_helpers import (
+    _NO_ACTIVITY_ACCOUNT_SKIP_STEM,
     _SEEDED_MACHINE_IDENTITY,
     _already_captured_line,
     _argv_carries_repo_pin,
@@ -648,7 +649,7 @@ class TestPrCostAllAccounts:
         assert not (acct_b / "pr-cost-ledger.tsv").exists()
 
         captured = capsys.readouterr()
-        assert "account-2 has no local corpus activity in this run's scope for this branch" in captured.err
+        assert _NO_ACTIVITY_ACCOUNT_SKIP_STEM in captured.err
         assert "recorded 1 of 2 declared accounts (0 not opted in, 1 skipped)" in captured.out
 
     def test_all_accounts_renamed_branch_mismatch_hits_the_skip_not_the_new_warning(
@@ -688,7 +689,7 @@ class TestPrCostAllAccounts:
         assert rows_a[0]["turn_count"] > 0
         assert not (acct_b / "pr-cost-ledger.tsv").exists()  # skipped, not zero-recorded
         err = capsys.readouterr().err
-        assert "account-2 has no local corpus activity in this run's scope for this branch" in err  # the pre-existing skip fires
+        assert _NO_ACTIVITY_ACCOUNT_SKIP_STEM in err  # the pre-existing skip fires
         assert "has no matching local corpus activity" not in err  # the new warning must not also fire
         assert "old-name" not in err
         assert "new-name" not in err

@@ -130,9 +130,9 @@ _PR_COST_STATUS_DEGRADED_NETWORK = "degraded_network"
 _PR_COST_STATUS_VALUES = (_PR_COST_STATUS_OK, _PR_COST_STATUS_DEGRADED_RATE_LIMIT, _PR_COST_STATUS_DEGRADED_NETWORK)
 
 # "high": direct headRefName match corroborated by plan-slug or SHA overlap. "medium": direct match, uncorroborated.
-# "low": the head name matched more than one merged PR, a cross-repository one included; resolved by the branch-reuse
-# tie-break (highest commit-SHA overlap, most recent mergedAt) among the same-repository matches, or unresolved (no row
-# written).
+# "low": the head name matched more than one merged PR, a cross-repository one included. The branch-reuse tie-break
+# (highest commit-SHA overlap, most recent mergedAt) resolves among the same-repository matches. An unresolved match
+# writes no row.
 _PR_COST_JOIN_CONFIDENCE_HIGH = "high"
 _PR_COST_JOIN_CONFIDENCE_MEDIUM = "medium"
 _PR_COST_JOIN_CONFIDENCE_LOW = "low"

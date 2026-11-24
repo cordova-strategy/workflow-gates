@@ -26,9 +26,12 @@ from transcript_analysis import (
 
 from ._pr_cost_helpers import (
     _COUNT_LINE_STEM,
+    _EMPTY_SCOPE_RESCOPE_HINT,
     _FORCE_REFUSAL_STEM,
     _FROZEN_HEADER_CASES,
+    _GLOB_RESCOPE_HINT,
     _LEDGER_DIR_MARKER,
+    _NO_ACTIVITY_ACCOUNT_SKIP_STEM,
     _NOW,
     _PER_PR_DEGRADE_STEM,
     _PRE_MODEL_HEADER_LINE,
@@ -2562,7 +2565,7 @@ class TestReviewRoundScanLaziness:
 
         assert len(spy.scalar_scans) == 2
         assert [call["roots"] for call in spy.round_scans] == [[roots[0]]]
-        assert "account-2 has no local corpus activity in this run's scope for this branch -- skipped" in capsys.readouterr().err
+        assert f"{_NO_ACTIVITY_ACCOUNT_SKIP_STEM} -- skipped" in capsys.readouterr().err
 
     def test_unforced_uncaptured_pr_runs_one_round_scan_and_prints_one_start_line(
         self, fake_projects, tmp_path, monkeypatch, capsys,
@@ -2720,14 +2723,19 @@ class TestReviewRoundsPreLockSkip:
         assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
         assert spy.round_scans == []
 
+    @pytest.mark.parametrize(("capture_scope", "expected_hint"), [
+        pytest.param(pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO, "", id="repo-row-keeps-the-plain-line"),
+        pytest.param(pr_cost_ledger._PR_COST_CAPTURE_SCOPE_GLOB, _GLOB_RESCOPE_HINT, id="glob-row-names-the-re-scope"),
+        pytest.param("", _EMPTY_SCOPE_RESCOPE_HINT, id="legacy-empty-scope-row-names-the-re-scope"),
+    ])
     def test_row_a_concurrent_record_appends_after_the_pre_lock_read_gives_the_same_line_from_the_locked_check(
-        self, fake_projects, tmp_path, monkeypatch, capsys,
+        self, fake_projects, tmp_path, monkeypatch, capsys, capture_scope, expected_hint,
     ):
         ledger_path = _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a",))
         spy = _spy_on_scans(monkeypatch)
         _write_ledger_row_on_lock_acquire(
             monkeypatch, ledger_path, _sample_pr_cost_row(
-                pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO,
+                pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=capture_scope,
             ),
         )
 
@@ -2735,7 +2743,7 @@ class TestReviewRoundsPreLockSkip:
             _run_record(fake_projects, pr=1)
 
         assert exc_info.value.code == 1
-        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        assert _already_captured_line(1) + expected_hint in capsys.readouterr().err.splitlines()
         assert len(_ledger_rows(ledger_path)) == 1
         assert len(spy.round_scans) == 1  # the row arrived after the pre-lock lookup, which would have skipped the scan
 
@@ -3196,6 +3204,16 @@ class TestReviewRoundsCellOutcome:
         assert pr_cost._review_rounds_cell_outcome([], None, self._MERGED_AT) == (expected_cell, None, None)
 
 
+def _force_refusal_over_equal_scopes(prior_cell, new_cell, new_absence, build_error_class) -> str | None:
+    """_review_rounds_force_refusal with both scopes glob, so the move-into-repo waiver never applies.
+
+    That waiver is pinned in test_transcript_pr_cost_capture_scope.py.
+    """
+    return pr_cost._review_rounds_force_refusal(
+        prior_cell, new_cell, new_absence, build_error_class, prior_capture_scope="glob", new_capture_scope="glob",
+    )
+
+
 class TestReviewRoundsAbsenceClosedSet:
     def test_the_absence_set_is_the_pass_failure_the_two_quiet_states_and_the_check_rules(self):
         expected_absences = {"pass-failed", "no-local-activity", "not-built", *pr_cost._REVIEW_ROUNDS_CHECK_RULES}
@@ -3220,9 +3238,7 @@ class TestReviewRoundsAbsenceClosedSet:
                 lambda absence: pr_cost._review_rounds_degrade_reason(absence, None), KeyError, id="degrade-reason",
             ),
             pytest.param(
-                lambda absence: pr_cost._review_rounds_force_refusal(
-                    _cell_of(1, code_review=[1]), None, absence, None, prior_capture_scope="glob", new_capture_scope="glob",
-                ),
+                lambda absence: _force_refusal_over_equal_scopes(_cell_of(1, code_review=[1]), None, absence, None),
                 KeyError, id="force-refusal",
             ),
         ],
@@ -3239,9 +3255,7 @@ class TestReviewRoundsAbsenceClosedSet:
         assert pr_cost._review_rounds_cell_outcome(None, absence, merged_at) == (None, absence, None)
         degrade_reason = pr_cost._review_rounds_degrade_reason(absence, None)
         assert (degrade_reason is None) == (absence in pr_cost._QUIET_ROUNDS_ABSENCES)
-        assert pr_cost._review_rounds_force_refusal(
-            _cell_of(1, code_review=[1]), None, absence, None, prior_capture_scope="glob", new_capture_scope="glob",
-        )
+        assert _force_refusal_over_equal_scopes(_cell_of(1, code_review=[1]), None, absence, None)
 
 
 class TestReviewRoundsForceRefusal:
@@ -3253,9 +3267,7 @@ class TestReviewRoundsForceRefusal:
         pytest.param(None, "size", id="check-rule"),
     ])
     def test_a_prior_cell_that_was_never_captured_allows_every_new_cell(self, new_cell, new_absence):
-        assert pr_cost._review_rounds_force_refusal(
-            None, new_cell, new_absence, None, prior_capture_scope="glob", new_capture_scope="glob",
-        ) is None
+        assert _force_refusal_over_equal_scopes(None, new_cell, new_absence, None) is None
 
     @pytest.mark.parametrize("prior_cell", [
         pytest.param(_cell_of(1, code_review=[1]), id="populated-prior"),
@@ -3270,9 +3282,7 @@ class TestReviewRoundsForceRefusal:
         pytest.param("not-built", "this checkout does not record review rounds", id="not-built"),
     ])
     def test_an_empty_new_cell_refuses_with_the_reason_its_absence_gives(self, prior_cell, new_absence, expected_reason):
-        assert pr_cost._review_rounds_force_refusal(
-            prior_cell, None, new_absence, None, prior_capture_scope="glob", new_capture_scope="glob",
-        ) == expected_reason
+        assert _force_refusal_over_equal_scopes(prior_cell, None, new_absence, None) == expected_reason
 
     def test_a_build_absence_refuses_with_its_exception_class_name_and_never_a_message(self, monkeypatch):
         def raising_builder(rounds, merged_at) -> dict:
@@ -3283,10 +3293,7 @@ class TestReviewRoundsForceRefusal:
             [], None, "2026-01-01T00:00:00Z",
         )
 
-        reason = pr_cost._review_rounds_force_refusal(
-            _cell_of(1, code_review=[1]), new_cell, new_absence, build_error_class,
-            prior_capture_scope="glob", new_capture_scope="glob",
-        )
+        reason = _force_refusal_over_equal_scopes(_cell_of(1, code_review=[1]), new_cell, new_absence, build_error_class)
 
         assert reason == f"the new cell failed its build check ({_REVIEW_ROUNDS_CAUSE_BY_RULE['build']}: RuntimeError)"
         assert _REJECTED_MARKER not in reason
@@ -3306,18 +3313,14 @@ class TestReviewRoundsForceRefusal:
         pytest.param(_cell_of(1, code_review=[1]), _cell_of(2, code_review=[]), id="all-empty-lists-under-a-higher-rule"),
     ])
     def test_a_cell_at_least_as_complete_or_under_a_higher_rule_is_allowed(self, prior_cell, new_cell):
-        assert pr_cost._review_rounds_force_refusal(
-            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
-        ) is None
+        assert _force_refusal_over_equal_scopes(prior_cell, new_cell, None, None) is None
 
     def test_more_dangling_alone_is_allowed(self):
         prior_cell = _cell_of(1, code_review=[1])
         new_cell = _cell_of(1, code_review=[1])
         new_cell["rounds"]["code-review"][0]["dangling"] += 5
 
-        assert pr_cost._review_rounds_force_refusal(
-            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
-        ) is None
+        assert _force_refusal_over_equal_scopes(prior_cell, new_cell, None, None) is None
 
     @pytest.mark.parametrize("prior_cell,new_cell,expected_reason", [
         pytest.param(_cell_of(2, code_review=[1]), _cell_of(1, code_review=[1]), _REASON_OLDER_RULE, id="lower-rule"),
@@ -3347,9 +3350,7 @@ class TestReviewRoundsForceRefusal:
         ),
     ])
     def test_an_older_rule_or_a_less_complete_cell_under_the_same_rule_is_refused(self, prior_cell, new_cell, expected_reason):
-        assert pr_cost._review_rounds_force_refusal(
-            prior_cell, new_cell, None, None, prior_capture_scope="glob", new_capture_scope="glob",
-        ) == expected_reason
+        assert _force_refusal_over_equal_scopes(prior_cell, new_cell, None, None) == expected_reason
 
 
 class TestReviewRoundsForceGuardIntegration:

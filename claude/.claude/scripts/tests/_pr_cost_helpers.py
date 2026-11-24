@@ -288,6 +288,7 @@ def _already_captured_line(pr_number: int, machine: str = _SEEDED_MACHINE_IDENTI
     )
 
 
+_NO_ACTIVITY_ACCOUNT_SKIP_STEM = "account-2 has no local corpus activity in this run's scope for this branch"
 _GLOB_RESCOPE_HINT = (
     "; a bare --force re-scopes the row to this repo, so pass the same --projects glob to keep its scope"
 )
