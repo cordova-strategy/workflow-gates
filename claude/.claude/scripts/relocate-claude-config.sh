@@ -12,7 +12,8 @@
 # and ~/.local/bin/ keeps resolving. Deliberately does NOT source _lib.sh or
 # otherwise depend on ~/.claude/ being intact: repairing that dependency is
 # exactly this script's job. Both modes also re-point links in each config dir
-# listed in ~/.claude/transcript-config-dirs. See README "Repo relocation" and
+# listed in ~/.claude/transcript-config-dirs and run `git worktree repair` for
+# the checkout's linked worktrees. See README "Repo relocation" and
 # docs/scripts.md.
 #
 # Threat model: <new-path> is semi-trusted, not only a deliberate human
@@ -27,6 +28,9 @@
 # dash-prefixed path can never be parsed as a flag.
 # A --repair destination that passes only the canary check reaches every
 # account listed in ~/.claude/transcript-config-dirs, not only ~/.claude.
+# Its worktree records also choose which existing directories `git worktree
+# repair` may write a .git file in, and the run names each one it does not pass
+# to git before the repair.
 #
 # Usage:
 #   relocate-claude-config <new-path>
@@ -56,11 +60,12 @@
 #      After --repair's `stowing at`, the retry is re-running the same command.
 #   2  bad arguments
 #   3  the checkout moved, or --repair linked the `claude` package, but
-#      linking a package, or re-pointing a listed config dir, named on stderr
-#      failed. Fix it, then run the --repair command the output ends with. A
-#      checkout with no claude-skills/ directory is the exception: update it to
-#      a commit that has one, then run ./install.sh from it, because the run
-#      already installed the checkout's own copy of this script.
+#      linking a package, re-pointing a listed config dir, or repairing the
+#      checkout's linked worktrees, named on stderr, failed. Fix it, then run
+#      the --repair command the output ends with. A checkout with no
+#      claude-skills/ directory is the exception: update it to a commit that
+#      has one, then run ./install.sh from it, because the run already
+#      installed the checkout's own copy of this script.
 
 set -euo pipefail
 
@@ -79,7 +84,8 @@ usage() {
 Usage:
   $SCRIPT_NAME <new-path>              Relocate this checkout to <new-path>
   $SCRIPT_NAME --repair <new-path>     Repair ~/.claude after an out-of-band move to <new-path>
-  Both modes also re-point links in each config dir listed in ~/.claude/transcript-config-dirs.
+  Both modes also re-point links in each config dir listed in ~/.claude/transcript-config-dirs,
+  and repair the checkout's linked worktrees.
 
 Flags:
   --allow-outside-home   Permit a destination outside \$HOME (either mode)
@@ -777,6 +783,115 @@ relink_declared_dirs() {
   return 0
 }
 
+# Append to the caller's `candidates` array each real directory under $1 whose
+# .git is a regular file, descending into a directory with no .git while more
+# than one of the $2 levels remains.
+_collect_worktree_candidates() {
+  local directory="$1" levels_left="$2" entry
+  for entry in "$directory"/*; do
+    [[ -d "$entry" && ! -L "$entry" ]] || continue
+    if [[ -f "$entry/.git" && ! -L "$entry/.git" ]]; then
+      candidates+=("$entry")
+    elif [[ ! -e "$entry/.git" && ! -L "$entry/.git" && "$levels_left" -gt 1 ]]; then
+      _collect_worktree_candidates "$entry" $((levels_left - 1))
+    fi
+  done
+}
+
+# Fill the caller's `record_paths` array with the path of each linked worktree
+# the checkout at the caller's `new_real` records, or fail when git cannot list them.
+_read_worktree_records() {
+  local listing line is_main_record=true
+  record_paths=()
+  listing=$(git --no-pager -C "$new_real" worktree list --porcelain) || return 1
+  while IFS= read -r line; do
+    [[ "$line" == "worktree "* ]] || continue
+    if $is_main_record; then
+      is_main_record=false
+      continue
+    fi
+    record_paths+=("${line#worktree }")
+  done <<< "$listing"
+  return 0
+}
+
+# Run one `git worktree repair` from the checkout $1 (a physical path) that names
+# each linked worktree under its .claude/worktrees, then report each recorded
+# worktree whose path does not exist. The body is a subshell, so the
+# environment changes and the shopt end with it. Callers run it as an `if`
+# condition, where errexit is off, so each step checks its own status.
+_repair_linked_worktrees() (
+  local new_real="$1"
+  local -a candidates=() record_paths=()
+  local failed=false record_path record_real candidate is_named quoted_path
+
+  # Repository variables git exports to hooks would send these calls to another repository.
+  unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
+  # Bounding the search at the checkout's parent makes git open its own .git or fail, never a parent repository.
+  export GIT_CEILING_DIRECTORIES="${new_real%/*}"
+  if [ -z "$GIT_CEILING_DIRECTORIES" ]; then
+    GIT_CEILING_DIRECTORIES=/
+  fi
+
+  # git resolves a relative recorded path from the checkout, so each existence test below must too.
+  cd -- "$new_real" || return 1
+  shopt -s nullglob
+  _collect_worktree_candidates "$new_real/.claude/worktrees" 2
+
+  _read_worktree_records || return 1
+  for record_path in "${record_paths[@]}"; do
+    [ -e "$record_path" ] || continue
+    record_real=$(canonicalize_for_comparison "$record_path")
+    is_named=false
+    for candidate in "${candidates[@]}"; do
+      if [ "$candidate" = "$record_real" ]; then
+        is_named=true
+        break
+      fi
+    done
+    if ! $is_named; then
+      printf '[relocate-claude-config] git worktree repair also reaches %q, which this checkout records, and may write its .git file to name this checkout. If it belonged to another checkout, link it back with: git -C <other checkout> worktree repair %q. If it held no .git, git creates one making it a worktree of this checkout, and deleting that .git file undoes it.\n' "$record_path" "$record_path"
+    fi
+  done
+
+  git --no-pager -C "$new_real" worktree repair -- "${candidates[@]}" || failed=true
+
+  _read_worktree_records || failed=true
+  for record_path in "${record_paths[@]}"; do
+    if [ ! -e "$record_path" ]; then
+      printf -v quoted_path '%q' "$record_path"
+      err "the checkout records a linked worktree at $quoted_path, which does not exist, so it was not repaired"
+    fi
+  done
+
+  if $failed; then
+    return 1
+  fi
+  return 0
+)
+
+# Repair the linked worktrees of the checkout at $1 when its .git is a real
+# directory. A failure is recorded in RELINK_FAILURES, never aborts the run.
+repair_linked_worktrees() {
+  local new_path="$1" new_real quoted_path
+  new_real=$(canonicalize_for_comparison "$new_path")
+  if [ ! -e "$new_real/.git" ] && [ ! -L "$new_real/.git" ]; then
+    return 0
+  fi
+  if [[ ! -d "$new_real/.git" || -L "$new_real/.git" ]]; then
+    printf -v quoted_path '%q' "$new_real/.git"
+    err "$quoted_path is a symbolic link or not a directory, so no linked worktree was repaired"
+    return 0
+  fi
+
+  printf '[relocate-claude-config] repairing linked worktrees of %q\n' "$new_real"
+  if ! _repair_linked_worktrees "$new_real"; then
+    err "repairing linked worktrees failed"
+    RELINK_FAILURES+=("linked-worktrees")
+  fi
+  return 0
+}
+
 print_primary_reminders() {
   cat <<EOF
 Reminders:
@@ -801,15 +916,18 @@ Not done by this command:
     This command did not touch a link reported above as left alone, so re-link or remove it yourself.
   - Any other account that registered this repo's marketplace, listed or not, still records it at the old location.
     `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points it once that account's `settings.json` resolves.
-  - Every linked worktree still records the old location: run `git worktree repair` in the moved checkout, naming each linked worktree's current path.
+  - A linked worktree reported above as not repaired, or every one when the run said it repaired none, is not linked to the checkout.
+    Run `git -C <new-path> worktree repair <path>` with its current path once it is reachable.
+    A listed path may be a worktree that moved and still exists, so remove its record yourself only after you confirm its directory is gone.
   - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
   See README "Repo relocation".
 EOF
 }
 
-# Print the closing text for the run's outcome: stdout when every package and
-# listed dir re-linked, stderr with a --repair retry line when a package or
-# listed dir failed. $2 is "primary" or "repair".
+# Print the closing text for the run's outcome: stdout when every package,
+# listed dir and linked worktree re-linked, stderr with a --repair retry line
+# when a package, a listed dir or the linked-worktrees repair failed. $2 is
+# "primary" or "repair".
 report_relink_outcome() {
   local new_path="$1" mode="$2"
 
@@ -850,6 +968,7 @@ EOF
     echo "The --repair retry also moves other dangling entries (those whose name does not start with a dot) directly under ~/.claude and ~/.local/bin into $BACKUP_DIR, not only those the move broke."
     echo "Resolve each failure named above first, because the retry fails the same way until then: a symlinked ~/.claude needs the replacement its error describes. Anything else at ~/.claude/skills that is not this checkout's link must be moved aside, and a failed move into $BACKUP_DIR needs that directory fixed."
     echo "A transcript-config-dirs:line-<N> entry is the dir on line <N> of ~/.claude/transcript-config-dirs. The errors above it name each link it could not re-point, with the cause, and each directory it could not search. Fix that cause, such as a dir this command cannot search or write, or delete the dir's line from ~/.claude/transcript-config-dirs so this command leaves it alone, which also drops it from the transcript tools' scan."
+    echo "A linked-worktrees entry means git reported an error above for a linked worktree, or listing the checkout's worktrees failed. Fix the cause the error names, such as a .git file that names no repository or an ownership mismatch. Confirm the checkout's owner is trusted before overriding git's ownership check, and scope any override to that checkout. This command never prunes or deletes a worktree."
     echo "A missing claude-skills/ directory is the exception: update the checkout to a commit that has it, then run ./install.sh from it. This run already replaced the installed script with the checkout's own, so a retry before then runs that script and links nothing."
     printf 'relocate-claude-config --repair%s %q\n' "$retry_allow_flag" "$retry_path"
   } >&2
@@ -899,6 +1018,7 @@ relocate_repo() {
   relink_packages "$new_path"
   finish_relocation "$new_path"
   relink_declared_dirs "$new_path"
+  repair_linked_worktrees "$new_path"
   report_relink_outcome "$new_path" primary
   if [ "${#RELINK_FAILURES[@]}" -gt 0 ]; then
     exit 3
@@ -924,6 +1044,7 @@ repair_repo() {
   relink_packages "$new_path"
   finish_relocation "$new_path"
   relink_declared_dirs "$new_path"
+  repair_linked_worktrees "$new_path"
   report_relink_outcome "$new_path" repair
   if [ "${#RELINK_FAILURES[@]}" -gt 0 ]; then
     exit 3
