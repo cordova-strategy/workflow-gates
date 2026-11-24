@@ -777,7 +777,7 @@ _DO_NOT_PUBLISH_BANNER = (
 # the subcommand itself resolves. Most members resolve their own multi-root
 # scan via their own subcommand-level --config-dir (_resolve_cost_roots).
 # The exceptions register no --config-dir flag of their own:
-# - cost-counts, period-cost, read-cost and reviewer-reads build their own single root.
+# - cost-counts, period-cost, read-cost, reviewer-reads and skill-reinjection build their own single root.
 # - review-cost-by-size builds its own single root by default and calls
 #   resolve_scan_roots under --all-accounts.
 _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR = (
@@ -786,6 +786,7 @@ _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR = (
     "subagents", "subagent-mix", "cost-trend", "cache-rebuild", "plan-boundary",
     "instrument-authoring", "pr-cost", "cost-counts", "rearm-backtest",
     "pr-cost-export", "period-cost", "review-cost-by-size", "read-cost", "reviewer-reads",
+    "skill-reinjection",
 )
 
 # Describes the --config-dir checks that _resolve_cost_roots enforces.

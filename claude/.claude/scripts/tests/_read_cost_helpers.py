@@ -1,13 +1,14 @@
 """Constants and builders shared by the test_transcript_read_cost_* files."""
 from transcript_analysis import pricing, read_cost
 
+from .conftest import _PROJECT_SLUG as _PROJECT_SLUG
 from .conftest import (
     _asst,
     _read_result,
     _read_use,
+    _this_repo_args,
 )
 
-_PROJECT_SLUG = "-home-user-testrepo"
 # An agent type this repo tracks under agents/, and one that no repo tracks.
 _TRACKED_AGENT_TYPE = "staff-backend-engineer"
 _UNTRACKED_AGENT_TYPE = "sentinel-untracked-agent-type"
@@ -33,14 +34,7 @@ def _sidechain_copies(records: list[dict]) -> list[dict]:
     return [{**rec, "isSidechain": True} for rec in records]
 
 
-def _read_cost_args(*, this_repo: bool = True, projects: str = "*") -> object:
-    """Pre-seeds args._this_repo_slugs -- the cache _resolve_project_scope reads first -- so scope resolution
-    does not ask git for this repo's worktrees."""
-    return type("A", (), {
-        "this_repo": this_repo,
-        "projects": projects,
-        "_this_repo_slugs": [_PROJECT_SLUG],
-    })()
+_read_cost_args = _this_repo_args
 
 
 def _scan(records: list[dict], seen_tool_use_ids: set[str] | None = None) -> read_cost._WindowScan:

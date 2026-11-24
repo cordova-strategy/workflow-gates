@@ -9,6 +9,7 @@ top-of-file comment for why.
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 from collections.abc import Iterable, Sequence
@@ -247,16 +248,52 @@ def _root_scoped_display_label(
     return _assign_root_scoped_redact_label(kind, ordinal, value, redact_map)
 
 
+# The variables `git rev-parse --local-env-vars` lists that locate a repository, its index, its objects or its
+# worktree. An inherited one overrides `git -C <dir>`. The GIT_CONFIG* variables are left out because they set
+# configuration, not the repository.
+_REPOSITORY_LOCATING_GIT_VARIABLES = frozenset({
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_OBJECT_DIRECTORY", "GIT_DIR", "GIT_WORK_TREE", "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE", "GIT_INDEX_FILE", "GIT_NO_REPLACE_OBJECTS", "GIT_REPLACE_REF_BASE", "GIT_PREFIX",
+    "GIT_SHALLOW_FILE", "GIT_COMMON_DIR",
+})
+
+
+def _git_environment_for_checkout_listing() -> dict[str, str]:
+    """The process environment minus the variables that would point `git -C <checkout>` at another repository."""
+    return {name: value for name, value in os.environ.items() if name not in _REPOSITORY_LOCATING_GIT_VARIABLES}
+
+
+_MODULE_DIRECTORY_BELOW_CHECKOUT_ROOT = ("claude", ".claude", "scripts", "transcript_analysis")
+
+
+def _checkout_root(module_file: str | Path) -> Path | None:
+    """The checkout root of a module file at `<root>/claude/.claude/scripts/transcript_analysis/`, or None when the
+    resolved path is not in that layout.
+
+    .resolve() is load-bearing: a module reached through a stow symlink would otherwise name the directory holding
+    the link, not the checkout, and the invoking account's own <config-dir> would stand in for this repo's tracked
+    tree.
+    """
+    directory_parts = Path(module_file).resolve().parent.parts
+    depth = len(_MODULE_DIRECTORY_BELOW_CHECKOUT_ROOT)
+    if directory_parts[-depth:] != _MODULE_DIRECTORY_BELOW_CHECKOUT_ROOT:
+        return None
+    return Path(*directory_parts[:-depth])
+
+
+# The root is this module's own checkout, never the working directory, so a run started in another repository
+# cannot allowlist that repository's skill or agent names. None when the resolved module path is not in the
+# checkout layout, which leaves only the built-in agent types allowlisted and empties the tracked skill names.
+_REPO_ROOT = _checkout_root(__file__)
+
 # Built-in Claude Code subagent_type values -- present in every install, so
 # they can't identify a project. Always allowlisted for --this-repo
 # subagent_type disclosure, regardless of whether this repo's own agents/
 # tree tracks a same-named file.
 _BUILT_IN_AGENT_TYPES = frozenset({"general-purpose", "claude-code-guide", "Plan"})
 
-# .resolve() is load-bearing: unresolved, a stow-symlinked invocation would
-# land on the invoking account's own <config-dir>/agents/ instead of this
-# repo's tracked tree.
-_REPO_AGENT_DEFINITIONS_DIR = Path(__file__).resolve().parent.parent.parent / "agents"
+# None when _REPO_ROOT is None, so a module outside the checkout layout allowlists no tracked agent names.
+_REPO_AGENT_DEFINITIONS_DIR = None if _REPO_ROOT is None else _REPO_ROOT / "claude" / ".claude" / "agents"
 
 
 @lru_cache(maxsize=1)
@@ -275,6 +312,7 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
       directory -- without it, a non-zero exit leaves stdout empty and the
       failure silently looks like "zero tracked files" instead of raising
       into the fallback path below.
+    - No _REPO_AGENT_DEFINITIONS_DIR (a module outside the checkout layout) returns the built-ins alone.
     - Top-level entries only (no "/" in the path), matching _declared_pin's
       own flat agents_dir / f"{agent_type}.md" resolution -- a nested
       tracked file over-redacts, the safe direction.
@@ -288,10 +326,13 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
       closed means more redaction, and an operator's report should not die
       because git is unavailable.
     """
+    if _REPO_AGENT_DEFINITIONS_DIR is None:
+        return _BUILT_IN_AGENT_TYPES
     try:
         proc = subprocess.run(
             ["git", "-C", str(_REPO_AGENT_DEFINITIONS_DIR), "ls-files", "-z", "--", "."],
-            capture_output=True, text=True, check=True, timeout=10,
+            capture_output=True, encoding="utf-8", errors="replace", check=True, timeout=10,
+            env=_git_environment_for_checkout_listing(),
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
         return _BUILT_IN_AGENT_TYPES
@@ -315,3 +356,41 @@ def _untracked_agent_type_labels(agent_types: Iterable[str]) -> dict[str, str]:
     untracked_names = sorted(distinct_names - tracked_names)
     labels.update({name: f"agent-type-{position}" for position, name in enumerate(untracked_names, start=1)})
     return labels
+
+
+def _tracked_skill_attachment_name(tracked_path: str) -> str | None:
+    """The name an `invoked_skills` attachment gives the skill a tracked `SKILL.md` path defines, else None.
+
+    A plugin skill is `<plugin>:<skill>` and every other skill is its directory name. A deeper path yields no name.
+    """
+    parts = tracked_path.split("/")
+    if len(parts) == 4 and parts[3] == "SKILL.md" and parts[:2] in (["claude-skills", "skills"], [".claude", "skills"]):
+        return parts[2]
+    if len(parts) == 5 and parts[0] == "plugins" and parts[2] == "skills" and parts[4] == "SKILL.md":
+        return f"{parts[1]}:{parts[3]}"
+    return None
+
+
+@lru_cache(maxsize=1)
+def _repo_tracked_skill_names() -> frozenset[str]:
+    """Attachment names of every skill this repo git-tracks -- the skill-reinjection name allowlist.
+
+    - Tracked state, not on-disk presence (`git ls-files` reads the index), so an untracked scratch skill never
+      allowlists its own name.
+    - `-z` avoids git's path quoting corrupting a name; `errors="replace"` keeps a non-UTF-8 path from raising.
+    - Failure, or no `_REPO_ROOT`, returns the empty set, so every name is withheld. Same exception set and timeout as
+      `_repo_tracked_agent_type_names`, which also documents why `check=True` is needed.
+    - _REPO_ROOT is read fresh on every call so a test can monkeypatch it and call .cache_clear().
+    """
+    if _REPO_ROOT is None:
+        return frozenset()
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(_REPO_ROOT), "ls-files", "-z"],
+            capture_output=True, encoding="utf-8", errors="replace", check=True, timeout=10,
+            env=_git_environment_for_checkout_listing(),
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return frozenset()
+    names = (_tracked_skill_attachment_name(entry) for entry in proc.stdout.split("\0"))
+    return frozenset(name for name in names if name is not None)

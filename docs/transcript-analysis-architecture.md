@@ -93,7 +93,7 @@ Also owns the `--this-repo` subagent_type disclosure allowlist:
 
 - `_BUILT_IN_AGENT_TYPES` — the Claude Code built-in `subagent_type` values present in every
   install.
-- `_REPO_AGENT_DEFINITIONS_DIR` — this repo's own tracked `agents/` directory.
+- `_REPO_AGENT_DEFINITIONS_DIR` — this repo's own tracked `agents/` directory, `None` when the module is outside the checkout layout.
 - `_repo_tracked_agent_type_names` — the stems of every `agents/*.md` file that directory
   git-tracks, unioned with `_BUILT_IN_AGENT_TYPES`.
 
@@ -102,6 +102,15 @@ Also owns the `--this-repo` subagent_type disclosure allowlist:
 values a `--this-repo` report may disclose versus fold into a withheld row. `reviewer_yield.py`'s
 `cmd_reviewer_yield` calls `redaction._untracked_agent_type_labels` (attribute access) under `--redact`,
 which keeps each tracked name and numbers every other name `agent-type-<N>`.
+
+It also owns the skill-name allowlist `skill_reinjection.py` prints against: `_repo_tracked_skill_names` lists this
+module's own checkout (`_REPO_ROOT`, never the working directory) with `git ls-files` and keeps the attachment name of
+each tracked `SKILL.md` under `claude-skills/skills/`, `.claude/skills/` and `plugins/<plugin>/skills/`. The set is empty, so every name is withheld, in three cases: the `git` call fails or times out, `_REPO_ROOT` is `None` because
+the module is not at `<root>/claude/.claude/scripts/transcript_analysis/`, or the checkout tracks no skill. The report prints the
+same "tracked skills unavailable" line for all three. `_REPO_AGENT_DEFINITIONS_DIR` derives from `_REPO_ROOT`, so the
+same layout condition leaves `_repo_tracked_agent_type_names` with the built-in types alone. That `git` call, and the one in
+`_repo_tracked_agent_type_names`, run with the repository-locating `GIT_*` variables (`GIT_DIR`, `GIT_WORK_TREE`,
+`GIT_INDEX_FILE` and the rest of `_REPOSITORY_LOCATING_GIT_VARIABLES`) removed from their environment.
 
 ### `pricing.py`
 
@@ -391,6 +400,23 @@ private reads include `session_pricing._usage_is_invalid`, `redaction._repo_trac
 and the skipped-input line are separate functions, so another command can print them over its own counters.
 `_read_call` is the one Read predicate (tool name, path rule, id rule and whole-file test) that `_scan_window` and
 `reviewer_reads.py`'s round-window count share.
+
+### `skill_reinjection.py`
+
+The skill-reinjection command: `cmd_skill_reinjection`, its `_add_skill_reinjection_subparser` registration, and every
+helper used only by it. It counts `compact_boundary` records and the `invoked_skills` attachments that pair with them
+(`count_session`, one session file at a time), then folds every skill name this repo does not track into one withheld
+row before anything prints. The print function takes only that fold's output. Imports `corpus`, `publication_scope`,
+`redaction` and `scope` all by module (attribute access). `cli.py` reads `_add_skill_reinjection_subparser` bare.
+Cross-module private reads include `corpus._parse_iso_datetime`, `redaction._repo_tracked_skill_names`,
+`scope._resolve_project_scope` (called without subagent files) and `scope`'s scan-gap tags, plus the single-account
+root, scope refusal and scope header from `publication_scope`, called with the `skill-reinjection` label. Its scope is
+`read-cost`'s: the working directory's repository, with the skill-name allowlist taken from this checkout, so a run from
+another repository counts that repository's sessions under this checkout's tracked skill names.
+
+`TRUNCATION_MARKER`, `CopyLengths`, `CutRange`, `copy_lengths`, `copy_is_truncated`, `ReinjectionTotals` and
+`count_session` are public so a caller outside the package can reuse the marker, the length units and the per-session counter, which runs
+before the name fold.
 
 ### `publication_scope.py`
 

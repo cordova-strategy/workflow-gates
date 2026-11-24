@@ -29,7 +29,7 @@ import sys
 import tempfile
 import textwrap
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import pytest
@@ -1630,6 +1630,20 @@ def _thinking_block() -> dict:
     return {"type": "thinking", "thinking": "some thought"}
 
 
+# The project directory `fake_projects` creates, and the slug `_this_repo_args` seeds as this repo's worktree.
+_PROJECT_SLUG = "-home-user-testrepo"
+
+
+def _this_repo_args(*, this_repo: bool = True, projects: str = "*") -> object:
+    """Pre-seeds args._this_repo_slugs -- the cache _resolve_project_scope reads first -- so scope resolution
+    does not ask git for this repo's worktrees."""
+    return type("A", (), {
+        "this_repo": this_repo,
+        "projects": projects,
+        "_this_repo_slugs": [_PROJECT_SLUG],
+    })()
+
+
 @pytest.fixture()
 def fake_projects(tmp_path, monkeypatch):
     """Isolated single-account corpus: patches scope.PROJECTS_DIR and each package
@@ -1646,7 +1660,7 @@ def fake_projects(tmp_path, monkeypatch):
     value, each the sole read path for its own still-independent call sites.
     """
     projects = tmp_path / "projects"
-    proj = projects / "-home-user-testrepo"
+    proj = projects / _PROJECT_SLUG
     proj.mkdir(parents=True)
     monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
     monkeypatch.setattr(scope, "config_dir", lambda: tmp_path)
@@ -1654,6 +1668,14 @@ def fake_projects(tmp_path, monkeypatch):
     monkeypatch.setattr(ledger_common, "config_dir", lambda: tmp_path)
     monkeypatch.setattr(pr_cost_ledger, "config_dir", lambda: tmp_path)
     return proj
+
+
+@pytest.fixture()
+def scrubbed_git_environment(monkeypatch):
+    """Removes every variable production strips before `git -C <checkout>`, so a test that runs real git in a
+    scratch repository cannot be redirected to the repository the test run itself sits in."""
+    for variable in redaction._REPOSITORY_LOCATING_GIT_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
 
 
 @pytest.fixture()
@@ -1818,6 +1840,31 @@ def _init_repo(path: Path, initial_branch: str = "main") -> None:
     # Defaulting the branch to "main" avoids depending on the system's
     # init.defaultBranch setting, which varies across git versions and CI environments.
     init_git_repo(path, branch=initial_branch)
+
+
+# A skill name only a scratch repository tracks, which no allowlist read from this checkout may ever print.
+OTHER_REPOSITORY_CANARY_SKILL = "canary-skill-of-the-other-repository"
+
+
+def init_repository_tracking(
+    repository_root: Path, *, tracked: Sequence[str], untracked: Sequence[str] = (),
+) -> Path:
+    """A git repository whose index holds the `tracked` relative paths and whose tree also holds the `untracked` ones."""
+    _init_repo(repository_root)
+    for relative_path in (*tracked, *untracked):
+        tracked_file = repository_root / relative_path
+        tracked_file.parent.mkdir(parents=True, exist_ok=True)
+        tracked_file.write_text("---\nname: x\n---\n")
+    if tracked:
+        subprocess.run(["git", "add", "--", *tracked], cwd=repository_root, check=True)
+    return repository_root
+
+
+def init_repository_tracking_canary_skill(repository_root: Path) -> Path:
+    """A git repository that tracks `OTHER_REPOSITORY_CANARY_SKILL` as a project skill."""
+    return init_repository_tracking(
+        repository_root, tracked=[f".claude/skills/{OTHER_REPOSITORY_CANARY_SKILL}/SKILL.md"],
+    )
 
 
 def _commit(repo: Path, message: str = "commit") -> None:

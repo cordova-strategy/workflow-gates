@@ -26,11 +26,11 @@ def _args(*, this_repo: bool = True, projects: str = "*") -> argparse.Namespace:
 
 
 class TestSingleAccountRoots:
-    @pytest.mark.parametrize("command_label", ["read-cost", "reviewer-reads"])
+    @pytest.mark.parametrize("command_label", ["read-cost", "reviewer-reads", "skill-reinjection"])
     def test_roots_are_the_active_config_dirs_projects_directory(self, fake_projects, command_label):
         assert publication_scope._single_account_roots(command_label) == [fake_projects.parent]
 
-    @pytest.mark.parametrize("command_label", ["read-cost", "reviewer-reads"])
+    @pytest.mark.parametrize("command_label", ["read-cost", "reviewer-reads", "skill-reinjection"])
     def test_unresolvable_config_dir_exits_2_under_the_command_label(self, monkeypatch, capsys, command_label):
         def unresolvable_config_dir():
             raise ValueError("CLAUDE_CONFIG_DIR is not absolute")

@@ -82,6 +82,9 @@ from transcript_analysis.skill_invocation import (
 from transcript_analysis.skill_pair import (
     _add_skill_pair_subparser,
 )
+from transcript_analysis.skill_reinjection import (
+    _add_skill_reinjection_subparser,
+)
 from transcript_analysis.spend_over_threshold import _add_spend_over_threshold_subparser
 from transcript_analysis.struggle import (
     _add_struggle_subparser,
@@ -138,6 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_edit_format_subparser(sub)
     _add_read_scope_subparser(sub)
     _add_read_cost_subparser(sub)
+    _add_skill_reinjection_subparser(sub)
     _add_reviewer_reads_subparser(sub)
     _add_instrument_authoring_subparser(sub)
     _add_context_composition_subparser(sub)

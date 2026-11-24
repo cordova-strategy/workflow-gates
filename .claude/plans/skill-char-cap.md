@@ -166,6 +166,16 @@ Alternatives weighed:
   anchors: row9, row10, row13, row14, row15, row16, row17, row23, row25, row27, row28, row38, row41
 - **M6. `transcript-analysis.py skill-reinjection --this-repo`.**
   - New `transcript_analysis/skill_reinjection.py` in `read_cost.py:588-609`'s shape: `cmd_skill_reinjection` reports over `publication_scope._single_account_roots`, calling `_refuse_wider_scope`, then `scope._resolve_project_scope` with subagent files left out, then printing `_scope_header`.
+  - It scopes to the working directory's repository exactly as `read-cost --this-repo` does, and adds no repository-identity check of its own (row 47).
+    - Its only refusals are `_refuse_wider_scope`'s and `_resolve_project_scope`'s, as for `read-cost` (row 46).
+    - PR A removes what the staged diff added for the repository-identity refusal:
+      - `skill_reinjection.py`'s `_refuse_other_repository`, `_git_common_directory`, `_refuse_with` and the `args._this_repo_slugs` overwrite;
+      - `tests/test_transcript_skill_reinjection_repository_identity.py`, and the identity stub, refusal-line constants and `init_scratch_repository` in `tests/_skill_reinjection_helpers.py`;
+      - both `scope.py` hunks that add `_worktree_project_slugs`, reverted so `scope.py` changes only at `:707`;
+      - the refusal text in `CHANGELOG.md`, `docs/transcript-analysis.md`, `docs/private-project-redaction.md` and `docs/transcript-analysis-architecture.md`, replaced by the statement that a run from another repository counts that repository's sessions and that figures publish only from a run in this repository's own checkout.
+    - `_checkout_root` and `_REPO_ROOT` stay. Both allowlists derive from `_REPO_ROOT`: a None root empties the tracked-skill set and limits the agent-type allowlist to the built-in types, and the `_REPO_ROOT` comment says so.
+    - A run from another repository therefore counts that repository's sessions under this checkout's tracked skill names, as those siblings count agent types.
+    - What keeps such a run out of a public figure is M8's statement beside each figure and the Publication paragraph's rule below, as for the siblings.
   - It reads only records the harness writes: `compact_boundary` system records and `invoked_skills` attachments, on the main thread, skipping `isSidechain`. It reads no user text and no tool call, so no quoted tag, failed call or built-in command can move a count.
   - Records come from the shared reader, which skips an unparseable line without a count (`corpus.py:97-120`). A compaction whose boundary or attachment line is corrupt therefore drops out or counts as without an attachment, and M6's docs section says so. Every other bad shape skips with a scan gap:
     - a non-object record;
@@ -180,10 +190,11 @@ Alternatives weighed:
     - truncated: copies whose `content`, with trailing whitespace stripped, ends in the marker. A marker elsewhere in the body does not count. An unmarked copy over 20,000 in both code points and UTF-16 units records a scan gap, so a reworded marker or a raised limit shows.
   - Totals: sessions, compactions, compactions with and without an attachment, the first and last compaction date, the shortest and longest truncated copy in code points, in UTF-16 units and in UTF-8 bytes, and scan gaps by kind. Lengths encode with `surrogatepass`, so a cut inside a surrogate pair cannot raise.
   - It prints only skill names tracked in this repository.
-    - New `redaction._repo_tracked_skill_names()` anchors on this module's resolved repository root, never the cwd, as `_REPO_AGENT_DEFINITIONS_DIR` does (`redaction.py:256-259`). It runs `git -C <root> ls-files -z` with `check=True`, `timeout=10` and the exception set at `redaction.py:296`.
+    - New `redaction._repo_tracked_skill_names()` anchors on this module's resolved repository root, never the cwd, as `_REPO_AGENT_DEFINITIONS_DIR` does (`redaction.py:256-259`). It runs `git -C <root> ls-files -z` with the repository-locating `GIT_*` variables removed, `check=True`, `timeout=10` and the exception set at `redaction.py:296`.
+    - The existing `_repo_tracked_agent_type_names` gains the same environment strip and error-tolerant decoding (row 49). Its allowlist no longer follows an exported `GIT_DIR`. A non-UTF-8 tracked name no longer raises. A copy outside the checkout layout allowlists the built-in types alone. `read-cost`, `reviewer-reads`, `subagent-mix` and `cost-counts` inherit the change, and the CHANGELOG names all four.
     - It keeps `claude-skills/skills/<d>/SKILL.md` and `.claude/skills/<d>/SKILL.md` as `<d>`, and `plugins/<p>/skills/<d>/SKILL.md` as `<p>:<d>`, the spellings attachments use (row 20). A deeper path yields no name.
     - An attachment `name` prints only when it equals a member of that set. Every other name folds into one withheld row with summed counts, as `read_cost.py:573-585` folds agent types. A foreign `<plugin>:<tracked name>` is withheld too.
-    - When git fails, the set is empty and the report prints a line saying every name is withheld because the tracked list is unavailable.
+    - When git fails, or the module's location names no checkout root, the set is empty and the report prints a line saying every name is withheld because the tracked list is unavailable.
   - Rows sort by re-attached count, then by name. The print function takes only the fold's output. The output carries no session id, project slug, path or skill content. The entry's `path` is never read, and `content` is read only for the marker and the length.
   - With no sessions, it prints the header and zero totals and exits 0.
   - The module exposes the marker, the copy-length function and a per-session counter that runs before the name fold, for M7.
@@ -199,21 +210,24 @@ Alternatives weighed:
     - privacy, in `test_transcript_read_cost_report.py:170-225`'s shape: canaries in the session id, the project slug, a home-rooted attachment `path`, a `content` opening with the Base-directory prefix and an untracked name, none of which appears in stdout or stderr;
     - error paths: each bad shape M6 lists records its gap and leaves the other counts unchanged, and a malformed line changes no count. Each fixture carries the privacy case's canaries, and none appears in stdout or stderr;
     - a corpus with no sessions;
-    - `TestScopeRefusal`, copied from `test_transcript_read_cost_command.py`.
-  - `tests/test_transcript_redaction.py` covers the accessor in the shape of its `:84-135`:
+    - `TestScopeRefusal`, copied from `test_transcript_read_cost_command.py`;
+    - one command-level pair with the allowlist unstubbed: a second real repository that tracks a canary skill, with a transcript re-attaching it, never prints the canary's name, and a skill this checkout tracks prints by name.
+  - `tests/test_transcript_redaction.py` covers the accessors in the shape of its `:84-135`:
     - a tracked name in each of the three kept shapes is in, and an untracked file in the same tree is out;
     - a nested path yields no name;
-    - a git failure yields the empty set;
-    - a cwd inside a second repository that tracks `.claude/skills/<canary>/SKILL.md` never yields the canary.
+    - a git failure, or a module location with no checkout root, yields the empty set;
+    - a cwd inside a second repository that tracks `.claude/skills/<canary>/SKILL.md` never yields the canary;
+    - for both accessors, an exported `GIT_DIR` naming another repository yields none of its names, and a tracked path that is not UTF-8 raises nothing and leaves the other names in (row 49);
+    - the stripped variable set equals what `git rev-parse --local-env-vars` lists, less the config variables.
   - Wiring: the `cli.py` registrar (`:59-60`, `:138`), the `scope.py:707` tuple, `tests/test_transcript_cli.py:156`, `test_transcript_package_module_prefixes.py`, and `test_transcript_publication_scope.py`'s `command_label` parametrize.
   - Docs:
     - `docs/transcript-analysis.md` gains a `skill-reinjection` section modeled on its `read-cost` section, an entry in each list at `:78-87` and `:91-96`, and "these four" becomes five at `:91`.
-    - That section's Publication paragraph carries `read-cost`'s wording, cites the gaps in `docs/transcript-analysis.md` § "Scoping to this repo: `--this-repo`", a removed worktree's sessions among them (row 40), and says zero sessions is no measurement. The section shows no real figure.
+    - That section's Publication paragraph carries `read-cost`'s wording. That wording includes the rule to publish only from this repository's own checkout. The rule is the docs' control against a run from another repository (row 47). It cites the gaps in `docs/transcript-analysis.md` § "Scoping to this repo: `--this-repo`", a removed worktree's sessions among them (row 40), and says zero sessions is no measurement. The section shows no real figure.
     - `docs/transcript-analysis-architecture.md` gains a level-three heading for `skill_reinjection.py`.
     - `docs/private-project-redaction.md` § "This repository, one account" gains a bullet in `read-cost`'s form.
   - One `CHANGELOG.md` `[Unreleased]` entry for the subcommand, with no figure.
 
-  anchors: root, row8, row18, row19, row20, row21, row29, row37, row39, row40
+  anchors: root, row8, row18, row19, row20, row21, row29, row37, row39, row40, row44, row45, row46, row47, row49
 - **M7. `evals/measure_skill_reinjection.py`, a port of the probe.**
   - Two cases:
     - `per-skill`: one 40,000-character skill of fixed-width sentinel lines. Each line carries one multi-byte BMP character and every tenth line one astral-plane character, so a cut counted in bytes, in code points or in UTF-16 units lands at a different place.
@@ -261,9 +275,12 @@ Alternatives weighed:
     - group 2 holds the rest;
     - membership reads the current files, not M6's counts, which span every compaction in the window whatever the file's size then;
     - each group sorts by re-attached count (row 8), then by size;
-  - each row's size in characters and its re-attached and truncated counts. Every count in the issue comes from one M6 run that passes step 4's checks and step 7, with each producing command named beside the table and stated as run from a checkout of this repository:
+  - each row's size in characters and its re-attached and truncated counts. Every count in the issue comes from one M6 run that passes step 4's checks and step 7:
     - an amendment that publishes counts from a new run replaces every count and the window with that run's values;
     - a skill with no M6 row reads 0 and 0 only when that run's withheld row has a re-attached count of 0, and reads "no named row" otherwise;
+  - each producing command, named beside the table, with the repository it ran in. M6, like `read-cost`, counts the working directory's repository and refuses no run from another one (row 47), so this record is the control on the issue's figures:
+    - for every M6 run the issue quotes, amendments included, the public owner/name step 7 records, beside the command;
+    - the engineer sees the exact body before `gh issue create` and before every edit or comment that carries an M6-derived figure;
   - one line saying any new figure posted to the issue first takes `docs/private-project-redaction.md` § "New figures against the grandfathered set";
   - M6's window, meaning its first and last compaction date, and the corpus limits its docs state, with no root or account count;
   - a callout on `ready-for-review`'s row naming the lost section, wherever that row sorts;
@@ -274,7 +291,7 @@ Alternatives weighed:
     - split into forced-read files with `require-routing-read.sh` as the precedent, once row 9's conflict is settled. A split keeps working only if the re-attached body re-Reads the file at the step that needs it, since `require-routing-read.sh`'s 60-minute marker would accept a Read made before the compaction;
   - row 9's conflict, as the issue's first open decision.
 
-  anchors: row7, row8, row9, row10, row18, row19, row29, row32, row37, row38, row40
+  anchors: row7, row8, row9, row10, row18, row19, row29, row32, row37, row38, row40, row46, row47
 - **M9. Four PRs, merged in the order A, B, C1, C2.**
   - A carries M6 and this plan.
   - After A merges, the session files the master issue (M8) before B's dispatch, so C2 can cite its number (row 38).
@@ -346,6 +363,18 @@ Alternatives weighed:
 41. While C2 is committed, the stowed `check-skill-length.sh` that judges the commit is main's line gate, unless the stowed checkout is C2's branch. `skill-review/SKILL.md` is 199 lines against that gate's 200-line default. [unverified: the round-2 backend review's reading and count]
 42. An `_lib.sh` without M1 hands `19000 characters` to `[ "$new" -gt "$limit" ]`, which exits 2, and the caller reads that as not exceeded, so the gate allows every commit. [verified: `_lib.sh:3139-3147`, `:3268-3269`]
 43. The probe recorded no cost and no wall time. [verified: a grep of `/tmp/skillcap-probe/` for cost, budget, duration, elapsed and seconds]
+44. PR A also edits `claude/.claude/scripts/tests/conftest.py` and `claude/.claude/scripts/tests/_read_cost_helpers.py`, so the `--this-repo` args builder and project slug have one definition. [engineer-verified: "Add both (Recommended)"]
+45. PR A also edits `claude/.claude/scripts/tests/test_transcript_shared_fixtures.py`, which holds the direct tests for the conftest helpers PR A adds. [engineer-verified: "Add it (Recommended)"]
+46. The session's description of matching the siblings, which the engineer accepted (row 47): [unverified]
+    - M6 scopes to the working directory's repository as `read-cost --this-repo` does. It prints a skill name only when this module's checkout tracks it, and folds every other name into the withheld row.
+    - M6 carries no repository-identity refusal, so PR A creates no repository-identity test file. This supersedes the engineer's earlier "Add it (Recommended)" for that file.
+    - Publication safety rests where the siblings' does: on M8's statement that the run came from a worktree of this repository, and on the docs' rule to publish only from this repository's own checkout.
+    - Row 49's hardening stands on its own and stays.
+
+    `read-cost`, `reviewer-reads` and `subagent-mix` carry no repository-identity check of their own. [verified: a grep of `read_cost.py`, `reviewer_reads.py` and `subagent_mix.py` for `common-dir` and `show-toplevel` matches nothing]
+47. The issue's figures come from M6 runs made in one of this repository's worktrees (M8). [engineer-verified: "keep it simple and base it on this repo's data"] A mode spanning other repositories waits until this repository's data proves too thin. [engineer-verified: "if we need more data, then we'll add that all repos option later"] M6 scopes as the sibling `--this-repo` commands do, with no repository-identity refusal of its own. [engineer-verified: "yes, go with matching the siblings"] The engineer's reason: [engineer-verified: "they all work by running and assessing whatever repo they're in. So I don't know why we would handle this one differently than the others."] Row 46 holds the session's description of that option.
+48. The plan proceeds at its projected size. [engineer-verified: "Proceed anyway"]
+49. PR A also gives `_repo_tracked_agent_type_names` the tracked-skill listing's environment strip and error-tolerant decoding, which `read-cost`, `reviewer-reads` and `subagent-mix` inherit. [engineer-verified: "Keep it (Recommended)"] `cost-counts` reads the same accessor and inherits it too. [verified: `subagent_mix.py:558`]
 
 ## Critical files
 
@@ -361,14 +390,16 @@ Four PRs merge in the order below (M9). Each PR's implementation is one `code-wr
 
 **How the plan travels.** The plan file ships in PR A. The session commits it to this branch before A's dispatch (plan-it Step 7). The Context cites no prototype-derived counts (row 19), because the plan ships publicly in A. B, C1 and C2 branch from a main that already holds it. A PR that revises the plan, as step 3's stop condition could, commits the revision in that PR after `/plan-review` (row 35).
 
-**PR A: the instrument (M6), on this branch.** About 1,050 changed lines. Gated by Verification steps 1, 2 and 4. Step 4's output stays in the session: A's docs, CHANGELOG entry and PR body carry no real figure. B's and C2's PR bodies and M5's design-decision file carry no M6-derived figure.
+**PR A: the instrument (M6), on this branch.** About 1,840 changed lines, counted after the repository-identity refusal's removal. Gated by Verification steps 1, 2 and 4. Step 4's output stays in the session: A's docs, CHANGELOG entry and PR body carry no real figure. B's and C2's PR bodies and M5's design-decision file carry no M6-derived figure.
 - `.claude/plans/skill-char-cap.md`, this plan.
 - New `claude/.claude/scripts/transcript_analysis/skill_reinjection.py`.
-- `claude/.claude/scripts/transcript_analysis/redaction.py` (`_repo_tracked_skill_names`).
+- `claude/.claude/scripts/transcript_analysis/redaction.py`: new `_repo_tracked_skill_names`, `_checkout_root`, `_REPO_ROOT` and `_git_environment_for_checkout_listing`, and `_repo_tracked_agent_type_names`'s environment strip and built-ins-only fallback outside the checkout layout, which its consumers `read_cost.py`, `reviewer_reads.py` and `subagent_mix.py` inherit unedited.
 - `claude/.claude/scripts/transcript_analysis/cli.py`.
-- `claude/.claude/scripts/transcript_analysis/scope.py` (`:707`).
+- `claude/.claude/scripts/transcript_analysis/scope.py` (`:707` only, since `_resolve_project_scope` lists the worktrees itself).
 - New `claude/.claude/scripts/tests/test_transcript_skill_reinjection.py`, with its `TestScopeRefusal` copied from `test_transcript_read_cost_command.py`.
 - New `claude/.claude/scripts/tests/_skill_reinjection_helpers.py`: builders for `compact_boundary` and `invoked_skills` records, and a stub for the tracked-skill allowlist.
+- `claude/.claude/scripts/tests/conftest.py` and `claude/.claude/scripts/tests/_read_cost_helpers.py`: one shared `--this-repo` args builder and project slug (row 44).
+- `claude/.claude/scripts/tests/test_transcript_shared_fixtures.py`: direct tests for those conftest helpers (row 45).
 - `claude/.claude/scripts/tests/test_transcript_redaction.py`.
 - `claude/.claude/scripts/tests/test_transcript_cli.py` (`:156`).
 - `claude/.claude/scripts/tests/test_transcript_package_module_prefixes.py`.
@@ -376,7 +407,7 @@ Four PRs merge in the order below (M9). Each PR's implementation is one `code-wr
 - `docs/transcript-analysis.md`, `docs/transcript-analysis-architecture.md`, `docs/private-project-redaction.md`.
 - `CHANGELOG.md`: M6's entry.
 
-Reuse: `publication_scope._single_account_roots`, `_refuse_wider_scope` and `_scope_header`; `scope._add_project_scope_args` and `_resolve_project_scope`; the shapes of `read_cost._fold_untracked_agent_types` and `redaction._repo_tracked_agent_type_names`; the conftest's `fake_projects` and `_write_jsonl`; `tests/_read_cost_helpers.py`'s preset `--this-repo` slugs; the attachment shape in `tests/_compaction_context_helpers.py:164-167`.
+Reuse: `publication_scope._single_account_roots`, `_refuse_wider_scope` and `_scope_header`; `scope._add_project_scope_args` and `_resolve_project_scope`; the shapes of `read_cost._fold_untracked_agent_types` and `redaction._repo_tracked_agent_type_names`; the conftest's `fake_projects` and `_write_jsonl`; the `conftest.py` home of the `--this-repo` args builder and project slug (row 44); the attachment shape in `tests/_compaction_context_helpers.py:164-167`.
 
 **After A merges: the issue (M8).** The session branches B's worktree from main's tip, runs steps 6 and 7 there, and files the issue. The issue is not a repository file.
 
@@ -419,7 +450,7 @@ Reuse: `_lib_capped`, `_lib_length_ratchet_exceeded` and `_lib_gate_diff_base`; 
 
 Reuse: the test helpers `run_hook`, `run_hook_reason`, `bash_input`, `build_path_without`, `assert_cap_engaged` and `build_isolated_hook`, and the `git_timeout_shim` fixture; `_count_claude_md_length_hook_limit`'s source-scan shape in `test_doc_counts.py`.
 
-Projected diff: about 2,950 changed lines across the four PRs, leaving out the plan file.
+Projected diff: about 3,740 changed lines across the four PRs, leaving out the plan file.
 
 ## Verification
 
@@ -449,6 +480,7 @@ Projected diff: about 2,950 changed lines across the four PRs, leaving out the p
    - The compactions-with-an-attachment total is above zero, and at least one truncated copy exists.
    - In code points or in UTF-16 units, the shortest and the longest truncated copy both read 20,000, and the session notes which unit. The longest in UTF-8 bytes is over 20,000, so the range is not all ASCII.
    - The unpaired-attachment, uuid-less-boundary and unmarked-long-copy gaps read zero.
+   - `git diff --cached -- . ':!.claude/plans'` on PR A matches none of `_refuse_other_repository`, `_git_common_directory`, `repository_identity`, `common-dir`, `common directory` and `refuses a run`.
    - If any check fails, stop before A's PR opens and bring the output to the engineer. The output stays in the session.
 5. Gates C2. `/code-review` on C2's diff runs `/skill-review` on the `skill-review` edit and `/plugin-semver` on the plugin bump, both hook-enforced at commit. `/skill-review`'s compression audit goes in C2's PR body.
 6. Gates M8, after A merges, in B's fresh worktree. Re-derive the over-cap list and its groups.
@@ -457,6 +489,9 @@ Projected diff: about 2,950 changed lines across the four PRs, leaving out the p
    - Every kept path must have one of the three shapes M6's tracked-name set keeps. A gated path outside them stops the issue until the engineer decides how to list it.
    - The issue's rows equal the kept set.
 7. Gates M8. Before every publication of an M6-derived value in the issue, whether creation, edit or comment, run the check in `docs/private-project-redaction.md` § "New figures against the grandfathered set" on the M6 run it quotes. A re-run's values count as new figures.
+   - In the same Bash call as the M6 run it vouches for, `gh_cli._origin_identity_at` reads the `origin` of that run's working directory and of the checkout whose `transcript-analysis.py` it invoked. Each must return host `github.com` and owner/name `cordova-strategy/workflow-gates`.
+   - That helper prints nothing and returns None for a credentialed or unparseable URL (`docs/transcript-analysis.md` § "Repository resolution"), so the call prints only a match or no-match verdict, never a URL. A no-match run is never quoted.
+   - The engineer sees the exact body before each creation, edit and comment that carries an M6-derived figure, whatever the narrowing check finds (M8).
    - The session names, for the engineer, each § "Remediation" entry it compared against.
    - If a figure could narrow a grandfathered residual, stop before the publishing `gh` call and ask the engineer, naming what the combination would newly disclose.
    - The body takes its figures only from that run's printed values and step 6's sizes, each beside the command that produced it.
@@ -464,6 +499,7 @@ Projected diff: about 2,950 changed lines across the four PRs, leaving out the p
 ## Out of scope
 
 - Reducing any skill below the cap: the master issue tracks that work.
+- A `skill-reinjection` mode spanning other repositories (row 47). The change that adds it sets its output contract. What its figures may publish is `docs/private-project-redaction.md` § "A wider corpus goes to the owner, never into a public artifact" and § "The owner can authorize one figure, case by case".
 - Settling row 9's rule conflict: amending a standing rule is the engineer's call, no change here depends on it, and the issue carries it.
 - Skills dropped by the 25,000-token total budget: a per-file gate cannot see invocation order, and M6 counts no drops (Approach, Alternatives weighed).
 - An invocation's arguments pushing a capped skill past the cut (row 25): the gate cannot see arguments. M7 reports where the residual sits, and M5's file records the margin.
