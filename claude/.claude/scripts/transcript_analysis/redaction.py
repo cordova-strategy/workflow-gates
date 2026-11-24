@@ -306,8 +306,6 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
 def _untracked_agent_type_labels(agent_types: Iterable[str]) -> dict[str, str]:
     """Map each agent type to the label `reviewer-yield --redact` prints for it.
 
-    - A name `_repo_tracked_agent_type_names` returns maps to itself.
-    - Every other name maps to `agent-type-<N>`, numbered from 1 over the sorted distinct untracked names alone.
     - A custom agent name can identify a project, so no untracked name prints raw.
     - Labels are stable within one run only, since the run's window and scope decide which untracked names it numbers.
     """

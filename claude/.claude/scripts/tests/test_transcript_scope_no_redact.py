@@ -85,3 +85,70 @@ class TestResolversBackstopTheRefusal:
         expected_roots = _two_declared_roots(tmp_path, monkeypatch)
 
         assert scope._resolve_cost_roots(_args(), subcommand=SUBCOMMAND) == expected_roots
+
+
+class TestOneResolvedRootAllowsTheFlag:
+    """Dedup by resolved path precedes the refusal, so a declared-roots file naming the active account is one root."""
+
+    @pytest.fixture(params=["names-the-active-root", "names-a-symlink-alias-of-the-active-root"])
+    def active_root_declared_by_the_roots_file(self, request, tmp_path, monkeypatch) -> Path:
+        active_account = tmp_path / "acct-a"
+        (active_account / "projects").mkdir(parents=True)
+        declared_entry = active_account
+        if request.param == "names-a-symlink-alias-of-the-active-root":
+            declared_entry = tmp_path / "acct-a-alias"
+            declared_entry.symlink_to(active_account, target_is_directory=True)
+        roots_file = tmp_path / "roots"
+        roots_file.write_text(f"{declared_entry}\n")
+        monkeypatch.setattr(scope, "PROJECTS_DIR", active_account / "projects")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(active_account))
+        monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(roots_file))
+        # Control: the roots file yields an entry that resolves to the active root, so the dedup has two candidates.
+        assert [entry.resolve() for entry in scope.declared_transcript_roots()] == [active_account.resolve()]
+        return active_account / "projects"
+
+    def test_resolve_scan_roots_keeps_one_root_and_returns_with_the_flag(self, active_root_declared_by_the_roots_file):
+        roots = scope.resolve_scan_roots(_args(no_redact=True, subcommand=SUBCOMMAND))
+
+        assert roots == [active_root_declared_by_the_roots_file]
+
+    def test_resolve_cost_roots_keeps_one_root_and_returns_with_the_flag(self, active_root_declared_by_the_roots_file):
+        roots = scope._resolve_cost_roots(_args(no_redact=True), subcommand=SUBCOMMAND)
+
+        assert roots == [active_root_declared_by_the_roots_file]
+
+    @pytest.mark.parametrize("extra_entry", ["the-active-root", "a-symlink-alias-of-the-active-root"])
+    def test_resolve_cost_roots_keeps_one_root_and_returns_with_the_flag_when_a_config_dir_extra_names_the_active_root(
+        self, extra_entry, tmp_path, monkeypatch,
+    ):
+        active_account = tmp_path / "acct-a"
+        (active_account / "projects").mkdir(parents=True)
+        extra_config_dir = active_account
+        if extra_entry == "a-symlink-alias-of-the-active-root":
+            extra_config_dir = tmp_path / "acct-a-alias"
+            extra_config_dir.symlink_to(active_account, target_is_directory=True)
+        empty_roots_file = tmp_path / "roots"
+        empty_roots_file.write_text("")
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(active_account))
+        monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(empty_roots_file))
+        # Control: the extra passes the is_dir and projects/ checks and resolves to the active root.
+        assert extra_config_dir.is_dir()
+        assert (extra_config_dir / "projects").is_dir()
+        assert extra_config_dir.resolve() == active_account.resolve()
+
+        roots = scope._resolve_cost_roots(
+            _args(no_redact=True, extra_config_dirs=[str(extra_config_dir)]), subcommand=SUBCOMMAND,
+        )
+
+        assert roots == [active_account / "projects"]
+
+    def test_resolve_scan_roots_keeps_the_one_top_level_config_dir_root_with_the_flag_despite_declared_roots(
+        self, tmp_path, monkeypatch,
+    ):
+        _two_declared_roots(tmp_path, monkeypatch)
+        named_account = tmp_path / "acct-c"
+        (named_account / "projects").mkdir(parents=True)
+
+        roots = scope.resolve_scan_roots(_args(no_redact=True, subcommand=SUBCOMMAND, config_dir=str(named_account)))
+
+        assert roots == [named_account / "projects"]

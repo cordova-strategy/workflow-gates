@@ -664,8 +664,8 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
     and is separately counted in the printed read-error line, never entered
     as a legitimate zero-citation dispatch.
 
-    --redact prints each agent type this repo does not track as
-    agent-type-<N> in both tables (redaction._untracked_agent_type_labels),
+    --redact prints each agent type not defined in this toolkit's own
+    agents/ directory as agent-type-<N> in both tables (redaction._untracked_agent_type_labels),
     at any root count. Without it both tables print every agent type raw.
     Cited-path candidates are held only as sha256 digests
     (_normalize_cited_path), never as raw paths, so no path can reach this
@@ -714,7 +714,9 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
         return
 
     agent_type_labels = (
-        redaction._untracked_agent_type_labels(agg) if getattr(args, "redact", False) else {name: name for name in agg}
+        redaction._untracked_agent_type_labels(agg)
+        if getattr(args, "redact", False)
+        else {name: render._sanitize_table_cell(name) for name in agg}
     )
 
     # Findings is a lower bound: it sums parsed "Found <N> issues" counts plus
@@ -790,8 +792,9 @@ def _add_reviewer_yield_subparser(subparsers: argparse._SubParsersAction) -> Non
     p_reviewer_yield.add_argument(
         "--redact", action="store_true",
         help=(
-            "Print each agent type this repo does not track as agent-type-<N> in both tables."
+            "Print each agent type not defined in this toolkit's own agents/ directory as agent-type-<N> in both tables."
             " Labels are stable within one run, not across runs."
+            " A failed git lookup of the tracked names relabels every reviewer type."
         ),
     )
     p_reviewer_yield.set_defaults(func=cmd_reviewer_yield)

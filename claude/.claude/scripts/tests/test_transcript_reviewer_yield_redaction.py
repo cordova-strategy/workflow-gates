@@ -8,6 +8,7 @@ from .conftest import (
     _agent_use,
     _asst,
     _reviewer_yield_args,
+    _table_cols,
     _two_declared_roots,
     _write_jsonl,
     _write_subagent_dispatch,
@@ -19,33 +20,68 @@ UNTRACKED_AGENT_TYPE = "staff-synthetic-widget"
 UNTRACKED_AGENT_TYPE_BEFORE = "staff-alpha-widget"
 UNTRACKED_AGENT_TYPE_AFTER = "staff-zeta-widget"
 TRACKED_AGENT_TYPE_BETWEEN = "staff-middle-tracked"
+ZERO_FINDING_VERDICT = "**No concerns**"
+FINDINGS_FOUND_VERDICT = "Found 1 issue in /synthetic/module.py needing a fix"
+ZERO_FINDING_BUCKET = "zero-finding"
+FINDINGS_FOUND_BUCKET = "findings-found"
+FIRST_TABLE, SECOND_TABLE = 1, 2
 
 
-def _seed_zero_finding_dispatches(project_dir, agent_types) -> None:
-    """One session dispatching each agent type once, each with a zero-finding verdict, so every type has one row per table."""
+def _seed_dispatches(project_dir, verdicts_by_agent_type: dict[str, list[str]]) -> None:
+    """One session dispatching each agent type once per listed verdict text, each with its own subagent transcript."""
+    dispatches = [
+        (agent_type, verdict) for agent_type, verdicts in verdicts_by_agent_type.items() for verdict in verdicts
+    ]
     _write_jsonl(project_dir / "sess.jsonl", [
         _asst("claude-opus-4-7", ts="2026-05-19T10:00:00.000Z", content=[
-            _agent_use(f"a{position}", agent_type) for position, agent_type in enumerate(agent_types)
+            _agent_use(f"a{position}", agent_type) for position, (agent_type, _verdict) in enumerate(dispatches)
         ]),
     ])
-    for position, agent_type in enumerate(agent_types):
+    for position, (agent_type, verdict) in enumerate(dispatches):
         _write_subagent_dispatch(
             project_dir, "sess", f"agent-a{position}", f"a{position}",
-            [_asst("claude-sonnet-4-6", sidechain=True, content=[{"type": "text", "text": "**No concerns**"}])],
+            [_asst("claude-sonnet-4-6", sidechain=True, content=[{"type": "text", "text": verdict}])],
             agent_type=agent_type,
         )
 
 
-def _agent_type_column(out: str, printed_names: set[str]) -> list[str]:
-    """The first-column value of every table row whose first token is one of `printed_names`, in print order."""
-    return [line.split()[0] for line in out.splitlines() if line.split() and line.split()[0] in printed_names]
+def _type_row_dispatches(out: str, label: str, *, table: int, bucket: str | None = None) -> str:
+    """The Dispatches cell of `label`'s row in one `AgentType` table, so a label is bound to its type by dispatch count."""
+    row_contains = label if bucket is None else [label, bucket]
+    cols = _table_cols(
+        out, header_contains="AgentType", row_contains=row_contains, row_startswith=True, occurrence=table,
+    )
+    return cols["Dispatches"]
 
 
 @pytest.fixture
 def tracked_and_untracked_dispatches(fake_projects, stub_repo_tracked_agent_types):
-    """One session that dispatches one tracked and one untracked reviewer type, each with a zero-finding verdict."""
+    """One tracked type with a single dispatch, and one untracked type with a dispatch in each of two verdict buckets."""
     stub_repo_tracked_agent_types(TRACKED_AGENT_TYPE)
-    _seed_zero_finding_dispatches(fake_projects, [TRACKED_AGENT_TYPE, UNTRACKED_AGENT_TYPE])
+    _seed_dispatches(fake_projects, {
+        TRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT],
+        UNTRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT, FINDINGS_FOUND_VERDICT],
+    })
+
+
+def _assert_redacted_output(out: str) -> None:
+    """The tracked type keeps its name and the untracked type is `agent-type-1`, in both tables and both buckets."""
+    assert _type_row_dispatches(out, TRACKED_AGENT_TYPE, table=FIRST_TABLE) == "1"
+    assert _type_row_dispatches(out, "agent-type-1", table=FIRST_TABLE) == "2"
+    assert _type_row_dispatches(out, TRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+    assert _type_row_dispatches(out, "agent-type-1", table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+    assert _type_row_dispatches(out, "agent-type-1", table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET) == "1"
+    assert UNTRACKED_AGENT_TYPE not in out
+
+
+def _assert_raw_output(out: str) -> None:
+    """Both types print under their own names in both tables and both buckets, with no label."""
+    assert _type_row_dispatches(out, TRACKED_AGENT_TYPE, table=FIRST_TABLE) == "1"
+    assert _type_row_dispatches(out, UNTRACKED_AGENT_TYPE, table=FIRST_TABLE) == "2"
+    assert _type_row_dispatches(out, TRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+    assert _type_row_dispatches(out, UNTRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+    assert _type_row_dispatches(out, UNTRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET) == "1"
+    assert "agent-type-" not in out
 
 
 class TestReviewerYieldRedact:
@@ -54,19 +90,12 @@ class TestReviewerYieldRedact:
     ):
         reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=True))
 
-        out = capsys.readouterr().out
-        # Each type prints one row per table, so a type appears twice only if both tables carry it.
-        assert out.count(TRACKED_AGENT_TYPE) == 2
-        assert out.count("agent-type-1") == 2
-        assert UNTRACKED_AGENT_TYPE not in out
+        _assert_redacted_output(capsys.readouterr().out)
 
     def test_without_redact_both_types_print_raw_in_both_tables(self, tracked_and_untracked_dispatches, capsys):
         reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=False))
 
-        out = capsys.readouterr().out
-        assert out.count(TRACKED_AGENT_TYPE) == 2
-        assert out.count(UNTRACKED_AGENT_TYPE) == 2
-        assert "agent-type-" not in out
+        _assert_raw_output(capsys.readouterr().out)
 
 
 class TestReviewerYieldRedactThroughMain:
@@ -77,11 +106,7 @@ class TestReviewerYieldRedactThroughMain:
 
         cli.main()
 
-        captured = capsys.readouterr()
-        # Each type prints one row per table, so the counts show capture works and both tables carry the type.
-        assert captured.out.count(TRACKED_AGENT_TYPE) == 2
-        assert captured.out.count("agent-type-1") == 2
-        assert UNTRACKED_AGENT_TYPE not in captured.out
+        _assert_redacted_output(capsys.readouterr().out)
 
     def test_without_the_flag_the_cli_prints_the_untracked_type_raw(
         self, tracked_and_untracked_dispatches, monkeypatch, capsys,
@@ -90,7 +115,7 @@ class TestReviewerYieldRedactThroughMain:
 
         cli.main()
 
-        assert capsys.readouterr().out.count(UNTRACKED_AGENT_TYPE) == 2
+        _assert_raw_output(capsys.readouterr().out)
 
 
 class TestReviewerYieldRedactLabelIdentity:
@@ -98,16 +123,23 @@ class TestReviewerYieldRedactLabelIdentity:
         self, fake_projects, stub_repo_tracked_agent_types, capsys,
     ):
         stub_repo_tracked_agent_types(TRACKED_AGENT_TYPE_BETWEEN)
-        _seed_zero_finding_dispatches(
-            fake_projects, [UNTRACKED_AGENT_TYPE_AFTER, TRACKED_AGENT_TYPE_BETWEEN, UNTRACKED_AGENT_TYPE_BEFORE],
-        )
+        # Distinct dispatch counts bind each printed label to its raw type: 1 before, 2 between, 3 after.
+        _seed_dispatches(fake_projects, {
+            UNTRACKED_AGENT_TYPE_AFTER: [ZERO_FINDING_VERDICT, ZERO_FINDING_VERDICT, FINDINGS_FOUND_VERDICT],
+            TRACKED_AGENT_TYPE_BETWEEN: [ZERO_FINDING_VERDICT, ZERO_FINDING_VERDICT],
+            UNTRACKED_AGENT_TYPE_BEFORE: [ZERO_FINDING_VERDICT],
+        })
 
         reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=True))
 
         out = capsys.readouterr().out
-        printed_names = {"agent-type-1", "agent-type-2", TRACKED_AGENT_TYPE_BETWEEN}
-        # Rows follow raw sort order: untracked-before, tracked, untracked-after, in each of the two tables.
-        assert _agent_type_column(out, printed_names) == ["agent-type-1", TRACKED_AGENT_TYPE_BETWEEN, "agent-type-2"] * 2
+        assert _type_row_dispatches(out, "agent-type-1", table=FIRST_TABLE) == "1"
+        assert _type_row_dispatches(out, TRACKED_AGENT_TYPE_BETWEEN, table=FIRST_TABLE) == "2"
+        assert _type_row_dispatches(out, "agent-type-2", table=FIRST_TABLE) == "3"
+        assert _type_row_dispatches(out, "agent-type-1", table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+        assert _type_row_dispatches(out, TRACKED_AGENT_TYPE_BETWEEN, table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "2"
+        assert _type_row_dispatches(out, "agent-type-2", table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "2"
+        assert _type_row_dispatches(out, "agent-type-2", table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET) == "1"
         assert UNTRACKED_AGENT_TYPE_BEFORE not in out
         assert UNTRACKED_AGENT_TYPE_AFTER not in out
 
@@ -115,7 +147,10 @@ class TestReviewerYieldRedactLabelIdentity:
         self, fake_projects, tmp_path, monkeypatch, capsys,
     ):
         """Every reviewer type name is outside the built-in set, so an unavailable git lookup must hide all of them."""
-        _seed_zero_finding_dispatches(fake_projects, [TRACKED_AGENT_TYPE, UNTRACKED_AGENT_TYPE])
+        _seed_dispatches(fake_projects, {
+            TRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT],
+            UNTRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT, FINDINGS_FOUND_VERDICT],
+        })
         with monkeypatch.context() as patched:
             patched.setattr(redaction, "_REPO_AGENT_DEFINITIONS_DIR", tmp_path / "missing-agents-dir")
             redaction._repo_tracked_agent_type_names.cache_clear()
@@ -128,7 +163,10 @@ class TestReviewerYieldRedactLabelIdentity:
         redaction._repo_tracked_agent_type_names.cache_clear()
 
         out = capsys.readouterr().out
-        assert _agent_type_column(out, {"agent-type-1", "agent-type-2"}) == ["agent-type-1", "agent-type-2"] * 2
+        assert _type_row_dispatches(out, "agent-type-1", table=FIRST_TABLE) == "1"
+        assert _type_row_dispatches(out, "agent-type-2", table=FIRST_TABLE) == "2"
+        assert _type_row_dispatches(out, "agent-type-1", table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+        assert _type_row_dispatches(out, "agent-type-2", table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET) == "1"
         assert TRACKED_AGENT_TYPE not in out
         assert UNTRACKED_AGENT_TYPE not in out
 
@@ -141,8 +179,8 @@ class TestReviewerYieldRedactLabelIdentity:
         declared_project = declared_projects / "-home-user-otherrepo"
         active_project.mkdir()
         declared_project.mkdir()
-        _seed_zero_finding_dispatches(active_project, [TRACKED_AGENT_TYPE])
-        _seed_zero_finding_dispatches(declared_project, [UNTRACKED_AGENT_TYPE])
+        _seed_dispatches(active_project, {TRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT]})
+        _seed_dispatches(declared_project, {UNTRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT]})
 
         reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=False))
         raw_out = capsys.readouterr().out
@@ -150,7 +188,54 @@ class TestReviewerYieldRedactLabelIdentity:
         redacted_out = capsys.readouterr().out
 
         # The raw run shows the declared root was scanned, so the redacted run's absence is not vacuous.
-        assert raw_out.count(UNTRACKED_AGENT_TYPE) == 2
-        assert redacted_out.count("agent-type-1") == 2
-        assert redacted_out.count(TRACKED_AGENT_TYPE) == 2
+        assert _type_row_dispatches(raw_out, UNTRACKED_AGENT_TYPE, table=FIRST_TABLE) == "1"
+        assert _type_row_dispatches(redacted_out, "agent-type-1", table=FIRST_TABLE) == "1"
+        assert _type_row_dispatches(redacted_out, "agent-type-1", table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET) == "1"
+        assert _type_row_dispatches(redacted_out, TRACKED_AGENT_TYPE, table=FIRST_TABLE) == "1"
         assert UNTRACKED_AGENT_TYPE not in redacted_out
+
+
+class TestReviewerYieldRawAgentTypeControlCharacters:
+    def test_a_raw_agent_type_with_control_characters_cannot_forge_a_table_row(
+        self, fake_projects, stub_repo_tracked_agent_types, capsys,
+    ):
+        stub_repo_tracked_agent_types(TRACKED_AGENT_TYPE)
+        _seed_dispatches(fake_projects, {"staff-synthetic\nforged-row\x1b[31mwidget": [ZERO_FINDING_VERDICT]})
+
+        reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=False))
+
+        out = capsys.readouterr().out
+        sanitized_label = "staff-syntheticforged-row[31mwidget"
+        assert _table_cols(
+            out, header_contains="AgentType", row_contains=sanitized_label, row_startswith=True, occurrence=FIRST_TABLE,
+        )["Dispatches"] == "1"
+        assert _table_cols(
+            out, header_contains="AgentType", row_contains=[sanitized_label, ZERO_FINDING_BUCKET],
+            row_startswith=True, occurrence=SECOND_TABLE,
+        )["Dispatches"] == "1"
+        assert "\x1b" not in out
+
+    def test_a_control_character_twin_of_a_real_type_prints_its_own_row_with_its_own_counts(
+        self, fake_projects, stub_repo_tracked_agent_types, capsys,
+    ):
+        """Two raw types that sanitize to one label are not merged: each keeps its own counts under the shared label."""
+        stub_repo_tracked_agent_types(TRACKED_AGENT_TYPE)
+        _seed_dispatches(fake_projects, {
+            UNTRACKED_AGENT_TYPE: [ZERO_FINDING_VERDICT],
+            f"{UNTRACKED_AGENT_TYPE}\x00": [FINDINGS_FOUND_VERDICT, FINDINGS_FOUND_VERDICT],
+        })
+
+        reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=False))
+
+        out = capsys.readouterr().out
+        yield_table = out.split("## Reviewer-agent cited-path edit overlap")[0]
+        # _table_cols requires a unique row, so the shared-label rows of the first table are read directly.
+        shared_label_rows = [line.split() for line in yield_table.splitlines() if line.startswith(UNTRACKED_AGENT_TYPE)]
+        assert [row[1] for row in shared_label_rows] == ["1", "2"]
+        assert _type_row_dispatches(
+            out, UNTRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=ZERO_FINDING_BUCKET,
+        ) == "1"
+        assert _type_row_dispatches(
+            out, UNTRACKED_AGENT_TYPE, table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET,
+        ) == "2"
+        assert "\x00" not in out

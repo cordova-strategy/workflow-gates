@@ -885,11 +885,11 @@ scan-traversal, scan-gap, and glob-selection classes are tested in
 `tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
 `tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
 `tests/test_transcript_scope_no_redact.py`, and the rest of `scope.py` in
-`tests/test_transcript_scope.py`. `reviewer_yield.py`'s `--redact` relabelling is tested in
+`tests/test_transcript_scope.py`. `reviewer_yield.py`'s `AgentType` label map, both the `--redact` relabelling and the raw path's control-character strip, is tested in
 `tests/test_transcript_reviewer_yield_redaction.py`, and the rest of its tests live in
-`tests/test_transcript_reviewer_yield.py`. `TestNoRedactFamilyRefusalThroughMain` lives in
-`tests/test_transcript_cli.py` because it walks every subparser `build_parser()` registers. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`
-because it walks every subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
+`tests/test_transcript_reviewer_yield.py`. `TestNoRedactFamilyRefusalThroughMain` and
+`TestProjectsFlagHasNoArgparseType` live in `tests/test_transcript_cli.py` because each walks every
+subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
 in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py` selects as a `SKILL.md`
 reader. `pricing.py`'s
 shared per-session step, staleness rule, and canary return values, and
