@@ -147,7 +147,8 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
         phrase=(
             "Not code (the review-findings PR-body block, a `respond-pr` reply, a plan-file edit) — stays "
             "inline, except a plan-file edit that `plan-it/SKILL.md` § \"Step 5 — Architecture design\" "
-            "gives to `plan-architect`."
+            "gives to `plan-architect`, and when that edit's ADDRESS row also edits other files, `code-writer` gets "
+            "only the rest of the row's fix."
         ),
         right_bounded=True,
         rerun_note=_behavior_cell_note("C"),
@@ -365,9 +366,7 @@ def test_removed_second_plan_writer_phrase_stays_absent(site_path: Path, removed
 
 
 def test_plan_review_record_completion_deactivates_then_dispatches_plan_architect_then_writes_the_marker() -> None:
-    """The completion marker follows the active marker's removal and a finished `plan-architect` dispatch.
-
-    No completion marker is written on **Request changes**, so a round that returns blockers cannot approve an unrevised plan.
+    """No completion marker is written on **Request changes**, so a round that returns blockers cannot approve an unrevised plan.
     The dispatch paragraph itself is pinned whole, with its right edge, by the `plan-review-record-completion` routing site.
     """
     section_text = _heading_section_text(_PLAN_REVIEW_SKILL_PATH, _PLAN_REVIEW_RECORD_COMPLETION_HEADING)

@@ -167,7 +167,7 @@ one `code-writer` per round, `model: sonnet`, carrying: every ADDRESS row verbat
 suggested fix); the diff scope; and the verification command. Never dispatch a DEFER or SETTLED row. The parent keeps the
 commit, the `/code-review` re-run, and the marker. Two further carve-outs, neither size-based:
 
-- Not code (the review-findings PR-body block, a `respond-pr` reply, a plan-file edit) — stays inline, except a plan-file edit that `plan-it/SKILL.md` § "Step 5 — Architecture design" gives to `plan-architect`.
+- Not code (the review-findings PR-body block, a `respond-pr` reply, a plan-file edit) — stays inline, except a plan-file edit that `plan-it/SKILL.md` § "Step 5 — Architecture design" gives to `plan-architect`, and when that edit's ADDRESS row also edits other files, `code-writer` gets only the rest of the row's fix.
 - Still being re-decided — fails condition (1), stays inline.
 
 #### After a `code-writer` return

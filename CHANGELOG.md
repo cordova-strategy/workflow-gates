@@ -46,7 +46,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - **Migration:** a declaration that read `untrusted-input` now reads `caller=operator-only` and `input=untrusted`, and one that read `adversarial` now reads `caller=other-callers` and `input=untrusted`, each with `agent=cooperative`.
   - **Migration:** a project layer or prompt that matches the old tag no longer matches.
   - The change is live on `git pull`.
-- **Only `plan-architect` now edits a plan's sections in answer to `/plan-review` and `/code-review` findings.** The rule lives in `plan-it/SKILL.md` Step 5's **Review findings.** paragraph, and `plan-architect` accepts, declines or opens each finding before it edits.
+- **Only `plan-architect` now edits a plan from its `## Approach` heading down in answer to `/plan-review` and `/code-review` findings.** The rule lives in `plan-it/SKILL.md` Step 5's **Review findings.** paragraph, and `plan-architect` accepts, declines or opens each finding before it edits.
   - A plan-prose-only `/plan-review` round now always ends **Approve with changes**, and its completion marker follows the `plan-architect` dispatch.
   - `/code-review` and `review-orchestrator` send an ADDRESS row's plan edit to `plan-architect` instead of fixing it inline or through `code-writer`.
   - The session still appends one templated row for each answer it asked the engineer for.
