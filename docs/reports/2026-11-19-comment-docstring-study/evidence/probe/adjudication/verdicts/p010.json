@@ -1,0 +1,23 @@
+{
+ "packet_id": "p010",
+ "a": {
+  "pass": true,
+  "evidence": "would falsely merge into another family -- an accepted risk at current scale."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "would falsely merge into another family -- an accepted risk at current scale."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "ever shows an unexpected merge, re-evaluate."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"\"\"A project literally named with `--claude-worktrees-` (see `_WORKTREE_SUFFIX_RE`)"
+ },
+ "e": {
+  "pass": false,
+  "evidence": "If cost --by-project, buckets' Proj count, or user-input's Scope project count"
+ }
+}

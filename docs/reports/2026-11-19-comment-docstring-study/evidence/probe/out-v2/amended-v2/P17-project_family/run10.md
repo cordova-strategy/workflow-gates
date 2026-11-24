@@ -1,0 +1,49 @@
+# comment-discipline-reviewer
+
+Scope note: the diff adds one docstring to `_project_family` in `redaction.py`. The tool-result system-reminder about Python environment conventions is unrelated to this review, so I set it aside.
+
+## R1 [CONCERN] Restating the code
+
+`claude/.claude/scripts/transcript_analysis/redaction.py:35-41` (added docstring, summary line and first paragraph up to "either input shape").
+
+Offending text:
+- "Collapse a project label or a raw project-dir slug to its base-repo "family" key."
+- "Strips the `--claude-worktrees-<branch>` suffix that a linked worktree's project-dir slug already carries (see `_WORKTREE_SUFFIX_RE` above);"
+- "`_derive_proj_label`'s output preserves that suffix unchanged, so the same match applies to either input shape."
+
+Issue: all three clauses state what static analysis of the repo finds, so under the rule under test they go even though they are true.
+- The summary line restates the function name and its one-line body.
+- The "strips the suffix" clause restates `_WORKTREE_SUFFIX_RE.sub("", ...)` and the regex.
+- The `_derive_proj_label` claim is true, since `redaction.py:25` only strips leading dashes and splits, so the suffix survives. But the code shows that.
+- The worktree naming is already stated at `redaction.py:28-30` and in `corpus.py:199`. The docstring repeats it a third time, which breaks single source of truth.
+- The first sentence also chains a parenthetical pointer and a semicolon into a second fact, so it is a Multi-fact problem as well.
+
+Required property: delete these clauses and keep only the decision and its revisit trigger (see R2 for the replacement text).
+
+## R2 [CONCERN] Restating the code (enumerated consumers inside a kept trigger)
+
+`redaction.py:41-44`.
+
+Offending text: "If cost --by-project, buckets' Proj count, or user-input's Scope project count ever shows an unexpected merge, re-evaluate."
+
+Issue:
+- The "accepted risk ... re-evaluate" part is a decision with a revisit trigger and stays.
+- The list of the three surfaces that consume `_project_family` is a caller inventory that `Grep` finds: `cost.py:906`, `buckets.py:49`, `user_input.py:164`. The names are accurate today (`buckets.py:62` has the `Proj` column, `user_input.py:288` has `Scope: N projects`).
+- Every new caller makes the list stale, and the surfaces add nothing to the trigger, which is just an unexpected merge.
+- Under the rule under test, keep the trigger half and delete the restated detail.
+
+Concrete fix: replace the whole docstring with the following. The test docstring at `test_transcript_cost.py:1461-1468` already points back at this docstring, so the pointer to the test is the pairing, not new content.
+
+```python
+    """A project literally named with the `--claude-worktrees-` substring falsely
+    merges into another family. This is accepted at current scale and pinned by
+    `test_non_worktree_label_colliding_with_suffix_shape_merges_into_existing_family`.
+    Re-evaluate if a per-project count shows an unexpected merge.
+    """
+```
+
+Each sentence states one fact. Nothing in it restates code, and it carries no PR-defined label or prior-version framing.
+
+Checked and no finding:
+- "accepted risk at current scale" is a design judgment, not a number or causal claim.
+- The collision claim is confirmed by the test at `test_transcript_cost.py:1458-1484`.

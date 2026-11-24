@@ -1,0 +1,9 @@
+diff --git a/claude/.claude/scripts/probe_synthetic/event_encoding.py b/claude/.claude/scripts/probe_synthetic/event_encoding.py
+--- a/claude/.claude/scripts/probe_synthetic/event_encoding.py
++++ b/claude/.claude/scripts/probe_synthetic/event_encoding.py
+@@ -2,4 +2,5 @@
+ 
+ 
+ def encode_event(event):
++    """Keys are sorted because the billing vendor's "Webhook signatures" page defines the signature over a key-sorted body, and an unsorted body fails verification. Switch to the vendor's SDK serializer once it ships one."""
+     return json.dumps(event, sort_keys=True).encode("utf-8")

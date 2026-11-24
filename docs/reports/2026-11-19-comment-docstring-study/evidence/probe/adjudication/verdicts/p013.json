@@ -1,0 +1,23 @@
+{
+ "packet_id": "p013",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Drop the offending path from `exc`'s message, because `str(exc)` embeds it."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Drop the offending path from `exc`'s message, because `str(exc)` embeds it."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "Follows the `strerror`-only convention of `_iter_scoped_sessions`' root-level diagnostic."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"\"\"Drop the offending path from `exc`'s message, because `str(exc)` embeds it."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Drop the offending path from `exc`'s message, because `str(exc)` embeds it."
+ }
+}

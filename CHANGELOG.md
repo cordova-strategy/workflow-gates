@@ -12,6 +12,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - **Migration:** `reviewer-yield --redact` used to print every agent type raw. A caller that wants raw names drops `--redact`, and output without it is unchanged except that ASCII control characters are stripped from agent-type names. A script parsing the `AgentType` column of a `--redact` run sees `agent-type-<N>` in place of each untracked name, with exit 0 and the same rows.
   - **Migration:** the refusal of `--no-redact` above one root now reads `<subcommand>: --no-redact is refused when more than one root is in scope; drop --no-redact` on stderr, with exit 2 and empty stdout. A wrapper matching `(--config-dir was given)`, `scope to a single` or `run --sample without --this-repo or --all-accounts` matches the new text on none of them. The wrapper matches `more than one root is in scope` instead, which the old and new text share. `handoff-signal-response --sample` still runs raw at one root by default, and dropping `--this-repo` or `--all-accounts` reads one root.
   - **Migration:** `read-scope`'s per-account rows are numbered by sorted resolved root path, in sorted order. A default `read-scope` over two or more roots scans the active root first, then the declared-roots file's order, then `--config-dir` extras. Any machine whose scan order differs from sorted resolved-path order sees its `account-<N>` labels renumber, and the rows print in the new order, with exit 0. The table now agrees with the `scanning root N/M` progress lines, which already used sorted ordinals.
+- **A new Main session rule in the global `CLAUDE.md` has the main session and forks make the tool call for a next step they name, in the same message.** A message with no tool call ends the turn, so a step it only names never runs.
+  - The turn may end on a named step only when `CLAUDE.md`, the skill being followed, a fork's dispatcher, or a hold the engineer stated makes the step wait, or when work the session started that the step needs is still running. An offer to pause that the agent makes up does not count.
+  - Other dispatched agents do not follow it.
+  - The change is live on `git pull`.
+- **`check-skill-length.sh` gives `handoff/SKILL.md` a line cap of 220, above the 200-line default.** `check-handoff.py` reads its preamble fixture, and the compaction hooks' tests read its section headings and §3.5 list. The template therefore stays in the skill. Other skills' caps are unchanged. The change is live on `git pull`.
 - **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.
@@ -21,6 +26,19 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - The redaction and stow-reminder hooks match either name, so they keep working without the change.
   - Do not rename the checkout folder to match. Use `relocate-claude-config` to move it.
   - **Migration:** run `git remote set-url origin https://github.com/cordova-strategy/workflow-gates.git`, or `git remote set-url origin git@github.com:cordova-strategy/workflow-gates.git` for an SSH remote.
+- **`/code-review` Step 1 and `/plan-review` Step 4 now declare the threat model as four independent fields, `declared: surface=<v>, agent=<v>, caller=<v>, input=<v>`, in place of the single-ladder `<surface>, <tier>` tag.**
+  - The values, first value narrow and second wide: `surface` is `dev-only` or `production`, `agent` is `cooperative` or `hostile`, `caller` is `operator-only` or `other-callers`, and `input` is `trusted` or `untrusted`. Each field is settled or `undeclared` on its own, and no field's value implies another's.
+  - The `cooperative` < `untrusted-input` < `adversarial` ladder and the whole-line `declared: undeclared` retire. A field takes its first value only on evidence that its second does not apply.
+  - A `beyond declaration:` finding now names the fields that exclude it. A steered-or-hostile-agent finding is beyond declaration only where `agent`, `caller` and `input` all take their first value. A finding that needs an agent to retry or reword after a denial is never beyond declaration on `agent` grounds.
+  - `caller=other-callers` no longer implies untrusted input. A finding that needs content from someone who cannot call the change, passed in through whoever runs it, with no agent steered, is now beyond declaration under `caller=other-callers, input=trusted`.
+  - When the declaration reads `agent=hostile`, one fixed hostile-agent question goes to `ciso-reviewer`, in a spawn the round already makes or in one of its own.
+  - The hook `# tier-threat-model:` line keeps its grammar.
+  - The project-layer gate waivers and `CLAUDE.md` § "Hook threat model" do not read the review's `agent` field, so `agent=hostile` changes no gate-tier waiver or routing. `docs/hooks.md` § "Threat-model tiers" still decides what a gate's tier line waives.
+  - `CLAUDE.md` § "Hook threat model" now states that `cooperative` says nothing about whether a gate's input is trusted. It also gives a worked example of a steered agent.
+  - **Migration:** a skip that needed `declared: dev-only, cooperative` now needs `surface=dev-only`, `agent=cooperative`, `caller=operator-only` and `input=trusted`. `agent=hostile` blocks every skip that rests on the declaration.
+  - **Migration:** a declaration that read `untrusted-input` now reads `caller=operator-only` and `input=untrusted`, and one that read `adversarial` now reads `caller=other-callers` and `input=untrusted`, each with `agent=cooperative`.
+  - **Migration:** a project layer or prompt that matches the old tag no longer matches.
+  - The change is live on `git pull`.
 - **The documented `claude-config.toml` append one-liners now start with a newline, `.gitignore` covers six more legacy sentinel filenames, and `git-feature-branch-sync`'s explicit `--force-with-lease` recipe uses a pre-rewrite SHA.**
   - Every `printf 'key = value\n' >> .../claude-config.toml` copy in `README.md`, `docs/`, and the `advance-past-commit-stall.sh` block reason is now `printf '\nkey = value\n'`. Without the leading newline, a file lacking a trailing newline fused the new key onto its last line, and `_config.sh` skipped both as a malformed line. `docs/config-file.md` states the requirement.
   - **Migration:** a one-liner copied before this change still fuses lines on such a file. Re-copy it from the docs, or add the leading `\n`.
@@ -100,6 +118,17 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - `--repair` now exits 1 before it stows `claude` when moving a dangling link into the backup dir fails, including a link the `claude` package does not link, such as a `projects` link to an unmounted disk. `~/.claude/hooks` then stays unlinked until the backup dir is fixed.
   - Other accounts' config dirs and linked worktrees stay manual (README "Repo relocation").
   - **Migration:** if `~/.claude/skills` is a dangling symlink after a past relocation, run `relocate-claude-config --repair <new-path>` and then `./install.sh` from the checkout. Otherwise run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
+- **`relocate-claude-config` now re-points, in both modes, links in each config dir listed in `~/.claude/transcript-config-dirs` other than `~/.claude`, keeping a copy of each old link in `~/.claude-config-relocate-backup`.**
+  - Listing a dir there now gives this command write access to its links, whether or not the transcript tools scan it. Deleting the dir's line keeps the command away from it. That also drops the dir from the transcript tools' scan.
+  - `--repair <new-path>` reaches every listed account, so its destination is trusted for each of them.
+  - A dangling link at one of this repo's package paths is re-pointed when its text ends in that path, whichever checkout its text named.
+  - A run that exited 0 before can exit 3 now, and `--repair` is the retry. It exits 3 in these cases:
+    - A dir under a listed dir, or the listed dir itself, cannot be searched.
+    - A link needs re-pointing and its listed dir, a dir under it, or the backup dir is unwritable. A dir with nothing to re-point is not written.
+    - A link cannot be re-pointed for another reason.
+  - Backups now get a unique `<name>.<suffix>` name, with or without the file, so two same-named links in one run no longer replace each other's backup.
+  - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
+  - **Migration:** after a relocation that left a listed account's links pointing at the old location, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.
 - **Eval instruments that launch `claude -p` no longer score a prompt a hook blocked as a model miss, except a plain-text block from a hook that prints no `main-session-rules: prompt blocked` line.**
   - `run_skill_evals.py`, the subagent model resolution experiment and the explore recall gate raise `BlockedPromptError`, and review bench records the run missing with reason `blocked-prompt`.
   - `run_skill_evals.py`'s plain-text calls recognize only stdout carrying `main-session-rules: prompt blocked`.

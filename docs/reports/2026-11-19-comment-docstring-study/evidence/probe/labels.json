@@ -1,0 +1,1241 @@
+{
+  "labels_version": "v4",
+  "source_ref": "HEAD",
+  "source_sha": "4d2d6ea16136",
+  "rows": [
+    {
+      "row_id": "P01c1",
+      "function_id": "P01",
+      "clause": "Return the path declared_roots_matching() reads",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P01c2",
+      "function_id": "P01",
+      "clause": "TRANSCRIPT_CONFIG_DIRS_FILE if set, else ~/.claude/transcript-config-dirs",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P01c3",
+      "function_id": "P01",
+      "clause": "(a test seam mirroring cleanup-merged-branches.sh's CLEANUP_MERGED_BRANCHES_ROOTS_FILE)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P01c4",
+      "function_id": "P01",
+      "clause": "Unlike TRANSCRIPT_CONFIG_DIRS_LABEL, this DOES follow the seam.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P02c1",
+      "function_id": "P02",
+      "clause": "Return the config dirs listed in ~/.claude/transcript-config-dirs",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P02c2",
+      "function_id": "P02",
+      "clause": "(or TRANSCRIPT_CONFIG_DIRS_FILE)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P02c3",
+      "function_id": "P02",
+      "clause": "that contain a `projects/` subdirectory",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P02c4",
+      "function_id": "P02",
+      "clause": "See declared_roots_matching() for the parsing contract this builds on.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P03c1",
+      "function_id": "P03",
+      "clause": "Remove fenced code blocks and inline code spans",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P03c2",
+      "function_id": "P03",
+      "clause": "the natural way a draft would quote a literal string it's citing rather than proposing as a real next step",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P03c3",
+      "function_id": "P03",
+      "clause": "so a placeholder or anchor-shape scan does not fire on it",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P04c1",
+      "function_id": "P04",
+      "clause": "The record's text with NUL removed",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P04c2",
+      "function_id": "P04",
+      "clause": "so the closer and emptiness checks judge the text the block emits",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P05c1",
+      "function_id": "P05",
+      "clause": "`uninstall` removes the install record right after the state directory",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P05c2",
+      "function_id": "P05",
+      "clause": "so a re-run cannot retry the removal",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P06c1",
+      "function_id": "P06",
+      "clause": "True when `mapping` holds a key outside `known`",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P06c2",
+      "function_id": "P06",
+      "clause": "or a known key of another type",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P06c3",
+      "function_id": "P06",
+      "clause": "A null value counts as absent.",
+      "verdict": "DELETE",
+      "angle": "False-or-unsourced",
+      "contested": false
+    },
+    {
+      "row_id": "P07c1",
+      "function_id": "P07",
+      "clause": "True when any entry in `entries` carries indeterminate liveness under `source_name` in `liveness`",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P07c2",
+      "function_id": "P07",
+      "clause": "used to withhold Confirmed-clean-exit promotion when a same-session sibling from the other evidence source hasn't resolved",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c1",
+      "function_id": "P08",
+      "clause": "Declared roots from ~/.claude/transcript-config-dirs",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c2",
+      "function_id": "P08",
+      "clause": "(or TRANSCRIPT_CONFIG_DIRS_FILE)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c3",
+      "function_id": "P08",
+      "clause": "validated against this script's own looser sessions/-or-projects/ check",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c4",
+      "function_id": "P08",
+      "clause": "(main()'s --config-dir validation, below)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c5",
+      "function_id": "P08",
+      "clause": "instead of declared_transcript_roots()'s projects/-only requirement",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P08c6",
+      "function_id": "P08",
+      "clause": "the latter would silently drop a sessions-only root",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "False-or-unsourced",
+      "contested": false
+    },
+    {
+      "row_id": "P08c7",
+      "function_id": "P08",
+      "clause": "the crashed-fresh-account case this tool exists for",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P09c1",
+      "function_id": "P09",
+      "clause": "Every ledger file directly under ledger_dir",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P09c2",
+      "function_id": "P09",
+      "clause": "sorted by filename for a deterministic read order",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P09c3",
+      "function_id": "P09",
+      "clause": "[] when the directory does not exist",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P09c4",
+      "function_id": "P09",
+      "clause": "This is the index's only directory listing, so a test can stand in for a file that vanishes between the listing and the read.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P10c1",
+      "function_id": "P10",
+      "clause": "CLI entry point for the cost-trend subcommand",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P10c2",
+      "function_id": "P10",
+      "clause": "Reads the wall-clock date exactly once, here, then delegates to _cost_trend_report, which takes `today` as an explicit parameter",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P10c3",
+      "function_id": "P10",
+      "clause": "the same split _cost_report uses so the \"(partial)\" label doesn't depend on a live clock read inside a function under test",
+      "verdict": "REWRITE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P11c1",
+      "function_id": "P11",
+      "clause": "The unavailable kind for a non-empty _gh_pr_list status.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P11c2",
+      "function_id": "P11",
+      "clause": "A status this table does not know is reported as an unexpected payload",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P11c3",
+      "function_id": "P11",
+      "clause": "rather than aborting the run",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P12c1",
+      "function_id": "P12",
+      "clause": "Collapse every whitespace run (U+2028 and U+2029 included) to one space",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P12c2",
+      "function_id": "P12",
+      "clause": "then delete Cc and Cf characters",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P12c3",
+      "function_id": "P12",
+      "clause": "The collapse runs first because \\n, \\t, and U+0085 are themselves Cc: stripping first would join the words around them.",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P12c4",
+      "function_id": "P12",
+      "clause": "A deleted non-whitespace character can leave a doubled, leading",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P12c5",
+      "function_id": "P12",
+      "clause": "or trailing space",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P12c6",
+      "function_id": "P12",
+      "clause": "so the result is not idempotent",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P13c1",
+      "function_id": "P13",
+      "clause": "The synthetic report `--sample` prints",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P13c2",
+      "function_id": "P13",
+      "clause": "and the docs show",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P13c3",
+      "function_id": "P13",
+      "clause": "it reads no transcript and runs no subprocess",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P14c1",
+      "function_id": "P14",
+      "clause": "Integer micro-dollars",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P14c2",
+      "function_id": "P14",
+      "clause": "the ledger's own six-decimal rendering of `dollars` denotes",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P15c1",
+      "function_id": "P15",
+      "clause": "The one",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P15c2",
+      "function_id": "P15",
+      "clause": "canonical encoding of a decoded JSON-cell value",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P15c3",
+      "function_id": "P15",
+      "clause": "(model_breakdown or review_rounds)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P16c1",
+      "function_id": "P16",
+      "clause": "See docs/transcript-analysis.md's `read-cost` section for the flags, the unit, and the publication scope.",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P17c1",
+      "function_id": "P17",
+      "clause": "Collapse a project label or a raw project-dir slug to its base-repo \"family\" key.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P17c2",
+      "function_id": "P17",
+      "clause": "Strips the `--claude-worktrees-<branch>` suffix",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P17c3",
+      "function_id": "P17",
+      "clause": "that a linked worktree's project-dir slug already carries (see `_WORKTREE_SUFFIX_RE` above)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P17c4",
+      "function_id": "P17",
+      "clause": "`_derive_proj_label`'s output preserves that suffix unchanged, so the same match applies to either input shape.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P17c5",
+      "function_id": "P17",
+      "clause": "A project literally named with that substring would falsely merge into another family",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P17c6",
+      "function_id": "P17",
+      "clause": "an accepted risk at current scale",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P17c7",
+      "function_id": "P17",
+      "clause": "If cost --by-project, buckets' Proj count, or user-input's Scope project count ever shows an unexpected merge, re-evaluate.",
+      "verdict": "REWRITE",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P18c1",
+      "function_id": "P18",
+      "clause": "Apply a run-scoped session-id redact map",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P18c2",
+      "function_id": "P18",
+      "clause": "fails closed to a fixed token on a miss",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P19c1",
+      "function_id": "P19",
+      "clause": "value/total as a percentage string",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P19c2",
+      "function_id": "P19",
+      "clause": "0.0% (not an undefined dash) when total is zero",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P20c1",
+      "function_id": "P20",
+      "clause": "Strip ASCII control characters",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P20c2",
+      "function_id": "P20",
+      "clause": "from a --deny-summary table cell value",
+      "verdict": "DELETE",
+      "angle": "False-or-unsourced",
+      "contested": false
+    },
+    {
+      "row_id": "P21c1",
+      "function_id": "P21",
+      "clause": "Elementwise-sum a list of _PooledBranchTotals into one pooled total",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P21c2",
+      "function_id": "P21",
+      "clause": "reused identically for the true sample (point estimate) and for every bootstrap resample's own draw",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P21c3",
+      "function_id": "P21",
+      "clause": "so every reported statistic is computed the same way regardless of which list it was handed",
+      "verdict": "REWRITE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P22c1",
+      "function_id": "P22",
+      "clause": "compute_review_round_costs, routed through _pooled_filtered_stderr_call.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P22c2",
+      "function_id": "P22",
+      "clause": "--pooled must never print the resolved root count",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P22c3",
+      "function_id": "P22",
+      "clause": "(see _pooled_resolved_scope_header)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P23c1",
+      "function_id": "P23",
+      "clause": "ASCII-only",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P23c2",
+      "function_id": "P23",
+      "clause": "so the text encodes the same under any locale",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P24c1",
+      "function_id": "P24",
+      "clause": "`logged_at` is floored",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P24c2",
+      "function_id": "P24",
+      "clause": "so a row follows an event only past the event's whole second",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P25c1",
+      "function_id": "P25",
+      "clause": "Map an absolute path to Claude Code's project-directory slug.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P25c2",
+      "function_id": "P25",
+      "clause": "Claude Code names each project dir under ~/.claude/projects/ by taking the session's cwd and replacing every '/' and '.' with '-'.",
+      "verdict": "REWRITE",
+      "angle": "False-or-unsourced",
+      "contested": false
+    },
+    {
+      "row_id": "P25c3",
+      "function_id": "P25",
+      "clause": "Verified against real dirs: /home/<user>/repo -> -home-<user>-repo; /home/<user>/repo/.claude/worktrees/b -> -home-<user>-repo--claude-worktrees-b.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P26c1",
+      "function_id": "P26",
+      "clause": "Same exception type",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P26c2",
+      "function_id": "P26",
+      "clause": "with any embedded absolute path removed from the message",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P26c3",
+      "function_id": "P26",
+      "clause": "Mirrors _iter_scoped_sessions' own root-level diagnostic, which uses `exc.strerror or 'permission denied'` rather than `str(exc)`.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P26c4",
+      "function_id": "P26",
+      "clause": "`str(exc)` can embed the offending path.",
+      "verdict": "REWRITE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P26c5",
+      "function_id": "P26",
+      "clause": "`OSError(errno, strerror)` reconstructs the correct subclass (e.g. `PermissionError`) from `errno`.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P26c6",
+      "function_id": "P26",
+      "clause": "A caller matching on subclass still sees the same type.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P27c1",
+      "function_id": "P27",
+      "clause": "Print the one-line resolved-scope header",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P27c2",
+      "function_id": "P27",
+      "clause": "cmd_skill_invocation already uses",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P27c3",
+      "function_id": "P27",
+      "clause": "so machine-wide vs. --this-repo output is never scope-ambiguous",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P27c4",
+      "function_id": "P27",
+      "clause": "`file` defaults to stdout",
+      "verdict": "KEEP AS SUBJECT",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P27c5",
+      "function_id": "P27",
+      "clause": "(resolved at call time, not import time \u2014 a `sys.stdout` default value would bind the stream object process startup captured, bypassing test capture and any later reassignment)",
+      "verdict": "KEEP",
+      "angle": "Keep",
+      "contested": false
+    },
+    {
+      "row_id": "P27c6",
+      "function_id": "P27",
+      "clause": "audit-routing-samples routes it to stderr instead",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P27c7",
+      "function_id": "P27",
+      "clause": "since its stdout is a JSON (or curation-markdown) data stream a header line would corrupt",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P28c1",
+      "function_id": "P28",
+      "clause": "A subcommand calling this must also be in _SUBCOMMANDS_REFUSING_TOP_LEVEL_CONFIG_DIR.",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P29c1",
+      "function_id": "P29",
+      "clause": "Resolve one record's branch for --branches filtering",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P29c2",
+      "function_id": "P29",
+      "clause": "the timeline step (_timeline_entry) followed by the pre-branch step (_attribute_pre_branch)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P29c3",
+      "function_id": "P29",
+      "clause": "Returns None for a main-thread record with no gitBranch, and for a sidechain record in a session with no branch-bearing main-thread record",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P29c4",
+      "function_id": "P29",
+      "clause": "the \"?\" sentinel (see cmd_review_trace's docstring for the carry-forward convention this parallels)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": true
+    },
+    {
+      "row_id": "P30c1",
+      "function_id": "P30",
+      "clause": "Apply only the pre-branch step to a branch a positional consumer carried forward from the main thread",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P30c2",
+      "function_id": "P30",
+      "clause": "using the record's own timestamp",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P30c3",
+      "function_id": "P30",
+      "clause": "so a record with none is never remapped",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P31c1",
+      "function_id": "P31",
+      "clause": "Return True iff any segment of `command` invokes a mutating git subcommand (see _command_segment_is_mutating_git)",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    },
+    {
+      "row_id": "P31c2",
+      "function_id": "P31",
+      "clause": "&&/;/|/||-chained",
+      "verdict": "DELETE",
+      "angle": "Restating",
+      "contested": false
+    }
+  ],
+  "control_rows": [
+    {
+      "row_id": "K1c1",
+      "function_id": "K1",
+      "clause": "The id is truncated to 40 characters because the Acme Reports API v2 reference caps `id` at 40 and answers 400 for longer ids.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "K1c2",
+      "function_id": "K1",
+      "clause": "Requests use the v1 path because v2 does not serve archived reports, per the vendor's migration notes.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "K2c1",
+      "function_id": "K2",
+      "clause": "The digest is sha256 rather than the faster blake2b because the CDN vendor's \"Cache keys\" page accepts only FIPS-approved hex digests in the cache-key header.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "K2c2",
+      "function_id": "K2",
+      "clause": "It is cut to 32 hex characters because the same page rejects header values longer than 32 bytes.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "D1c1",
+      "function_id": "D1",
+      "clause": "Return True when rows is not empty.",
+      "verdict": "DELETE",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "D1c2",
+      "function_id": "D1",
+      "clause": "Checks the length of the list.",
+      "verdict": "DELETE",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "D1c3",
+      "function_id": "D1",
+      "clause": "Returns a bool.",
+      "verdict": "DELETE",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "D2c1",
+      "function_id": "D2",
+      "clause": "Return the users who logged in within the last 30 days.",
+      "verdict": "DELETE",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "D2c2",
+      "function_id": "D2",
+      "clause": "Delegates to filter_recent, which compares last_login with a cutoff built from ACTIVE_WINDOW_DAYS.",
+      "verdict": "DELETE",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "R1c1",
+      "function_id": "R1",
+      "clause": "The ceiling follows the vendor's \"Rate limits\" page, which locks a key out for an hour when a client retries faster, and a lockout stalls every job sharing that key.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "R1c2",
+      "function_id": "R1",
+      "clause": "Revisit the ceiling if the vendor starts publishing per-account limits.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "R2c1",
+      "function_id": "R2",
+      "clause": "Keys are sorted because the billing vendor's \"Webhook signatures\" page defines the signature over a key-sorted body, and an unsorted body fails verification.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    },
+    {
+      "row_id": "R2c2",
+      "function_id": "R2",
+      "clause": "Switch to the vendor's SDK serializer once it ships one.",
+      "verdict": "KEEP",
+      "angle": "",
+      "contested": false
+    }
+  ],
+  "functions": [
+    {
+      "function_id": "P01",
+      "module": "_config_dir.py",
+      "function": "declared_roots_file"
+    },
+    {
+      "function_id": "P02",
+      "module": "_config_dir.py",
+      "function": "declared_transcript_roots"
+    },
+    {
+      "function_id": "P03",
+      "module": "check-handoff.py",
+      "function": "strip_code_spans"
+    },
+    {
+      "function_id": "P04",
+      "module": "compaction-context.py",
+      "function": "_prompt_text"
+    },
+    {
+      "function_id": "P05",
+      "module": "cursor-adapter/cursor-adapter.py",
+      "function": "report_state_dir_left"
+    },
+    {
+      "function_id": "P06",
+      "module": "cursor-adapter/hook-shim.py",
+      "function": "_off_table"
+    },
+    {
+      "function_id": "P07",
+      "module": "post-crash-sessions.py",
+      "function": "_has_indeterminate_liveness"
+    },
+    {
+      "function_id": "P08",
+      "module": "post-crash-sessions.py",
+      "function": "_declared_config_dirs"
+    },
+    {
+      "function_id": "P09",
+      "module": "transcript_analysis/author_outcome.py",
+      "function": "_list_ledger_files"
+    },
+    {
+      "function_id": "P10",
+      "module": "transcript_analysis/cost.py",
+      "function": "cmd_cost_trend"
+    },
+    {
+      "function_id": "P11",
+      "module": "transcript_analysis/period_cost.py",
+      "function": "_gh_kind_for_status"
+    },
+    {
+      "function_id": "P12",
+      "module": "transcript_analysis/period_cost.py",
+      "function": "_flatten_untrusted_text"
+    },
+    {
+      "function_id": "P13",
+      "module": "transcript_analysis/period_cost.py",
+      "function": "_render_sample"
+    },
+    {
+      "function_id": "P14",
+      "module": "transcript_analysis/pr_cost.py",
+      "function": "_usd_to_micros"
+    },
+    {
+      "function_id": "P15",
+      "module": "transcript_analysis/pr_cost_ledger.py",
+      "function": "_encode_json_cell"
+    },
+    {
+      "function_id": "P16",
+      "module": "transcript_analysis/read_cost.py",
+      "function": "cmd_read_cost"
+    },
+    {
+      "function_id": "P17",
+      "module": "transcript_analysis/redaction.py",
+      "function": "_project_family"
+    },
+    {
+      "function_id": "P18",
+      "module": "transcript_analysis/redaction.py",
+      "function": "_redact_session_id"
+    },
+    {
+      "function_id": "P19",
+      "module": "transcript_analysis/render.py",
+      "function": "_pct_of"
+    },
+    {
+      "function_id": "P20",
+      "module": "transcript_analysis/render.py",
+      "function": "_sanitize_table_cell"
+    },
+    {
+      "function_id": "P21",
+      "module": "transcript_analysis/review_rounds.py",
+      "function": "_pooled_branch_aggregates"
+    },
+    {
+      "function_id": "P22",
+      "module": "transcript_analysis/review_rounds.py",
+      "function": "_pooled_compute_review_round_costs"
+    },
+    {
+      "function_id": "P23",
+      "module": "transcript_analysis/routing_guard.py",
+      "function": "_serialize_capture"
+    },
+    {
+      "function_id": "P24",
+      "module": "transcript_analysis/routing_guard.py",
+      "function": "_lost_event_hides"
+    },
+    {
+      "function_id": "P25",
+      "module": "transcript_analysis/scope.py",
+      "function": "_path_to_project_slug"
+    },
+    {
+      "function_id": "P26",
+      "module": "transcript_analysis/scope.py",
+      "function": "_path_stripped_scan_error"
+    },
+    {
+      "function_id": "P27",
+      "module": "transcript_analysis/scope.py",
+      "function": "print_resolved_scope"
+    },
+    {
+      "function_id": "P28",
+      "module": "transcript_analysis/scope.py",
+      "function": "_add_extra_config_dirs_arg"
+    },
+    {
+      "function_id": "P29",
+      "module": "transcript_analysis/scope.py",
+      "function": "_attributed_branch"
+    },
+    {
+      "function_id": "P30",
+      "module": "transcript_analysis/scope.py",
+      "function": "_attribute_carried_branch"
+    },
+    {
+      "function_id": "P31",
+      "module": "transcript_analysis/turn_shape.py",
+      "function": "_bash_command_is_mutating_git"
+    }
+  ],
+  "subject_pairs": {
+    "P03c1": "P03c2",
+    "P08c6": "P08c7",
+    "P10c2": "P10c3",
+    "P17c5": "P17c6",
+    "P21c2": "P21c3",
+    "P23c1": "P23c2",
+    "P26c2": "P26c4",
+    "P27c1": "P27c3",
+    "P27c4": "P27c5"
+  },
+  "rewrite_expectations": {
+    "P01c3": {
+      "decision": [
+        "test seam",
+        "seam",
+        "environment variable",
+        "env(?:ironment)? var",
+        "override"
+      ],
+      "reason": [
+        "\\btests?\\b",
+        "\\btesting\\b",
+        "test[- ]only"
+      ],
+      "forbidden": [
+        "mirror"
+      ]
+    },
+    "P10c3": {
+      "decision": [
+        "\\btoday\\b",
+        "clock",
+        "date (?:is )?read",
+        "explicit(?:ly)? (?:parameter|passed)"
+      ],
+      "reason": [
+        "\\btests?\\b",
+        "\\btestab",
+        "live clock",
+        "\\(partial\\)",
+        "determinis"
+      ],
+      "forbidden": [
+        "_cost_report uses",
+        "same split"
+      ]
+    },
+    "P17c7": {
+      "decision": [
+        "re-?evaluate",
+        "revisit",
+        "trigger",
+        "unexpected merge"
+      ],
+      "reason": [
+        "merge",
+        "per-project",
+        "accepted risk",
+        "unexpected"
+      ],
+      "forbidden": [
+        "cost --by-project",
+        "buckets",
+        "user-input",
+        "Scope project"
+      ]
+    },
+    "P21c3": {
+      "decision": [
+        "same (?:way|code|function)",
+        "identical",
+        "pool",
+        "sum",
+        "one (?:way|path)"
+      ],
+      "reason": [
+        "bootstrap",
+        "resampl",
+        "point estimate",
+        "bias",
+        "varianc",
+        "comparab",
+        "statistic"
+      ],
+      "forbidden": []
+    },
+    "P25c2": {
+      "decision": [
+        "slug",
+        "project[- ]dir",
+        "directory name"
+      ],
+      "reason": [
+        "Claude Code",
+        "outside (?:this|the) repo",
+        "external",
+        "not (?:defined|stated|verified)",
+        "unverified"
+      ],
+      "forbidden": []
+    },
+    "P26c4": {
+      "function_wide": true,
+      "decision": [
+        "out of the (?:error )?message",
+        "not (?:embed|include|leak)",
+        "strerror",
+        "redact"
+      ],
+      "reason": [
+        "engagement",
+        "private",
+        "leak",
+        "sensitive",
+        "embed",
+        "expos",
+        "confidential"
+      ],
+      "forbidden": []
+    }
+  },
+  "cells": [
+    "P01-declared_roots_file",
+    "P02-declared_transcript_roots",
+    "P03-strip_code_spans",
+    "P04-prompt_text",
+    "P05-report_state_dir_left",
+    "P06-off_table",
+    "P07-has_indeterminate_liveness",
+    "P08-declared_config_dirs",
+    "P09-list_ledger_files",
+    "P10-cmd_cost_trend",
+    "P11-gh_kind_for_status",
+    "P12-flatten_untrusted_text",
+    "P13-render_sample",
+    "P14-usd_to_micros",
+    "P15-encode_json_cell",
+    "P16-cmd_read_cost",
+    "P17-project_family",
+    "P18-redact_session_id",
+    "P19-pct_of",
+    "P20-sanitize_table_cell",
+    "P21-pooled_branch_aggregates",
+    "P22-pooled_compute_review_round_costs",
+    "P23-serialize_capture",
+    "P24-lost_event_hides",
+    "P25-path_to_project_slug",
+    "P26-path_stripped_scan_error",
+    "P27-print_resolved_scope",
+    "P28-add_extra_config_dirs_arg",
+    "P29-attributed_branch",
+    "P30-attribute_carried_branch",
+    "P31-bash_command_is_mutating_git",
+    "K1-fetch_report",
+    "K2-hash_cache_key",
+    "D1-has_rows",
+    "D2-active_users"
+  ],
+  "extra_cells": [
+    "R1-schedule_retry",
+    "R2-encode_event"
+  ]
+}

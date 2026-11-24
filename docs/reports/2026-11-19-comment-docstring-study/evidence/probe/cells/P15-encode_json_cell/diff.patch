@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/pr_cost_ledger.py b/claude/.claude/scripts/transcript_analysis/pr_cost_ledger.py
+--- a/claude/.claude/scripts/transcript_analysis/pr_cost_ledger.py
++++ b/claude/.claude/scripts/transcript_analysis/pr_cost_ledger.py
+@@ -198,6 +198,7 @@
+ 
+ 
+ def _encode_json_cell(value: dict) -> str:
++    """The one canonical encoding of a decoded JSON-cell value (model_breakdown or review_rounds)."""
+     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+ 
+ 
