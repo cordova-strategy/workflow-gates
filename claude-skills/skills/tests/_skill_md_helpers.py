@@ -509,7 +509,6 @@ def _raw_subsection_text(skill_md_path: Path, heading: str) -> str:
     return "".join(lines[start_idx:end_idx])
 
 
-# A markdown list item's opening: `-`, `*` or `1.` followed by whitespace.
 _LIST_MARKER_RE = re.compile(r"(?:[-*]|\d+\.)\s")
 
 
