@@ -8,7 +8,7 @@ Ask: the engineer approved the final § 6 wording and the boundary it draws, in 
 
 Why now: today the four texts disagree. `test-conventions` § 6 says repeating test data is fine and shared fixtures are for expensive setup only. `code-review` item 9 carves test code out as DAMP and covers only a copied named helper. `claude/.claude/CLAUDE.md`'s "Single source of truth" bullet lists "DAMP test code" and "a small duplicated value that beats a bad abstraction" as unqualified exceptions. `test-evaluation` line 68 says "Duplicating production code in tests ... Import or call via integration", which conflicts with spelling out emitted values in a shared test module. A blind-reader comparison favoured variant 2 over the current § 6.
 
-Edits in scope (thirteen files; item 9, REFERENCES.md for the Codex row, added on the engineer's "Add it (Recommended)" answer; item 7 added on the engineer's "Add CHANGELOG bullet" answer):
+Edits in scope (fourteen files, the last being the one-number `code-file-size-exceptions.toml` change in Critical files; item 9, REFERENCES.md for the Codex row, added on the engineer's "Add it (Recommended)" answer; item 7 added on the engineer's "Add CHANGELOG bullet" answer):
 1. `claude-skills/skills/test-conventions/SKILL.md`: replace § 6's five bullets with variant 2, then this round's M1 replaces variant 2's middle three bullets (rows 30-33). Net zero lines; the file is at the 200-line default cap. The length hook (`claude/.claude/hooks/check-skill-length.sh`) denies only a file that is over its limit and longer than the committed version, so net zero passes. Keep the heading `## 6. Test data` exactly, because other files cite it.
 2. `claude/.claude/CLAUDE.md`, "Single source of truth" bullet (line 25): qualify exceptions (1) and (3) so a helper, setup whose details its assertions do not depend on, or a value two test files must keep equal, copied into a second test file, is not covered. The clause must stand alone because the skill does not load in most sessions. Point to `test-conventions/SKILL.md` § "6. Test data"; a bare `test-conventions` target fails the citation-grammar test. The same file's "Discriminator literals where a canonical symbol exists" bullet (line 42) gains an exception clause (M2a), so it no longer tells a test to import a production symbol when the import would make the test pass whatever the value.
 3. `claude-skills/skills/code-review/SKILL.md` item 9: replace everything from "Carve-out:" to the end of the item with the three-sentence carve-out in M3, which states the same boundary. Delete the old named-helper sub-clauses. Item 9a (line 115) gains the same clause (M3a).
@@ -328,7 +328,7 @@ Alternatives weighed:
 - M5. A new REFERENCES.md section with verbatim quotes and the draft caveat. anchors: row16, row17, row18, row19.
 - M6. An in-place correction note under the design record's provenance line. anchors: row14, row15, row16.
 - M7. One CHANGELOG bullet. anchors: row20, row31, row33, row39, row40.
-- M8. One `code-writer` dispatch for all thirteen files, seven changed and six verify-only, after the engineer approves this round's texts. anchors: root, row21, row31, row35.
+- M8. One `code-writer` dispatch for all fourteen files, eight changed and six verify-only, after the engineer approves this round's texts. anchors: root, row21, row31, row35.
 
 **Rows:**
 1. Variant 2 is § 6's final wording, and a builder-default stand-in value may repeat across files. [engineer-verified: "yes to both"] The quote answered both questions in the prior session, and the Ask line records it. It covers only those two points.
@@ -460,8 +460,8 @@ Alternatives weighed:
 
 ## Critical files
 
-One `code-writer` dispatch covers all thirteen files in one phase. It waits for the engineer's answer on this round's texts (row 31). Every replacement text is prescribed in Approach, and all of them rest on the same boundary wording (rows 1-2 and 31-33).
-- Seven files change this round: `test-conventions/SKILL.md`, `claude/.claude/CLAUDE.md`, `code-review/SKILL.md`, `test-evaluation/SKILL.md`, the hook, `CHANGELOG.md` and `ai-instruction-and-memory-files/REFERENCES.md`.
+One `code-writer` dispatch covers all fourteen files in one phase. It waits for the engineer's answer on this round's texts (row 31). Every replacement text is prescribed in Approach, and all of them rest on the same boundary wording (rows 1-2 and 31-33).
+- Eight files change this round: `test-conventions/SKILL.md`, `claude/.claude/CLAUDE.md`, `code-review/SKILL.md`, `test-evaluation/SKILL.md`, the hook, `CHANGELOG.md`, `ai-instruction-and-memory-files/REFERENCES.md` and `code-file-size-exceptions.toml`.
 - The dispatch prompt names the other six as step 3 checks only, so the code-writer edits none of them (M2b).
 
 The dispatching session runs Verification step 5 before that dispatch, on texts it assembles from this plan's blocks, so the engineer answers row 31 with the read results in hand. Step 5 stays with the dispatching session because the agent that writes the texts cannot also be their blind reader. The dispatch runs Verification steps 1-4 and reports each result, with the path of step 3's script.
@@ -474,6 +474,7 @@ The dispatching session runs Verification step 5 before that dispatch, on texts 
   - `docs/hooks.md`
   - `docs/design-decisions/global-claude-md-agent-core-and-main-session-groups.md`
   - `claude/.claude/hooks/tests/test_check_skill_length.py`
+- `code-file-size-exceptions.toml`: the `ceiling` for `claude/.claude/hooks/tests/test_check_skill_length.py` goes from 1472 to 1468. `test_code_file_size.py` printed 1468 after the rebase onto origin/main. [engineer-verified: "Add it to the PR (Recommended)"] The tag covers only adding this file to the PR as a one-number change; the value and its source are the session's own.
 - `claude-skills/skills/ai-instruction-and-memory-files/REFERENCES.md`: an entry under `### OpenAI` and the Codex row of the size table, line 127 (M2c). The engineer's answer is recorded on row 35, and the file is in Context's edit list.
 - `claude-skills/skills/code-review/SKILL.md`: line 113, from `Carve-out:` to the end of the line (M3), and line 115 (M3a).
 - `claude-skills/skills/test-evaluation/SKILL.md`: line 68 (M4).
@@ -483,7 +484,7 @@ The dispatching session runs Verification step 5 before that dispatch, on texts 
 
 Reuse: nothing to call. `test_skill_citation_grammar.py` already guards the citations in M3, M4 and M5 (row 9), so no new test is needed.
 
-Projected diff: about 95 changed lines against origin/main. That is 8 in `test-conventions/SKILL.md`, 4 each in `CLAUDE.md` and `code-review/SKILL.md`, 2 in `test-evaluation/SKILL.md`, about 45 added in `test-conventions/REFERENCES.md`, 2 in the design record, 4 in `CHANGELOG.md`, about 15 in the cap files, and about 10 in `ai-instruction-and-memory-files/REFERENCES.md`.
+Projected diff: about 95 changed lines against origin/main. That is 8 in `test-conventions/SKILL.md`, 4 each in `CLAUDE.md` and `code-review/SKILL.md`, 2 in `test-evaluation/SKILL.md`, about 45 added in `test-conventions/REFERENCES.md`, 2 in the design record, 4 in `CHANGELOG.md`, about 15 in the cap files, 1 in `code-file-size-exceptions.toml`, and about 10 in `ai-instruction-and-memory-files/REFERENCES.md`.
 
 ## Verification
 
