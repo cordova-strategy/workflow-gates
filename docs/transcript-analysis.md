@@ -712,7 +712,7 @@ The top-level `--config-dir PATH` narrows a run to that one root. It goes before
 - A checkout cloned under another directory name matches nothing, and the zero-session warning shows it.
 - At one root a nested glob such as `**` can match a subagent file as a session, and the preview then lists a `subagents` family.
 
-**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600` through a hidden `.correction-candidates-<random>` file beside `--out` that keeps `--out`'s extension. A killed run leaves at most that temp file, holding some or all of the text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
+**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600` through a hidden `.correction-candidates-<random>` file beside `--out` that keeps `--out`'s extension when the name has a suffix. A killed run leaves at most that temp file, holding some or all of the text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
 
 A `--projects '*'` run has three costs:
 - It holds every candidate and the file's text in memory until the one publish.
@@ -731,13 +731,14 @@ Its stderr and scope record also list every project family of every declared acc
 - Exit 2, in any of these cases:
   - An argparse error, such as a negative or non-integer `--truncate-chars` or a date that does not exist.
   - A refusal above, a reversed window included.
+  - A `--projects` value that starts with `/`, which `Path.glob` cannot match at a single root. The run prints one fixed line that echoes no value.
   - `--projects` naming more than one directory level under several roots.
   - A path that appeared at `--out` during the run.
   - A write or link failure at publish.
 
   This run writes no file at `--out`.
 
-Refusals run before the header and any read, and only the first that applies prints: argparse, then no effective scope, then an unapplied or reversed window bound, then neither `--out` nor `--preview`, then the `--out` path, checked as an existing path, then a missing directory or a file parent, then a git work tree.
+Refusals run before the header and any read, and only the first that applies prints: argparse, then no effective scope, then a `--projects` value that starts with `/`, then an unapplied or reversed window bound, then neither `--out` nor `--preview`, then the `--out` path, checked as an existing path, then a missing directory or a file parent, then a git work tree, then, under more than one root, a `--projects` value naming more than one directory level.
 
 **Stderr.** A run prints the resolved-scope header first. At two or more roots it then prints `scope`'s own `scanning root i/N...` line for each root, and `--this-repo` can print `scope`'s notice for a root it cannot list. After publishing, a run prints the `--out` path as its only stdout line. It then prints these stderr lines:
 - the `DO NOT PUBLISH` banner (`scope._DO_NOT_PUBLISH_BANNER`), because the next line names raw project directories;
@@ -751,23 +752,23 @@ After the header, a `--preview` prints the banner, the families line and the zer
 - The file holds raw message text, which may include credentials a person pasted or an agent echoed.
 - No skill in this repository reads the file. Reading it in a session copies its text into that session's transcript.
 - The data-file read guard is opt-in and off until armed, so an unarmed machine has no guard.
-- An armed guard covers the Read tool only. The command accepts any `--out` name, and the runbook ends it in `.jsonl`. The hidden temp file keeps that extension, so the data-file extension rule covers both names. An `--out` with another extension is covered only by size or a configured glob. The rules and the arming steps are in `docs/security-hardening.md` § "Arming the data-file read hook".
+- An armed guard covers the Read tool only. The command accepts any `--out` name, and the runbook ends it in `.jsonl`. For an `--out` name that has a suffix, the hidden temp file keeps that extension, so the data-file extension rule covers both names. An `--out` with another extension is covered only by size or a configured glob. The rules and the arming steps are in `docs/security-hardening.md` § "Arming the data-file read hook".
 - Grep, Bash and every other route are barred by instruction only. A Read denial is final: do not route around it.
 - In a session, only the runbook's file check and raw cross-check may open a `.jsonl` file, each printing counts and kind names only. No other command may.
 - The engineer may run the extraction in their own terminal instead of a session.
 - The file is `0600`.
   - Runbook step 2 creates the folder `0700` only when it is absent.
   - The command creates no folder and never sets a folder's mode.
-  - The git-tree check does not cover a cloud-sync folder or a bare-repo dotfile manager (see `docs/pr-cost.md` § "Residual replication paths the git-tree check doesn't close").
+  - The git-tree check does not cover a cloud-sync folder, a local or cloud backup agent or a bare-repo dotfile manager (see `docs/pr-cost.md` § "Residual replication paths the git-tree check doesn't close" for the cloud-sync and dotfile-manager cases).
   - A shared mount exposes the file whatever its mode.
 - Stderr names raw project directories, so it carries the repository's `DO NOT PUBLISH` banner. That banner is shared with other subcommands and names only project names and session IDs.
 - The scope record's `do_not_publish` is this subcommand's own notice, which says the file holds raw message text.
 - The file outlives the transcripts it came from, and deleting those transcripts does not delete it.
-- The engineer deletes each file once the classification pass, a model pass the engineer runs over the files, has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete (see "Run and exit codes"). The pass must read only the files the engineer names, never a folder listing, since a listing includes hidden entries.
+- The engineer deletes each file once the classification pass, a model pass the engineer runs over the files, has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete (see "Run and exit codes"). Deleting the file does not recall a copy that a backup agent or sync client already took. The pass must read only the files the engineer names, never a folder listing, since a listing includes hidden entries.
 - This subcommand is not a publication instrument. See `docs/private-project-redaction.md` § "Publishing a tooling measurement" before quoting any figure from its files.
 
 **What a candidate is.**
-- A line's context fields carry `text` blocks only. A plan shown for approval through a tool call, and a subagent's dispatch prompt, never reach a line, so their absence is not an absence of failures.
+- A line's context fields carry `text` blocks only. A plan shown for approval through a tool call, and a subagent's dispatch prompt, never reach a line, and neither does the engineer's typed reason on a rejected tool call (unverified: whether it arrives as a typed prompt), so their absence is not an absence of failures.
 - A record is **prompt-shaped** as Terms defines under "typed prompt". An **asking record** is a main-thread assistant record holding an `AskUserQuestion` `tool_use` block.
 - An **exchange** opens at every prompt-shaped record except an interrupt marker, local-command output and a bash-mode record. An interrupt opens none, so the interrupted exchange's text stays in front of the prompt that follows it. A task notification is not prompt-shaped and opens none. `exchange` is the 1-based ordinal of openings over the whole file. A prompt carries its own. A question carries the one it sits in, or 0 before the first opening.
 - `preceding_assistant_text` is the text of the main-thread assistant records between the previous exchange opening, or the file's start, and the prompt. For a question it runs from its exchange's opening through the asking record. Records are joined by a blank line, and a record with no text adds nothing. It keeps its last N characters.
@@ -881,8 +882,8 @@ Extraction runs first because transcripts expire. No step moves a file off the m
 **Steps.**
 1. Run `python3 --version` in the session's working directory, where every later command runs on the session route. Stop below the Python floor in `README.md` § "Requirements". A pyenv shim resolves `python3` per directory.
 2. Get the output folder from the engineer: `$HOME/correction-candidates`, or a replacement the engineer supplies as an absolute path with no `~`. Steps 2 to 6 call it `<out-dir>`. The session types it unchanged inside the double quotes the commands carry, so the default is typed as `"$HOME/correction-candidates"`.
-   - Before the `mkdir`, ask the engineer for the output folder, then end the turn. The question states that no cloud-sync client or dotfile manager may track or sync the folder, and the git-tree check covers neither; see `docs/pr-cost.md` § "Residual replication paths the git-tree check doesn't close". It also states that the default `$HOME/correction-candidates` qualifies only when nothing tracks or syncs `$HOME`. The engineer replies with an absolute path or names the default explicitly.
-   - Step 2 runs nothing further until a later engineer message names a path or names the default explicitly. Silence and any other reply, such as a bare "yes", are not a path.
+   - Before the `mkdir`, ask the engineer for the output folder, then end the turn. The question states that no cloud-sync client, local or cloud backup agent, or dotfile manager may track, sync or back up the folder, that the git-tree check covers none of them, and asks whether the folder is excluded from them; see "Privacy" above. It also states that the default `$HOME/correction-candidates` qualifies only when nothing tracks, syncs or backs up `$HOME`. The engineer replies with an absolute path or names the default explicitly.
+   - Step 2 runs nothing further until a later engineer message names a path or names the default explicitly and also says whether the folder is excluded from every cloud-sync client, backup agent and dotfile manager the question names. The default qualifies only with that answer. Silence and any other reply, such as a bare "yes", are not a path, and neither is a reply that gives a path with no exclusion answer. A reply saying something tracks, syncs or backs up the folder, or that the engineer does not know, is not a path either, so step 2 waits for another folder.
    - Refuse a replacement path that contains `$`, a backtick, `"` or `\`, because the session types the path inside double quotes, where `$` and backticks still expand. Also refuse one that is not absolute or that contains `~`, because `~` does not expand inside double quotes and `mkdir` would create a literal `~` directory.
    - Run `mkdir -p -m 700 "<out-dir>"`, then `ls -la "<out-dir>"`.
    - The mode applies only when the folder is absent, and an existing folder keeps its own. Report the `.` entry's mode. A mode with group or other bits set is the engineer's to fix.
@@ -914,7 +915,7 @@ Extraction runs first because transcripts expire. No step moves a file off the m
    - The sum must be at least `ask_user_question_calls`. A sum below it, or a positive sum with `ask_user_question_calls` at 0, is a stop: report the sum, the count and each root's total verbatim, and edit nothing.
    - Report any excess with its possible sources: blocks in sidechain records, in uninterpretable records, or on undecodable lines; a project directory reached through two roots, which the run reads once; and the live session's own growth since the extraction.
 6. Report each path, header, families line, counts line, file-check line and cross-check sum, in session only. Never put them in a commit, PR, issue, comment, or handoff file.
-   - Report the engineer's answer on the read guard, the `<out-dir>` the engineer named in step 2, and on the worktree route the worktree's path and branch.
+   - Report the engineer's answer on the read guard, the engineer's exclusion answer from step 2, the `<out-dir>` the engineer named in step 2, and on the worktree route the worktree's path and branch.
    - Name each `failed_relations` entry, with its population counts beside it. A file with a non-empty `failed_relations` is kept and reported, and nothing classifies it until the engineer explains the failure.
    - Report `truncated_fields`. When many values were cut, the engineer decides whether to re-extract with a larger `--truncate-chars`, or `0`, while the transcripts last, or to accept the cut.
    - When `prompts` or `questions` is zero, ask the engineer whether this machine should show any. On "yes", stop: the file is kept and held back from classification, as for a failed relation.
@@ -925,7 +926,7 @@ Extraction runs first because transcripts expire. No step moves a file off the m
 **Stops at any step.**
 - Any non-zero exit: stop and report the exit status and stderr verbatim. Edit no script, and widen no scope. An argparse `invalid choice: 'correction-candidates'` means the script that ran lacks the subcommand: the checkout was not updated, or the worktree route ran the stowed path instead of the worktree's.
 - A harness refusal of one of this runbook's own commands: stop and give the engineer the literal command to run in a terminal. For a preview or an extraction, the session continues on the terminal route and hands over step 1's `python3 --version`, then the refused command and the ones after it, never a preview already confirmed or an extraction that already ran. An extraction is still handed over only after the families confirmation in step 3. A refusal of any other command is final.
-- A zero-session warning: check that the checkout's directory name holds the repo name, and report it.
+- A zero-session warning: check that the checkout's directory name holds the repo name, and report it. The stop holds until a later engineer message says that repo name never existed on this machine, and silence or any other reply leaves it in force. Steps 4 to 6 then skip that name only, and the other name continues.
 
 ---
 

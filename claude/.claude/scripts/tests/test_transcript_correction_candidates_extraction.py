@@ -2,6 +2,7 @@
 
 The question lines are tested in test_transcript_correction_candidates_questions.py."""
 import json
+import time
 from collections import Counter
 from datetime import UTC, datetime
 
@@ -267,6 +268,18 @@ class TestSlashPromptLine:
         assert counts["slash_command"] == 1
 
 
+class TestPromptText:
+    def test_a_pasted_prompt_keeps_its_wrapper_and_leading_newlines(self):
+        record = with_fields(pasted_prompt(), timestamp=ts(1), uuid="paste")
+
+        assert only_line([record])["text"] == record["message"]["content"]
+
+    def test_a_typed_prompt_keeps_its_leading_and_trailing_whitespace(self):
+        text = "  \n a typed ask \n\n"
+
+        assert only_line([prompt(text, 1)])["text"] == text
+
+
 # --- the scripted sessions ----------------------------------------------------------------------------------------
 
 
@@ -323,6 +336,19 @@ class TestScriptedSession:
         combined = " ".join(line["preceding_assistant_text"] + line["following_assistant_text"] for line in lines)
         assert "SIDECHAIN TEXT" not in combined
         assert "private reasoning" not in combined
+
+    def test_a_whitespace_only_assistant_record_adds_nothing_to_either_context_field(self):
+        records = [
+            prompt("first", 1, uuid="u1"),
+            assistant_text("\n\n", timestamp=ts(2)),
+            assistant_record([text_block(""), text_block("")], timestamp=ts(3)),
+            prompt("second", 4, uuid="u2"),
+            assistant_text("\n\n", timestamp=ts(5)),
+        ]
+
+        lines = emitted(records)
+
+        assert [(line["preceding_assistant_text"], line["following_assistant_text"]) for line in lines] == [("", ""), ("", "")]
 
     def test_skips_are_counted_by_kind(self):
         _candidates, counts = scan(scripted_session())
@@ -476,6 +502,14 @@ class TestWindow:
 
         assert [line["text"] for line in lines] == ["late"]
 
+    def test_the_first_millisecond_of_the_since_day_is_in_and_the_millisecond_before_is_out(self):
+        first_in = with_fields(user_prompt("early"), timestamp="2026-05-19T00:00:00.000Z", uuid="early")
+        last_out = with_fields(user_prompt("previous day"), timestamp="2026-05-18T23:59:59.999Z", uuid="previous")
+
+        lines = emitted([last_out, first_in], since="2026-05-19")
+
+        assert [line["text"] for line in lines] == ["early"]
+
     @pytest.mark.parametrize("timestamp", [ABSENT, 5, ["2026-05-19T10:00:00Z"], ""], ids=["absent", "int", "list", "empty"])
     def test_undated_prompt_counts_under_a_window_and_is_emitted_without_one(self, timestamp):
         records = [with_fields(user_prompt("undated"), timestamp=timestamp, uuid="u")]
@@ -555,6 +589,25 @@ class TestWindow:
 
         assert [line["text"] for line in lines] == expected_texts
         assert [line["timestamp"] for line in emitted([record])] == ["2026-05-20T04:30:00+00:00"]
+
+    @pytest.mark.parametrize(
+        ("zone", "utc_offset_seconds"), [("<-08>8", -8 * 3600), ("<+14>-14", 14 * 3600)], ids=["utc-minus-8", "utc-plus-14"],
+    )
+    def test_an_offset_less_timestamp_reads_as_utc_whatever_the_machine_time_zone_is(
+        self, monkeypatch, zone, utc_offset_seconds,
+    ):
+        record = with_fields(user_prompt("no offset"), timestamp="2026-05-19T10:04:00", uuid="u")
+        try:
+            with monkeypatch.context() as zone_patch:
+                zone_patch.setenv("TZ", zone)
+                time.tzset()
+                # A platform that ignores the POSIX TZ string would make this test vacuous.
+                assert time.localtime(0).tm_gmtoff == utc_offset_seconds
+
+                assert only_line([record])["timestamp"] == "2026-05-19T10:04:00+00:00"
+                assert [line["text"] for line in emitted([record], since="2026-05-19", until="2026-05-19")] == ["no offset"]
+        finally:
+            time.tzset()
 
     @pytest.mark.parametrize("converter_error", [OverflowError, OSError], ids=["overflow-error", "os-error"])
     def test_a_prompt_or_asking_record_whose_timestamp_conversion_raises_reads_as_undated_and_the_run_continues(
@@ -831,6 +884,18 @@ class TestDedupAndOrder:
 
         assert [candidate.record["id"] for candidate in kept if candidate.kind == "question"] == ["sess-a:toolu_q1"]
         assert counts["skipped"]["duplicate_question"] == 1
+
+    def test_a_prompt_uuid_equal_to_a_question_tool_use_id_keeps_both_lines(self):
+        records = [
+            prompt("go", 1, uuid="toolu_q1"),
+            ask_record([question_spec("Which?")]),
+            ask_answer_record(answers={"Which?": "Yes"}, timestamp=ts(6)),
+        ]
+
+        kept, counts, _checks = run_files({"sess-a": records})
+
+        assert [candidate.kind for candidate in kept] == ["prompt", "question"]
+        assert (counts["skipped"]["duplicate_prompt"], counts["skipped"]["duplicate_question"]) == (0, 0)
 
     def test_output_order_is_session_then_record_index_then_block_position(self):
         two_blocks = assistant_record(

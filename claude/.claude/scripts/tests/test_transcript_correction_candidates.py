@@ -27,12 +27,12 @@ from ._correction_candidates_helpers import (
     run_main,
     seed,
     ts,
-    with_fields,
     written_lines,
 )
 from .conftest import _two_declared_roots
 
 _SCOPE_ERROR = "correction-candidates: pass --projects GLOB or --this-repo (--projects '*' reads every project on this machine)\n"
+_ROOTED_PROJECTS_ERROR = "correction-candidates: --projects must not start with '/'\n"
 _OUT_ERROR = "correction-candidates: pass --out PATH (a new file outside any git work tree) or --preview\n"
 _ZERO_PADDED = "must be a zero-padded YYYY-MM-DD date\n"
 _REVERSED_WINDOW_ARGS = ["--since", "2026-05-02", "--until", "2026-05-01"]
@@ -177,6 +177,18 @@ class TestRefusals:
         self._assert_refused(*result, expected_stderr=_SCOPE_ERROR)
         assert not out.exists()
 
+    @pytest.mark.parametrize("projects_glob", ["/CANARY-ROOTED-GLOB", "/"], ids=["rooted-path", "root"])
+    def test_a_rooted_projects_glob_exits_2_with_one_fixed_line_that_echoes_nothing(
+        self, fake_projects, out_dir, monkeypatch, capsys, projects_glob, mode_flags,
+    ):
+        seed(fake_projects, question_session())
+        out = out_dir / "run.jsonl"
+
+        result = run_main(monkeypatch, capsys, "--projects", projects_glob, "--out", str(out), *mode_flags)
+
+        self._assert_refused(*result, expected_stderr=_ROOTED_PROJECTS_ERROR)
+        assert not out.exists()
+
     def test_neither_scope_flag_nor_out_prints_the_scope_line_only(self, fake_projects, monkeypatch, capsys):
         result = run_main(monkeypatch, capsys)
 
@@ -270,6 +282,10 @@ class TestRefusals:
             # Pins the documented refusal order (scope, then window), not a privacy invariant.
             pytest.param([], False, _UNPADDED_SINCE, _SCOPE_ERROR, id="no-scope-before-an-unapplied-window"),
             pytest.param([], True, [], _SCOPE_ERROR, id="no-scope-before-an-existing-out"),
+            pytest.param(
+                ["--projects", "/rooted"], False, _UNPADDED_SINCE, _ROOTED_PROJECTS_ERROR,
+                id="rooted-glob-before-an-unapplied-window",
+            ),
             pytest.param(
                 ["--projects", "*"], False, _UNPADDED_SINCE, _UNPADDED_SINCE_ERROR,
                 id="unapplied-window-before-neither-out-nor-preview",
@@ -424,6 +440,7 @@ class TestPublishFailure:
         assert status == 0
         (temp_name,) = linked_sources
         assert temp_name.startswith(".correction-candidates-")
+        # `.jsonl` is the extension docs/transcript-analysis.md says the armed read guard covers.
         assert temp_name.endswith(".jsonl")
 
     def test_a_destination_that_appears_mid_scan_exits_2_and_is_left_unchanged(
@@ -659,19 +676,6 @@ class TestRun:
         lines = written_lines(out)
         assert (lines[0]["since"], lines[0]["until"], lines[0]["truncate_chars"]) == ("2026-05-01", "2026-05-19", 2000)
         assert [line["text"] for line in lines if line["kind"] == "prompt"] == ["please fix the thing"]
-
-    def test_a_record_at_the_start_of_the_since_day_is_emitted_and_one_a_millisecond_earlier_is_not(
-        self, fake_projects, out_dir, monkeypatch, capsys,
-    ):
-        seed(fake_projects, [
-            with_fields(prompt("just in", 0), timestamp="2026-05-15T00:00:00.000Z", uuid="in"),
-            with_fields(prompt("just out", 0), timestamp="2026-05-14T23:59:59.999Z", uuid="out"),
-        ])
-        out = out_dir / "run.jsonl"
-
-        run_main(monkeypatch, capsys, "--projects", "*", "--since", "2026-05-15", "--out", str(out))
-
-        assert [line["text"] for line in written_lines(out) if line["kind"] == "prompt"] == ["just in"]
 
     def test_truncate_chars_cuts_a_long_prompt_text_and_leaves_its_id_whole(self, fake_projects, out_dir, monkeypatch, capsys):
         seed(fake_projects, [prompt("abcdefghijklmnop", 1)], "a-long-session-file-name.jsonl")

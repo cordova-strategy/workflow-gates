@@ -1117,10 +1117,8 @@ The correction-candidates command's tests split at the extraction seam:
 - `tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the written
   file through `main()`.
 
-`tests/_correction_candidates_helpers.py` holds the shared builders. It is a plain module, not a test file. The
-`correction-candidates` args builder lives in `tests/conftest.py` instead, because the helper module imports the
-record builders from `tests/_compaction_context_helpers.py`, which executes `compaction-context.py`. That keeps
-`tests/test_transcript_analysis_multi_root_scope.py` from importing the helper module.
+`tests/_correction_candidates_helpers.py` holds the shared builders. It is a plain module, not a test file. The args
+builder lives in `tests/conftest.py`; see the helper module's docstring for why.
 
 The session-signal command group splits at command seams, one test file per module:
 `tests/test_transcript_buckets.py`, `tests/test_transcript_fail_seq.py`,

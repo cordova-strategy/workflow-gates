@@ -180,6 +180,7 @@ def _message_content(rec: dict) -> object:
 def _record_epoch(rec: dict) -> float | None:
     """The record's `timestamp` as epoch seconds, or None when it is absent, not a string, or cannot be converted.
 
+    A timestamp with no zone designator reads as UTC, where `corpus._parse_ts` would read it in the machine's local time.
     `corpus._parse_ts` catches `ValueError` and `TypeError`, and this function adds `OverflowError` and `OSError`.
     A record whose conversion raises any of them reads as undated, so it never aborts the run. A timestamp the
     conversion accepts but `_iso_utc` cannot format (a UTC year beyond 9999) emits `timestamp: null` and is not
@@ -189,6 +190,9 @@ def _record_epoch(rec: dict) -> float | None:
     if not isinstance(timestamp, str):
         return None
     try:
+        parsed = corpus._parse_iso_datetime(timestamp)
+        if parsed is not None and parsed.tzinfo is None:
+            return parsed.replace(tzinfo=UTC).timestamp()
         return corpus._parse_ts(timestamp)
     except (OverflowError, OSError):
         return None
@@ -713,6 +717,10 @@ def _refuse_unusable_arguments(args: argparse.Namespace) -> tuple[float | None, 
             f"{_COMMAND}: pass --projects GLOB or --this-repo (--projects '*' reads every project on this machine)",
             file=sys.stderr,
         )
+        sys.exit(2)
+    # `Path.glob`, which a single-root scope hands the value to, raises on a rooted pattern.
+    if not args.this_repo and args.projects.startswith("/"):
+        print(f"{_COMMAND}: --projects must not start with '/'", file=sys.stderr)
         sys.exit(2)
     since_ts, until_epoch = _window_bounds_or_refuse(args)
     if not args.out and not args.preview:

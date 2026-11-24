@@ -189,6 +189,24 @@ class TestQuestionRecords:
         assert candidates == []
         assert (counts["unanswered_question"], counts["ask_user_question_calls"]) == (1, 1)
 
+    def test_two_later_results_for_one_tool_use_id_pair_with_the_first(self):
+        records = [
+            ask_record([question_spec("Which?")]),
+            ask_answer_record(answers={"Which?": "First"}, timestamp=ts(6)),
+            ask_answer_record(answers={"Which?": "Second"}, timestamp=ts(7)),
+        ]
+
+        assert only_line(records)["questions"][0]["answer"] == "First"
+
+    def test_a_result_before_and_one_after_the_asking_record_pair_with_the_later(self):
+        records = [
+            ask_answer_record(answers={"Which?": "Earlier"}, timestamp=ts(1)),
+            ask_record([question_spec("Which?")]),
+            ask_answer_record(answers={"Which?": "Later"}, timestamp=ts(6)),
+        ]
+
+        assert only_line(records)["questions"][0]["answer"] == "Later"
+
     def test_result_before_the_asking_record_is_not_its_answer(self):
         records = [ask_answer_record(answers={"Which?": "Yes"}, timestamp=ts(1)), ask_record([question_spec("Which?")])]
 
