@@ -918,7 +918,7 @@ Not done by this command:
     `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points it once that account's `settings.json` resolves.
   - A linked worktree reported above as not repaired, or every one when the run said it repaired none, is not linked to the checkout.
     Run `git -C <new-path> worktree repair <path>` with its current path once it is reachable.
-    A listed path may be a worktree that moved and still exists, so remove its record yourself only after you confirm its directory is gone.
+    A listed path may be a worktree that moved, or one on a volume that is not mounted, and still exists, so remove its record yourself only after you confirm its directory is gone.
   - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
   See README "Repo relocation".
 EOF

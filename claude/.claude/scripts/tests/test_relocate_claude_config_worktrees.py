@@ -1,9 +1,10 @@
 """Tests for relocate-claude-config.sh's repair of the checkout's linked worktrees.
 
 Whole-script cases run both modes against a real git checkout with real linked worktrees, and git is the oracle
-for every link. The runner cases source the script and call `repair_linked_worktrees` after the test renames the
-checkout, as an out-of-band move would. Fixture git calls run under an isolated environment, so neither a
-contributor's git config nor an inherited repository variable reaches a fixture.
+for every link. The runner cases source the script and call its functions directly: `repair_linked_worktrees` after
+the test renames the checkout, as an out-of-band move would, and `_collect_worktree_candidates` on a fixture tree.
+Fixture git calls run under an isolated environment, so neither a contributor's git config nor an inherited
+repository variable reaches a fixture.
 """
 from __future__ import annotations
 
@@ -34,7 +35,7 @@ from .conftest import _break_worktree_git_link, _clean_env
 
 _WORKTREES = Path(".claude") / "worktrees"
 _BROKEN_GIT_LINK = "gitdir: /nonexistent/gitdir\n"
-# A file `_make_repo` commits, so a worktree checks it out as tracked content.
+# A file `_make_git_checkout` commits (`_make_repo` writes it), so a worktree checks it out as tracked content.
 _TRACKED_FILE = Path("claude") / ".claude" / "hooks" / "_lib.sh"
 # The manual steps tell the user to confirm a record is stale before removing it, and offer no command for it.
 _REMOVAL_CONFIRMATION = "remove its record yourself only after you confirm its directory is gone"
@@ -67,6 +68,13 @@ def _add_worktree(tmp_path: Path, checkout: Path, worktree: Path) -> Path:
     physical_path = worktree.resolve()
     _fixture_git(tmp_path, checkout, "worktree", "add", "-q", "--detach", str(physical_path))
     return physical_path
+
+
+def _make_decoy_with_worktree(tmp_path: Path, name: str = "decoy") -> tuple[Path, Path, dict[str, bytes]]:
+    """A git checkout with one linked worktree `w`, and a snapshot of their admin files to compare after a run."""
+    decoy = _make_git_checkout(tmp_path, name)
+    decoy_worktree = _add_worktree(tmp_path, decoy, tmp_path / f"{name}-worktrees" / "w")
+    return decoy, decoy_worktree, _snapshot_admin_files(decoy, decoy_worktree)
 
 
 def _assert_links_resolve(tmp_path: Path, checkout: Path, worktree: Path) -> None:
@@ -241,33 +249,52 @@ class TestRepairLinkedWorktreesRunner:
     def test_an_inherited_git_dir_does_not_redirect_the_repair(self, tmp_path: Path) -> None:
         checkout = _make_git_checkout(tmp_path)
         _add_worktree(tmp_path, checkout, checkout / _WORKTREES / "w")
-        decoy = _make_git_checkout(tmp_path, "decoy")
-        decoy_worktree = _add_worktree(tmp_path, decoy, tmp_path / "decoy-worktrees" / "w")
-        decoy_before = _snapshot_admin_files(decoy, decoy_worktree)
+        decoy, decoy_worktree, decoy_before = _make_decoy_with_worktree(tmp_path)
         moved = tmp_path / "moved"
         checkout.rename(moved)
 
         _, failures = _run_repair_runner(tmp_path, moved, prelude=f"export GIT_DIR={shlex.quote(str(decoy / '.git'))}")
 
+        assert _snapshot_admin_files(decoy, decoy_worktree) == decoy_before
         assert failures == []
         _assert_links_resolve(tmp_path, moved, moved / _WORKTREES / "w")
-        assert _snapshot_admin_files(decoy, decoy_worktree) == decoy_before
 
-    @pytest.mark.parametrize("git_entry", ["absent", "gitfile"])
-    def test_runs_no_git_unless_the_checkout_git_is_a_directory(self, tmp_path: Path, git_entry: str) -> None:
+    @pytest.mark.parametrize("git_entry", ["absent", "gitfile", "dangling-symlink"])
+    def test_runs_no_git_unless_the_checkout_git_is_a_real_directory(self, tmp_path: Path, git_entry: str) -> None:
         checkout = _make_repo(tmp_path)
         if git_entry == "gitfile":
             (checkout / ".git").write_text(_BROKEN_GIT_LINK)
+        elif git_entry == "dangling-symlink":
+            (checkout / ".git").symlink_to(tmp_path / "nonexistent-git-dir")
 
         run, failures = _run_repair_runner(tmp_path, checkout)
 
         assert failures == []
         assert "repairing linked worktrees" not in run.stdout
-        if git_entry == "gitfile":
-            assert "no linked worktree was repaired" in run.stderr
-        else:
+        if git_entry == "absent":
             assert "no linked worktree was repaired" not in run.stderr
             assert "symbolic link" not in run.stderr
+        else:
+            assert "no linked worktree was repaired" in run.stderr
+
+    def test_a_checkout_git_symlinked_to_another_repository_leaves_that_repository_untouched(
+        self, tmp_path: Path
+    ) -> None:
+        checkout = _make_repo(tmp_path)
+        decoy, decoy_worktree, decoy_before = _make_decoy_with_worktree(tmp_path)
+        assert (decoy / ".git" / "worktrees" / "w").is_dir()
+        # `git worktree repair` rewrites the admin `gitdir` file named by a stale candidate's basename.
+        stale_candidate = checkout / _WORKTREES / "w"
+        stale_candidate.mkdir(parents=True)
+        (stale_candidate / ".git").write_text("gitdir: /stale/path/.git/worktrees/w\n")
+        (checkout / ".git").symlink_to(decoy / ".git")
+
+        run, failures = _run_repair_runner(tmp_path, checkout)
+
+        assert _snapshot_admin_files(decoy, decoy_worktree) == decoy_before
+        assert failures == []
+        assert "repairing linked worktrees" not in run.stdout
+        assert "no linked worktree was repaired" in run.stderr
 
     def test_a_failed_first_listing_fails_the_unit_before_the_repair_runs(self, tmp_path: Path) -> None:
         checkout = _make_git_checkout(tmp_path)
@@ -322,10 +349,10 @@ class TestRepairLinkedWorktreesRunner:
         assert _bash_quote(str(outside)) in announced[0]
         assert run.stdout.index(announced[0]) < run.stdout.index(repair_marker)
 
-    def test_a_relative_record_path_is_resolved_from_the_checkout_as_git_resolves_it(self, tmp_path: Path) -> None:
+    def test_a_relative_path_in_a_listing_is_tested_for_existence_from_the_checkout(self, tmp_path: Path) -> None:
         checkout = _make_git_checkout(tmp_path)
         (checkout / "relative-worktree").mkdir()
-        # Git 2.43 to 2.47 print a relative recorded path as written and resolve it from the checkout.
+        # The shim supplies a relative record; no real-git case in this file produces one.
         relative_listing = _intercepting_function(
             "git",
             '[[ " $* " == *" list "* ]]',
@@ -367,8 +394,7 @@ class TestRepairLinkedWorktreesRunner:
     def test_a_git_directory_git_will_not_open_stops_at_the_checkout_not_a_parent_repository(
         self, tmp_path: Path
     ) -> None:
-        other_repo = _make_git_checkout(tmp_path, "other")
-        other_worktree = _add_worktree(tmp_path, other_repo, tmp_path / "elsewhere" / "w")
+        other_repo, other_worktree, other_before = _make_decoy_with_worktree(tmp_path, "other")
         inner = _make_git_checkout(tmp_path, "inner", parent=other_repo)
         _add_worktree(tmp_path, inner, inner / _WORKTREES / "w")
         moved = other_repo / "moved"
@@ -376,12 +402,11 @@ class TestRepairLinkedWorktreesRunner:
         shutil.rmtree(moved / ".git")
         (moved / ".git").mkdir()
         (moved / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
-        other_before = _snapshot_admin_files(other_repo, other_worktree)
 
         run, failures = _run_repair_runner(tmp_path, moved)
 
-        assert failures == ["linked-worktrees"]
         assert _snapshot_admin_files(other_repo, other_worktree) == other_before
+        assert failures == ["linked-worktrees"]
         assert "also reaches" not in run.stdout
 
     def test_a_worktree_nested_past_two_levels_is_announced_and_not_named_to_git(self, tmp_path: Path) -> None:
@@ -397,3 +422,28 @@ class TestRepairLinkedWorktreesRunner:
         announced = _lines_holding(run.stdout, "also reaches")
         assert len(announced) == 1
         assert _bash_quote(str(third_level)) in announced[0]
+
+    def test_collecting_candidates_keeps_a_worktree_and_skips_a_full_clone(self, tmp_path: Path) -> None:
+        worktrees_dir = tmp_path / _WORKTREES
+        real_candidate = worktrees_dir / "real"
+        real_candidate.mkdir(parents=True)
+        (real_candidate / ".git").write_text(_BROKEN_GIT_LINK)
+        full_clone = init_git_repo(worktrees_dir / "clone", branch="main", env=_fixture_env(tmp_path))
+        (full_clone / "sub").mkdir()
+        (full_clone / "sub" / ".git").write_text(_BROKEN_GIT_LINK)
+        home = tmp_path / "home"
+        home.mkdir()
+
+        run = _run_sourced(
+            home,
+            [
+                "shopt -s nullglob",
+                "candidates=()",
+                f"_collect_worktree_candidates {shlex.quote(str(worktrees_dir))} 2",
+                'printf "%s\\n" "${candidates[@]}"',
+            ],
+            cwd=tmp_path,
+        )
+
+        assert run.returncode == 0, run.stderr
+        assert run.tail.splitlines() == [str(real_candidate)]
