@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import re
 import subprocess
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from pathlib import Path
 
@@ -301,3 +301,17 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
         if entry and "/" not in entry and entry.endswith(".md")
     }
     return frozenset(tracked) | _BUILT_IN_AGENT_TYPES
+
+
+def _untracked_agent_type_labels(agent_types: Iterable[str]) -> dict[str, str]:
+    """Map each agent type to the label `reviewer-yield --redact` prints for it.
+
+    - A custom agent name can identify a project, so no untracked name prints raw.
+    - Labels are stable within one run only, since the run's window and scope decide which untracked names it numbers.
+    """
+    tracked_names = _repo_tracked_agent_type_names()
+    distinct_names = set(agent_types)
+    labels = {name: name for name in distinct_names if name in tracked_names}
+    untracked_names = sorted(distinct_names - tracked_names)
+    labels.update({name: f"agent-type-{position}" for position, name in enumerate(untracked_names, start=1)})
+    return labels

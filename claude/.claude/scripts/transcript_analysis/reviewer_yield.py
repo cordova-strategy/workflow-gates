@@ -15,7 +15,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import NamedTuple
 
-from transcript_analysis import corpus, pricing, render, scope
+from transcript_analysis import corpus, pricing, redaction, render, scope
 
 # Exact-name reviewers (no staff- prefix) counted in review-trace and reviewer-yield.
 _REVIEWER_PREFIX = "staff-"
@@ -664,12 +664,15 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
     and is separately counted in the printed read-error line, never entered
     as a legitimate zero-citation dispatch.
 
-    --redact is accepted for CLI parity with cost/audit-routing. Cited-path
-    candidates are held only as sha256 digests (_normalize_cited_path), never
-    as raw paths, so no path can reach this subcommand's aggregate-only
-    output by construction — this does not cover the pre-existing
-    --projects scope-header line (_print_resolved_scope), a separate,
-    unfixed channel shared by every subcommand.
+    --redact prints each agent type not defined in this toolkit's own
+    agents/ directory as agent-type-<N> in both tables (redaction._untracked_agent_type_labels),
+    at any root count. Without it both tables print every agent type by its
+    own name, with ASCII control characters removed.
+    Cited-path candidates are held only as sha256 digests
+    (_normalize_cited_path), never as raw paths, so no path can reach this
+    subcommand's aggregate-only output by construction — this does not cover
+    the pre-existing --projects scope-header line (_print_resolved_scope), a
+    separate, unfixed channel shared by every subcommand.
 
     Delegates its entire accumulation to compute_reviewer_yield_data instead
     of running its own pass over session_iter, so this report and
@@ -711,6 +714,12 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
             print(f"  ({meta_read_errors:,} meta.json files failed to parse, excluded)")
         return
 
+    agent_type_labels = (
+        redaction._untracked_agent_type_labels(agg)
+        if getattr(args, "redact", False)
+        else {name: render._sanitize_table_cell(name) for name in agg}
+    )
+
     # Findings is a lower bound: it sums parsed "Found <N> issues" counts plus
     # 0 for each uncounted "Approve with concerns"/"Request changes" verdict.
     header = f"{'AgentType':<28} {'Dispatches':>10} {'Found':>7} {'Zero':>6} {'Unclass':>8} {'Findings':>9}"
@@ -719,7 +728,7 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
     for stype in sorted(agg):
         row = agg[stype]
         print(
-            f"{stype:<28} {row['dispatches']:>10} {row['findings_found']:>7} "
+            f"{agent_type_labels[stype]:<28} {row['dispatches']:>10} {row['findings_found']:>7} "
             f"{row['zero_finding']:>6} {row['unclassified']:>8} {row['total_findings']:>9}"
         )
     if meta_read_errors:
@@ -753,7 +762,8 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
                     else f"{row2['edited'] / row2['active']:>6.1%}"
                 )
             print(
-                f"{stype:<28} {bucket:<15} {dispatches:>10} {cited_s:>6} {active_s:>6} {edited_s:>6} {rate_s:>12}"
+                f"{agent_type_labels[stype]:<28} {bucket:<15} {dispatches:>10} {cited_s:>6} {active_s:>6}"
+                f" {edited_s:>6} {rate_s:>12}"
             )
     print("\n  (Active/Edited count edits inside subagent transcripts too. A reviewer agent's own writes are excluded.)")
     if transcript_read_errors:
@@ -783,9 +793,9 @@ def _add_reviewer_yield_subparser(subparsers: argparse._SubParsersAction) -> Non
     p_reviewer_yield.add_argument(
         "--redact", action="store_true",
         help=(
-            "No-op: reviewer-yield's output is aggregate-only per agent type and"
-            " carries no project-label or session-id field to redact. Kept for CLI"
-            " parity with cost/audit-routing."
+            "Print each agent type not defined in this toolkit's own agents/ directory as agent-type-<N> in both tables."
+            " Labels are stable within one run, not across runs."
+            " A failed git lookup of the tracked names relabels every reviewer type."
         ),
     )
     p_reviewer_yield.set_defaults(func=cmd_reviewer_yield)

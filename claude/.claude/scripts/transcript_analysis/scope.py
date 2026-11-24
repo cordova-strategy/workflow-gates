@@ -486,6 +486,27 @@ def _narrows_to_active_account(args: argparse.Namespace) -> bool:
     )
 
 
+def _refuse_no_redact_above_one_root(args: argparse.Namespace, roots: Sequence[Path], subcommand: str) -> None:
+    """Exit 2 on stderr when `--no-redact` meets more than one scan root.
+
+    Raw project names and session IDs from several roots would put one
+    account's names into a report that carries another's. `no_redact` is
+    read via getattr, since hand-built test namespaces lack it.
+    """
+    if len(roots) > 1 and getattr(args, "no_redact", False):
+        print(
+            f"{subcommand}: --no-redact is refused when more than one root is in scope; drop --no-redact",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+
+def resolve_redaction(args: argparse.Namespace, roots: Sequence[Path], subcommand: str) -> bool:
+    """Return whether a subcommand redacts, refusing `--no-redact` above one root first."""
+    _refuse_no_redact_above_one_root(args, roots, subcommand)
+    return not getattr(args, "no_redact", False)
+
+
 def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool = False) -> list[Path]:
     """Resolve one invocation's scan roots -- the single funnel every
     _resolve_project_scope caller threads `roots` through, replacing the
@@ -501,7 +522,9 @@ def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool 
     first, so the active profile is always scanned first -- the "active
     profile first" convention analyze-context.py's session lookup also
     relies on. `active_account_only=True` returns PROJECTS_DIR alone, without
-    reading the declared-roots file.
+    reading the declared-roots file. More than one returned root with
+    `--no-redact` exits 2 through _refuse_no_redact_above_one_root, labelled
+    with the parsed subcommand name.
 
     config_dir is read via getattr, not attribute access, matching
     _resolve_project_scope's own rationale below: this file's many
@@ -523,6 +546,7 @@ def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool 
             continue
         seen_resolved.add(resolved)
         roots.append(candidate)
+    _refuse_no_redact_above_one_root(parsed, roots, getattr(parsed, "subcommand", None) or "transcript-analysis")
     return roots
 
 
@@ -792,10 +816,9 @@ def _resolve_cost_roots(args: argparse.Namespace, subcommand: str = "cost") -> l
     --config-dir extras: _iter_scoped_sessions matches by basename, and
     _path_to_project_slug derives slugs from `git worktree list` alone, so
     one checkout's slugs are root-independent. --no-redact on more than one
-    root would put one client's real project names into a report meant for
-    another — refused here, exit 2, rather than silently scoping to the
-    wrong thing. Returns each root's projects/ subdirectory, ready for
-    _resolve_project_scope's roots parameter.
+    root exits 2 here through _refuse_no_redact_above_one_root, rather than
+    silently scoping to the wrong thing. Returns each root's projects/
+    subdirectory, ready for _resolve_project_scope's roots parameter.
 
     `subcommand` labels the printed refusal messages (default "cost", cost's
     own long-standing call sites and tests); context-distribution passes its
@@ -854,13 +877,7 @@ def _resolve_cost_roots(args: argparse.Namespace, subcommand: str = "cost") -> l
         seen_resolved.add(resolved)
         config_dirs.append(candidate)
 
-    if len(config_dirs) > 1 and getattr(args, "no_redact", False):
-        print(
-            f"{subcommand}: --no-redact is refused when more than one root is in scope"
-            " (--config-dir was given); drop --no-redact or scope to a single profile",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    _refuse_no_redact_above_one_root(args, config_dirs, subcommand)
 
     return [d / "projects" for d in config_dirs]
 
