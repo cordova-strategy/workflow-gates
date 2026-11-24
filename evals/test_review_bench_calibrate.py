@@ -281,6 +281,8 @@ class TestSolver:
             settings = _key_value_tokens(line)
             settings_by_fixtures[settings["fixtures"]] = settings
             assert settings["alphas"] == "0.025,0.0125"
+            assert settings["finding_floor"] == "1"
+            assert settings["finding_volume_scale"] == "1.0"
         assert settings_by_fixtures["6"]["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_EXACT
         assert settings_by_fixtures[str(EXACT_CAP + 1)]["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_MONTE_CARLO
 
@@ -386,8 +388,8 @@ class TestSummarizeCell:
         undefined = calibrate.decide_replicate(None, alphas=config.alphas, delta=DELTA, flips=100)
         results = [
             undefined,
-            calibrate.ReplicateResult(0.0, (0.1, 0.1), 0.01, (True, False), (True, True)),
-            calibrate.ReplicateResult(0.0, (0.1, 0.1), 0.02, (True, True), (False, False)),
+            calibrate.ReplicateResult(0.0, (0.1, 0.1), 0.01, (True, False), (True, True), 6),
+            calibrate.ReplicateResult(0.0, (0.1, 0.1), 0.02, (True, True), (False, False), 6),
         ]
 
         row = calibrate.summarize_cell(config, cell, results, cells_planned=2)
@@ -712,7 +714,9 @@ class TestPlannedCellsReachTheirTrueDifference:
         real_draw = calibrate.draw_precision_counts
         monkeypatch.setattr(
             calibrate, "draw_precision_counts",
-            lambda rng, plans: baseline_volumes.extend(plan.baseline_volume for plan in plans) or real_draw(rng, plans),
+            lambda rng, plans, **kwargs: (
+                baseline_volumes.extend(plan.baseline_volume for plan in plans) or real_draw(rng, plans, **kwargs)
+            ),
         )
         config = _config(metric="precision", fixture_counts=(self.FIXTURES,), k=self.JOB_K, replicates=100)
         cell = calibrate.Cell(self.FIXTURES, self.FIXTURES, true_difference=0.0, shift=0.0)
@@ -766,7 +770,8 @@ class TestCalibrateCommand:
         exit_code = self._run([
             "--metric", "precision", "--k", "7", "--fixtures", "6", "--alpha", "0.05", "--delta", "0.2",
             "--harm", "concentrated", "--over-cap-share", "0.75", "--replicates", "3", "--seed", "11",
-            "--workers", "2", "--flips", "200", "--out", str(out_path),
+            "--workers", "2", "--flips", "200", "--finding-floor", "0", "--finding-volume-scale", "0.5",
+            "--out", str(out_path),
         ])
 
         assert exit_code == 0
@@ -775,8 +780,10 @@ class TestCalibrateCommand:
         assert len(plan_lines) == 2
         for line in plan_lines:
             settings = _key_value_tokens(line)
-            assert {key: settings[key] for key in ("over_cap_share", "flips", "seed", "workers")} == {
-                "over_cap_share": "0.75", "flips": "200", "seed": "11", "workers": "2",
+            plan_settings = ("over_cap_share", "flips", "seed", "workers", "finding_floor", "finding_volume_scale")
+            assert {key: settings[key] for key in plan_settings} == {
+                "over_cap_share": "0.75", "flips": "200", "seed": "11", "workers": "2", "finding_floor": "0",
+                "finding_volume_scale": "0.5",
             }
             assert settings["alphas"] == "0.05"
             assert settings["sign_flip_path"] == calibrate.SIGN_FLIP_PATH_EXACT
@@ -787,7 +794,7 @@ class TestCalibrateCommand:
         for row in printed_rows:
             echoed = {
                 "metric": "precision", "k": 7, "harm": "concentrated", "over_cap_share": 0.75, "delta": 0.2,
-                "replicates": 3, "seed": 11, "flips": 200, "fixtures": 6,
+                "replicates": 3, "seed": 11, "flips": 200, "fixtures": 6, "finding_floor": 0, "finding_volume_scale": 0.5,
             }
             assert {key: row[key] for key in echoed} == echoed
             assert [rates["alpha"] for rates in row["alphas"]] == [0.05]

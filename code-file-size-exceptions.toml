@@ -504,7 +504,7 @@ verdict = "split pending"
 seam = "Run records (`RunRecord`, `read_run_records`), transcript parsing (`extract_read_like_calls`, `extract_result_usage`), validity (`evaluate_run_validity`), run store (`RunStore`), campaign (`run_campaign`), environment record (`read_environment_record`)"
 
 ["evals/run_review_bench.py"]
-ceiling = 2421
+ceiling = 2432
 verdict = "split pending"
 seam = "Subcommands: mining (`cmd_mine_szz`, `cmd_mine_pr_comments`), confirm (`cmd_confirm`), judge (`cmd_judge`), analyze (`cmd_analyze`), freeze (`cmd_freeze`), spot-check (`cmd_spot_check_export`)"
 

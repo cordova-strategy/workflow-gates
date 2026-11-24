@@ -1150,6 +1150,7 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
         config = calibrate.CalibrationConfig(
             metric=args.metric, fixture_counts=args.fixtures, k=args.k, replicates=args.replicates,
             harm=args.harm, over_cap_share=args.over_cap_share, seed=args.seed, workers=args.workers,
+            finding_floor=args.finding_floor, finding_volume_scale=args.finding_volume_scale,
             **{name: value for name, value in optional_settings.items() if value is not None},
         )
         cells = calibrate.plan_cells(config)
@@ -2317,6 +2318,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--over-cap-share", type=float, default=1.0,
         help="The share of fixtures the rule acts on, in (0, 1]. The acted fixture count is the share times the "
         "fixture count, rounded half up, and at least one. The rest keep arm X's rate equal to the baseline's.",
+    )
+    p_calibrate.add_argument(
+        "--finding-floor", type=int, choices=(0, 1), default=1,
+        help="Precision only: the findings every fixture gets in each arm before its Poisson draw. "
+        "At 0 a fixture can carry findings in one arm or neither.",
+    )
+    p_calibrate.add_argument(
+        "--finding-volume-scale", type=float, default=1.0,
+        help="Precision only: a multiplier in (0, 1] on every fixture's expected finding volume in both arms. "
+        "With --finding-floor 0, a smaller scale leaves more fixtures with findings in one arm or neither.",
     )
     # 4000 replicates put the Monte Carlo standard error of a 2.5% rate near 0.0025.
     p_calibrate.add_argument("--replicates", type=_positive_int, default=4000, help="Replicates per cell.")
