@@ -71,14 +71,15 @@ done
 
 rows=$(lsc_parse_clusters "$cluster_file") || exit 1
 
+# A relative TMPDIR resolves against the checkout after the cd above, so the scratch directory lands inside it unless the path climbs out with "..".
 scratch_root=$(mktemp -d "${TMPDIR:-/tmp}/lib-source-cost.XXXXXX")
 trap 'rm -rf -- "$scratch_root"' EXIT
 
 # One snapshot per run: the spans, the arm copies and the header's blob ids all come from these bytes.
 snapshot_dir="$scratch_root/lookup"
 lsc_copy_measured_files "$hooks_dir" "$snapshot_dir" || exit 1
-# commit= describes the live tree when git describe runs, not the snapshot. The blob ids identify the measured bytes.
-commit=$(git describe --always --dirty 2>/dev/null) || commit=none
+# commit= names the live checkout's HEAD when git runs, not the snapshot, and says nothing about uncommitted edits. The blob ids identify the measured bytes.
+commit=$(git describe --always 2>/dev/null) || commit=none
 # The dirname-fork arm prices whichever dirname the PATH resolves, so the header names it.
 # A PATH entry containing whitespace splits the header's dirname= token, which the report format does not handle.
 # A relative PATH entry that the cd above changes the meaning of can make this lookup fail, which ends the run with no message.

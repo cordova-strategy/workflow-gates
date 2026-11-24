@@ -153,7 +153,7 @@ The four kinds of line:
   - `bash=` is `$BASH_VERSION`.
   - `system=` and `machine=` are `uname -s` and `uname -m`.
   - `dirname=` is the `dirname` the PATH resolves, the one the `dirname-fork` arm priced.
-  - `commit=` is `git describe --always --dirty`, or `none` when that fails.
+  - `commit=` is `git describe --always`, or `none` when that fails.
   - `lib_blob=` and `config_blob=`, then `iterations=` and `repetitions=`.
   - The line carries no hostname or load average. The `dirname=` path is its one machine-specific value.
 - `span`, one per PSV row in PSV order: `cluster=`, `file=`, `lines=<start>-<end>`, `line_count=`, and `functions=`, the number of definition lines inside the span. A function added inside a span shows as a changed count in a rerun.

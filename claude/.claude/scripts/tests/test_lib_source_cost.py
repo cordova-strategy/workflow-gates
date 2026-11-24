@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from helpers import REPO_ROOT, installed_locale_where
 
-from .conftest import _clean_env, _git, _init_repo
+from .conftest import _clean_env, _commit, _git, _init_repo
 
 _SCRIPT = REPO_ROOT / "scripts" / "dev" / "lib-source-cost.sh"
 _REAL_CLUSTER_FILE = REPO_ROOT / "scripts" / "dev" / "lib-source-cost-clusters.psv"
@@ -121,6 +121,14 @@ def _make_plain_fixture(root: Path, extra_sourced_lines: list[str] | None = None
         _PLAIN_SOURCED_BY_IT_LINES,
         _PLAIN_CLUSTER_ROWS,
     )
+
+
+def _make_committed_plain_fixture(root: Path) -> Path:
+    """A plain fixture whose every file is committed, so `git describe` resolves to a commit."""
+    checkout = _make_plain_fixture(root)
+    _git(checkout, "add", "-A")
+    _commit(checkout)
+    return checkout
 
 
 def _parse_report(stdout: str) -> list[tuple[str, dict[str, str]]]:
@@ -229,6 +237,16 @@ def test_header_names_the_toolchain_and_dirname_and_reports_none_for_a_checkout_
     assert header["machine"] == os.uname().machine
     assert header["dirname"] == str(dirname_stub)
     assert header["commit"] == "none"
+
+
+def test_header_commit_is_the_describe_value_for_a_committed_checkout(tmp_path):
+    checkout = _make_committed_plain_fixture(tmp_path / "checkout")
+
+    result = _run_script(checkout, "--iterations", "1", "--repetitions", "2")
+
+    assert result.returncode == 0, result.stderr
+    header = _lines_of_kind(_parse_report(result.stdout), "header")[0]
+    assert header["commit"] == _git(checkout, "describe", "--always").strip()
 
 
 def test_timestamps_stay_integer_microseconds_under_a_comma_decimal_locale(tmp_path):
@@ -397,7 +415,8 @@ _SLOW_SOURCED_LINES = [
 
 @pytest.mark.timing
 def test_a_planted_sleep_inside_a_span_shows_as_a_positive_saving_in_milliseconds(tmp_path):
-    """Bounds a planted cost, so run it serially: a red under `-n auto` is rerun with `-m timing -n0` before it counts.
+    """Run serially with `-m timing -n0`: a red under `-n auto` does not count until it reproduces in a serial run,
+    because the case bounds a planted cost.
 
     The saving must fall between half and ten times the planted 100 ms. That pins the timer's sign and its unit.
     """

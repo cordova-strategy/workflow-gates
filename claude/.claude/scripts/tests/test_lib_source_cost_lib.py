@@ -23,8 +23,7 @@ def _run_bash(script_body: str, lc_all: str | None = None) -> subprocess.Complet
     """Source the lib, then run script_body under `set -euo pipefail`.
 
     A bare call that returns nonzero aborts the shell with that status, which
-    is how the stop cases observe their exit code. lc_all, when given, is
-    exported into the shell's environment.
+    is how the stop cases observe their exit code.
     """
     full_script = f"set -euo pipefail\n. {shlex.quote(str(_LIB_UNDER_TEST))}\n{script_body}\n"
     env = _clean_env(BASH_ENV=None, ENV=None)

@@ -46,7 +46,7 @@ lsc_flag_value_ok() {
 
 # lsc_parse_clusters <cluster-file> — prints one row per data line, in file order.
 lsc_parse_clusters() {
-  # Bracket ranges follow the locale's collation order, so the match is pinned to C.
+  # Bracket ranges and character classes follow the locale, so the matches are pinned to C.
   local LC_ALL=C
   local cluster_file=$1
   local line line_number=0 pipes cluster file first last
