@@ -1931,12 +1931,31 @@ class TestResolvePrNumber:
     """resolve_pr_number is the module's only `gh`-boundary call, with
     subprocess.run monkeypatched in place of the real binary."""
 
-    def test_well_formed_payload_returns_the_number(self, tmp_path, monkeypatch):
+    def test_same_repo_payload_returns_the_number(self, tmp_path, monkeypatch):
         def fake_run(*args, **kwargs):
-            return subprocess.CompletedProcess(args, 0, stdout=json.dumps([{"number": 42}]), stderr="")
+            payload = [{"number": 42, "isCrossRepository": False}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
 
         monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
         assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") == 42
+
+    def test_cross_repo_first_payload_returns_none(self, tmp_path, monkeypatch):
+        """A fork PR sharing the head-branch name must not supply the PR number."""
+        def fake_run(*args, **kwargs):
+            payload = [{"number": 42, "isCrossRepository": True}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+
+        monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
+        assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") is None
+
+    @pytest.mark.parametrize("cross_repository_flag", [None, "false", 0])
+    def test_a_non_boolean_cross_repository_flag_returns_none(self, tmp_path, monkeypatch, cross_repository_flag):
+        def fake_run(*args, **kwargs):
+            payload = [{"number": 42, "isCrossRepository": cross_repository_flag}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+
+        monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
+        assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") is None
 
     def test_empty_payload_returns_none(self, tmp_path, monkeypatch):
         def fake_run(*args, **kwargs):
@@ -2437,6 +2456,28 @@ class TestCollectRoundEntriesPreBranchAttribution:
         entries = mine_review_rounds._collect_round_entries([(jsonl, records)])
 
         assert [entry.branch for entry in entries] == ["feat-x"]
+
+
+class TestMainThreadWriteEventsSkipMalformedTargets:
+    def test_edit_whose_file_path_is_a_list_is_not_a_write_and_does_not_abort_collection(self, tmp_path):
+        records = [
+            _assistant(
+                ts="2026-01-01T00:00:00Z",
+                content=[
+                    _skill_use("s1", "code-review"),
+                    {"type": "tool_use", "id": "e1", "name": "Edit", "input": {"file_path": ["/repo/app.py"]}},
+                    _edit_use("e2", "/repo/other.py"),
+                ],
+            ),
+            _user("done", ts="2026-01-01T00:01:00Z"),
+        ]
+        jsonl = tmp_path / "sess-malformed-write-target.jsonl"
+        _write_jsonl(jsonl, records)
+
+        entries = mine_review_rounds._collect_round_entries([(jsonl, records)])
+
+        valid_target_key = reviewer_yield._normalize_cited_path("/repo/other.py", "/repo")
+        assert [target for _index, target in entries[0].session_writes] == [valid_target_key]
 
 
 class TestMainThreadEditedBetween:

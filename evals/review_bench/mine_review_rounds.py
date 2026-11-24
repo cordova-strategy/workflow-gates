@@ -201,7 +201,7 @@ def _main_thread_write_events(records: list[dict]) -> list[tuple[int, str]]:
             if block.get("name") not in corpus._CODE_WRITE_TOOLS:
                 continue
             target = reviewer_yield._code_write_target_path(block.get("input") or {})
-            if not target:
+            if not isinstance(target, str) or not target:
                 continue
             key = reviewer_yield._normalize_cited_path(target, cwd)
             if key is not None:
@@ -324,7 +324,7 @@ def resolve_pr_number(repo_dir: Path, branch: str) -> int | None:
     Never called when a local branch already resolves the round instead."""
     try:
         result = subprocess.run(
-            ["gh", "pr", "list", "--head", branch, "--state", "all", "--json", "number", "--limit", "1"],
+            ["gh", "pr", "list", "--head", branch, "--state", "all", "--json", "number,isCrossRepository", "--limit", "1"],
             cwd=repo_dir, capture_output=True, text=True, timeout=_GH_CALL_TIMEOUT_S, check=True,
         )
         payload = json.loads(result.stdout)
@@ -339,6 +339,10 @@ def resolve_pr_number(repo_dir: Path, branch: str) -> int | None:
         print(f"mine-rounds: gh pr list for branch {branch!r} failed ({type(exc).__name__}): {detail}", file=sys.stderr)
         return None
     if not payload:
+        return None
+    # `--head` matches the branch name alone, so a same-named fork PR can
+    # come back first; only a strict `False` counts as a same-repo PR.
+    if payload[0].get("isCrossRepository") is not False:
         return None
     number = payload[0].get("number")
     return number if isinstance(number, int) else None
