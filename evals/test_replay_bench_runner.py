@@ -1487,7 +1487,7 @@ class TestTheCommandLine:
         assert main_run(*TASKS_ARGV) == 0
         assert captured["limits"] == tasks.DEFAULT_LIMITS
 
-    def test_tasks_given_all_nine_limit_flags_lands_each_value_in_its_own_field(self, monkeypatch):
+    def test_tasks_given_all_ten_limit_flags_lands_each_value_in_its_own_field(self, monkeypatch):
         captured = {}
 
         def fake_mine(_repos, _authors, limits, **_kwargs):
@@ -1497,7 +1497,7 @@ class TestTheCommandLine:
         monkeypatch.setattr(tasks, "mine_tasks", fake_mine)
         values = {
             "rev": "release", "max_count": 11, "max_tasks": 12, "max_files": 13, "min_code_lines": 14, "max_code_lines": 15,
-            "max_prompt_chars": 16, "max_base_mb": 17, "max_base_entries": 18,
+            "max_test_code_lines": 16, "max_prompt_chars": 17, "max_base_mb": 18, "max_base_entries": 19,
         }
         flags = [part for name, value in values.items() for part in ("--" + name.replace("_", "-"), str(value))]
 

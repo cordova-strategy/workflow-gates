@@ -1679,8 +1679,16 @@ once the set changes.
 - `--trusted-author` is required and repeatable. It reads raw author
   identities, so a `.mailmap` cannot widen it.
 - `--rev`, `--max-count`, `--max-tasks`, `--max-files`, `--min-code-lines`,
-  `--max-code-lines` and `--max-prompt-chars` bound the selection. An integer
-  limit below 1 is refused.
+  `--max-code-lines`, `--max-test-code-lines` and `--max-prompt-chars` bound
+  the selection. An integer limit below 1 is refused. `--max-code-lines` and
+  `--min-code-lines` count added non-test code lines, and
+  `--max-test-code-lines` (default 300) counts added test code lines.
+- `tasks` skips, under the reason `subject-only-brief`, a commit whose brief
+  has no non-blank line after its subject. A merge commit counts as having a
+  body when it merged at least one commit, since its brief then lists the
+  merged subjects. A body made only of trailers such as `Co-Authored-By:` still
+  counts as a body. The check runs after the line-count checks, so a commit
+  skipped for its line counts keeps that reason.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
 - Re-mine a task set after any change to the fixture rule below. The rule fixes
@@ -1821,6 +1829,22 @@ account's rules matches, because the `toolkit` run's rule load is the positive
 control. An account whose history keeps no such task needs a larger
 `--max-count` or another source repo.
 
+Choose a small change that its brief specifies. These criteria are a rule of
+thumb, not a measured bound:
+
+- The brief has a body that specifies the behavior, not only a subject line.
+- The brief has no `Plan:` bullet that points at a `.claude/plans/` file,
+  since the fixture prunes `.claude/` and the agent cannot read the plan.
+- The change touches at most 3 paths, adds about 30 or fewer non-test code
+  lines and about 200 or fewer test code lines.
+- The change does not depend on a pruned path such as `CLAUDE.md` or `.claude/`.
+  See the fixture rule in the Tasks section: a pruned path is absent from the
+  fixture and does not count as a changed path.
+
+A smoke does not retry a timeout, and a `run` campaign retries one once. See
+"Retry and missing reasons" below for which other reasons never retry. The
+smoke's printed ceiling still counts two attempts per run as an upper bound.
+
 Each failed condition prints as `failed: <name>: <text>`, and the last line
 names the first one. A run that ended missing prints
 `failed: <missing reason>: <arm> run missing`, for any reason in the Retry
@@ -1909,6 +1933,12 @@ recorded and never compared:
   manifest lacking either runner field prints `runner commit not recorded`
   when no run record holds a reading either.
 - An edit to `evals/` between a start and a resume halts nothing.
+- The inner-prompt text is part of what a resume must not change. A run renders
+  it at launch from `evals/`, and no manifest field pins it. A resume prints
+  this checkout's reading only when its commit or dirty flag differs from the
+  manifest's, so a prompt edit made in a checkout that was dirty at both start
+  and resume prints nothing. A task set mined before the prompt gained its
+  no-commands sentence was length-checked against a shorter prompt.
 - A manifest that lacks `runner_commit` or `runner_dirty` still resumes.
 - A reading that git could not produce is null in the manifest and record, and
   prints as unreadable.
@@ -1977,7 +2007,8 @@ fixtures and session stores stay until someone removes them by hand.
 ### Retry and missing reasons
 
 A failed attempt retries once on a fresh fixture, then the run is recorded
-missing with its reason.
+missing with its reason. A campaign retries a `timeout` once. `smoke` does
+not. The reasons listed below as never retrying also never retry in `smoke`.
 
 - `fixture-error` (building the fixture or generating its exclude or Read
   allow list raised) and `analysis-error` (the diff, the classifier or a
