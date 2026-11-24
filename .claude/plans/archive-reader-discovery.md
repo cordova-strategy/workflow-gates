@@ -6,29 +6,30 @@ Goal: make the data that `agent_branch_records` archives (review-ledger copies n
 
 Ask: "you need to make sure that anything that the agent branch archive (I forget what it's called) config key on archives (I think it touches ledgers, agent reviews, and trasncripts soon) is made known to agents when agents would look for those types of files in their normal location, for the purposes of analysis. I think that's more complicated than it seems." Later, on the archive's purpose: "the reason we don't delete is because the archive files are useful for analysis" and "It's needed for analysis after the fact." On scope: "readers should read the archive after the key's turned off", "archive routes should be on by default", "smaller PRs are better", and "I don't really care so much about restoring agent reviews automatically". Selected labels: "Small resolver PR first, then ledger reader (Recommended)" for sequencing, "Include it" for a read-only viewer of archived ledger rows, and "Generic contract, defer transcript reader (Recommended)" for transcripts.
 
-Today nothing reads the archive. The retention sweep deletes a ledger file after 30 idle days, and `review-ledger.sh show` then prints "no ledger for this branch" with `max_round=0`. The archive added by the earlier ledger-archiving change keeps a copy, but its plan put reading copies back out of scope. Agents cannot be relied on to look in the archive themselves, so the analysis tools must read it as part of their normal corpus.
+Today nothing reads the archive. The retention sweep deletes a ledger file after 30 idle days, and `review-ledger.sh show` then prints "no ledger for this branch" with `max_round=0`. The archive added by the earlier ledger-archiving change keeps a copy, but its plan put reading copies back out of scope. Agents cannot be relied on to look in the archive themselves, so the analysis commands read it as part of their normal corpus. A lister of archived `agent-reviews/` snapshots and a pointer in the analysis docs and skill make the archive known to agents that read the live directories directly (rows 75-77).
 
 Evidence behind the design, from this session's exploration and two independent design reviews:
 
-- Only two analysis commands read ledger rows: `author-outcome` and `reviewer-reads`. Every other analysis the engineer named (round duration, cost, round counts, trace) is a transcript command.
-- No analysis reads `agent-reviews/`: findings and disposition records are written with the `Write` tool and are read from transcripts. Archiving it is relocation, and retiring that snapshot is a separate later change.
+- Only two analysis commands read ledger rows: `author-outcome` and `reviewer-reads`. Every other command the engineer named (round duration, cost, round counts, trace) is a transcript command.
+- No analysis command reads `agent-reviews/`: findings and disposition records are written with the `Write` tool and are read from transcripts. The engineer says that the ad-hoc analyses they ask agents to run (why review churn happens, whether an SDLC idea would help) read `agent-reviews/` and ledger files directly in their live directories, so the commands are not the whole reader surface (row 75). Retiring the `agent-reviews/` snapshot is a separate later change.
 - A live-tool fallback in `show` or `render` would change round numbers and decision counts per account, undo a Reset, and could publish archived verbatim quotes. The live tools stay live-only.
 - Each reader looks in one ledger directory only, and `author_outcome.py` parses everything after a file name's first dot as the session id, so a copy named with a timestamp suffix would be keyed wrongly.
 - Ledger copies are segments: a stem's copies are concatenated in stamp order, skipping a copy that is a byte prefix of the next, and a kept source can coexist with its copy.
 - `reviewer-reads` is a single-account publication instrument, so any archive lookup must be per account and never a glob of the archive root.
 - A separate session is planning the transcript archive in four PRs (writer, readers' slug rule, readers scan `<account dir>/projects/`, verified-original deletion). Its PR 3 is not yet designed. It edits most sections of `docs/agent-branch-records.md`, so this work adds only a new section after "Ledger copies".
 
-Sequencing the engineer selected: a small first PR adds a Python config-dir to archive-account-directory resolver with a parity test against the bash encoding. A second PR adds the ledger-copy reader for the two commands, plus a read-only viewer of archived ledger rows.
+Sequencing the engineer selected: a small first PR adds a Python config-dir to archive-account-directory resolver with a parity test against the bash encoding. A second PR adds the ledger-copy reader for the two commands, plus a read-only viewer of archived ledger rows. A later PR adds a lister of archived `agent-reviews/` snapshots and the docs pointer (rows 76, 77).
 
 ## Approach
 
-`author-outcome` and `reviewer-reads`, the only analysis commands that read review-ledger rows (row 12), read the archived ledger copies of every account they scan. They always do, whatever `agent_branch_records` says, and no flag turns that off (rows 3, 42). Each stem's copies and live file are read as one history before anything is counted, and a counts-only line reports what the archive contributed. A read-only viewer prints one stem's history the way `show` prints a live branch's (row 54). Five PRs deliver it, in this order (M15):
+`author-outcome` and `reviewer-reads`, the only analysis commands that read review-ledger rows (row 12), read the archived ledger copies of every account they scan. They always do, whatever `agent_branch_records` says, and no flag turns that off (rows 3, 42). Each stem's copies and live file are read as one history before anything is counted, and a counts-only line reports what the archive contributed. A read-only viewer prints one stem's history the way `show` prints a live branch's (row 54). A lister of archived `agent-reviews/` snapshots and a docs pointer make the archive known to agents that read the live directories directly (M23, M24). Six PRs deliver it, in this order (M15):
 
 - **A.** A Python archive resolver, pinned to the bash writer by a parity test.
 - **B.** The one-stem history reader, as a library no command calls yet.
 - **C.** A read-only viewer, `transcript-analysis.py review-ledger-history <stem>`, the reader's first caller.
+- **S.** A read-only lister of this checkout's archived `agent-reviews/` snapshots, built on the manifest reader, plus the docs pointer.
 - **D.** The reader in `author-outcome`.
-- **E.** The reader in `reviewer-reads`, which also finds this repo's removed worktrees through snapshot manifests.
+- **E.** The reader in `reviewer-reads`, which also finds this repo's removed worktrees through the manifest reader PR S builds.
 
 **PR A: the resolver.** A new `claude/.claude/scripts/_branch_records.py` locates archive directories the way `branch_records_status` computes them (row 22). It never reads `claude-config.toml` (row 1).
 - `encode_component(path)` replaces `%` with `%25`, then `/` with `%2F`.
@@ -37,7 +38,7 @@ Sequencing the engineer selected: a small first PR adds a Python config-dir to a
 - `archive_subtree(config_dir, name, home)` returns `ArchiveSubtree(state, directory)` for a subtree named by one path component. `directory` is set only for `present`. It raises ValueError for a name that is empty, `.` or `..`, or that holds `/` or NUL. It takes the first state that applies, in this order, so it never reads a subtree under an unmarked root (M18):
   1. `unresolvable`: `account_directory` returned None.
   2. `unmarked`: a stat of the root's readiness marker finds nothing, or finds something other than a regular file. The stat follows a link, as the writer's `test -f` does (row 59). Finding nothing includes the not-a-directory error that a root that is a file gives, and a dangling root link gives the same result. The archive was never set up, or its volume is not mounted.
-  3. `unreadable`: a stat of the marker or the subtree failed in any other way, such as a permission error on the root or the account directory. The subtree is also `unreadable` when it is not a directory, or when its real path does not lie under the account directory's real path. The account directory itself is `unreadable` when it is a link, because a link there could name a sibling account's directory. It is also `unreadable` when it exists as anything but a directory, so the not-a-directory error a file there gives never reads as `absent`.
+  3. `unreadable`: a stat of the marker or the subtree failed in any other way, such as a permission error on the root or the account directory. The subtree is also `unreadable` when it is not a directory, or when its real path is not exactly the account directory's real path joined with the name. The account directory itself is `unreadable` when it is a link, because a link there could name a sibling account's directory. It is also `unreadable` when it exists as anything but a directory, so the not-a-directory error a file there gives never reads as `absent`.
   4. `absent`: the subtree does not exist.
   5. `present`: none of the above.
 
@@ -92,6 +93,48 @@ Every function takes `home` from its caller, and none writes, lists or globs the
 
 PR C also pins `_archive_home` in the scripts conftest (M7), because the viewer is the first command that builds `LedgerArchive()` with no home.
 
+**PR S: the snapshot lister and the pointer.** A new `claude/.claude/scripts/transcript_analysis/agent_review_snapshots.py` registers `agent-review-snapshots [--branch NAME]`, handled by `cmd_agent_review_snapshots` in the same module (row 30). It lists where a branch's archived `agent-reviews/` files are and prints no file content, because the files have no schema and an agent reads them with its own tools once it has the path (row 76).
+- **Inputs.**
+  - `home` comes from `review_ledger_copies._archive_home()`, the seam PR C pins in the scripts conftest. PR S therefore follows B and C.
+  - `config_dir` is `scope.PROJECTS_DIR.parent`, as in PR C.
+  - Worktree paths come from `scope._repo_worktree_paths`, which exits 1 when git cannot list worktrees or the working directory is outside them. The lister exits 1 then and prints no snapshot, because an unresolved scope must never read as "no snapshots".
+- **Selection.** It lists the snapshots of this checkout only, through the manifest reader this PR takes over from PR E:
+  - `_branch_records.snapshot_manifests(config_dir, home)` returns `SnapshotManifests(state, manifests)`, as the "PR E" pieces below describe it (M19). Each `SnapshotManifest(key_directory, snapshot_directory, fields)` carries the snapshot directory it was read from, taken from the directory walk and never from manifest content. PR E reuses this shape unchanged.
+  - `publication_scope._accepted_manifests(manifests, worktree_paths)` is the one per-manifest acceptance decision, with the rules the "PR E" pieces below list. `_manifest_repo_hashes` returns the distinct repo hashes of its result, and PR E's `_past_worktree_repo_hashes` removes the current worktrees' own hashes from that set. The lister lists exactly the accepted manifests, so it and `reviewer-reads` cannot disagree about which removed worktrees are this checkout's.
+  - `_manifest_repo_hashes` has no caller until PR E. PR S builds it and its tests with the acceptance decision so they land together.
+  - A snapshot's manifest is written last, so a snapshot with an accepted manifest is complete (`_branch-records-lib.sh:369-389`).
+  - The reader skips a manifest whose `schema_version` is not the integer 1, the value the writer stamps (`_branch-records-lib.sh:17`, `:370`). The doc lists this beside the other skip causes.
+  - The lister enumerates snapshots where the ledger viewer is addressed by a stem the operator names. Findings files quote other projects' code and paths, so the lister is repo-scoped.
+- **Output.** One stdout line per accepted snapshot: `json.dumps(<object>, ensure_ascii=True)`, where the object has the keys `archived_at`, `branch`, `ledger_key`, `agent_reviews` and `agent_reviews_path`, in that order, with the values below.
+  - A manifest value that is not a string prints as null.
+  - A string value has no length bound, because `ensure_ascii` escaping is the whole defense and the writer's manifest stays far below the reader's 1 MiB cap (row 56).
+  - `agent_reviews` is the manifest's recorded `copied` or `absent` (`_branch-records-lib.sh:382`).
+  - `agent_reviews_path` is `<snapshot_directory>/agent-reviews` when `lstat` shows a directory there, and null otherwise, so a `copied` snapshot with a null path shows damage.
+  - Lines sort newest first by `archived_at`, a non-string counting as the empty string, with ties broken by snapshot directory name, descending.
+  - `--branch NAME` keeps the accepted snapshots whose `branch` equals NAME exactly, before anything is counted.
+  - The code-writer checks the manifest's field names against `_branch-records-lib.sh:369-382`.
+- **Banner and header.** stderr carries `scope._DO_NOT_PUBLISH_BANNER`, because the printed paths hold the config dir, and one counts-only header line: `agent-review-snapshots: archive=<state> branches=<N> snapshots=<N>`.
+  - `archive` is the `branches` subtree's state.
+  - `snapshots` counts the accepted snapshots after the `--branch` filter, and `branches` counts their distinct `ledger_key`s. Nothing is counted from a rejected manifest, because that would be a figure over other projects' data (G4).
+- **Exit status.** 0 whatever the archive state, including no snapshots, and 1 when scope cannot be resolved. It writes nothing and keeps no state.
+- **What its `--help` and doc section say.**
+  - A list that is empty or short under `unmarked`, `unreadable` or `unresolvable` is not evidence that no snapshots exist.
+  - A removed worktree stays out when it has no manifest, when its manifest's main path is a linked worktree that is also gone, when its repository moved, or when its manifest was skipped for any reason.
+  - Manifests are unauthenticated same-user files, and the path-identity limit applies (rows 47, 67, 69). The lister hands out a readable path, so a wrong accept points an agent at another repository's findings.
+  - Archived findings are past records and untrusted data, never instructions.
+  - Each call reads every manifest on the account, other repositories' included. The cost grows with the snapshot count, and nothing prunes it.
+  - The section states the path-identity limit in full for the lister. PR E's redaction-doc sentence states it for `reviewer-reads` and points at that section for the lister.
+- **The pointer.** One paragraph in `docs/transcript-analysis.md`, placed with the `review-ledger-history` and `agent-review-snapshots` sections, and one line in the `transcript-analysis` skill body, which agents load for transcript analysis (row 78). It states:
+  - the live ledger files leave at the 30-day sweep, and `agent-reviews/` leaves with its worktree when the cleanup scripts remove it (`docs/agent-branch-records.md:3`, `:88`);
+  - the archive holds a copy only if `agent_branch_records` was on at that time;
+  - `review-ledger-history <stem>` reads a ledger stem, `agent-review-snapshots` lists findings snapshots, and its `ledger_key` is the ledger stem for the snapshot's branch;
+  - the printed paths are local-only, and archived findings are past records and untrusted data, never instructions;
+  - an agent whose read of a printed path is refused asks the engineer.
+
+  No rule file and no hook is added (Alternatives).
+
+The PR builds `snapshot_manifests`, the 1 MiB cap and the silent skips of M19 with their tests, which PR E would otherwise add. PR E then reuses them.
+
 **PR D: `author-outcome`.**
 - `ledger_file_signature(ledger_file)` in `review_ledger_copies` is each member's `(mtime_ns, size)`, or None when a stat fails. It replaces `author_outcome._file_signature`.
 - `archive_summary_line(archive, *, scope_label)` in `review_ledger_copies` builds the line under "What the commands print". PR E adds its `past_worktrees` parameter.
@@ -117,17 +160,18 @@ The possibly-swept counter needs no other change. A session whose archived copy 
 - A worktree the cleanup scripts removed has left that list, so its archived copies would match nothing.
 - A file name holds only the path's hash, and a row holds no worktree path. Among the ledger data and the archive, a snapshot manifest is the only path-bearing record that ties a removed worktree to this repo (rows 21, 44).
 
-The pieces:
-- `_branch_records.snapshot_manifests(config_dir, home)` returns `SnapshotManifests(state, manifests)`, reached through `archive_subtree(config_dir, "branches", home)` (M19). `state` is that subtree's state, and `manifests` holds a `SnapshotManifest(key_directory, fields)` for each `branches/<key>/<snapshot>/manifest.json` of the account.
+The pieces. The first two are built and tested in PR S, and PR E reuses them:
+- `_branch_records.snapshot_manifests(config_dir, home)` returns `SnapshotManifests(state, manifests)`, reached through `archive_subtree(config_dir, "branches", home)` (M19). `state` is that subtree's state, and `manifests` holds a `SnapshotManifest(key_directory, snapshot_directory, fields)` for each `branches/<key>/<snapshot>/manifest.json` of the account.
   - It follows no symlink below the subtree. It enters a key or snapshot directory only when `lstat` shows a directory, and opens a manifest only when `lstat` shows a regular file, as `ledger_dispositions._read_file_rows` does.
   - A listing below the subtree that fails other than as not found turns `state` into `unreadable`. The scan continues with the next directory, so every manifest it can reach is returned.
   - It reads at most 1 MiB and skips a larger file (row 56).
   - It skips a file that raises `OSError`, `UnicodeDecodeError`, `RecursionError` or `ValueError`, which covers `json.JSONDecodeError` and the integer digit limit. It also skips one that does not parse as an object. It prints nothing.
-- `publication_scope._past_worktree_repo_hashes(manifests, worktree_paths)` returns the distinct repo hashes of the manifests it accepts, less the current worktrees' own hashes. It accepts a manifest only when all of these hold (row 47, M9):
+- `publication_scope._accepted_manifests(manifests, worktree_paths)` returns the manifests it accepts, and a manifest is accepted only when all of these hold (row 47, M9):
   - its string `main_worktree_path`, as written, equals a current worktree path as printed or as resolved (row 21);
   - `ledger_repo_root` and `ledger_key` are strings, and `_ledger_repo_hash(ledger_repo_root)` equals the part of `ledger_key` before its first `.`;
   - its key directory's name equals `ledger_key`.
 - That hash is of `ledger_repo_root` as written, never resolved, because the manifest stores git's own toplevel (row 47). It covers the removed worktree's branch-keyed and session-keyed stems alike (row 19).
+- `_manifest_repo_hashes` returns the distinct hashes of the accepted manifests (PR S), and `_past_worktree_repo_hashes` (PR E) removes the current worktrees' own hashes from that set.
 - A manifest whose test raises `ValueError` is skipped, and the rest are still tested. `json.loads` accepts a lone surrogate in `ledger_repo_root`, and `os.fsencode` in `_ledger_repo_hash` then raises `UnicodeEncodeError`, a `ValueError` (`publication_scope.py:59-61`). The rest of the test only compares and splits strings, which cannot raise.
 - `publication_scope._this_repo_ledger_files` gains `extra_repo_hashes=()`, matched as given.
 - `review_ledger_copies.archive_summary_line` gains `past_worktrees=None`, which appends ` past_worktrees=<N>` when given.
@@ -175,9 +219,9 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 
 **Docs.** `docs/agent-branch-records.md` gains one section, "Reading the archive", after "Ledger copies", because the sibling session edits most other sections (row 32 relays it). PR C writes the section, and PRs D and E each add their part. It states:
 - (PR C) the history rule, as a pointer to the "Ledger copies" section plus the live-file-last step, and that the skip removes every overlap the writer makes, so only a member changed by hand can repeat rows;
-- (PR C) the five states, that an unmarked root is never read, and that `unreadable` covers an account directory that is a link or a regular file, although the writer follows a link there (row 74). The check guards the linking account's own readers and is not authentication: copies the writer deposits through such a link sit in the target account's directory, and that account's readers read them;
+- (PR C) the five states, that an unmarked root is never read, and that `unreadable` covers an account directory that is a link or a regular file, although the writer follows a link there (row 74). The check guards the linking account's own readers and is not authentication: copies the writer deposits through such a link sit in the target account's directory, and that account's readers read them. `present` means a real directory named `name` directly inside the real account directory, and a link above the account directory is followed on purpose, for a root on a mounted volume;
 - (PR C) the stall sentence above;
-- (PR C) that the live tools and the review-history hook read only `<config-dir>/review-narrative-ledger/`, and that no analysis reads `agent-reviews/` snapshots;
+- (PR C) that the live tools and the review-history hook read only `<config-dir>/review-narrative-ledger/`, and that `review-ledger-history` reads no `agent-reviews/` snapshot;
 - (PR C) the viewer, its output, its order, its exit statuses and the three things its `--help` says;
 - (PR D) which commands read copies, that they read with the key off, that each reads only the account directory of a config dir it scans, and that no flag turns the read off. PR E adds `reviewer-reads` to that list;
 - (PR D) the size bullet above;
@@ -213,7 +257,7 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 - Comparing the module with the test helpers' own formula: that compares Python with Python (row 23).
 - Pinning HOME for the whole scripts suite: it changes every test's home, and with it git's global config lookup, for one lookup.
 - An environment override of the archive root that only Python reads: a reader and the writer could then disagree.
-- A conftest tripwire that fails a test passing `_branch_records.archive_root` a home outside `tmp_path`: every archive lookup this plan adds goes through `LedgerArchive`, whose default home is the pinned seam, and a subprocess test sets HOME itself (row 24). A tripwire would guard only a caller the plan does not add, as a second layer over the pin.
+- A conftest tripwire that fails a test passing `_branch_records.archive_root` a home outside `tmp_path`: every archive lookup this plan adds goes through `_archive_home`, the pinned seam, directly or through `LedgerArchive`, and a subprocess test sets HOME itself (row 24). A tripwire would guard only a caller the plan does not add, as a second layer over the pin.
 - Re-listing copies on every session lookup: only a sweep adds a copy, and copies have no deletion bound (`docs/agent-branch-records.md:110`), so every lookup would stat a growing set again.
 - Re-listing copies when a live name disappears mid-run: today's index already loses the rows of a live file swept between two lookups, so reading copies adds no new gap. Out of scope records the race.
 - `leading_copies_skipped` on the commands' line: it describes one stem's merge, which the viewer's header shows, and a corpus-wide total points at no stem.
@@ -240,7 +284,12 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 - The viewer as a standalone script: it would need its own output escaping, docs entry and config-dir handling, which the CLI already has.
 - A free-text opt-in flag, a row cap or a past-record reminder line in the viewer, and a separate exit status when it could not consult the archive: `show` has none of them, and rows 54 and 55 give the viewer `show`'s shape.
 - Scoping the viewer to this repo's worktree hashes: the branches it serves often have no worktree left.
-- Two PRs, with the second holding both commands and the viewer (row 6), or four, with the library and `author-outcome` in one PR: row 62 selects five.
+- Two PRs, with the second holding both commands and the viewer (row 6), or four, with the library and `author-outcome` in one PR: row 62 selected five, and row 76 adds PR S as a sixth.
+- A content viewer for `agent-reviews/` snapshots: the files have no schema, so a viewer adds nothing an agent's own Read and Grep lack once it has the path (row 76).
+- A pointer to the archive with no lister: the agent would have to rebuild the encoded account directory name and the snapshot layout itself, which PR A's resolver exists to do.
+- A lister scoped to every repo on the account: findings files quote other projects' code and paths, so it takes this checkout's manifests only.
+- A path-scoped rule on `agent-reviews/`: it would load in every review loop, where the live files are the subject and archived history is irrelevant.
+- A hook on reads of `review-narrative-ledger`, or on a failed read there: a hook fires only after an agent has already looked in the live directory, and the engineer agreed to the docs pointer (row 77). A hook is the fallback if the pointer proves not to reach agents.
 
 ### Assumption ledger
 
@@ -303,7 +352,7 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 35. A ledger file only grows, so a copy taken while its source stayed is a byte prefix of every later copy and of the live file. [verified in `.claude/plans/archive-ledger-before-sweep.md` rows 29 and 38; not re-traced here] The rows parsed from a byte prefix are a leading run of the longer file's rows, a torn last line aside. [unverified: inferred, not tested]
 36. `author_outcome`'s index re-lists a root's live files on every session lookup, so a file that grows mid-run is seen. [verified: `author_outcome.py:349-381`; `docs/transcript-analysis.md:1802`]
 37. A transcript-package change selects the scripts tests, the ticket-reference test and three hooks tests that import or run the package. [verified: `test_select_tests.py:1905-1921`] Those hooks tests are selected only by rows that name the package directory, `transcript-analysis.py`, `_config.py`, `_config_dir.py` or `compaction-context.py`, so a change to `_branch_records.py` alone would select neither `test_review_ledger_script.py` nor `test_nudge_error_mode_analysis.py`. [verified: `select-tests.py:346-351`, `:1013-1036`] `compaction-context.py` imports only `render`, `review_rounds`, `scope` and `user_input`, which never reach `_branch_records`. [verified: `compaction-context.py:29`] A literal path in a rule needs an entry in `_EXACT_MATCH_LITERAL_PATH_CONSTANTS`. [verified: `test_select_tests.py:2544-2556`]
-38. [engineer-verified: "Analysis commands only (Recommended)"], the selected label on this change's scope, which the Out of scope item on hooks, skill-body lines, rule files and `CLAUDE.md` lines rests on.
+38. [engineer-verified: "Analysis commands only (Recommended)"], the selected label on this change's scope, which the Out of scope item on hooks, rule files and `CLAUDE.md` lines rests on. That label's description was the session's. Row 75 adds the `agent-reviews/` lister, and row 78 adds the docs paragraph and the skill-body line.
 39. [engineer-verified: "Proceed anyway"], the selected label on the size question, asked at a projection of about 1,340 changed lines in four PRs. Superseded by row 66.
 40. [engineer-verified: "Four PRs, not two"] Superseded by row 62.
 41. [engineer-verified: "Architecture doc and CHANGELOG entries"]
@@ -344,6 +393,10 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 72. [engineer-verified: "Accept about 3,000 (Recommended)"], the selected label on the size question asked at a projection of about 3,000 changed lines in five PRs, after review round 3. That option's description was the session's. [unverified: not the engineer's words] This row supersedes rows 66 and 68 on size.
 73. [engineer-verified: "Fine, state them in docs (Recommended)"], the selected label on the viewer's two remaining differences from `show`: it prints no `source_repo_hash`, and it escapes characters with JSON escaping where `show` replaces them. That option's description was the session's. [unverified: not the engineer's words]
 74. The writer follows a link at the account directory: `branch_records_status` tests it with `[ -d ]`, `_branch_records_make_archive_dirs` skips `mkdir` when that holds, and `chmod 700` follows the link. [verified: `_branch-records-lib.sh:161`, `:245`, `:252`]
+75. [engineer-verified: "ad-hoc analysis that I ask agents to do to figure out why review churn is happenign or evaluate ideas I have for improving the sdlc of this repo also read from agent-reviews and ledger files"], typed after reading the plan. The plan's Context bullets on which analyses read these files covered the commands only. [verified: the quote]
+76. [engineer-verified: "I think agent-reviews needs a reader too"], typed. The architect consult's shape for it, a read-only lister that prints paths and no contents, scoped to this checkout, as a sixth PR after C with the manifest reader moved from PR E, is the consult's. [unverified: the consult's advice, not the engineer's words] This supersedes row 62's count of five.
+77. [engineer-verified: "agreed with the recommendations"], typed in answer to the session's recommendation to build the lister and the docs and skill pointer and to hold the `review-narrative-ledger` hook. The recommendation, including its reasons, was the session's. [unverified: not the engineer's words] So this plan adds no hook and no rule file. The evidence behind holding the hook comes from the session's reading of private transcripts, and this plan cites none of it (G4).
+78. [engineer-verified: "Accept six PRs (Recommended)"], the selected label on whether to accept six PRs at about 3,200 changed lines, a figure that includes the architect consult's uncounted guess for PR S. [engineer-verified: "Docs paragraph and skill line (Recommended)"], the selected label on whether the pointer includes a skill-body line. Both options' descriptions were the session's. [unverified: not the engineer's words] This supersedes rows 62 and 72 on count and size, and extends row 38 to the docs paragraph and the skill-body line.
 
 **Mechanisms:**
 - M1. `_branch_records.py` as the resolver's home, with `home` passed in explicitly. anchors: row1, row9, row22, row25, row32. `_config_dir.py` and `scope.py`, the two candidates the dispatch relayed, are set aside under Alternatives.
@@ -360,14 +413,16 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 - M12. Viewer rows as `show` prints them: every stored field, stable-sorted by `event_time` over history order, as ASCII-escaped JSON with a display-time `source_copy_stamp` that replaces any stored key of that name, under the banner and one stderr header. anchors: row29, row54, row55, row64, row65, row73. A free-text opt-in, a row cap and a reminder line are set aside under Alternatives.
 - M13. No time cap and no off switch on archive reads, with a doc sentence that states the stall as a known limit. anchors: row28, row42. The heavier thread and subprocess caps are set aside under Alternatives.
 - M14. `author_outcome.py` held at or under 1,000 lines by moving `_LedgerIndex` and its helpers into `review_ledger_copies.py`, a seam-named test file for `ledger_dispositions`, and exact ceilings for the four exception files the diff grows, each set in the PR that grows it. anchors: row25, row26, row60. Keeping the index in place and a separate index module are set aside under Alternatives.
-- M15. Five PRs, A, then B, C, D and E. anchors: row4, row5, row6, row62, row63, row66, row68, row71, row72. Two or four PRs are set aside under Alternatives.
+- M15. Six PRs, A, then B, C, S, D and E. anchors: row4, row5, row6, row62, row63, row66, row68, row71, row72, row75, row76, row78. Two or four PRs are set aside under Alternatives.
 - M16. In `reviewer-reads`, a `LedgerFile` with an unread member counts as unreadable and adds no rows, a judgment call the Approach states. anchors: row17, row27, row52.
 - M17. A data-quality key for sessions served only by copies, carried by a per-session flag on the index so the entry shapes stay, and only a live member's open marking a session-keyed file opened. anchors: row11, row26, row46. Excluding those sessions from the headline, and a stamp key or a third entry element, are set aside under Alternatives.
-- M18. A resolver that classifies by the marker first, requires an absolute home and config dir, and keeps a subtree inside its account directory's real path. The account directory itself must be a directory and not a link, so a link or a regular file there is `unreadable`. anchors: row22, row59, row74. Reading under an unmarked root is set aside under Alternatives.
+- M18. A resolver that classifies by the marker first, requires an absolute home and config dir, and requires a subtree's real path to be exactly its account directory's real path joined with the name. The account directory itself must be a directory and not a link, so a link or a regular file there is `unreadable`. anchors: row22, row59, row74. Reading under an unmarked root is set aside under Alternatives.
 - M19. Manifest reads that follow no symlink below `branches/`, behind an `lstat` regular-file check and a 1 MiB cap, with every parse failure skipped silently and a failed listing reported as `unreadable`. anchors: row47, row49, row56.
 - M20. Viewer exit statuses as `show`'s: 2 for a bad stem or a member path that is not a regular file, 1 for a member that did not read, and 0 otherwise, with the archive state in the stderr header. anchors: row29, row54, row55, row64, row65. A separate status for an archive it could not consult is set aside under Alternatives.
 - M21. Every stem read through `read_ledger_file`, live-only ones included. anchors: row26, row45.
 - M22. `_branch_records.py` added to the `select-tests.py` rows whose importers reach it, in PR B, from which `author_outcome` reaches it. anchors: row37.
+- M23. A repo-scoped, read-only lister of archived `agent-reviews/` snapshots that prints paths and never file contents, built on the manifest reader, which moves from PR E to PR S so the lister and PR E share it. anchors: row21, row47, row56, row67, row69, row75, row76. A content viewer, a pointer with no code, and a reader scoped to every repo on the account are set aside under Alternatives.
+- M24. Agent awareness through one docs paragraph and one skill-body line, with no rule file and no hook. anchors: row38, row75, row77, row78. A path-scoped rule on `agent-reviews/` and a hook on `review-narrative-ledger` are set aside under Alternatives.
 
 ## Critical files
 
@@ -485,6 +540,52 @@ Modify:
 - `docs/transcript-analysis-architecture.md`: a `review_ledger_history.py` section, and `_read_member` in the `ledger_dispositions.py` section.
 - `CHANGELOG.md`: one entry. `review-ledger-history` prints one ledger stem's live and archived rows.
 
+**PR S.** Verify with the same command.
+
+Create:
+- `claude/.claude/scripts/transcript_analysis/agent_review_snapshots.py`, as the Approach describes. Its subparser's help text carries every statement the Approach lists under "What its `--help` and doc section say", and the printed paths are local-only.
+- `claude/.claude/scripts/tests/test_transcript_agent_review_snapshots.py`. Cases:
+  - a snapshot whose manifest names this checkout's main worktree prints its fields and `agent-reviews/` path, and another repo's snapshot does not;
+  - snapshots print newest first, ties break by snapshot directory name, and a non-string `archived_at` does not raise and sorts last;
+  - `--branch` keeps only exact branch matches, and a `--branch` naming another repo's branch leaves its snapshots out;
+  - a manifest that fails the acceptance test beside an accepted sibling of the same repo hash is not listed;
+  - the header's `branches` and `snapshots` equal the accepted, filtered set, and adding another repo's snapshots, orphan directories and an unparseable manifest to the corpus leaves the header and stdout byte-identical;
+  - a `branch`, an `agent_reviews` value and a snapshot directory name each holding `\n`, U+2028 and U+202E print one stdout line per snapshot, all printable ASCII;
+  - a snapshot with a missing, symlinked or non-directory `agent-reviews/` prints `agent_reviews_path` null while `agent_reviews` keeps the manifest's value;
+  - the command prints no file content, with a sentinel string in a findings file absent from stdout, stderr and the log;
+  - each archive state, with the `unmarked` and `unresolvable` fixtures holding a consistent manifest for this checkout so an empty list shows the read was refused (`unmarked`, `absent`, `unresolvable`, and a mode-0 `branches/` marked `requires_non_root` for `unreadable`) prints its state, an empty list and exit 0;
+  - run from outside any worktree, or with git failing, the command exits 1 and prints no snapshot;
+  - a real writer case: `make_archive_worktree` gets an `agent-reviews/` file, `archive_successfully` snapshots it, and the command prints that snapshot with the path of a regular file that exists. The test builds its config dir to match the command's, and asserts the printed field names against `read_manifest`;
+  - `--help` holds one key phrase from each of the statements the Approach lists, a presence check only;
+  - the docs paragraph and the skill-body line each name `review-ledger-history` and `agent-review-snapshots`, a presence check that fails when a subcommand is renamed.
+Modify:
+- `claude/.claude/scripts/_branch_records.py`: `snapshot_manifests`, `SnapshotManifests` and `SnapshotManifest`, as the Approach's PR E pieces describe them.
+- `claude/.claude/scripts/tests/_branch_records_helpers.py`: `make_consistent_manifest`, one builder that every test file in this PR and PR E uses. It computes `ledger_key` from `hashlib` over the path it writes, never from the production hash function, so no test derives its expectation from the code under test.
+- `claude/.claude/scripts/tests/test__branch_records.py`: `snapshot_manifests` returns each manifest with its key directory and snapshot directory. It returns `unreadable` and no manifest for an account directory linked to a sibling account's directory that holds a valid manifest. It returns `state` `unreadable` for a mode-0 `branches/` and for a mode-0 key directory, each marked `requires_non_root`. The mode-0 key directory sits between two key directories that each hold a valid manifest, one sorting before it and one after, and both come back. One test parametrized over these shapes, with an id per shape, puts each beside one valid manifest in a sibling key directory. It asserts that exactly the valid manifest comes back, and that nothing raises or prints on any stream:
+  - a non-object manifest and an unparseable one;
+  - invalid UTF-8;
+  - a deeply nested document;
+  - an over-limit integer, under the `default_int_str_digit_limit` fixture;
+  - a file of exactly 1 MiB, which is read, and one byte more, which is skipped;
+  - a manifest whose `schema_version` is not 1;
+  - a FIFO, run through conftest's deadline guard, a symlinked manifest, a symlinked key directory, a symlinked snapshot directory and a directory named `manifest.json`.
+- `claude/.claude/scripts/transcript_analysis/publication_scope.py`: `_accepted_manifests` and `_manifest_repo_hashes`, and the identity sentence at `:69` extended to manifests.
+- `claude/.claude/scripts/tests/test_transcript_publication_scope.py`. Cases:
+  - a stored main path that equals a current path as printed, and one that equals it as resolved;
+  - another repo's manifest, excluded;
+  - this repo's main path with a foreign `ledger_repo_root` whose hash does not match its `ledger_key`, contributing nothing;
+  - a key directory that differs from its `ledger_key`, contributing nothing;
+  - a symlinked `ledger_repo_root`, contributing its hash as written only;
+  - non-string fields skipped and duplicates collapsed;
+  - a `ledger_repo_root` holding a lone surrogate that `os.fsencode` rejects, such as U+D800 (U+DC80 to U+DCFF encode under `surrogateescape` and would not exercise the skip), on a manifest that names this checkout's main path, skipped without raising, beside a consistent manifest that still contributes its hash.
+- `claude/.claude/scripts/transcript_analysis/cli.py` and `claude/.claude/scripts/tests/test_transcript_cli.py`: register `_add_agent_review_snapshots_subparser`, and list `"agent-review-snapshots": {"--projects", "--this-repo"}` in `_SUBCOMMANDS_LACKING_A_SCOPE_FLAG`, because the command is repo-scoped by its own rule and takes neither flag (row 30).
+- `claude/.claude/scripts/tests/test_transcript_package_module_prefixes.py`: the new test file in `TEST_FILES` and the new module in `PRODUCTION_MODULES` (row 50).
+- `docs/transcript-analysis.md`: a bullet in § "Corpus scope: the declared-roots file" saying the lister reads the active account only through `--config-dir`, and an `## agent-review-snapshots` section carrying the statements the Approach lists, and the pointer paragraph. PRs D and E cite this file's lines as they stand before PR C, so they cite by section name.
+- `claude-skills/skills/transcript-analysis/SKILL.md`: one line that points at the pointer paragraph. This is a skill-body edit, so `skill-review` runs on it.
+- `docs/agent-branch-records.md`: the lister's part of § "Reading the archive", which PR C creates: what it lists, that it prints paths and never contents, and that it is scoped to this checkout by a manifest that names this checkout's main worktree, which any same-user process can write, so the limit in the lister's section applies. It also extends the sentence PR C writes, that `review-ledger-history` reads no `agent-reviews/` snapshot, with the fact that `agent-review-snapshots` lists them.
+- `docs/transcript-analysis-architecture.md`: an `agent_review_snapshots.py` section, and `_accepted_manifests` and `_manifest_repo_hashes` in the `publication_scope.py` section.
+- `CHANGELOG.md`: one entry. `agent-review-snapshots` lists this checkout's archived `agent-reviews/` snapshots.
+
 **PR D.** Verify with the same command.
 
 Modify:
@@ -542,27 +643,13 @@ Create:
   - an unlistable copy directory leaves the live counts unchanged and turns the root into `unreadable`, marked `requires_non_root`.
 
 Modify:
-- `claude/.claude/scripts/_branch_records.py`: `snapshot_manifests`, `SnapshotManifests` and `SnapshotManifest`.
-- `claude/.claude/scripts/tests/test__branch_records.py`: `snapshot_manifests` returns each manifest with its key directory. It returns `unreadable` and no manifest for an account directory linked to a sibling account's directory that holds a valid manifest. It returns `state` `unreadable` for a mode-0 `branches/` and for a mode-0 key directory, each marked `requires_non_root`. The mode-0 key directory sits between two key directories that each hold a valid manifest, one sorting before it and one after, and both come back. One test parametrized over these shapes, with an id per shape, puts each beside one valid manifest in a sibling key directory. It asserts that exactly the valid manifest comes back, and that nothing raises or prints on any stream:
-  - a non-object manifest and an unparseable one;
-  - invalid UTF-8;
-  - a deeply nested document;
-  - an over-limit integer, under the `default_int_str_digit_limit` fixture;
-  - a file over 1 MiB;
-  - a FIFO, a symlinked manifest, a symlinked key directory, a symlinked snapshot directory and a directory named `manifest.json`.
+- PR S already added `snapshot_manifests`, its tests and `_manifest_repo_hashes` with its tests. This PR reuses them and adds no test for them.
 - `claude/.claude/scripts/transcript_analysis/review_ledger_copies.py`: `LedgerArchive` reads manifests per root through its own home, counts `past_worktrees`, takes the optional `select_copies` the Approach names, and marks a root `unreadable` on a copy-listing gap or a `branches` state of `unreadable`. `archive_summary_line` gains `past_worktrees`.
 - `claude/.claude/scripts/tests/test_transcript_review_ledger_copies.py`: the `past_worktrees` field, the `scope=this-repo` line, a `branches` state of `unreadable` turning the root `unreadable`, and a `select_copies` that keeps one of two stems, after which every copy and stem count covers that stem alone.
 - `claude/.claude/scripts/transcript_analysis/ledger_dispositions.py`: as the Approach describes for PR E.
   - Its module docstring says copies join each stem, supersession runs in history order, and a stem's whole history is held at once.
-- `claude/.claude/scripts/transcript_analysis/publication_scope.py`: `_past_worktree_repo_hashes`, `_this_repo_ledger_files`'s `extra_repo_hashes`, and the identity sentence at `:69` extended to manifests.
-- `claude/.claude/scripts/tests/test_transcript_publication_scope.py`. Cases:
-  - a stored main path that equals a current path as printed, and one that equals it as resolved;
-  - another repo's manifest, excluded;
-  - this repo's main path with a foreign `ledger_repo_root` whose hash does not match its `ledger_key`, contributing nothing;
-  - a key directory that differs from its `ledger_key`, contributing nothing;
-  - a symlinked `ledger_repo_root`, contributing its hash as written only;
-  - non-string fields skipped, duplicates collapsed, and current hashes not repeated;
-  - a `ledger_repo_root` holding a lone surrogate that `os.fsencode` rejects, such as U+D800 (U+DC80 to U+DCFF encode under `surrogateescape` and would not exercise the skip), on a manifest that names this checkout's main path, skipped without raising, beside a consistent manifest that still contributes its hash.
+- `claude/.claude/scripts/transcript_analysis/publication_scope.py`: `_past_worktree_repo_hashes`, built on PR S's `_manifest_repo_hashes`, and `_this_repo_ledger_files`'s `extra_repo_hashes`.
+- `claude/.claude/scripts/tests/test_transcript_publication_scope.py`: `_past_worktree_repo_hashes` omits the current worktrees' own hashes and keeps a removed worktree's hash as its positive control, and `_this_repo_ledger_files` matches an extra hash as given.
 - `claude/.claude/scripts/transcript_analysis/reviewer_reads.py`: the archive argument and the line in `_print_ledger`.
 - `claude/.claude/scripts/tests/test_transcript_reviewer_reads_command.py`:
   - `TestOutputInvariant` (`:262-355`) gains one archive corpus in two layers.
@@ -592,7 +679,9 @@ Modify:
 - `docs/transcript-analysis-architecture.md`: the `ledger_dispositions.py`, `publication_scope.py` and `reviewer_reads.py` sections.
 - `CHANGELOG.md`: one entry. `reviewer-reads` counts this repo's archived copies and its removed worktrees' files when a consistent snapshot manifest names them.
 
-Projected diff: about 3,000 changed lines, additions plus deletions. It is an estimate derived from the planned edits, not counted from a diff: PR A about 280, PR B about 580, PR C about 615, PR D about 745 and PR E about 790. About 180 of those lines move existing test code, the FIFO deadline guard into `conftest.py` and the dispositions helpers into `_ledger_dispositions_helpers.py`. Row 72 approved this size, superseding rows 66 and 68 on size.
+Projected diff: about 3,000 changed lines before PR S and about 3,200 with it, additions plus deletions. Both are estimates derived from the planned edits, not counted from a diff.
+
+The per-PR figures are: PR A about 280, PR B about 580, PR C about 615, PR S about 400, PR D about 745 and PR E about 560. PR S's figure is the architect consult's guess plus this round's added tests, and it includes the manifest reader and its tests, which take PR E from about 790 to about 560. About 180 of the lines move existing test code, the FIFO deadline guard into `conftest.py` and the dispositions helpers into `_ledger_dispositions_helpers.py`. Row 72 approved the size before PR S, and row 78 accepts it with PR S.
 
 ## Verification
 
@@ -617,6 +706,15 @@ PR C:
   - `review-ledger-history ../x` exits 2.
   - The same stem with HOME at a scratch directory that holds no archive root prints `archive=unmarked` in its header and only the live rows, and exits 0.
 
+PR S:
+- In a scratch repository, give the scratch archive a snapshot with a consistent manifest naming the repository's main worktree, and a second snapshot for another repository.
+  - `agent-review-snapshots` prints one line for the first snapshot with its `agent-reviews/` path, prints nothing for the second, prints the banner and header on stderr, and exits 0.
+  - `agent-review-snapshots --branch <other>` prints no line.
+  - With HOME at a scratch directory that holds no archive root, it prints `archive=unmarked`, no line, and exits 0.
+- `docs/transcript-analysis.md` and the `transcript-analysis` skill body name `review-ledger-history` and `agent-review-snapshots`.
+- Run locally only, and paste no printed path into a commit, PR body or plan: in an agent session under its normal permissions, open one printed `agent-reviews/` file under the real archive root, when this machine holds a snapshot for the checkout. State the outcome in the PR body, or that the check was not run for lack of a snapshot. If the harness refuses the read, the pointer's last bullet tells agents to ask the engineer.
+- Doc samples for the lister's output use placeholder paths and elide the header's counts to `N`.
+
 PR D:
 - `author_outcome.py` has at most 1,000 lines, about 950 by the Approach's estimate.
 - Build a synthetic corpus as `docs/transcript-analysis.md` § "Testing against a synthetic corpus" describes, with HOME set to a scratch directory that holds an archive root and its sentinel. Give one session a code-review round older than 30 days, and leave its ledger file only as a stamped copy in the archive.
@@ -633,11 +731,11 @@ PR E:
 
 ## Out of scope
 
-- Reading `agent-reviews/` snapshots: no analysis reads `agent-reviews/` (row 13), so no reader exists to extend.
+- Printing `agent-reviews/` file contents through a command: the lister prints paths, and agents read the files with their own tools (row 76).
 - Retiring the `agent-reviews/` snapshot: a separate later change, as the Context records.
 - Restoring archived files when a worktree is recreated (row 10).
 - Any change to `show`, `render`, `/code-review`, the dashboard or the review-history hook (row 61). That includes a pointer to the archive in `show`'s no-ledger notice, which prints on `show`'s stdout (row 29). The Context records what a live-tool fallback would break, as the design reviews reported it.
-- A hook, skill-body line, rule file or `CLAUDE.md` line that points an agent's ad hoc reads of `<config-dir>/review-narrative-ledger/` at the archive. This plan makes the analysis commands read copies without any agent action, and the new doc section names them (row 38).
+- A hook, rule file or `CLAUDE.md` line that points an agent's ad hoc reads of `<config-dir>/review-narrative-ledger/` or `agent-reviews/` at the archive (Alternatives).
 - Transcript readers and the sibling session's PR 3 (G3, row 9). Those readers can call `archive_subtree(config_dir, "projects", home)`.
 - Widening `reviewer-reads`' transcript half to removed worktrees' project directories. Those transcripts are not archived until the sibling session's work lands (G3), and the doc states the gap (row 53).
 - Relabelling `reviewer-reads`' ledger-section heading or its `ledger files:` line. The golden report test pins both, and the doc states that the counts now include removed worktrees and count stems.
