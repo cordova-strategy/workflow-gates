@@ -34,9 +34,9 @@
 # only inflate the composite toward the nudge threshold, never corrupt
 # state).
 #
-# Opt-in: dormant by default. Touching .error-mode-nudge-enabled arms the
-# hook; without that file, every invocation exits 0 before reading the
-# transcript. See CONTRIBUTING.md for how to enable it.
+# Opt-in: dormant by default. Until the error_mode_nudge config key is true,
+# every invocation exits 0 before reading the transcript.
+# docs/error-mode-nudge.md "How to enable" has the config-set.sh command.
 #
 # Fail-open everywhere: any unexpected error (missing python3,
 # non-integer friction-count output, a friction-count timeout, an

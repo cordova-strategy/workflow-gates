@@ -5,7 +5,7 @@
 # session is distinguishable from every other tab without a manual /rename.
 #
 # Emits nothing (today's auto-titler runs unchanged) when: `.source` isn't
-# "startup"; a kill switch is present (machine-global or per-repo); not a git
+# "startup"; a kill switch is present (config key or per-repo); not a git
 # repo; on the repo's default branch (the collision-prone case this hook
 # exists to skip); the default branch is undeterminable (no `origin` remote,
 # `origin/HEAD` unset, or `origin/HEAD` a dangling symref); the main worktree
@@ -37,10 +37,11 @@
 # Reads the input payload's top-level `.cwd` field, not process cwd —
 # authoritative for a session anchored in a linked worktree.
 #
-# Kill switches: machine-global ~/.claude/.session-title-disabled (mirrors
-# nudge-handoff-near-context-cap.sh's ~/.claude/.handoff-nudge-disabled);
-# per-repo <main-worktree-root>/.claude/session-title-disabled, resolved
-# against the main worktree root this hook already computes, never cwd.
+# Kill switches:
+# - the session_title_from_branch config key; docs/hooks.md's entry for this
+#   hook has the config-set.sh command.
+# - the per-repo <main-worktree-root>/.claude/session-title-disabled file,
+#   resolved against the main worktree root this hook already computes, never cwd.
 #
 # Known gap: `origin/HEAD` is only ever written by `git clone`
 # or `git remote set-head`; a repo built via `init` + `remote add` + push has
@@ -78,7 +79,7 @@ fi
 SOURCE=$(printf '%s' "$INPUT" | _lib_jq -r '.source // empty' 2>/dev/null)
 [[ "$SOURCE" == "startup" ]] || exit 0
 
-# --- machine-global kill switch ------------------------------------------
+# --- config kill switch --------------------------------------------------
 
 # An unresolvable config dir gives the same exit-0 outcome as the kill
 # switch being present (today's auto-titler runs unchanged). Delegates to
