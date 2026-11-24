@@ -289,9 +289,6 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "`check`, above `## Approach`. It describes review surface (file count, domain spread, "
         "risk concentration), never hours or days."
     ),
-    "failed_check_with_stage_line_redispatches_bullet": (
-        "A failed `check` that prints a `STAGE` line, as above."
-    ),
     # Starts at the lead-in's last words and spans both bullets, so a bullet added before, between or after them fails the pin.
     "no_return_redispatch_bullets": (
         "as follows: - At first authoring, re-dispatch when `check` then fails with a `STAGE` line. - On a "

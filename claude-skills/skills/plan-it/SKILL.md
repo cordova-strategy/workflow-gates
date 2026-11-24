@@ -86,7 +86,6 @@ Treat a dispatch as first authoring when the `prepare` or `check` run just befor
 
 Re-dispatch, rather than repairing inline, on any of these:
 - A return carrying some but not all four headings.
-- A failed `check` that prints a `STAGE` line, as above.
 - A dispatch that ends without a normal return (a context-limit failure, an error return, or no completion), as follows:
   - At first authoring, re-dispatch when `check` then fails with a `STAGE` line.
   - On a revision, re-dispatch when `check` then passes or fails with a `STAGE` line, because a revision that died partway can pass it.
