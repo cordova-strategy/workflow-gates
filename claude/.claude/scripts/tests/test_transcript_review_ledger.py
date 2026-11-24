@@ -2,23 +2,18 @@
 import json
 import os
 import subprocess
-import sys
 import uuid
 from pathlib import Path
 
 import pytest
 from helpers import HOOKS_DIR, SCRIPTS_DIR, init_git_repo_with_commit
+from hooks.tests.conftest import _seed_session
 from transcript_analysis import author_outcome, review_ledger
 
 from .conftest import _ledger_row, _write_branch_ledger_file, _write_ledger_file
 
 _REVIEW_LEDGER_SH = SCRIPTS_DIR / "review-ledger.sh"
 _LIB_SH = HOOKS_DIR / "_lib.sh"
-
-# claude/.claude/ itself, so `hooks.tests.conftest` below resolves.
-# Mirrors test_config_parser_parity.py's identical cross-package import.
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from hooks.tests.conftest import _seed_session  # noqa: E402
 
 
 class TestConfigDirRootForSession:
@@ -281,7 +276,9 @@ class TestReadLedgerRowEntriesForSession:
 
         assert entries == []
 
-    def test_unreadable_ledger_path_prints_diagnostic_to_stderr(self, tmp_path, capsys):
+    def test_unreadable_ledger_path_prints_an_author_outcome_labeled_diagnostic_to_stderr(
+        self, tmp_path, capsys,
+    ):
         config_dir_root = tmp_path
         ledger_dir = config_dir_root / "review-narrative-ledger"
         ledger_dir.mkdir(parents=True)
@@ -294,6 +291,7 @@ class TestReadLedgerRowEntriesForSession:
         review_ledger._read_ledger_row_entries_for_session(jsonl)
 
         captured = capsys.readouterr()
+        assert captured.err.startswith("author-outcome: ")
         assert str(ledger_path) in captured.err
         assert captured.out == ""
 

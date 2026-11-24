@@ -45,10 +45,9 @@ def _read_ledger_rows_from_file(
     directory listing but was deleted or became unreadable before this
     call.
 
-    A line over the decoder's limits (_DECODER_LIMIT_ERRORS) is skipped the
-    same way when skip_lines_over_decoder_limits is true. When it is false
-    the error propagates, which is what ledger_dispositions._read_file_rows
-    relies on to count the whole file unreadable."""
+    The default lets a line over the decoder's limits propagate its error:
+    ledger_dispositions._read_file_rows relies on that to count the whole
+    file unreadable."""
     skipped_line_errors = (
         (json.JSONDecodeError, UnicodeDecodeError, *_DECODER_LIMIT_ERRORS)
         if skip_lines_over_decoder_limits

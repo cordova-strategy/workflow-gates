@@ -926,11 +926,12 @@ boundary and across every test file (`fake_projects`, `fake_config_dir_factory`,
 docstrings for why `fake_projects` patches four `config_dir` bindings: `scope.config_dir`, plus
 `cost_ledger.config_dir`, `ledger_common.config_dir`, and
 `pr_cost_ledger.config_dir` (each module's own by-name binding, mirroring `scope.py`'s pattern). `author_outcome.py`'s own tests
-live in `tests/test_author_outcome.py`, and `review_ledger.py`'s in `tests/test_transcript_review_ledger.py` and
-`tests/test_transcript_review_ledger_decode_limits.py`. Most exercise the package module directly through
+live in `tests/test_author_outcome.py`. Most exercise the package module directly through
 `from transcript_analysis import author_outcome as ao`. That alias is the exception to the
 unaliased rule, so the file is absent from `TEST_FILES`. A small `spec_from_file_location`-loaded
-shim copy is reserved for the argparse-wiring tests.
+shim copy is reserved for the argparse-wiring tests. `review_ledger.py`'s tests live in
+`tests/test_transcript_review_ledger.py` and `tests/test_transcript_review_ledger_decode_limits.py`.
+Both import `review_ledger` unaliased and are listed in `TEST_FILES`.
 
 `fake_projects`, `cost_ledger_file`, and `cost_ledger_enabled` patch the package modules directly, so a
 test file that uses them needs no `transcript-analysis.py` loader of its own.
