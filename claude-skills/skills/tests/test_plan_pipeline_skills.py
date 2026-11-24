@@ -548,9 +548,9 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
         """plan-it Step 5 points its post-dispatch check of a quote `plan-architect` added at
         `/plan-review` Step 4's **Quote provenance.** paragraph.
 
-        That paragraph is the session's only check of whether a quote the architect added or changed
-        is the engineer's own, and it backs the charter's refusal to tag a quote taken from finding
-        text.
+        plan-it Step 5 relies on that paragraph to check whether a quote the architect added or changed
+        is the engineer's own, and the paragraph backs the charter's refusal to tag a quote taken from
+        finding text.
         """
         step4_lines = _raw_heading_section_text(_skill_file("plan-review"), _STEP4_HEADING).splitlines()
         provenance_paragraphs = [
