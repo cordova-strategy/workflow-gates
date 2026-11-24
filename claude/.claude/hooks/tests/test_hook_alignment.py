@@ -837,28 +837,6 @@ def test_syncclaudeaiskills_stays_disabled_in_stow_source_settings() -> None:
     )
 
 
-def test_output_style_stays_concise_in_stow_source_settings() -> None:
-    """Pins the declared `outputStyle`; see docs/design-decisions/concise-output-style-stow-default.md."""
-
-    def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        keys = [key for key, _ in pairs]
-        duplicates = sorted({key for key in keys if keys.count(key) > 1})
-        assert not duplicates, (
-            f"{_SETTINGS_PATH.relative_to(_REPO_ROOT)} declares {duplicates} "
-            f"more than once at one object level"
-        )
-        return dict(pairs)
-
-    settings = json.loads(
-        _SETTINGS_PATH.read_text(), object_pairs_hook=reject_duplicate_keys
-    )
-    assert settings.get("outputStyle") == "Concise", (
-        f"outputStyle is not `Concise` in "
-        f"{_SETTINGS_PATH.relative_to(_REPO_ROOT)} — stow consumers no "
-        f"longer get the Concise output style by default"
-    )
-
-
 def test_promptcachettl_stays_unset_in_stow_source_settings() -> None:
     """The declared config-value backing the main-bucket prompt-cache TTL verdict.
 
