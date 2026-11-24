@@ -82,7 +82,7 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from helpers import build_path_without, link_bash_into
+from helpers import build_path_without, link_bash_into, write_prewarmed_stub
 
 # install-dev.sh lives at the repo root: climb from scripts/tests/ (parents[0])
 # → scripts/ (parents[1]) → claude/.claude/ (parents[2]) → claude/ (parents[3])
@@ -104,10 +104,7 @@ BUILT_VENV_MARKER = Path("lib") / "built_by_pinned_interpreter_marker"
 def _write_stub(bin_dir: Path, name: str, body: str) -> Path:
     """Write an executable bash stub at bin_dir/name."""
     bin_dir.mkdir(parents=True, exist_ok=True)
-    stub = bin_dir / name
-    stub.write_text("#!/bin/bash\n" + body)
-    stub.chmod(0o755)
-    return stub
+    return write_prewarmed_stub(bin_dir / name, "#!/bin/bash\n" + body)
 
 
 def _script_env(
@@ -413,8 +410,7 @@ def _make_claude_shim(
     plugin_json = "[]" if plugins is None else json.dumps(
         [{"id": pid, "scope": scope, "projectPath": project_path} for pid, scope, project_path in plugins]
     )
-    stub = bin_dir / "claude"
-    stub.write_text(textwrap.dedent(f"""\
+    return write_prewarmed_stub(bin_dir / "claude", textwrap.dedent(f"""\
         #!/bin/bash
         printf '%s\\n' "$*" >> '{call_log}'
         if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "list" ]; then
@@ -436,8 +432,6 @@ def _make_claude_shim(
         fi
         exit 1
     """))
-    stub.chmod(0o755)
-    return stub
 
 
 def _link_real_jq(bin_dir: Path) -> None:
@@ -603,9 +597,7 @@ class TestUnhealthyVenvIsRecreated:
         # conjunct fails first and the dependency import is never reached.
         venv_bin = repo_root_stub / ".venv" / "bin"
         venv_bin.mkdir(parents=True)
-        venv_python = venv_bin / "python"
-        venv_python.write_text("#!/bin/bash\nexit 1\n")
-        venv_python.chmod(0o755)
+        _write_stub(venv_bin, "python", "exit 1\n")
 
         # A sentinel file adjacent to .venv — must survive the rm -rf .venv.
         adjacent_file = repo_root_stub / "sentinel.txt"
