@@ -2,6 +2,8 @@
 
 Reference material that informed this skill. Not loaded during skill execution — consult when editing the skill to verify a rule still holds or to add new guidance.
 
+Cite the printed book for a rule. Every xunitpatterns.com page this file cites is a pre-publication draft, and the site's home page says: "Note that the material here is now somewhat out of step with the book content because it hasn't been updated based on the results of copy editing." A page quote is the draft's wording, and the printed book governs where the two differ.
+
 ## Test-first discipline and its recognized exceptions
 
 The test-first invariant is most strongly stated in:
@@ -96,7 +98,5 @@ URL: http://xunitpatterns.com/Literal%20Value.html (page 714 of the printed book
 
 Verbatim:
 > "When we need to use the same Literal Value in several places in a single Test Method (page X) or within several distinct tests, it is a good practice to use a symbol constant instead of a Literal Value."
-
-Every xunitpatterns.com page this file cites is a pre-publication draft. The site's home page says: "Note that the material here is now somewhat out of step with the book content because it hasn't been updated based on the results of copy editing." Cite the printed book for a rule, and treat a page quote as the draft's wording.
 
 **Applies to the rule as:** this recommendation is in tension with the Google chapter's preference for builders over shared constants. § 6 sides with the chapter for a stand-in value and uses one shared definition only for what a second test file would otherwise copy: a helper, setup, or a value two test files must keep equal.
