@@ -1,0 +1,13 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -1092,6 +1092,9 @@
+ 
+ 
+ def _attribute_carried_branch(carried: str | None, rec: dict, ctx: _SessionBranchContext) -> str | None:
++    """Apply only the pre-branch step to a branch a positional consumer
++    carried forward from the main thread, using the record's own timestamp
++    so a record with none is never remapped."""
+     return _attribute_pre_branch(carried, _parse_ts(rec.get("timestamp")), ctx.pre_branch_run)
+ 
+ 

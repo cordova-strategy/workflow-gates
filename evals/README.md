@@ -759,6 +759,9 @@ scripts/venv-run.sh python3 evals/run_review_bench.py freeze --k 10 --campaign-s
 # Compute a campaign's verdicts:
 scripts/venv-run.sh python3 evals/run_review_bench.py analyze \
   --reviewer-records-path <reviewer.jsonl> --judge-records-path <judge.jsonl> --k 10
+
+# Simulate the false-adopt and power rates of the sign-flip test and fixture t-interval on synthetic data (no model, no spend):
+scripts/venv-run.sh python3 evals/run_review_bench.py calibrate --metric recall --k 10 --fixtures 20 --replicates 200
 ```
 
 `mine-pr-comments` needs an authenticated `gh` for github.com. The ambient
@@ -1522,6 +1525,85 @@ task, so every rate in the secondary outcome prints `n/a`. A task's rate is its
 valid runs' mean docstring lines over their mean code lines. The pooled rate
 weights each task by its code lines. The rates carry no interval.
 
+`summarize` then reports two further secondary outcomes that separate how
+often an agent writes a docstring from how long each one is. Both cover Python
+class and function docstrings in non-test files, over the primary difference's
+paired tasks. Each prints the `toolkit` figure, the `bare` figure, the merged
+commits' (reference) figure and the `toolkit - bare` difference with a 95%
+bootstrap interval and the count of resamples dropped because an arm's
+denominator summed to zero. Both pool as the primary outcome does: a ratio of
+sums over each task's mean per valid run. Neither carries a threshold.
+
+- Words per new docstring is the words in new docstrings over the count of new
+  docstrings. A new docstring is a class or function docstring that has a
+  non-empty line range and whose lines are all added.
+  - A module docstring is not one.
+  - A one-line docstring on its `def` line is not one, since its line is also
+    code.
+  - A docstring that gains lines inside an existing one is not one.
+  - A docstring written whole onto an existing definition is one.
+
+  The share below counts a definition as undocumented when its one-line
+  docstring shares its `def` or `class` line, since that docstring is not
+  counted as new.
+- The share of new definitions with a new docstring is the count of new
+  definitions whose docstring is new over the count of new definitions. A new
+  definition is a class or function, methods and nested ones included, whose
+  `def` or `class` line and the first line of whose first body statement are
+  both added. A signature edit alone is no new definition. A docstring added
+  to an existing definition without a signature edit enters the first figure
+  and not this one, so the share stays between 0 and 1.
+
+The counts see added line numbers only, so a rewritten line reads as a new
+one. The cases that follow from this are:
+
+- An edit to both a definition's `def` or `class` line and the first line of
+  its body counts that definition as new.
+- An edit to a signature together with a line inserted at the top of its body
+  counts that definition as new.
+- An edit to a definition whose body sits on its `def` line counts that
+  definition as new.
+- An edit to a one-line docstring on its own line counts that docstring as new.
+- Git's line alignment can also misattribute added lines, so a new
+  definition's first body line can read as unchanged and the definition goes
+  uncounted. This is a limit of the line-set approach, and the counts are noisy
+  at that edge.
+
+A multi-line docstring is new under the rule in the words-per-new-docstring
+bullet above. The tests in `evals/test_replay_bench_comment_metrics.py` pin the
+rewritten-line cases.
+
+A Python file the parser rejects adds nothing to either figure, while the
+primary outcome's code lines still include it. A figure prints:
+
+- `n/a` when no paired task exists.
+- `n/a` when its denominator sums to zero.
+- `n/a`, for the reference, when the reference is unavailable or lacks the
+  paired tasks.
+- `not measured`, with the count of paired tasks lacking the counts, when any
+  valid run of a paired task, or a reference entry, predates the counts.
+
+A campaign or task set recorded before the counts keeps its records and reads
+`not measured`. Mining a task set again records the counts for the reference.
+
+Start, resume and summarize a campaign from checkouts that all have the
+`python_definition_counts` key or all lack it. A checkout that lacks the key
+still loads a task set mined with it, drops the counts and computes a different
+`task_set_hash`.
+
+Reading these two figures, and only these, since the 20% rule above stays the
+primary outcome's alone:
+
+- A nonzero dropped count means the interval covers only the resamples in
+  which neither arm's denominator summed to zero. A large share dropped makes
+  the readings below unreliable, because the surviving resamples over-represent
+  the tasks that carry the denominator.
+- A gap whose 95% interval covers zero is a null.
+- Any other gap is read with its sign: `toolkit` below `bare` means the
+  toolkit lowers the figure.
+- An effect on only some tasks can read as a null, because the interval also
+  carries the variation between tasks.
+
 The per-task lines and their task IDs stay in local output. So do the `run`
 progress lines and the halt messages, which print the same IDs beside per-task
 spend and ok and missing counts. An ID is two parts joined by a hyphen: the
@@ -1536,7 +1618,8 @@ repository root's `README.md` § "Requirements", git 2.32 or newer,
 Claude Code 2.1.271 or newer and `direnv` on `PATH`. Run it through
 `scripts/venv-run.sh python3`. Results are not a publication instrument,
 because the runner refuses no wider corpus. The design lives in
-`.claude/plans/docstring-verbosity-experiment.md`.
+`.claude/plans/docstring-verbosity-experiment.md`, and the design of the two
+per-docstring figures in `.claude/plans/replay-bench-per-docstring-metrics.md`.
 
 ### Usage
 

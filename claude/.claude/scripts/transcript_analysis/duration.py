@@ -20,9 +20,10 @@ def cmd_duration(args: argparse.Namespace) -> None:
     """
     branch_filter = scope._branch_filter(args)
     gap_secs: int = (getattr(args, "gap_minutes", None) or 30) * 60
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "duration", roots=roots)
-    scope.print_resolved_scope("duration", scope_label, roots)
+    scope.print_resolved_scope("duration", scope_label, roots, active_account_only=active_account_only)
 
     branch_timestamps: dict[str, list[float]] = defaultdict(list)
 
@@ -63,6 +64,7 @@ def _add_duration_subparser(subparsers: argparse._SubParsersAction) -> None:
     """
     p_duration = subparsers.add_parser("duration", help="Active span vs idle-gap decomposition per branch.")
     p_duration.add_argument("--branches", metavar="B1,B2,...")
-    scope._add_project_scope_args(p_duration)
+    scope._add_project_scope_args(p_duration, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_duration)
     p_duration.add_argument("--gap-minutes", type=int, default=30, metavar="N")
     p_duration.set_defaults(func=cmd_duration)

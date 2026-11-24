@@ -143,15 +143,18 @@ TEST_FILES = (
     "test_transcript_scope_scan.py",
     "test_transcript_scope_worktree_admission.py",
     "test_transcript_analysis_branch_prefilter.py",
+    "test_transcript_scope_absolute_projects.py",
     "test_transcript_publication_scope.py",
     "test_transcript_ledger_dispositions.py",
     "test_transcript_reviewer_reads.py",
     "test_transcript_reviewer_reads_report.py",
     "test_transcript_reviewer_reads_command.py",
+    "test_transcript_scope_active_account.py",
     "test_transcript_corpus.py",
     "test_transcript_routing_guard_capture.py",
     "test_transcript_routing_guard_compute.py",
     "test_transcript_analysis_multi_root_scope.py",
+    "test_transcript_analysis_listing_scope.py",
     "test_transcript_subagents_format_drift.py",
 )
 

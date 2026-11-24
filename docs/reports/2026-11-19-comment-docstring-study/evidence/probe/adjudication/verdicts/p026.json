@@ -1,0 +1,23 @@
+{
+ "packet_id": "p026",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"A project literally named with `--claude-worktrees-` falsely merges into another family."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"A project literally named with `--claude-worktrees-` falsely merges into another family."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "Accepted at current scale. If cost --by-project, buckets' Proj count, or"
+ },
+ "d": {
+  "pass": true,
+  "evidence": "Accepted at current scale. If cost --by-project, buckets' Proj count, or"
+ },
+ "e": {
+  "pass": false,
+  "evidence": "user-input's Scope project count ever shows an unexpected merge, re-evaluate."
+ }
+}

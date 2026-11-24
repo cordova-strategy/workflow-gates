@@ -1,0 +1,23 @@
+{
+ "packet_id": "p011",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from the message of a propagated scan error; see"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from the message of a propagated scan error; see"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "`_dedup_new_project_dirs` for why.\"\"\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "(`scope.py:254-257`): this level has no per-account ordinal to label the path with."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from the message of a propagated scan error; see"
+ }
+}

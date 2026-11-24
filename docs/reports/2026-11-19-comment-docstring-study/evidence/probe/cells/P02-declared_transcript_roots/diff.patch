@@ -1,0 +1,14 @@
+diff --git a/claude/.claude/scripts/_config_dir.py b/claude/.claude/scripts/_config_dir.py
+--- a/claude/.claude/scripts/_config_dir.py
++++ b/claude/.claude/scripts/_config_dir.py
+@@ -159,6 +159,10 @@
+ 
+ 
+ def declared_transcript_roots() -> list[Path]:
++    """Return the config dirs listed in ~/.claude/transcript-config-dirs (or
++    TRANSCRIPT_CONFIG_DIRS_FILE) that contain a `projects/` subdirectory.
++    See declared_roots_matching() for the parsing contract this builds on.
++    """
+     return declared_roots_matching(
+         lambda candidate: (candidate / "projects").is_dir(),
+         warn_prefix="declared_transcript_roots",

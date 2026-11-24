@@ -1,0 +1,9 @@
+diff --git a/claude/.claude/scripts/probe_synthetic/ctl_delete_active_users.py b/claude/.claude/scripts/probe_synthetic/ctl_delete_active_users.py
+--- a/claude/.claude/scripts/probe_synthetic/ctl_delete_active_users.py
++++ b/claude/.claude/scripts/probe_synthetic/ctl_delete_active_users.py
+@@ -9,4 +9,5 @@
+ 
+ 
+ def active_users(users):
++    """Return the users who logged in within the last 30 days. Delegates to filter_recent, which compares last_login with a cutoff built from ACTIVE_WINDOW_DAYS."""
+     return filter_recent(users)

@@ -102,10 +102,9 @@ _WORKTREE_SLUG_INFIX = "--claude-worktrees-"
 class _RepoProjectDirMatcher(NamedTuple):
     """The `--this-repo` admission rule for one project-dir name.
 
-    This is the minimization control for any caller that must scope a transcript read to this repo: output built from
-    it is routinely quoted into public PR descriptions, and transcripts under ~/.claude/projects/ span every project
-    on the machine. docs/transcript-analysis.md "Scoping to this repo" states what it admits and "Over-inclusions" the
-    cases it admits beyond this repo.
+    This is the minimization control for any caller that must scope a transcript read to this repo, since transcripts
+    under ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo"
+    states what it admits and "Over-inclusions" the cases it admits beyond this repo.
 
     Comparison is plain `str`, never `fnmatch` or `Path.glob`, so a glob metacharacter in the machine's home or
     username path cannot widen the match.
@@ -141,6 +140,9 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     That first worktree is the main checkout, or the bare repository's directory in a bare layout. A removed
     worktree's directory carries no live slug, so `_RepoProjectDirMatcher`, built from these slugs, also admits the
     names that extend the first slug with `_WORKTREE_SLUG_INFIX`.
+
+    It bounds projects, not accounts: a caller that reads every declared account still pools them, so its output is
+    local-only.
 
     A subagent file under an in-repo session is read regardless of the repo the subagent worked in, so scoping alone
     does not bound skill names under `--include-subagents`.
@@ -561,7 +563,18 @@ def _iter_glob_scoped_sessions(
         )
 
 
-def resolve_scan_roots(parsed: argparse.Namespace) -> list[Path]:
+def _narrows_to_active_account(args: argparse.Namespace) -> bool:
+    """True when none of --this-repo, --all-accounts and the top-level --config-dir
+    is set, so a narrowed command reads the active account alone.
+    """
+    return not (
+        getattr(args, "this_repo", False)
+        or getattr(args, "all_accounts", False)
+        or getattr(args, "config_dir", None)
+    )
+
+
+def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool = False) -> list[Path]:
     """Resolve one invocation's scan roots -- the single funnel every
     _resolve_project_scope caller threads `roots` through, replacing the
     default single-root PROJECTS_DIR scope everywhere except cost and
@@ -575,7 +588,8 @@ def resolve_scan_roots(parsed: argparse.Namespace) -> list[Path]:
     subdirectory, deduped by resolved real path. PROJECTS_DIR is listed
     first, so the active profile is always scanned first -- the "active
     profile first" convention analyze-context.py's session lookup also
-    relies on.
+    relies on. `active_account_only=True` returns PROJECTS_DIR alone, without
+    reading the declared-roots file.
 
     config_dir is read via getattr, not attribute access, matching
     _resolve_project_scope's own rationale below: this file's many
@@ -585,6 +599,8 @@ def resolve_scan_roots(parsed: argparse.Namespace) -> list[Path]:
     config_dir_arg = getattr(parsed, "config_dir", None)
     if config_dir_arg:
         return [Path(config_dir_arg) / "projects"]
+    if active_account_only:
+        return [_projects_dir()]
 
     roots = [_projects_dir()]
     seen_resolved = {_projects_dir().resolve()}
@@ -610,7 +626,8 @@ def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: 
 
     The flags are mutually exclusive. For a caller that routes through _resolve_project_scope,
     --this-repo is bounded by _RepoProjectDirMatcher, a minimization control built from
-    _repo_scoped_project_slugs(). --projects defaults to the machine-wide glob "*".
+    _repo_scoped_project_slugs(). --projects defaults to the glob "*", which matches every project directory
+    under each scanned root.
     this_repo_help replaces the --this-repo help for a caller whose --this-repo means something else.
     """
     group = parser.add_mutually_exclusive_group()
@@ -618,6 +635,27 @@ def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: 
     group.add_argument(
         "--this-repo", action="store_true",
         help=this_repo_help or f"Scope to {_THIS_REPO_SCOPE_HELP}.",
+    )
+
+
+# The narrowed commands' --this-repo help: unlike the shared default, it says the read spans every declared account.
+_POOLED_THIS_REPO_HELP = (
+    f"Scope to {_THIS_REPO_SCOPE_HELP}, read from every declared account unless a top-level --config-dir names one."
+)
+
+
+def _add_all_accounts_arg(parser: argparse.ArgumentParser) -> None:
+    """Register --all-accounts outside the --projects/--this-repo group, so it
+    combines with either. pr-cost and review-cost-by-size keep their own
+    registrations, whose help is specific to their ledger."""
+    parser.add_argument(
+        "--all-accounts", action="store_true",
+        help=(
+            "Read every account ~/.claude/transcript-config-dirs declares, not the active account's"
+            " alone. It adds no repository bound; --this-repo bounds the run to this repo."
+            " The output is not for publication"
+            " (see docs/private-project-redaction.md)."
+        ),
     )
 
 
@@ -732,6 +770,7 @@ def _resolve_project_scope(
             f"this repo ({counts.live + counts.unlisted} project dirs: {counts.live} live, {counts.unlisted} unlisted)",
         )
     glob = getattr(args, "projects", None) or "*"
+    _refuse_absolute_projects_glob(glob, subcommand)
     if len(roots) == 1:
         if scan_gaps is not None:
             raise ValueError(
@@ -755,7 +794,7 @@ def _resolve_project_scope(
     return _iter_glob_scoped_sessions(roots, glob, include_subagents, scan_gaps=scan_gaps), glob
 
 
-def _root_count_desc(roots: Sequence[Path]) -> str:
+def _root_count_desc(roots: Sequence[Path], *, active_account_only: bool = False) -> str:
     """Render the root-count clause of the resolved-scope header (e.g. "1 root
     (no ~/.claude/transcript-config-dirs declared)" or "3 roots").
 
@@ -769,6 +808,10 @@ def _root_count_desc(roots: Sequence[Path]) -> str:
     additional root" -- claiming "no ... declared" about a file that exists
     would misrepresent it. The >1-root branch never names the file: extra
     roots may come from --config-dir, not only a declared-roots file.
+
+    `active_account_only` marks a narrowed command's default run. At one root
+    it replaces the "present" wording with a clause naming the flags that read
+    the declared roots, whether or not the file lists any.
     """
     if len(roots) != 1:
         return f"{len(roots)} roots"
@@ -777,10 +820,14 @@ def _root_count_desc(roots: Sequence[Path]) -> str:
         return f"1 root (no {TRANSCRIPT_CONFIG_DIRS_LABEL} declared)"
     if state == "unreadable":
         return f"1 root ({TRANSCRIPT_CONFIG_DIRS_LABEL} present but unreadable)"
+    if active_account_only:
+        return f"1 root (active account only; --this-repo or --all-accounts also reads {TRANSCRIPT_CONFIG_DIRS_LABEL})"
     return f"1 root ({TRANSCRIPT_CONFIG_DIRS_LABEL} declared but contributed no additional root)"
 
 
-def _resolved_scope_header(subcommand: str, scope_label: str, roots: Sequence[Path]) -> str:
+def _resolved_scope_header(
+    subcommand: str, scope_label: str, roots: Sequence[Path], *, active_account_only: bool = False,
+) -> str:
     """Build the one-line resolved-scope header text, shared by print_resolved_scope
     and any caller (e.g. judgment-pair's --out file) that needs the header written
     somewhere other than a live print call.
@@ -796,10 +843,13 @@ def _resolved_scope_header(subcommand: str, scope_label: str, roots: Sequence[Pa
     itself, keeping this return value the single line judgment-pair's --out file
     contract requires.
     """
-    return f"{subcommand.upper().replace('-', ' ')} SOURCES ({scope_label}; {_root_count_desc(roots)})"
+    root_count = _root_count_desc(roots, active_account_only=active_account_only)
+    return f"{subcommand.upper().replace('-', ' ')} SOURCES ({scope_label}; {root_count})"
 
 
-def print_resolved_scope(subcommand: str, scope_label: str, roots: Sequence[Path], *, file=None) -> None:
+def print_resolved_scope(
+    subcommand: str, scope_label: str, roots: Sequence[Path], *, file=None, active_account_only: bool = False,
+) -> None:
     """Print the one-line resolved-scope header cmd_skill_invocation already uses,
     so machine-wide vs. --this-repo output is never scope-ambiguous. `file` defaults
     to stdout (resolved at call time, not import time — a `sys.stdout` default
@@ -807,7 +857,10 @@ def print_resolved_scope(subcommand: str, scope_label: str, roots: Sequence[Path
     capture and any later reassignment); audit-routing-samples routes it to stderr
     instead, since its stdout is a JSON (or curation-markdown) data stream a header
     line would corrupt."""
-    print(_resolved_scope_header(subcommand, scope_label, roots), file=file or sys.stdout)
+    print(
+        _resolved_scope_header(subcommand, scope_label, roots, active_account_only=active_account_only),
+        file=file or sys.stdout,
+    )
 
 
 _DO_NOT_PUBLISH_BANNER = (
@@ -1056,6 +1109,23 @@ def _single_level_projects_glob(value: str) -> str:
             "must match one project-directory name: no '/' or '**', and not '.' or '..'"
         )
     return value
+
+
+def _refuse_absolute_projects_glob(projects_glob: str, subcommand: str) -> None:
+    """Exit 2 on an absolute --projects value, at every root count.
+
+    Path.glob raises NotImplementedError on an absolute pattern, and
+    corpus.iter_sessions is a generator, so that raise would surface on the
+    caller's first next(), after any scan or redact-map build it had started.
+    """
+    if Path(projects_glob).anchor:
+        print(
+            f"{subcommand}: --projects: must be a glob under each root's projects/ directory,"
+            " not an absolute path; --this-repo scopes to this repository;"
+            " pass the project directory name, e.g. --projects='-home-user-repo*'",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
 
 def _branch_filter(args: argparse.Namespace) -> set[str] | None:

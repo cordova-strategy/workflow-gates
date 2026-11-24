@@ -1,0 +1,15 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/review_rounds.py b/claude/.claude/scripts/transcript_analysis/review_rounds.py
+--- a/claude/.claude/scripts/transcript_analysis/review_rounds.py
++++ b/claude/.claude/scripts/transcript_analysis/review_rounds.py
+@@ -849,6 +849,11 @@
+ 
+ 
+ def _pooled_branch_aggregates(per_branch: Sequence[_PooledBranchTotals]) -> _PooledBranchTotals:
++    """Elementwise-sum a list of _PooledBranchTotals into one pooled total
++    -- reused identically for the true sample (point estimate) and for
++    every bootstrap resample's own draw, so every reported statistic is
++    computed the same way regardless of which list it was handed.
++    """
+     return _PooledBranchTotals(
+         round_dollars=sum(b.round_dollars for b in per_branch),
+         agent_dollars=sum(b.agent_dollars for b in per_branch),

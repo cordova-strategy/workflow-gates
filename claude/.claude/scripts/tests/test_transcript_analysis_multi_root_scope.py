@@ -35,14 +35,24 @@ from transcript_analysis import (
     struggle,
     subagent_mix,
     subagents,
+    turn_shape,
 )
 
+from ._account_scope_helpers import (
+    ACTIVE_ACCOUNT_CLAUSE,
+    ACTIVE_ROOT_SENTINEL,
+    DECLARED_ROOT_SENTINEL,
+    _sessions_args,
+    seed_one_session_per_root,
+    write_judgment_pair_session,
+)
 from ._audit_routing_helpers import _audit_routing_samples_args, _audit_routing_shape_args
 from ._cache_rebuild_helpers import _cache_rebuild_args
 from ._commit_gate_helpers import _gate_args
 from ._handoff_nudge_helpers import _rearm_backtest_args, _spend_over_threshold_args
-from ._skill_helpers import _judgment_pair_args, _review_asst, _skill_inv_args, _skill_pair_args, _user_reply
+from ._skill_helpers import _judgment_pair_args, _skill_inv_args, _skill_pair_args
 from ._subagent_helpers import _subagents_args
+from ._turn_shape_helpers import _turn_shape_args
 from .conftest import (
     _audit_routing_args,
     _context_distribution_args,
@@ -69,60 +79,63 @@ def _fake_gh_pr_list_run(cmd, *a, **k):
     return subprocess.CompletedProcess(cmd, 0, "", "")
 
 
-# (cli_name, header_name, cmd_func, zero-arg args factory) for the
+# (cli_name, header_name, cmd_func, zero-arg args factory, narrowed) for the
 # subcommands whose resolved-scope header prints unconditionally, even over
-# an empty scope. review-trace and skill-invocation print unconditionally
-# too, but carry zero-match message text and branches the other rows don't, so
-# they get their own tests below rather than a row here.
-_UNCONDITIONAL_HEADER_CASES: list[tuple[str, str, object, object]] = [
+# an empty scope. `narrowed` marks a command that reads the active account
+# alone unless --this-repo or --all-accounts widens it. review-trace and
+# skill-invocation print unconditionally too, but carry zero-match message
+# text and branches the other rows don't, so they get their own tests below
+# rather than a row here.
+_UNCONDITIONAL_HEADER_CASES: list[tuple[str, str, object, object, bool]] = [
     ("buckets", "BUCKETS", buckets.cmd_buckets,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})()),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})(), True),
     ("fail-seq", "FAIL SEQ", fail_seq.cmd_fail_seq,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": "main"})()),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": "main"})(), False),
     ("struggle", "STRUGGLE", struggle.cmd_struggle,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})()),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})(), True),
     ("duration", "DURATION", duration.cmd_duration,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})()),
-    ("subagents", "SUBAGENTS", subagents.cmd_subagents, _subagents_args),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None})(), True),
+    ("subagents", "SUBAGENTS", subagents.cmd_subagents, _subagents_args, False),
     ("subagent-mix", "SUBAGENT MIX", subagent_mix.cmd_subagent_mix,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None, "per_session": False})()),
-    ("reviewer-yield", "REVIEWER YIELD", reviewer_yield.cmd_reviewer_yield, _reviewer_yield_args),
-    ("skill-pair", "SKILL PAIR", skill_pair.cmd_skill_pair, _skill_pair_args),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "branches": None, "per_session": False})(), False),
+    ("reviewer-yield", "REVIEWER YIELD", reviewer_yield.cmd_reviewer_yield, _reviewer_yield_args, False),
+    ("skill-pair", "SKILL PAIR", skill_pair.cmd_skill_pair, _skill_pair_args, False),
     ("pr-link", "PR LINK", pr_link.cmd_pr_link,
      lambda: type("A", (), {
          "projects": "*", "this_repo": False, "branches": "main",
          "repo": "owner/repo", "author": None,
-     })()),
-    ("commit-gate", "COMMIT GATE", commit_gate.cmd_commit_gate, lambda: _gate_args("code-review")),
-    ("audit-routing", "AUDIT ROUTING", audit_routing.cmd_audit_routing, _audit_routing_args),
-    ("cost", "COST", cost.cmd_cost, _cost_args),
-    ("context-distribution", "CONTEXT DISTRIBUTION", context_distribution.cmd_context_distribution, _context_distribution_args),
+     })(), False),
+    ("commit-gate", "COMMIT GATE", commit_gate.cmd_commit_gate, lambda: _gate_args("code-review"), False),
+    ("audit-routing", "AUDIT ROUTING", audit_routing.cmd_audit_routing, _audit_routing_args, True),
+    ("cost", "COST", cost.cmd_cost, _cost_args, False),
+    ("context-distribution", "CONTEXT DISTRIBUTION", context_distribution.cmd_context_distribution,
+     _context_distribution_args, False),
     ("context-composition", "CONTEXT COMPOSITION", context_composition.cmd_context_composition,
      lambda: type("A", (), {
          "projects": "*", "this_repo": False, "since": None, "no_redact": False, "extra_config_dirs": None,
-     })()),
-    ("cost-trend", "COST TREND", cost.cmd_cost_trend, _cost_trend_args),
-    ("cache-rebuild", "CACHE REBUILD", cache_rebuild.cmd_cache_rebuild, _cache_rebuild_args),
-    ("spend-over-threshold", "SPEND OVER THRESHOLD", spend_over_threshold.cmd_spend_over_threshold, _spend_over_threshold_args),
-    ("rearm-backtest", "REARM BACKTEST", rearm_backtest.cmd_rearm_backtest, _rearm_backtest_args),
-    ("audit-routing-shape", "AUDIT ROUTING SHAPE", audit_routing.cmd_audit_routing_shape, _audit_routing_shape_args),
-    ("audit-routing-samples", "AUDIT ROUTING SAMPLES", audit_routing.cmd_audit_routing_samples, _audit_routing_samples_args),
-    ("judgment-pair", "JUDGMENT PAIR", judgment_pair.cmd_judgment_pair, _judgment_pair_args),
+     })(), False),
+    ("cost-trend", "COST TREND", cost.cmd_cost_trend, _cost_trend_args, False),
+    ("cache-rebuild", "CACHE REBUILD", cache_rebuild.cmd_cache_rebuild, _cache_rebuild_args, False),
+    ("spend-over-threshold", "SPEND OVER THRESHOLD", spend_over_threshold.cmd_spend_over_threshold,
+     _spend_over_threshold_args, False),
+    ("rearm-backtest", "REARM BACKTEST", rearm_backtest.cmd_rearm_backtest, _rearm_backtest_args, False),
+    ("audit-routing-shape", "AUDIT ROUTING SHAPE", audit_routing.cmd_audit_routing_shape, _audit_routing_shape_args, False),
+    ("turn-shape", "TURN SHAPE", turn_shape.cmd_turn_shape, _turn_shape_args, False),
+    ("audit-routing-samples", "AUDIT ROUTING SAMPLES", audit_routing.cmd_audit_routing_samples,
+     _audit_routing_samples_args, True),
+    ("judgment-pair", "JUDGMENT PAIR", judgment_pair.cmd_judgment_pair, _judgment_pair_args, True),
     ("edit-format", "EDIT FORMAT", edit_format.cmd_edit_format,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "no_redact": False, "extra_config_dirs": None})()),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "no_redact": False, "extra_config_dirs": None})(), False),
     ("read-scope", "READ SCOPE", read_scope.cmd_read_scope,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "no_redact": False, "extra_config_dirs": None})()),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "no_redact": False, "extra_config_dirs": None})(), False),
     ("instrument-authoring", "INSTRUMENT AUTHORING", instrument_authoring.cmd_instrument_authoring,
-     lambda: type("A", (), {"projects": "*", "this_repo": False, "extra_config_dirs": None})()),
-    ("cost-ledger", "COST LEDGER", cost_ledger.cmd_cost_ledger, _cost_ledger_args),
+     lambda: type("A", (), {"projects": "*", "this_repo": False, "extra_config_dirs": None})(), False),
+    ("cost-ledger", "COST LEDGER", cost_ledger.cmd_cost_ledger, _cost_ledger_args, False),
     ("plan-boundary", "PLAN BOUNDARY", plan_boundary.cmd_plan_boundary,
      lambda: type("A", (), {
          "projects": "*", "this_repo": False, "since": None, "no_redact": False, "extra_config_dirs": None,
-     })()),
-    ("sessions", "SESSIONS", sessions.cmd_sessions,
-     lambda: type("A", (), {
-         "projects": "*", "this_repo": False, "paths": True, "include_subagents": False,
-     })()),
+     })(), False),
+    ("sessions", "SESSIONS", sessions.cmd_sessions, _sessions_args, True),
 ]
 
 
@@ -135,9 +148,12 @@ class TestAllSubcommandsSingleRootHeader:
 
     _HEADER_SUFFIX = "1 root (no ~/.claude/transcript-config-dirs declared))"
 
-    @pytest.mark.parametrize("subcommand,header_name,cmd_func,args_factory", _UNCONDITIONAL_HEADER_CASES)
+    @pytest.mark.parametrize(
+        "subcommand,header_name,cmd_func,args_factory",
+        [case[:4] for case in _UNCONDITIONAL_HEADER_CASES],
+    )
     def test_header_states_one_root_and_no_progress_line_prints(
-        self, fake_projects, cost_ledger_file, monkeypatch, capsys, subcommand, header_name, cmd_func, args_factory
+        self, fake_projects, cost_ledger_file, monkeypatch, capsys, subcommand, header_name, cmd_func, args_factory,
     ):
         monkeypatch.setattr(subprocess, "run", _fake_gh_pr_list_run)
         cmd_func(args_factory())
@@ -295,9 +311,9 @@ class TestRootsThreadingSpy:
     assertions from the header test above still apply; only the call
     arguments are additionally recorded."""
 
-    @pytest.mark.parametrize("subcommand,header_name,cmd_func,args_factory", _UNCONDITIONAL_HEADER_CASES)
+    @pytest.mark.parametrize("subcommand,header_name,cmd_func,args_factory,narrowed", _UNCONDITIONAL_HEADER_CASES)
     def test_resolve_project_scope_and_header_receive_identical_multi_root_list(
-        self, tmp_path, cost_ledger_file, monkeypatch, subcommand, header_name, cmd_func, args_factory
+        self, tmp_path, cost_ledger_file, monkeypatch, subcommand, header_name, cmd_func, args_factory, narrowed
     ):
         expected_roots = _two_declared_roots(tmp_path, monkeypatch)
         scope_calls: list[list] = []
@@ -318,7 +334,11 @@ class TestRootsThreadingSpy:
         monkeypatch.setattr(scope, "print_resolved_scope", spy_print)
         monkeypatch.setattr(subprocess, "run", _fake_gh_pr_list_run)
 
-        cmd_func(args_factory())
+        args = args_factory()
+        if narrowed:
+            args.all_accounts = True  # a narrowed command reads one root without it
+
+        cmd_func(args)
 
         assert scope_calls, f"{subcommand}: _resolve_project_scope was never called"
         assert header_calls, f"{subcommand}: print_resolved_scope was never called"
@@ -353,7 +373,10 @@ class TestRootsThreadingSpy:
         monkeypatch.setattr(scope, "_resolve_project_scope", spy_resolve)
         monkeypatch.setattr(scope, "print_resolved_scope", spy_print)
 
-        review_trace.cmd_review_trace(_review_trace_args())
+        args = _review_trace_args()
+        args.all_accounts = True  # the timeline reads one root without it
+
+        review_trace.cmd_review_trace(args)
 
         assert scope_calls[-1] == expected_roots
         assert header_calls[-1] == expected_roots
@@ -374,7 +397,10 @@ class TestRootsThreadingSpy:
 
         monkeypatch.setattr(scope, "_iter_glob_scoped_sessions", spy_glob_scoped)
 
-        skill_invocation.cmd_skill_invocation(_skill_inv_args())  # projects="*" -- the explicit-glob branch
+        args = _skill_inv_args()  # projects="*" -- the explicit-glob branch
+        args.all_accounts = True  # an explicit glob reads one root without it
+
+        skill_invocation.cmd_skill_invocation(args)
 
         assert calls, "_iter_glob_scoped_sessions was never called"
         assert calls[-1] == expected_roots
@@ -464,9 +490,13 @@ class TestMultiRootFormatOutliers:
             proj.mkdir(parents=True)
             _write_jsonl(proj / f"sess-{idx}.jsonl", [_opus([_read_use("r1", "/a.py")], out=100)])
 
-        audit_routing.cmd_audit_routing_samples(_audit_routing_samples_args())
+        args = _audit_routing_samples_args()
+        args.all_accounts = True  # a default run reads one root
+
+        audit_routing.cmd_audit_routing_samples(args)
         out, err = capsys.readouterr()
         assert "2 roots" in err  # header routed to stderr, matching audit-routing-samples' convention
+        assert scope._DO_NOT_PUBLISH_BANNER in err  # above one root the banner joins the header on stderr
         # The per-root progress line is gated on len(roots) > 1, so above one
         # root (unlike TestAllSubcommandsSingleRootHeader's assertions) it must print.
         assert "scanning root 1/2..." in err
@@ -474,27 +504,35 @@ class TestMultiRootFormatOutliers:
         records = json.loads(out)
         assert {rec["session_id"] for rec in records} == {"sess-0", "sess-1"}
 
-    def test_judgment_pair_out_file_still_one_header_line_across_declared_roots(
+    def test_judgment_pair_out_file_one_header_line_under_all_accounts(
         self, tmp_path, monkeypatch
     ):
         roots = _two_declared_roots(tmp_path, monkeypatch)
-        for idx, root in enumerate(roots):
-            proj = root / f"-home-user-repo-{idx}"
-            proj.mkdir(parents=True)
-            _write_jsonl(proj / f"sess-{idx}.jsonl", [
-                _skill_use_rec("code-review", "2026-05-20T10:00:00.000Z"),
-                _review_asst("Logic error in retry loop.", "2026-05-20T10:01:00.000Z"),
-                _user_reply("Will fix the retry logic."),
-            ])
+        seed_one_session_per_root(roots, write_judgment_pair_session)
         out_file = roots[0].parent / "out.txt"
+        args = _judgment_pair_args(out=str(out_file))
+        args.all_accounts = True
 
-        judgment_pair.cmd_judgment_pair(_judgment_pair_args(out=str(out_file)))
+        judgment_pair.cmd_judgment_pair(args)
         content = out_file.read_text()
         lines = content.splitlines()
         assert lines[0] == "JUDGMENT PAIR SOURCES (*; 2 roots)"
         header_lines = [ln for ln in lines if ln.startswith("JUDGMENT PAIR SOURCES")]
         assert len(header_lines) == 1
-        assert content.count("Logic error in retry loop.") == 2  # one block per root's session
+        assert ACTIVE_ROOT_SENTINEL in content and DECLARED_ROOT_SENTINEL in content
+
+    def test_judgment_pair_out_file_header_names_the_active_account_read(
+        self, tmp_path, monkeypatch
+    ):
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        seed_one_session_per_root(roots, write_judgment_pair_session)
+        out_file = roots[0].parent / "out.txt"
+
+        judgment_pair.cmd_judgment_pair(_judgment_pair_args(out=str(out_file)))
+        content = out_file.read_text()
+        assert content.splitlines()[0] == f"JUDGMENT PAIR SOURCES (*; {ACTIVE_ACCOUNT_CLAUSE})"
+        assert ACTIVE_ROOT_SENTINEL in content
+        assert DECLARED_ROOT_SENTINEL not in content
 
 
 class TestSkillFilesQuoteRootCountDescLiteral:
@@ -511,6 +549,22 @@ class TestSkillFilesQuoteRootCountDescLiteral:
         for skill_name in ("transcript-analysis", "transcript-narrative"):
             skill_text = (SKILLS_DIR / skill_name / "SKILL.md").read_text()
             assert literal in skill_text, f"{skill_name}/SKILL.md does not quote _root_count_desc()'s literal"
+
+    def test_active_account_clause_over_an_empty_roots_file_appears_whole_in_the_transcript_analysis_skill(
+        self, tmp_path, monkeypatch,
+    ):
+        """A header reading the active-account clause says the roots file was present, so it differs from the
+        absent-state literal; the skill quotes it whole so a reader recognises what it covered."""
+        empty_roots_file = tmp_path / "roots"
+        empty_roots_file.write_text("")
+        monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(empty_roots_file))
+        root = tmp_path / "acct-a" / "projects"
+        active_account_clause = scope._root_count_desc([root], active_account_only=True)
+        monkeypatch.setenv("TRANSCRIPT_CONFIG_DIRS_FILE", str(tmp_path / "does-not-exist"))
+        absent_state_literal = scope._root_count_desc([root])
+        assert active_account_clause != absent_state_literal
+        skill_text = (SKILLS_DIR / "transcript-analysis" / "SKILL.md").read_text()
+        assert active_account_clause in skill_text
 
 
 class TestSkillFilesReportObservedScopeNotUnionGuarantee:
