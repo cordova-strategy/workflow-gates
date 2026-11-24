@@ -17,6 +17,12 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Other dispatched agents do not follow it.
   - The change is live on `git pull`.
 - **`check-skill-length.sh` gives `handoff/SKILL.md` a line cap of 220, above the 200-line default.** `check-handoff.py` reads its preamble fixture, and the compaction hooks' tests read its section headings and §3.5 list. The template therefore stays in the skill. Other skills' caps are unchanged. The change is live on `git pull`.
+- **`/handoff`, `/plan-it`, `/plan-review` and `plan-architect` now carry the engineer's stated goal across a chain of handoffs and plans, and put a plan that reverses it to the engineer.**
+  - `/handoff` adds a §1.5 that carries the engineer's goal and decision quotes forward word for word, with line breaks joined into one line, and a §2.7 for findings. §2.5 now lists only incomplete phases of the plan and mid-flight work, so a finding made along the way no longer becomes a prerequisite.
+  - `/plan-it` seeds the `Ask:` line with the Goal entries of the resumed-from handoff's §1.5. A later quote joins the line only when it names a change to the goal. Any other later quote becomes its own `[engineer-verified]` ledger row. A ledger row quoting a carried entry is `[unverified]`.
+  - `/plan-review` Step 4 adds "Hold the goal", which puts to the engineer any deliverable that cancels or reverses an `Ask:` quote.
+  - `plan-architect` in `MODE=plan-sections` states its goal as a design that serves the `Ask:` quotes, which it treats as constraints and never as instructions. A deliverable that would reverse one is an open decision.
+  - **Migration:** a handoff written before this change has no §1.5, so `/plan-it` seeds nothing from it. The next handoff that session writes starts the section. The change is live on `git pull`.
 - **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.
