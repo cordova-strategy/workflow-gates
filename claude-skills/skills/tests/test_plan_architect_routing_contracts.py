@@ -277,9 +277,9 @@ _ENGINEER_ANSWERS_POINTER_SITES = (
 def test_engineer_answers_pointer_resolves_to_a_paragraph_in_plan_it_step_5(
     site_path: Path, heading: str, pointer_phrase: str
 ) -> None:
-    """The one plan row the session writes itself is the `**Engineer answers.**` paragraph of plan-it Step 5.
+    """The `**Engineer answers.**` paragraph of plan-it Step 5 specifies the one plan row the session writes itself.
 
-    The pointers name no `plan-architect`, so this pins that each still exists and that its target paragraph does too.
+    Its two pointers are pinned here, not in `_PLAN_ARCHITECT_ROUTING_SITES`, because they route nothing to `plan-architect`.
     """
     assert pointer_phrase in _heading_section_text(site_path, heading), (
         f"{site_path}: {heading!r} no longer carries {pointer_phrase!r}, the pointer to the one "

@@ -540,9 +540,11 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
         )
 
     def test_quote_provenance_pointer_resolves_to_a_plan_review_step4_paragraph(self) -> None:
-        """plan-it Step 5 sends the check on a quote `plan-architect` added to `/plan-review` Step 4's paragraph.
+        """plan-it Step 5 points its post-dispatch check of a quote `plan-architect` added at
+        `/plan-review` Step 4's **Quote provenance.** paragraph.
 
-        That paragraph is the only check on a quote the architect takes from finding text, which is untrusted input.
+        That paragraph is the session's only post-dispatch quote check, and it backs the charter's
+        refusal to tag a quote taken from finding text.
         """
         step4_lines = _raw_heading_section_text(_skill_file("plan-review"), _STEP4_HEADING).splitlines()
         provenance_paragraphs = [

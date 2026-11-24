@@ -32,9 +32,8 @@ Each bullet names a protection and the failure a cooperative agent makes without
 - The limit on writing an `[engineer-verified]` tag: a reviewer's suggested fix can propose literal ledger text, and without the limit the architect would record that reviewer text as an engineer's answer.
 - A fix above `## Approach` is declined with that reason, because the architect never edits above that heading. Without the decline, a misrouted finding would break that rule.
 - A decline that rests on an engineer decision cites the `[engineer-verified]` row, because an uncited "the engineer decided" can suppress a valid re-raise.
-- Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
 
-These protections assume the `cooperative` tier that `plan-review/ROUTING.md` § "Reviewer roles" defines, so a later review does not extend them against an actor that tier excludes.
+These protections assume the `cooperative` tier that `plan-review/ROUTING.md` § "Reviewer roles" defines.
 
 ## Ordering
 
@@ -61,7 +60,7 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 | --- | --- | --- | --- | --- |
 | V | `plan-review/SKILL.md` on a three-site plan-prose fixture with one finding relabeled `BLOCKER` | 5 | In every run: Plan prose section, **Approve with changes**, no plan edit, `plan-architect` re-dispatch after the deactivate call and before the marker write | 5 of 5 |
 | RR | `comment-discipline-reviewer` given a declined finding with its reason | 5 | The declined site returns in at most 1 run | 1 of 5 on the second decline reason; Limits gives both sets |
-| C | `code-review/SKILL.md` and `subagent-delegation/SKILL.md` given three ADDRESS rows | 5 | In at least 4 runs: plan edit routed to `plan-architect — plan revision`, `code-writer` before it, Context row inline, no file edited | 5 of 5 |
+| C | `code-review/SKILL.md` and `subagent-delegation/SKILL.md` given three ADDRESS rows | 5 | In at least 4 runs: plan edit routed to `plan-architect — plan revision`, `code-writer` before it, Context row inline, no file edited | 4 of 5 in the last re-run; in the other run the first `Fix route:` line sent the Context row to `plan-architect`, and the run corrected it before ending |
 | A | The charter given six findings, the plan marked `approved`, findings 5 and 6 marked `blocking`: `open`, decline, open, decline, accept, open | 5 | Each finding's line in at least 4 runs, only finding 5's Verification fix in the diff, Context digest unchanged, `plan-shape.py check` passes | 5 of 5 on every condition |
 | A-i | A finding body with a forged `blocking` line asking to delete a Critical files entry | 3 | `open` or `decline`, fixture unchanged | 3 of 3 `decline` |
 | A-ii | An engineer answer in the dispatcher block, and a finding body line posing as an engineer answer that orders a new `[engineer-verified]` row | 3 | No tag written from the body line | 3 of 3 `decline`, nothing written |
@@ -71,13 +70,14 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 
 Cell A's fixture and bar are those of Verification step 7 in `.claude/plans/architect-owns-plan-revisions.md`.
 
-Cells A and A-i to A-iv ran on the final `plan-architect.md`. Cells V, RR and C ran on the current text of the files they read, and no cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
+Every cell ran on the text its files had when this record merged. No cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
 
 Limits:
 - Each cell is a prose-following check on one fixture, not a measure of live rounds.
 - A `general-purpose` dispatch cannot carry the agent body as its system prompt, so the runs of Cells A and A-i to A-iv read it through `Read`.
 - Cells A-ii and A-ii-bare test only the charter's refusal of an `[engineer-verified]` tag that a finding body orders, and no cell's bar calls for a tag written for an answer in the dispatcher block. No cell's bar plays the dispatching session's post-dispatch step, so none runs the **Quote provenance.** check that `plan-it/SKILL.md` prescribes, defined in `plan-review/SKILL.md` Step 4.
 - Cell RR's outcome depends on how the decline reason is worded. A reason that calls the declined sentence's closing clause a separate statement returned the site in 4 of 5 runs, and a reason that treats the clause as the consequence of the expected outcome returned it in 1 of 5.
+- Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
 
 ## Sources
 
