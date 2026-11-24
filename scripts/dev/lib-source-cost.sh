@@ -13,7 +13,7 @@
 #   Compare full's cost_ms across the two runs, never its figure_ms.
 #   Count the change as a saving only when it exceeds the larger of the two full rows' floor_ms.
 #   Cite the before run's minus-<cluster> or param-expansion row, the interleaved estimate of the same change, when the cross-run change misses it by more than that floor.
-#   The param-expansion saving is the price at a small parent shell. A fork from a hook that has loaded the lib is expected, not measured, to cost more.
+#   The param-expansion row's saving is measured under a small parent shell. A fork from a hook that has loaded the lib is expected, not measured, to cost more.
 set -euo pipefail
 checkout_root=$(git rev-parse --show-toplevel) || exit 1
 # Sourcing the checkout's _config.sh is the bash floor gate: a below-floor bash stops here with its fix text.

@@ -602,7 +602,7 @@ def test_usage_error_exits_2_with_the_usage_line(tmp_path, arguments):
     assert result.stderr.startswith("usage: lib-source-cost.sh")
 
 
-def test_relative_script_path_resolves_the_lib_without_consulting_cdpath(tmp_path):
+def test_relative_script_path_finds_its_library_without_consulting_cdpath(tmp_path):
     # The decoy's scripts/dev is what a cd-based lookup of the relative script directory would resolve to through CDPATH.
     decoy_dir = tmp_path / "cdpath-decoy"
     (decoy_dir / "scripts" / "dev").mkdir(parents=True)

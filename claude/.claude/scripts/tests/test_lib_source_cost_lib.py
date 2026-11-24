@@ -754,7 +754,7 @@ def test_build_arm_of_the_tail_cut_moves_the_same_spans_that_total_deletion_dele
 
 
 def _status_of_a_call_with_errexit_off(call: str) -> subprocess.CompletedProcess:
-    """Run `call` the way the script does, under `|| status=$?`, where -e is off inside the callee."""
+    """Run `call` on the left of a `||` list, as the script's `|| exit 1` calls do, so -e is off inside the callee."""
     return _run_bash(f'status=0\n{call} || status=$?\necho "$status"')
 
 
