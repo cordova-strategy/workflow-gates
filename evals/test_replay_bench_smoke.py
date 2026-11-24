@@ -281,8 +281,8 @@ class TestWhichFailuresSmokeRetries:
         assert not smoke_pass_exists(world)
 
     @pytest.mark.parametrize("first_failure", [
-        Scenario(no_output=True), Scenario(raises=OSError("synthetic")),
-    ], ids=["launch-no-output", "launch-error"])
+        Scenario(no_output=True), Scenario(raises=OSError("synthetic")), Scenario(omit_result_event=True),
+    ], ids=["launch-no-output", "launch-error", "no-result-event"])
     def test_a_non_instrument_failure_retries_once(
         self, world, capsys, first_failure,
     ):

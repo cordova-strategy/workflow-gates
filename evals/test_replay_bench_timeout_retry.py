@@ -18,7 +18,7 @@ def campaign_env(tmp_path, monkeypatch):
 
 class TestATimedOutAttempt:
     def test_a_campaign_retries_it_once(self, campaign_env):
-        """`run_campaign` builds its own `RunSettings`, so this guards the set it passes."""
+        """`run_campaign` builds its own `RunSettings` and relies on the field default, so this guards that default."""
         launch_stub = campaign_env.world.launch(lambda _attempt_number, _agent_name: Scenario(timed_out=True, cost=None))
 
         campaign_env.run(launch_stub, arm_names=(arms.TOOLKIT.name,))

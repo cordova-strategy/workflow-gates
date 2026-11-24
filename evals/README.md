@@ -1691,13 +1691,16 @@ once the set changes.
   skipped for its line counts keeps that reason.
 - `--max-base-mb` bounds the base tree's blobs, in units of 10^6 bytes, and
   `--max-base-entries` bounds its entry count. They default to 100 and 12,500.
-- Re-mine a task set after any change to the fixture rule below, to how
-  `tasks` selects commits, or to the inner prompt. The fixture rule fixes each
-  task's changed paths and reference metrics at mining time. The selection
-  checks also run only at mining time, and `--max-prompt-chars` measures the
-  prompt as it rendered then. Neither the task-set hash nor the manifest
-  records any of these, so a resume does not refuse a set mined under another
-  rule.
+- Re-mine a task set after any change to one of these:
+  - The fixture rule below, which fixes each task's changed paths and
+    reference metrics at mining time.
+  - How `tasks` selects commits, since the selection checks run only at
+    mining time.
+  - The inner prompt, since `--max-prompt-chars` measures the prompt as it
+    rendered at mining time.
+
+  Neither the task-set hash nor the manifest records any of these, so a resume
+  does not refuse a set mined under another rule.
 - A task's fixture drops the entries that would load a checkout's own
   instructions, each matched case-insensitively:
   - Everywhere, every `CLAUDE.md`, `CLAUDE.local.md` and `AGENTS.md`. At the
