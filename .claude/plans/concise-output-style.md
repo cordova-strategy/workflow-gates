@@ -45,7 +45,7 @@ Alternatives weighed:
 - **M2.** `git mv` the record to `docs/design-decisions/concise-output-style-not-adopted.md` (Critical files 5).
 
   anchors: row6, row7, row8
-- **M3.** Rewrite the record: a new title, provenance line and opening paragraph, the measurement sections kept verbatim except two shipping-framed passages, one added "Not measured" bullet and two reworded "Not measured" bullets, the shipped-default sections deleted, and Sources trimmed to the one entry the kept text cites (Critical files 5).
+- **M3.** Rewrite the record (Critical files 5): a new title, provenance line and opening paragraph; the measurement sections kept, with two shipping-framed passages reframed and one "Not measured" bullet added; the shipped-default sections deleted; and Sources trimmed to the one entry the kept text cites.
 
   anchors: root, row3, row10, row11, row12, row13, row14, row19, row21, row22
 - **M4.** After the commit, the session syncs PR #1595's body through `/pr-description` and edits the title by hand, since the title still names shipping Concise (Verification 6).
@@ -109,10 +109,11 @@ The dispatch's verification command is `scripts/venv-run.sh python3 claude/.clau
 
      "Default" capitalized names only Claude Code's style.
    - Delete `:9-47`, from "Why the default lives in the tracked file" through the pin-test paragraph. Collapse the doubled blank lines the deletion leaves.
-   - Keep `:49-130` byte-for-byte, with three edits. Review rounds after the implementation commit reworded two further "Not measured" bullets, the skill-driven relays and the edit check, and Verification 3 counts them:
+   - Keep `:49-130` with three edits:
      - at `:117`, end the last sentence at "stays unobserved.", deleting "until ordinary use after the pull";
      - reword the `:130` bullet to "Delivery through user scope, the path a stow-wide default would use." (row 11);
      - add one "Not measured" bullet after it for the untested `/config` write path and the unguarded key (row 22).
+   - Prose-only tightening elsewhere in the kept range is allowed. Verification 3 checks that no figure changed.
    - Delete `:132-151`, "Surfaces calibrated on Default output" and "Maintainer rollback". Collapse the doubled blank lines the deletion leaves.
    - Under Sources, keep only the output-styles entry. Trim its gloss to what the kept text cites: Concise as a built-in style, the main-conversation and fork reach, full-length destructive-action confirmations, and the built-in styles keeping Claude Code's software-engineering instructions. Delete the settings-page, PR #744 and `settings-base-render` entries (row 13).
 
@@ -124,7 +125,7 @@ Projected diff: ~105 lines against `main` in the new record, not counting this p
 
 1. **Net diff.** `git diff --stat origin/main...HEAD` lists exactly `.claude/plans/concise-output-style.md` and `docs/design-decisions/concise-output-style-not-adopted.md`, and none of the four restored paths. Before the restore, the same command lists all six files, which shows the stat shrinks (rows 4, 5). This check does not depend on the merge-base SHA the restore used.
 2. **No stale reference.** `git grep -n concise-output-style-stow-default -- ':!.claude/plans/'` prints nothing, and `git grep -n outputStyle -- claude/ README.md CHANGELOG.md` prints nothing (rows 5, 6).
-3. **Verbatim carry.** Compare the kept range of the old record, pinned at branch head `01aad481`, with the new record. The old extract is `git show 01aad481:docs/design-decisions/concise-output-style-stow-default.md | sed -n '49,130p'`. The new extract runs from the line `## What the scripted probes measured` to the line before `## Sources`. `diff` of the two extracts shows five hunks: the `:117` sentence, the `:130` bullet, the added `/config` bullet, and the reworded skill-driven-relays and edit-check bullets. Figures outside those hunks are unchanged. This catches a changed figure without relying on git's rename detection or on `HEAD~1`.
+3. **Verbatim carry.** Compare the kept range of the old record, pinned at branch head `01aad481`, with the new record. The old extract is `git show 01aad481:docs/design-decisions/concise-output-style-stow-default.md | sed -n '49,130p'`. The new extract runs from the line `## What the scripted probes measured` to the line before `## Sources`. Pipe each extract through `grep -o -E '[0-9][0-9.%,]*'` and `diff` the two outputs. The outputs are identical, so no figure changed. The extracts' prose may differ as Critical files 5 allows. The check does not rely on git's rename detection or on `HEAD~1`.
 4. **Scoped suite.** Run `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` twice: after the restore and the record rewrite but before the commit, and again after the commit. The first run still selects the dependents of the restored files. Both runs select `claude/.claude/hooks/tests/` through the `docs/` row (row 15), which covers `test_design_decision_files.py`'s H1 and provenance checks on the new record (row 14). Both must pass.
 5. **Read-through.** One read of the new record finds no sentence that describes Concise as shipped, rolled back or reaching consumers. Every figure in the opening paragraph appears in a kept section.
 6. **PR (the session, after the dispatch).**
