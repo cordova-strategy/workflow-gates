@@ -1,6 +1,6 @@
 """Tests for `build_task_fixture`'s optional settings file, for `SelectionLimits`' range checks, and for the selection
-limits `test_replay_bench_tasks.py` has no room for. Kept apart from that file, which is already past 1,000 lines. No
-test launches `claude`.
+rules and limits `test_replay_bench_tasks.py` has no room for. Kept apart from that file, which is already past 1,000
+lines. No test launches `claude`.
 """
 from __future__ import annotations
 
@@ -147,6 +147,7 @@ class TestSubjectOnlyBriefs:
             {"src/app.py": _app_with(12), "tests/test_app.py": "".join(f"value_{n} = {n}\n" for n in range(21))},
             {"max_test_code_lines": 20}, SkipReason.TOO_MANY_TEST_CODE_LINES,
         ),
+        ({"src/app.py": _app_with(12)}, {"max_code_lines": 10}, SkipReason.TOO_MANY_CODE_LINES),
     ])
     def test_a_subject_only_commit_skipped_for_its_line_counts_keeps_that_reason(
         self, tmp_path, files, limit_overrides, reason,

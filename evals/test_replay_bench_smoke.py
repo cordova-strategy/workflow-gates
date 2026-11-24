@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from replay_bench import attempt, checks, diffing, smoke, smoke_pass
+from replay_bench import checks, diffing, smoke, smoke_pass
 from replay_bench import tasks as tasks_mod
 from review_bench import runner as review_runner
 from test_replay_bench_checks_support import _line
@@ -310,9 +310,10 @@ class TestWhichFailuresSmokeRetries:
 
         exit_code, launch_stub = run_smoke(world)
 
-        assert exit_code == 2 and f"missing ({attempt.REASON_FIXTURE_ERROR})" in capsys.readouterr().out
+        assert exit_code == 2 and "missing (fixture-error)" in capsys.readouterr().out
         assert len(builds) == 2, "one fixture build per arm"
         assert launch_stub.calls == []
+        assert not smoke_pass_exists(world)
 
     def test_an_analysis_error_is_not_retried(self, world, capsys, monkeypatch):
         def failing_capture(*_args, **_kwargs):
@@ -322,8 +323,9 @@ class TestWhichFailuresSmokeRetries:
 
         exit_code, launch_stub = run_smoke(world)
 
-        assert exit_code == 2 and f"missing ({attempt.REASON_ANALYSIS_ERROR})" in capsys.readouterr().out
+        assert exit_code == 2 and "missing (analysis-error)" in capsys.readouterr().out
         assert sorted(call.agent_name for call in launch_stub.calls) == ["bare-writer", "code-writer"], "one launch per arm"
+        assert not smoke_pass_exists(world)
 
     def test_a_timed_out_attempt_is_not_retried(self, world, capsys):
         """Smoke does not retry a timeout, though a campaign does."""
@@ -334,6 +336,7 @@ class TestWhichFailuresSmokeRetries:
         output = capsys.readouterr().out
         assert exit_code == 2 and "instrument: timeout" in output and "toolkit run missing" in output
         assert sum(call.agent_name == "code-writer" for call in launch_stub.calls) == 1
+        assert not smoke_pass_exists(world)
 
     def test_a_timed_out_attempt_with_a_bare_rule_load_records_arm_leak(
         self, world, capsys,
