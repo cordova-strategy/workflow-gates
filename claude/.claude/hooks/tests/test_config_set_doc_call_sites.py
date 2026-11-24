@@ -112,8 +112,6 @@ EXPECTED_SITES: dict[str, tuple[tuple[str, str], ...]] = {
     "claude/.claude/hooks/advance-past-commit-stall.sh": (("commit_stall_block", "false"),),
 }
 
-# Fixed script text. Doc-derived words follow it as arguments ($1 is _config.sh, then
-# key and value pairs), so none is ever evaluated as shell.
 _RULE_QUERY_SCRIPT = r"""
 source "$1" || exit 3
 shift
