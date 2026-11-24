@@ -103,7 +103,8 @@ completed `code-review` pass(es) in scope:
    fresh from disk.
 2. Form your own independent judgment of which rows this diff matches,
    applying the table's own qualifiers exactly as it states them — e.g. a
-   high-stakes row whose carve-out needs `declared: dev-only, cooperative`
+   high-stakes row whose carve-out needs `surface=dev-only`,
+   `agent=cooperative`, `caller=operator-only` and `input=trusted`
    does not count as matched when the diff genuinely
    meets that carve-out. Do not defer to `code-review`'s own "Spawn
    decisions:" text — you weren't given it; judge independently from the

@@ -132,7 +132,7 @@ verdict = "split pending"
 seam = "One test class, so the seam is test-method families inside `TestGuardSettingsSessionKeys`: top-level keys (`test_model_change_denies_commit`), nested keys (`test_nested_effort_level_added_where_env_absent_denies`), deny messages (`test_deny_message_names_both_nested_keys`) and passthrough (`test_non_commit_command_allows`)"
 
 ["claude/.claude/hooks/tests/test_hook_alignment.py"]
-ceiling = 3767
+ceiling = 3770
 verdict = "split pending"
 seam = "Test families by concern: class headers (`TestHookClassHeader`), gate behavior (`TestGateHookBehavior`), regex portability (`test_no_gnu_backslash_s_regex_extension`) and registration shape (`test_every_registered_hook_entry_has_type_and_command`)"
 issue = 1532

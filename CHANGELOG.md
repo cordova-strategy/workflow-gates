@@ -20,6 +20,19 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - The redaction and stow-reminder hooks match either name, so they keep working without the change.
   - Do not rename the checkout folder to match. Use `relocate-claude-config` to move it.
   - **Migration:** run `git remote set-url origin https://github.com/cordova-strategy/workflow-gates.git`, or `git remote set-url origin git@github.com:cordova-strategy/workflow-gates.git` for an SSH remote.
+- **`/code-review` Step 1 and `/plan-review` Step 4 now declare the threat model as four independent fields, `declared: surface=<v>, agent=<v>, caller=<v>, input=<v>`, in place of the single-ladder `<surface>, <tier>` tag.**
+  - The values, first value narrow and second wide: `surface` is `dev-only` or `production`, `agent` is `cooperative` or `hostile`, `caller` is `operator-only` or `other-callers`, and `input` is `trusted` or `untrusted`. Each field is settled or `undeclared` on its own, and no field's value implies another's.
+  - The `cooperative` < `untrusted-input` < `adversarial` ladder and the whole-line `declared: undeclared` retire. A field takes its first value only on evidence that its second does not apply.
+  - A `beyond declaration:` finding now names the fields that exclude it. A steered-or-hostile-agent finding is beyond declaration only where `agent`, `caller` and `input` all take their first value. A finding that needs an agent to retry or reword after a denial is never beyond declaration on `agent` grounds.
+  - `caller=other-callers` no longer implies untrusted input. A finding that needs content from someone who cannot call the change, passed in through whoever runs it, with no agent steered, is now beyond declaration under `caller=other-callers, input=trusted`.
+  - When the declaration reads `agent=hostile`, one fixed hostile-agent question goes to `ciso-reviewer`, in a spawn the round already makes or in one of its own.
+  - The hook `# tier-threat-model:` line keeps its grammar.
+  - The project-layer gate waivers and `CLAUDE.md` § "Hook threat model" do not read the review's `agent` field, so `agent=hostile` changes no gate-tier waiver or routing. `docs/hooks.md` § "Threat-model tiers" still decides what a gate's tier line waives.
+  - `CLAUDE.md` § "Hook threat model" now states that `cooperative` says nothing about whether a gate's input is trusted. It also gives a worked example of a steered agent.
+  - **Migration:** a skip that needed `declared: dev-only, cooperative` now needs `surface=dev-only`, `agent=cooperative`, `caller=operator-only` and `input=trusted`. `agent=hostile` blocks every skip that rests on the declaration.
+  - **Migration:** a declaration that read `untrusted-input` now reads `caller=operator-only` and `input=untrusted`, and one that read `adversarial` now reads `caller=other-callers` and `input=untrusted`, each with `agent=cooperative`.
+  - **Migration:** a project layer or prompt that matches the old tag no longer matches.
+  - The change is live on `git pull`.
 - **The documented `claude-config.toml` append one-liners now start with a newline, `.gitignore` covers six more legacy sentinel filenames, and `git-feature-branch-sync`'s explicit `--force-with-lease` recipe uses a pre-rewrite SHA.**
   - Every `printf 'key = value\n' >> .../claude-config.toml` copy in `README.md`, `docs/`, and the `advance-past-commit-stall.sh` block reason is now `printf '\nkey = value\n'`. Without the leading newline, a file lacking a trailing newline fused the new key onto its last line, and `_config.sh` skipped both as a malformed line. `docs/config-file.md` states the requirement.
   - **Migration:** a one-liner copied before this change still fuses lines on such a file. Re-copy it from the docs, or add the leading `\n`.
