@@ -103,6 +103,23 @@ class TestAPassingSmoke:
 
         assert "empty final text" not in capsys.readouterr().out
 
+    def test_a_denied_call_is_named_by_tool_and_a_bash_one_by_its_command(self, world, capsys):
+        denied_calls = Scenario(tool_calls=[
+            # The allowed Read exercises the toolkit's read grant, so the smoke passes. It must stay out of the denied list.
+            ("Read", {"file_path": str(world.config_dir / "agents" / "reviewer.md")}, False),
+            ("Edit", {"file_path": "src/app.py"}, True),
+            ("Bash", {"command": "git diff --stat"}, True),
+            ("Bash", {"command": "echo a\necho b"}, True),
+        ])
+
+        exit_code, _stub = run_smoke(world, by_call=agent_scenarios(toolkit=denied_calls))
+
+        output = capsys.readouterr().out
+        toolkit_report, bare_report = output.split("[bare] status:")
+        assert exit_code == 0
+        assert "denied tool calls: ['Edit', 'Bash: git diff --stat', 'Bash: echo a\\necho b']" in toolkit_report
+        assert "denied tool calls: []" in bare_report
+
     def test_the_first_printed_line_names_the_cost_ceiling_for_one_block(self, world, capsys):
         run_smoke(world)
 
