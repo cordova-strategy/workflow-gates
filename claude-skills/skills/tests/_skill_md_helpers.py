@@ -611,6 +611,7 @@ def _all_doc_paths() -> list[Path]:
 
 _PLAN_ARCHITECT_PATH = _AGENTS_DIR / "plan-architect.md"
 _PLAN_ARCHITECT_CONSULT_HEADING = "## MODE=consult"
+_PLAN_ARCHITECT_PLAN_SECTIONS_HEADING = "## MODE=plan-sections"
 
 # The finding-line verbs `plan-architect` returns and the marks a dispatcher puts on its own prompt line.
 # A pin that builds its token from one of these constants fails a site that keeps the old token after a rename.

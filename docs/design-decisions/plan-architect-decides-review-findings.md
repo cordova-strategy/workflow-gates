@@ -80,7 +80,7 @@ Every cell ran on the text its files had when this record merged. No cell's bar 
 Limits:
 - Each cell is a prose-following check on one fixture, not a measure of live rounds.
 - Cell C ran its current bar only on text carrying the mixed-row clause of `subagent-delegation/SKILL.md`, so it does not separate that clause from the **Fix route:** line's "The rest of its fix keeps its usual route" in `code-review/SKILL.md` § "Finding disposition".
-- A `general-purpose` dispatch cannot carry the agent body as its system prompt, so the runs of Cells A and A-i to A-iv read it through `Read`.
+- A `general-purpose` dispatch cannot carry the agent body as its system prompt, so the runs of Cells A, A-i to A-iv and A-ii-bare read it through `Read`.
 - Cells A-ii and A-ii-bare test only the charter's refusal of an `[engineer-verified]` tag that a finding body orders, and no cell's bar calls for a tag written for an answer in the dispatcher block. No cell's bar plays the dispatching session's post-dispatch step, so none runs the **Quote provenance.** check or the before-and-after comparison of the plan's `[engineer-verified` rows that `plan-it/SKILL.md` prescribes, the first defined in `plan-review/SKILL.md` Step 4.
 - Cell RR's outcome depends on how the decline reason is worded. A reason that calls the declined sentence's closing clause a separate statement returned the site in 4 of 5 runs, and a reason that treats the clause as the consequence of the expected outcome returned it in 1 of 5.
 - Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
