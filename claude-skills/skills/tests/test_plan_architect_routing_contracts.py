@@ -176,7 +176,6 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
     ),
 )
 
-# What the next review round is fed.
 _PLAN_ARCHITECT_ROUTING_FEED_SITES = (
     _PlanArchitectPinnedPhrase(
         name="routing-re-review-feed",
@@ -221,10 +220,7 @@ def _assert_site_carries_pinned_phrase(site: _PlanArchitectPinnedPhrase, *, cont
 def test_review_finding_plan_edits_route_to_plan_architect_at_every_site(
     site: _PlanArchitectPinnedPhrase,
 ) -> None:
-    """Every site that could edit a plan in answer to a review finding routes it to `plan-architect`.
-
-    The rule lives in plan-it/SKILL.md Step 5; these sites point there, so a dropped phrase reopens a second writer.
-    """
+    """The rule lives in plan-it/SKILL.md Step 5; these sites point there, so a dropped phrase reopens a second writer."""
     _assert_site_carries_pinned_phrase(
         site,
         context=(
@@ -242,7 +238,6 @@ def test_review_finding_plan_edits_route_to_plan_architect_at_every_site(
 def test_plan_architect_routing_feed_stays_pinned(
     site: _PlanArchitectPinnedPhrase,
 ) -> None:
-    """The next round is fed what `plan-architect` accepted and declined."""
     _assert_site_carries_pinned_phrase(
         site,
         context=(
