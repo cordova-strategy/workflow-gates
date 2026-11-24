@@ -304,7 +304,7 @@ class TestRowFields:
 class TestFloorZeroPlannedCells:
     """The solved shift, the scaled plans, the floor-0 draws and the production builder together give the cell's difference."""
 
-    # Enough replicates for the SIGMA_BOUND tolerance to separate a 20% error in the -0.1 cell's difference.
+    # Many replicates keep the SIGMA_BOUND tolerance small.
     REPLICATES = 1600
     TRUE_DIFFERENCES = (-0.1, 0.0)
 
