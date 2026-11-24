@@ -1,5 +1,15 @@
 # Comment-reviewer docstring study: labelled evidence and the stage-1 result
 
+## In plain terms
+
+The `comment-discipline-reviewer` agent checks code comments and docstrings against a rule in `claude/.claude/CLAUDE.md` § "Durable text": do not restate what the code already shows. This study asked whether a narrower rule would work better, one under which a docstring keeps only design decisions, meaning the reasons behind the code.
+
+To test it, the study split real docstrings from this repository into clauses. Each clause was labelled keep, delete or rewrite under that rule. The reviewer then ran on each case with the narrower rule added, and its verdicts were compared with the labels.
+
+Stage 1 was a go/no-go check run before a larger second stage. It met three of its four stop conditions, so the answer was NO-GO and stage 2 never ran. Each of two clauses labelled rewrite got an acceptable rewrite in 3 of 10 runs, against a bar of 7 of 10. A clause labelled keep was deleted in all 3 of its runs. The rule and the reviewer's wording were left unchanged.
+
+The rest of this report is the record: where each file is, how to re-check the counts, what is not published, and which labels are disputed.
+
 **Date:** 2026-11-22. The study ran from 2026-11-19.
 **Pin:** `ccab57e5`, the `origin/main` commit that added `.claude/plans/comment-rule-false-angle-fix.md`. The study recorded `4d2d6ea16136`, which is not an ancestor of `origin/main`, because this repository squash-merges. Each of the 18 modules under `claude/.claude/scripts/` that the real docstring cells reviewed is byte-identical at the pin, checked against the digest each cell recorded. The cells' `meta.json` files are not published, so this check cannot be repeated from the published set.
 **Model and CLI:** `claude-sonnet-5-5` and Claude Code `2.1.329`, as frozen at `evidence/probe/freeze-stage1.txt:42`.
@@ -8,7 +18,7 @@
 
 ## The rule the labels apply
 
-`evidence/labels-v4.md` line 7 states the rule. This report does not restate it.
+`evidence/labels-v4.md` line 7 states the rule. Beyond the gist in "In plain terms", this report does not restate it.
 
 ## Layout
 
