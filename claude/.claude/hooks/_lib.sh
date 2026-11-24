@@ -2554,6 +2554,12 @@ _lib_commit_fragment_has_worktree_target() {
   [ "$verdict" = "Y" ]
 }
 
+# The shfmt command that prints a Bash command's syntax tree as typed JSON on stdout, reading the command on stdin.
+# shfmt infers the dialect from a leading shebang on stdin, and `-ln bash` pins it, so a first line like `#!/usr/bin/env bats` cannot pick another one.
+# The shell-syntax-tree tests run shfmt with this argv by default.
+# A test that checks another dialect or a control builds its own argv.
+_LIB_SHFMT_ARGV=(shfmt -ln bash --to-json)
+
 # Prints the path of split-command-words.py, the fallback tokenizer of _lib_command_words.
 # Prefers the sibling of this file, then the sibling of this file's link target one `readlink` hop away.
 # Plain `readlink` with no `-f`, because older macOS lacks it.

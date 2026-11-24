@@ -21,7 +21,7 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import yaml
 
@@ -98,17 +98,39 @@ def xargs_is_gnu() -> bool:
     return "GNU" in result.stdout + result.stderr
 
 
+# Bounds a hung shell read; no vendor value applies, and a real read finishes in well under a second.
+_SHELL_READ_HANG_GUARD_SECONDS = 60
+
+# Sources the file named by the script's first argument, then drops that argument. A source that fails
+# (a bash below the floor, for one) ends the script with the source's own status and stderr.
+_SOURCE_FIRST_ARGUMENT = '. "$1" || exit "$?"; shift; '
+
+
+def _read_shell_output(shell_body: str, what: str, *arguments: str) -> subprocess.CompletedProcess:
+    """Run `bash -c shell_body bash *arguments` and assert a zero exit.
+
+    This is the reader behind `_sourced_value`, `_nonempty_shell_lines` and `production_shfmt_argv`.
+    Other helpers in this file run `bash -c` directly.
+    A failure names `what`, the exit status and the shell's stderr, so a refused source's floor message reaches the report.
+    """
+    result = subprocess.run(
+        ["bash", "-c", shell_body, "bash", *arguments],
+        capture_output=True,
+        check=False,
+        timeout=_SHELL_READ_HANG_GUARD_SECONDS,
+    )
+    stderr_text = result.stderr.decode(errors="replace")
+    assert result.returncode == 0, f"reading {what} exited {result.returncode}: {stderr_text}"
+    return result
+
+
 def _sourced_value(var_name: str) -> str:
     """Return `var_name`'s value after sourcing _lib.sh in a bash subprocess
     -- reads the shell's own definition rather than a hand-copied Python
     literal that could drift from it."""
-    result = subprocess.run(
-        ["bash", "-c", f'. {_LIB_SH}; printf "%s" "${var_name}"'],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout
+    return _read_shell_output(
+        _SOURCE_FIRST_ARGUMENT + 'printf "%s" "${!1}"', f"{var_name} from _lib.sh", str(_LIB_SH), var_name
+    ).stdout.decode()
 
 
 # SKILL.md fences may be indented when the fixture sits inside a
@@ -216,9 +238,8 @@ def _nonempty_shell_lines(shell_body: str, what: str) -> list[str]:
     The emptiness assertion stops a renamed or emptied shell value from reading as an empty list,
     which would leave every test iterating it passing with zero iterations or skipped.
     """
-    result = subprocess.run(["bash", "-c", shell_body], capture_output=True, text=True, check=False)
-    assert result.returncode == 0, f"reading {what} exited {result.returncode}: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line]
+    result = _read_shell_output(shell_body, what)
+    lines = [line for line in result.stdout.decode().splitlines() if line]
     assert lines, f"reading {what} printed nothing: a renamed or emptied shell value"
     return lines
 
@@ -3162,6 +3183,132 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
             f"stdout={completed.stdout!r} stderr={completed.stderr!r}"
         )
     return path
+
+
+def require_shfmt() -> None:
+    """Guard for a test that needs a real shfmt binary, not a stub: skip locally when shfmt isn't
+    installed, but hard-fail in this repo's own CI, where a skip would turn a missing install step green.
+
+    Checks GITHUB_ACTIONS rather than the generic CI var, as `require_direnv` does in the scripts tests.
+    """
+    import pytest  # imported here because the module header keeps pytest out of the runtime imports
+
+    if shutil.which("shfmt"):
+        return
+    if os.environ.get("GITHUB_ACTIONS"):
+        pytest.fail("shfmt missing in CI — .github/workflows/tests.yml must install it")
+    pytest.skip('shfmt not installed; README.md § "Requirements" gives the install routes')
+
+
+def decode_shfmt_argv(printed_words: bytes) -> list[str]:
+    """The argv in `printed_words`, the NUL-terminated words `production_shfmt_argv` has bash print.
+
+    An unset array makes `printf "%s\\0" "${arr[@]}"` print one empty word, so an empty word fails here as well as no word.
+    """
+    argv = printed_words.decode().split("\0")[:-1]
+    assert argv and all(argv), "reading _LIB_SHFMT_ARGV gave no word or an empty word: a renamed, unset or emptied shell value"
+    return argv
+
+
+def production_shfmt_argv() -> list[str]:
+    """`_LIB_SHFMT_ARGV` from _lib.sh -- the argv the shell-syntax-tree tests run shfmt with by default.
+
+    A test that checks another dialect or builds a control argv does not use it.
+
+    Fails with _lib.sh's own stderr and exit status when it refuses to source, as it does under a bash below the floor.
+    """
+    result = _read_shell_output(
+        _SOURCE_FIRST_ARGUMENT + 'printf "%s\\0" "${_LIB_SHFMT_ARGV[@]}"', "_LIB_SHFMT_ARGV from _lib.sh", str(_LIB_SH)
+    )
+    return decode_shfmt_argv(result.stdout)
+
+
+class StubShfmtCall(NamedTuple):
+    argv: list[str]
+    stdin: bytes
+    cwd: str
+
+
+class StubShfmt:
+    """A stub `shfmt` on disk, plus the log of the calls it received."""
+
+    def __init__(self, path: Path, log_dir: Path):
+        self.path = path
+        self.log_dir = log_dir
+
+    def calls(self) -> list[StubShfmtCall]:
+        """Every call so far, in order. A `--version` call has empty stdin."""
+        recorded = []
+        call_index = 0
+        while (self.log_dir / f"call-{call_index}.argv").exists():
+            stem = self.log_dir / f"call-{call_index}"
+            argv = stem.with_suffix(".argv").read_bytes().decode().split("\0")[:-1]
+            stdin_path = stem.with_suffix(".stdin")
+            recorded.append(
+                StubShfmtCall(
+                    argv=argv,
+                    stdin=stdin_path.read_bytes() if stdin_path.exists() else b"",
+                    cwd=stem.with_suffix(".cwd").read_text(),
+                )
+            )
+            call_index += 1
+        return recorded
+
+
+def write_stub_shfmt(
+    path: Path,
+    *,
+    tree: str = "",
+    version_line: str = "",
+    exit_status: int = 0,
+    stderr_line: str | None = None,
+    hang_parse_seconds: float | None = None,
+    hang_version_seconds: float | None = None,
+    ignore_sigterm: bool = False,
+) -> StubShfmt:
+    """Write a stub `shfmt` at `path` with `write_prewarmed_stub` and return it with its call log.
+
+    A `--version` call prints `version_line`, and any other call prints `tree`. Both exit with `exit_status`.
+    Either call first writes `stderr_line` to stderr, when given.
+    A hang ends the call: the stub then execs `sleep`, so a cap's SIGTERM reaches the sleeping process itself.
+    `ignore_sigterm` ignores SIGTERM from the first line, so the sleep outlasts a cap's SIGTERM.
+    A logged call then shows the signal is already ignored.
+    Each call logs its argv, stdin and working directory under a directory beside `path`.
+    A call with no argument logs an empty argv, distinct from one empty argument.
+    The stub uses only bash builtins and `sleep`, so a curated PATH needs only the latter.
+    """
+    log_dir = path.parent / f"{path.name}-calls"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    def hang_lines(hang_seconds: float | None) -> str:
+        return "" if hang_seconds is None else f"exec sleep {hang_seconds}\n"
+
+    sigterm_trap_line = "trap '' TERM\n" if ignore_sigterm else ""
+    stderr_lines = f"printf '%s\\n' {shlex.quote(stderr_line)} >&2\n" if stderr_line is not None else ""
+    script = (
+        "#!/bin/bash\n"
+        f"{sigterm_trap_line}"
+        f"log_dir={shlex.quote(str(log_dir))}\n"
+        "call_index=0\n"
+        'while [ -e "$log_dir/call-$call_index.argv" ]; do call_index=$((call_index + 1)); done\n'
+        ": > \"$log_dir/call-$call_index.argv\"\n"
+        'if [ "$#" -gt 0 ]; then printf \'%s\\0\' "$@" >> "$log_dir/call-$call_index.argv"; fi\n'
+        "printf '%s' \"$(pwd -P)\" > \"$log_dir/call-$call_index.cwd\"\n"
+        'if [ "${1-}" = "--version" ]; then\n'
+        f"{stderr_lines}"
+        f"{hang_lines(hang_version_seconds)}"
+        f"printf '%s\\n' {shlex.quote(version_line)}\n"
+        f"exit {exit_status}\n"
+        "fi\n"
+        "IFS= read -r -d '' stdin_text || true\n"
+        "printf '%s' \"$stdin_text\" > \"$log_dir/call-$call_index.stdin\"\n"
+        f"{stderr_lines}"
+        f"{hang_lines(hang_parse_seconds)}"
+        f"printf '%s' {shlex.quote(tree)}\n"
+        f"exit {exit_status}\n"
+    )
+    write_prewarmed_stub(path, script)
+    return StubShfmt(path, log_dir)
 
 
 class UnwarmedStubError(AssertionError):
