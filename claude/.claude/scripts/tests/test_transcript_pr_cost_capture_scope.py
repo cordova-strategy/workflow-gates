@@ -366,6 +366,32 @@ class TestReadModeUnderTheRepoScope:
         ]
         assert listed_pr_numbers == [1, 3]
 
+    def test_a_read_run_over_a_scope_holding_only_a_foreign_directory_prints_the_empty_scope_line_once(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        (root,) = _arrange_roots(tmp_path, monkeypatch)
+        _write_session(root, _FOREIGN_SLUG, "foreign", [_branch_turn("feature-a")])
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None), _NOW, [root])
+
+        assert capsys.readouterr().err.splitlines().count(_empty_scope_line()) == 1
+
+    def test_an_all_accounts_read_run_names_only_the_account_whose_scope_is_empty(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        first_root, second_root = _arrange_roots(tmp_path, monkeypatch, all_accounts=True)
+        _write_session(first_root, _LIVE_UNDER_PREFIX_SLUG, "in-repo", [_branch_turn("feature-a")])
+        _write_session(second_root, _FOREIGN_SLUG, "foreign", [_branch_turn("feature-a")])
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None, all_accounts=True), _NOW, [first_root, second_root])
+
+        err_lines = capsys.readouterr().err.splitlines()
+        assert err_lines.count(_empty_scope_line(" in account-2")) == 1
+        assert _empty_scope_line(" in account-1") not in err_lines
+        assert _empty_scope_line() not in err_lines
+
 
 class TestJoinGuardInTheBranchWalk:
     def test_a_default_branch_and_a_fork_only_branch_are_skipped_with_their_own_lines_and_write_no_row(
