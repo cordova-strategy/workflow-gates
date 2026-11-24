@@ -245,6 +245,40 @@ class TestComputePrCostBranchTotals:
         assert agg["turn_count"] == 0
         assert sum(agg["dollars"].values()) == pytest.approx(0.0)
 
+    def test_session_start_is_the_first_valid_usage_turn_not_an_earlier_invalid_one(self, fake_projects):
+        """A turn excluded for malformed usage must not set the session's start, so the earliest
+        surviving activity of a branch is its first turn with valid usage."""
+        invalid_earlier_turn = _priced(
+            "claude-sonnet-5", input=1_000_000, branch="feature-a", ts="2026-05-19T10:00:00.000Z",
+        )
+        invalid_earlier_turn["message"]["usage"]["output_tokens"] = -1
+        valid_later_turn = _priced(
+            "claude-sonnet-5", input=1_000_000, branch="feature-a", ts="2026-05-19T12:00:00.000Z",
+        )
+        _write_jsonl(fake_projects / "sess.jsonl", [invalid_earlier_turn, valid_later_turn])
+
+        session_iter, _scope = scope._resolve_project_scope(
+            _pr_cost_args(), "pr-cost", include_subagents=True, roots=[fake_projects.parent],
+        )
+        branch_totals, _unbranched = cost._compute_pr_cost_branch_totals(session_iter)
+
+        valid_later_turn_epoch = datetime(2026, 5, 19, 12, 0, 0, tzinfo=UTC).timestamp()
+        assert [epoch for epoch, _session_id in branch_totals["feature-a"]["session_starts"]] == [
+            valid_later_turn_epoch
+        ]
+
+    def test_a_session_whose_only_turn_has_invalid_usage_records_no_session_start(self, fake_projects):
+        only_turn_invalid = _priced("claude-sonnet-5", input=1_000_000, branch="feature-a")
+        only_turn_invalid["message"]["usage"]["output_tokens"] = -1
+        _write_jsonl(fake_projects / "sess.jsonl", [only_turn_invalid])
+
+        session_iter, _scope = scope._resolve_project_scope(
+            _pr_cost_args(), "pr-cost", include_subagents=True, roots=[fake_projects.parent],
+        )
+        branch_totals, _unbranched = cost._compute_pr_cost_branch_totals(session_iter)
+
+        assert branch_totals["feature-a"]["session_starts"] == []
+
     def test_per_class_token_totals_accumulate_correctly(self, fake_projects):
         """agg["tokens"] accumulates each _TOKEN_CLASSES key from
         _token_counts(usage) correctly -- distinct values per class, not

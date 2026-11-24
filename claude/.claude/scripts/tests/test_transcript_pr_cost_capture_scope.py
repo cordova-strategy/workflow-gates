@@ -1,6 +1,6 @@
 """Tests for pr-cost's capture scope and branch-join guard (transcript_analysis/pr_cost.py): the repo-scope
 default, the capture_scope a row records, the joinability filter on both entry paths, the --force re-scope
-case, and the earliest-surviving-activity cell. Every other pr-cost behavior lives in test_transcript_pr_cost.py."""
+case, and the earliest-surviving-activity cell."""
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
@@ -231,6 +231,18 @@ class TestPrCostSubparserScopeDefault:
         assert bare.this_repo is False
         assert explicit_glob.projects == "*"
 
+    def test_the_force_help_states_the_re_scope_rule_for_a_row_captured_under_another_scope(self, capsys):
+        parser = cli.build_parser()
+
+        with pytest.raises(SystemExit):
+            parser.parse_args(["pr-cost", "--help"])
+
+        rendered_help = " ".join(capsys.readouterr().out.split())
+        assert (
+            "A row captured with --projects, or before capture scope was recorded, needs the same --projects"
+            " (--projects '*' for the latter), or the new row is scoped to this repo."
+        ) in rendered_help
+
 
 class TestCaptureScopeOfARecordRun:
     @pytest.mark.parametrize("arg_overrides", [
@@ -365,6 +377,68 @@ class TestReadModeUnderTheRepoScope:
             if line.startswith("  PR #")
         ]
         assert listed_pr_numbers == [1, 3]
+
+    def test_a_bare_listing_skips_a_branch_with_two_joinable_prs_and_lists_one_merged_inside_the_as_of_window(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        (root,) = _arrange_roots(tmp_path, monkeypatch)
+        for branch in ("feature-a", "two-prs", "just-merged"):
+            _write_session(root, _LIVE_UNDER_PREFIX_SLUG, branch, [_branch_turn(branch)])
+        merged_a_few_hours_before_now = "2026-08-09T20:00:00Z"
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[
+            _merged_pr(1, "feature-a"),
+            _merged_pr(2, "two-prs"), _merged_pr(3, "two-prs"),
+            {**_merged_pr(4, "just-merged"), "mergedAt": merged_a_few_hours_before_now},
+        ]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None), _NOW, [root])
+
+        listed_pr_numbers = [
+            int(line.split("#", 1)[1].split()[0]) for line in capsys.readouterr().out.splitlines()
+            if line.startswith("  PR #")
+        ]
+        assert listed_pr_numbers == [1, 4]
+
+    def test_a_bare_listing_never_names_a_same_repository_pr_whose_head_is_a_guarded_branch(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        (root,) = _arrange_roots(tmp_path, monkeypatch)
+        for branch in ("feature-a", "main"):
+            _write_session(root, _LIVE_UNDER_PREFIX_SLUG, branch, [_branch_turn(branch)])
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[
+            _merged_pr(1, "feature-a"), _merged_pr(2, "main"),
+        ]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None), _NOW, [root])
+
+        listed_pr_numbers = [
+            int(line.split("#", 1)[1].split()[0]) for line in capsys.readouterr().out.splitlines()
+            if line.startswith("  PR #")
+        ]
+        assert listed_pr_numbers == [1]
+
+    def test_a_read_run_prints_none_of_the_capture_scope_review_rounds_absence_or_earliest_activity_columns(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        (root,) = _arrange_roots(tmp_path, monkeypatch)
+        earliest_activity_sentinel = "2031-07-09T04:05:06Z"
+        absence_sentinel = "pass-failed"
+        capture_scope_sentinel = "glob"
+        pr_cost_ledger._write_pr_cost_ledger_file(_ledger_path_of(root), [_sample_pr_cost_row(
+            pr_number=4242, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=capture_scope_sentinel,
+            review_rounds_absence=absence_sentinel, earliest_surviving_activity_at=earliest_activity_sentinel,
+        )])
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=[]))
+
+        pr_cost._pr_cost_report(_pr_cost_args(projects=None), _NOW, [root])
+
+        out = capsys.readouterr().out
+        assert any(line.split()[1:2] == ["4242"] for line in out.splitlines()), "the seeded row must be printed"
+        for withheld in (
+            earliest_activity_sentinel, absence_sentinel, capture_scope_sentinel,
+            "capture_scope", "review_rounds_absence", "earliest_surviving_activity_at",
+        ):
+            assert withheld not in out, withheld
 
     def test_a_read_run_over_a_scope_holding_only_a_foreign_directory_prints_the_empty_scope_line_once(
         self, tmp_path, monkeypatch, capsys,
