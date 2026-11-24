@@ -31,7 +31,7 @@ Edits in scope (fourteen files, the last being the one-number `code-file-size-ex
 9. `claude-skills/skills/ai-instruction-and-memory-files/REFERENCES.md` (M2c): a vendor URL and quote for the Codex row of the size table (rows 34-35).
 
 Commit sequencing and PR body:
-- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grew `CLAUDE.md` to 30,759 bytes at HEAD, and this round's M2 and M2a measure 31,206 (row 7), so that gate denies the commit.
+- The commit gate that runs in this session is the main checkout's copy of `check-claude-md-length.sh`, which still caps `CLAUDE.md` at 30,720 bytes until the main checkout pulls the raised hook (row 28). M2 and M2a grow `CLAUDE.md` past that cap and past its committed size (row 7), so that gate denies the commit.
 - The session commits every changed file except `claude/.claude/CLAUDE.md`. The engineer commits `CLAUDE.md` from a separate terminal, outside the gated session. The session does not retry the denial or route around it.
 - The PR body states:
   - who made the `CLAUDE.md` commit;
@@ -341,10 +341,8 @@ Alternatives weighed:
    - A review edit that pushes the file past 31,744 needs a matching deletion elsewhere in the bullet, not another cap change.
    - A review edit that grows the file past HEAD goes to the engineer's terminal (row 28).
    - The reason for the second rule: until the raised hook reaches the main checkout, the session's own gate denies any staged edit that grows the file past HEAD and past 30,720 bytes.
-   - Baseline before this change: 30,368. [verified: `wc -c claude/.claude/CLAUDE.md` before the M2 edit]
-   - HEAD, after the engineer's commit of the earlier M2 and M2a: 30,759. [verified: `wc -c` on the working tree printed 30759 before that commit; the adversarial review measured HEAD at 30,759]
-   - The measured result is 31,206, 486 over the old cap and 538 under the new one. [verified: `wc -c` after the dispatch; the earlier projection of 31,058 was a hand count and undercounted by 148]
-   - Step 5's N14 and N23 fallback for M2, " or, for setup, a fixture", would add 25, giving 31,231.
+   - The branch adds 838 bytes to `claude/.claude/CLAUDE.md` over its merge-base blob. After the rebase onto origin/main the merge-base blob is 30,709 and the committed file is 31,547, which is 197 under the 31,744 cap. [verified: `git cat-file -s` on `origin/main:claude/.claude/CLAUDE.md` and on `HEAD:claude/.claude/CLAUDE.md`]
+   - Step 5's N14 and N23 fallback for M2, " or, for setup, a fixture", would add 25.
 8. No test or eval pins any wording this plan replaces. Two searches back this, each over `**/*.py` and `test-conventions/evals/trigger-cases.json`:
    - Old § 6 phrases "Carve-out", "test code is DAMP", "named test helper", "Import or call via integration", "Duplicating production", "Named exceptions" and "bad abstraction". The only hits are test docstrings using the word DAMP. [verified: the grep]
    - M2a and M3a phrases "never embed a raw", "canonical symbol", "domain discriminant", "3 or more sites" and "Discriminator literals". The only hits are the two edited lines and `code-review/SKILL.md:487`. [verified: the grep]
@@ -394,7 +392,7 @@ Alternatives weighed:
     - The installed hook `~/.claude/hooks/check-claude-md-length.sh` resolves to the main checkout's copy, which reads `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720`. [verified: `readlink -f` and `grep -n '^GLOBAL_CLAUDE_MD_BYTE_LIMIT'` on that path]
     - That copy still reads that limit this round. [verified: grep of the main checkout's `check-claude-md-length.sh`, line 59, this round]
     - The gate denies a staged file that is over the limit and larger than HEAD. [verified: `_lib.sh:3115-3118,3250`]
-    - HEAD's `CLAUDE.md` is 30,759 bytes after the engineer's earlier commit, and this round's result is 31,206 as measured (row 7).
+    - The committed `CLAUDE.md` is over 30,720 bytes after the engineer's earlier commit, and this round's result is larger than that (row 7).
 29. The setup clause in M2 and M3 reads "setup steps whose details its assertions do not depend on", with "whose details" restored. [engineer-verified: "Restore 'whose details' (Recommended)"] The tag covers the choice to restore the phrase at both sites. The exact clause is this plan's wording, drawn from an architect consult. So are the code-shaped key cases F3, P3 and their M2 counterparts, which replace the earlier cases that described the setup in abstract terms.
     - The engineer chose to judge setup dependence per step. [engineer-verified: "Switch to per step (Recommended)"] The tag covers only that choice. It replaces an earlier answer, "Judge the whole paste (Recommended)", which answered a narrower question about one assertion reading back one value. [unverified: the question's exact text]
     - Per step is the literal reading of § 6's bullet 3, which says "steps". M2 and M3 now say "setup steps" too, so they carry the same reading. The per-step choice changes no § 6 text. These readings are this plan's, drawn from an architect consult, not the engineer's.
@@ -489,7 +487,7 @@ Projected diff: about 95 changed lines against origin/main. That is 8 in `test-c
 ## Verification
 
 1. Size checks, one per gate (G2):
-   - CLAUDE.md bytes: run `wc -c claude/.claude/CLAUDE.md` before and after the M2 and M2a edits, so the report carries both numbers. Before, it prints HEAD's 30,759. After, it must print 31,206 (31,231 when step 5 applies the N14 and N23 fallback), the figure the dispatch measured. Rows 6 and 7 give the gate and the measurement. A `CLAUDE.md` edit staged after the engineer's commit must not grow past that commit's size (row 7).
+   - CLAUDE.md bytes: run `wc -c claude/.claude/CLAUDE.md` before and after the M2 and M2a edits, so the report carries both numbers. After minus before must equal row 7's 838-byte delta, with "before" read from the merge-base blob on a re-run (25 more when step 5 applies the N14 and N23 fallback). Rows 6 and 7 give the gate and the measurement. A `CLAUDE.md` edit staged after the engineer's commit must not grow past that commit's size (row 7).
      - On any other figure, stop and report both numbers. This is the one stop condition for the byte count; step 3 does not restate it. Do not trim other bullets or shorten M2 yourself; row 7 says what a fix needs.
      - 31,744 stays the outer bound for any later review edit (row 7).
    - SKILL.md lines: `wc -l` on each edited SKILL.md prints the same count before and after its edit.
@@ -745,9 +743,9 @@ Projected diff: about 95 changed lines against origin/main. That is 8 in `test-c
    - It then stages `claude/.claude/CLAUDE.md` alone and records two values:
      - the blob ID, from `git rev-parse :claude/.claude/CLAUDE.md`;
      - the staged size, from `git cat-file -s :claude/.claude/CLAUDE.md`.
-   - The size must equal step 1's figure. Any other size is a stop-and-report.
+   - The size change must equal step 1's delta. Any other change is a stop-and-report.
    - It then runs the staged-diff `/code-review` on that file, so a marker covers the bytes the engineer commits.
-   - Any later edit to `claude/.claude/CLAUDE.md`, from that review or from the engineer, re-stages the file and re-records both values. The size check then compares against step 1's figure for the edited text, and the staged-diff `/code-review` runs again on the new staged state.
+   - Any later edit to `claude/.claude/CLAUDE.md`, from that review or from the engineer, re-stages the file and re-records both values. The size check then compares against step 1's delta for the edited text, and the staged-diff `/code-review` runs again on the new staged state.
    - The session does not attempt that commit. Its last message holds, with the latest recorded pair:
      - the staged state and both recorded values;
      - the command `git -C <absolute worktree path> commit`, with no `-a` and no pathspec;
@@ -763,7 +761,7 @@ Projected diff: about 95 changed lines against origin/main. That is 8 in `test-c
 8. PR body: it carries the three items under Context's "Commit sequencing and PR body", stated in plain words with no row or round identifier. It also states:
    - that no blind-read fixture discriminates the `since`-for-condition connective swap in line 42 and item 9a, so that change is argued, not measured (row 42);
    - that a consumer whose Codex chain has more than one file gets 1,024 bytes below that limit for the rest of the chain under the raised cap, not 2,048;
-   - how many bytes the global `CLAUDE.md` sits under the 31,744 cap after this change, from step 1's measured figure (538 at the measured 31,206);
+   - how many bytes the global `CLAUDE.md` sits under the 31,744 cap after this change, re-derived from `git cat-file -s HEAD:claude/.claude/CLAUDE.md` when the body is written (197 after the rebase onto origin/main);
    - the engineer's planned reduction of `CLAUDE.md` as intent, not as a landed change, if the body mentions it (row 26);
    - that the repository holds 23 `scope=` declarations wider than function across 17 Python files (row 39). Some are cheap and read-only, so a strict reading of § 6's "expensive setup" would flag them. Changing existing tests is a separate follow-up (row 3). Re-derive both counts by grep when writing the body.
 

@@ -786,7 +786,7 @@ class TestCheckSkillLength:
         assert "limit 220" in reason
 
     def test_byte_limit_never_fires_for_this_caller(self, isolated_home, new_skill_repo):
-        (new_skill_repo / SKILL_PATH).write_text("a" * 40000 + "\n")
+        (new_skill_repo / SKILL_PATH).write_text("a" * 40000 + "\n")  # must exceed check-claude-md-length.sh's byte cap
         subprocess.run(["git", "add", SKILL_PATH], cwd=new_skill_repo, check=True)
         assert (
             run_hook(
