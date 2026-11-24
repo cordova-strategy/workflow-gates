@@ -9,7 +9,20 @@ from pathlib import Path
 import pytest
 from transcript_analysis import cost, handoff_signal_response, scope
 
-from ._handoff_nudge_helpers import _check_call_turn, _check_result_json, _handoff_advisory_attachment
+from ._account_scope_helpers import (
+    ACTIVE_ROOT_SENTINEL,
+    DECLARED_ROOT_SENTINEL,
+    SHARED_PROJECT_SLUG,
+    seed_one_session_per_root,
+)
+from ._handoff_nudge_helpers import (
+    _check_call_turn,
+    _check_result_json,
+    _handoff_advisory_attachment,
+    _handoff_cards,
+    _handoff_signal_response_args,
+    _write_signal_with_excerpt_session,
+)
 from .conftest import _priced, _thinking_block, _tool_result, _two_declared_roots, _user_msg, _write_jsonl
 
 _SCRIPT = Path(__file__).parent.parent / "transcript-analysis.py"
@@ -20,23 +33,6 @@ _spec = importlib.util.spec_from_file_location("transcript_analysis", _SCRIPT)
 _mod = importlib.util.module_from_spec(_spec)
 sys.path.insert(0, str(_SCRIPT.parent))
 _spec.loader.exec_module(_mod)
-
-
-def _handoff_signal_response_args(
-    *, projects: str = "*", this_repo: bool = False, config_dir: str | None = None,
-    no_redact: bool = False, sample: int = 0, seed: int | None = None,
-    output_format: str = "json", context_turns: int = 0,
-) -> object:
-    return type("A", (), {
-        "projects": projects,
-        "this_repo": this_repo,
-        "config_dir": config_dir,
-        "no_redact": no_redact,
-        "sample": sample,
-        "seed": seed,
-        "output_format": output_format,
-        "context_turns": context_turns,
-    })()
 
 
 class TestCmdHandoffSignalResponseScopeAndRedaction:
@@ -51,17 +47,40 @@ class TestCmdHandoffSignalResponseScopeAndRedaction:
         assert "HANDOFF SIGNAL RESPONSE SOURCES" in out
         assert "1 root" in out
 
-    @pytest.mark.parametrize("sample", [0, 5])
-    def test_no_redact_refused_with_multi_root(self, tmp_path, monkeypatch, capsys, sample):
+    @pytest.mark.parametrize(("sample", "widening"), [
+        (0, None),
+        (5, "all_accounts"),
+        (5, "this_repo"),
+    ], ids=["aggregate-run", "sample-all-accounts", "sample-this-repo"])
+    def test_no_redact_refused_with_multi_root(self, tmp_path, monkeypatch, capsys, sample, widening):
         """sample=5 pins the higher-risk curation-card path (raw excerpts and
-        text), which sample=0's aggregate-only fixture never reached."""
+        text), which sample=0's aggregate-only fixture never reached. A --sample run reads
+        one root unless --all-accounts or --this-repo widens it, so each widening route is pinned."""
         _two_declared_roots(tmp_path, monkeypatch)
+        args = _handoff_signal_response_args(no_redact=True, sample=sample)
+        if widening == "all_accounts":
+            args.all_accounts = True
+        elif widening == "this_repo":
+            args.this_repo = True
+            args._this_repo_slugs = [SHARED_PROJECT_SLUG]
         with pytest.raises(SystemExit) as exc_info:
-            handoff_signal_response.cmd_handoff_signal_response(_handoff_signal_response_args(no_redact=True, sample=sample))
+            handoff_signal_response.cmd_handoff_signal_response(args)
         assert exc_info.value.code == 2
-        err = capsys.readouterr().err
-        assert "--no-redact" in err
-        assert "more than one root" in err
+        captured = capsys.readouterr()
+        assert "--no-redact is refused when more than one root is in scope; drop --no-redact" in captured.err
+        assert captured.out == ""
+
+    def test_sample_no_redact_runs_over_the_active_root_alone_by_default(self, tmp_path, monkeypatch, capsys):
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        seed_one_session_per_root(roots, _write_signal_with_excerpt_session)
+
+        handoff_signal_response.cmd_handoff_signal_response(_handoff_signal_response_args(no_redact=True, sample=5))
+
+        captured = capsys.readouterr()
+        assert scope._DO_NOT_PUBLISH_BANNER in captured.out
+        assert scope._DO_NOT_PUBLISH_BANNER in captured.err
+        assert f"sess-{ACTIVE_ROOT_SENTINEL}" in captured.out
+        assert DECLARED_ROOT_SENTINEL not in captured.out + captured.err
 
     def test_no_redact_allowed_and_stamps_banner_at_single_root(self, fake_projects, capsys):
         _write_jsonl(fake_projects / "sess.jsonl", [_priced("claude-sonnet-5", input=1_000, output=100)])
@@ -651,6 +670,53 @@ class TestCmdHandoffSignalResponseStartupBurnBenchmark:
         by_session = {c["session_id"]: c for c in cards}
         assert by_session["solo"]["exceeds_startup_burn_benchmark"] is True
         assert by_session["cont-2"]["exceeds_startup_burn_benchmark"] is False
+
+    def test_default_sample_computes_the_benchmark_over_the_active_root_alone(self, tmp_path, monkeypatch, capsys):
+        """The benchmark pass reuses the run's resolved roots, so a default run's cards carry a flag judged
+        against the active account's own startup burn, and --all-accounts judges the same card against both."""
+        active_root, declared_root = _two_declared_roots(tmp_path, monkeypatch)
+        slug = SHARED_PROJECT_SLUG
+        (active_root / slug).mkdir()
+        (declared_root / slug).mkdir()
+        # Active root: one signal whose $2.00 post-signal spend is the only card, plus one continuation
+        # session with $0.60 startup burn, so the active-only benchmark is $0.60.
+        _write_jsonl(active_root / slug / "solo-a.jsonl", [
+            _check_call_turn(branch="solo-a", input=200_000, output=1_000, request_id="r1",
+                             ts="2026-08-01T10:00:00.000Z"),
+            _user_msg([_tool_result("chk1", _check_result_json(over_threshold=True))], branch="solo-a",
+                      ts="2026-08-01T10:00:01.000Z"),
+            _priced("claude-sonnet-5", branch="solo-a", input=1_000_000, output=0, request_id="r2",
+                    ts="2026-08-01T10:01:00.000Z"),  # $2.00
+        ])
+        _write_jsonl(active_root / slug / "cont-a-1.jsonl", [
+            _priced("claude-sonnet-5", branch="cont-a", input=100_000, output=0, ts="2026-08-01T10:00:00.000Z"),
+        ])
+        _write_jsonl(active_root / slug / "cont-a-2.jsonl", [
+            _priced("claude-sonnet-5", branch="cont-a", input=300_000, output=0, ts="2026-08-02T10:00:00.000Z"),
+        ])  # $0.60 startup burn
+        # Declared root: one continuation session with $10.00 startup burn, which lifts the pooled benchmark
+        # above the card's $2.00.
+        _write_jsonl(declared_root / slug / "cont-b-1.jsonl", [
+            _priced("claude-sonnet-5", branch="cont-b", input=100_000, output=0, ts="2026-08-01T10:00:00.000Z"),
+        ])
+        _write_jsonl(declared_root / slug / "cont-b-2.jsonl", [
+            _priced("claude-sonnet-5", branch="cont-b", input=5_000_000, output=0, ts="2026-08-02T10:00:00.000Z"),
+        ])
+        default_args = _handoff_signal_response_args(sample=1, seed=1, output_format="json")
+        all_accounts_args = _handoff_signal_response_args(sample=1, seed=1, output_format="json")
+        all_accounts_args.all_accounts = True
+
+        handoff_signal_response.cmd_handoff_signal_response(default_args)
+        default_out = capsys.readouterr().out
+        handoff_signal_response.cmd_handoff_signal_response(all_accounts_args)
+        all_accounts_out = capsys.readouterr().out
+
+        (default_card,) = _handoff_cards(default_out)
+        (all_accounts_card,) = _handoff_cards(all_accounts_out)
+        assert default_card["dollars_after_signal"] == pytest.approx(2.0)
+        assert default_card["exceeds_startup_burn_benchmark"] is True
+        assert all_accounts_card["dollars_after_signal"] == pytest.approx(2.0)  # positive control: same card
+        assert all_accounts_card["exceeds_startup_burn_benchmark"] is False
 
     def test_exceeds_flag_is_false_on_an_exact_tie_with_the_benchmark(self, fake_projects, capsys):
         """dollars_after_signal == benchmark_dollars exactly must resolve to

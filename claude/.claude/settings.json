@@ -43,6 +43,10 @@
       "Bash(~/.claude/scripts/cleanup-idle-open-pr-worktrees.sh)",
       "Bash(cleanup-idle-open-pr-worktrees)",
       "Bash(~/.claude/scripts/diff-size-ack.sh)",
+      "Bash(~/.claude/scripts/config-set.sh worktree_required false)",
+      "Bash(~/.claude/scripts/config-set.sh round_consult_gate false)",
+      "Bash(~/.claude/scripts/config-set.sh commit_stall_block false)",
+      "Bash(~/.claude/scripts/config-set.sh authorization_boundary_restore false)",
       "Edit(//**/.claude/settings*.json)"
     ],
     "deny": [

@@ -20,6 +20,7 @@ from replay_bench import records
 from replay_bench import tasks as tasks_mod
 from replay_bench.arms import BARE, TOOLKIT
 from replay_bench.campaign import CAMPAIGNS_DIR_NAME, MANIFEST_NAME, SPEND_NAME, STORE_DIR_NAME, task_set_hash
+from replay_bench.comment_metrics import PYTHON_DEFINITION_COUNT_FIELDS
 from replay_bench.provenance import RunnerProvenance, describe_campaign
 from replay_bench.records import ReplayRunRecord
 from replay_bench.spend import SpendFile, is_usable_cost
@@ -32,11 +33,11 @@ PAIRED_ARM_NAMES = (TOOLKIT.name, BARE.name)
 @dataclass(frozen=True)
 class _ArmCounts:
     numerator: float
-    code_lines: float
+    denominator: float
 
     @property
     def ratio(self) -> float | None:
-        return self.numerator / self.code_lines if self.code_lines else None
+        return self.numerator / self.denominator if self.denominator else None
 
 
 def _valid(arm_records: Sequence[ReplayRunRecord]) -> list[ReplayRunRecord]:
@@ -57,12 +58,13 @@ def _run_docstring_lines(record: ReplayRunRecord) -> int:
 
 def _mean_counts_per_run(
     arm_records: Sequence[ReplayRunRecord], run_numerator: Callable[[ReplayRunRecord], int] = _run_words,
+    run_denominator: Callable[[ReplayRunRecord], int] = _run_code_lines,
 ) -> _ArmCounts:
     """A task's arm counts are per-run means, so a task with more valid runs weighs no more in a pooled ratio."""
     valid = _valid(arm_records)
     return _ArmCounts(
         numerator=statistics.fmean(run_numerator(record) for record in valid),
-        code_lines=statistics.fmean(_run_code_lines(record) for record in valid),
+        denominator=statistics.fmean(run_denominator(record) for record in valid),
     )
 
 
@@ -70,7 +72,7 @@ def _ratio_of_sums(task_counts: Iterable[_ArmCounts]) -> float | None:
     task_counts = list(task_counts)
     return _ArmCounts(
         numerator=sum(counts.numerator for counts in task_counts),
-        code_lines=sum(counts.code_lines for counts in task_counts),
+        denominator=sum(counts.denominator for counts in task_counts),
     ).ratio
 
 
@@ -153,9 +155,12 @@ def _docstring_rate(metrics_list: Sequence[dict]) -> float | None:
     return 100 * docstring / code if code else None
 
 
-def _arm_docstring_counts(task_records: Sequence[ReplayRunRecord], arm_name: str) -> _ArmCounts:
+def _arm_counts(
+    task_records: Sequence[ReplayRunRecord], arm_name: str, run_numerator: Callable[[ReplayRunRecord], int],
+    run_denominator: Callable[[ReplayRunRecord], int] = _run_code_lines,
+) -> _ArmCounts:
     arm_records = [record for record in task_records if record.arm == arm_name]
-    return _mean_counts_per_run(arm_records, _run_docstring_lines)
+    return _mean_counts_per_run(arm_records, run_numerator, run_denominator)
 
 
 def _docstring_rate_of_counts(task_counts: Iterable[_ArmCounts]) -> float | None:
@@ -180,10 +185,16 @@ class PairedOutcome:
     excluded_records: dict[str, list[ReplayRunRecord]]
 
 
-def _interval_over_tasks(task_ids: Sequence[str], statistic: Callable[[Sequence[str]], float]) -> tuple[float, float] | None:
-    return analysis.bootstrap_interval(
+def _interval_and_drops_over_tasks(
+    task_ids: Sequence[str], statistic: Callable[[Sequence[str]], float | None],
+) -> tuple[tuple[float, float] | None, int]:
+    return analysis.bootstrap_interval_with_drops(
         list(task_ids), statistic, cluster_by_defect={task_id: (task_id, "") for task_id in task_ids},
     )
+
+
+def _interval_over_tasks(task_ids: Sequence[str], statistic: Callable[[Sequence[str]], float]) -> tuple[float, float] | None:
+    return _interval_and_drops_over_tasks(task_ids, statistic)[0]
 
 
 def paired_outcome(block_records: Mapping[str, Sequence[ReplayRunRecord]]) -> PairedOutcome:
@@ -236,7 +247,7 @@ def _reference_pooled_ratio(paired_ids: Iterable[str], reference: Mapping[str, d
     return _ratio_of_sums(
         _ArmCounts(
             numerator=reference[task_id]["comment_words"]["non_test"],
-            code_lines=reference[task_id]["line_counts"]["non_test"]["code"],
+            denominator=reference[task_id]["line_counts"]["non_test"]["code"],
         )
         for task_id in paired_ids if task_id in reference
     )
@@ -248,6 +259,170 @@ def _difference_text(difference: float | None, interval: tuple[float, float] | N
     if interval is None:
         return f"{difference:.4f}, no interval for fewer than two paired tasks"
     return f"{difference:.4f}, 95% interval [{interval[0]:.4f}, {interval[1]:.4f}]"
+
+
+# Binds each role to a position in `PythonDefinitionCounts`; a test pins that declaration order.
+_NEW_DOCSTRINGS, _NEW_DOCSTRING_WORDS, _NEW_DEFINITIONS, _DOCUMENTED_NEW_DEFINITIONS = PYTHON_DEFINITION_COUNT_FIELDS
+
+
+@dataclass(frozen=True)
+class _DocstringFigure:
+    stem: str
+    numerator_field: str
+    denominator_field: str
+
+
+_DOCSTRING_FIGURES = (
+    _DocstringFigure("words per new docstring", _NEW_DOCSTRING_WORDS, _NEW_DOCSTRINGS),
+    _DocstringFigure("share of new definitions with a new docstring", _DOCUMENTED_NEW_DEFINITIONS, _NEW_DEFINITIONS),
+)
+
+
+def _run_definition_count(field_name: str) -> Callable[[ReplayRunRecord], int]:
+    def read(record: ReplayRunRecord) -> int:
+        return record.metrics["python_definition_counts"]["non_test"][field_name]
+
+    return read
+
+
+def _measured_arm_counts(
+    task_records: Sequence[ReplayRunRecord], arm_name: str, figure: _DocstringFigure,
+) -> _ArmCounts | None:
+    """None when a valid run of the arm lacks the counts, so a figure never covers only some of a task's runs."""
+    arm_records = [record for record in task_records if record.arm == arm_name]
+    if not all("python_definition_counts" in record.metrics for record in _valid(arm_records)):
+        return None
+    return _arm_counts(
+        task_records, arm_name,
+        _run_definition_count(figure.numerator_field), _run_definition_count(figure.denominator_field),
+    )
+
+
+def _measured_reference_counts(reference_entry: Mapping, figure: _DocstringFigure) -> _ArmCounts | None:
+    counts = reference_entry.get("python_definition_counts")
+    if counts is None:
+        return None
+    return _ArmCounts(
+        numerator=counts["non_test"][figure.numerator_field], denominator=counts["non_test"][figure.denominator_field],
+    )
+
+
+def _unmeasured_text(unmeasured: int, total: int, subject: str = "paired tasks") -> str:
+    return f"not measured ({unmeasured} of {total} {subject} lack the counts)"
+
+
+@dataclass(frozen=True)
+class PooledFigure:
+    """`ratio` is None when any task lacks the counts or when the pooled denominator sums to zero.
+
+    `task_count` is the number of tasks the figure pooled over: the paired tasks for an arm,
+    the paired tasks with a reference entry for the reference.
+    """
+    ratio: float | None
+    unmeasured: int
+    task_count: int
+
+
+@dataclass(frozen=True)
+class FigureDifference:
+    """`difference` is None when any task lacks the counts or when an arm's pooled denominator sums to zero.
+
+    `difference`, `interval` and `dropped_resamples` are meaningful only when `unmeasured` is 0, so a reader checks it first.
+    """
+    difference: float | None
+    interval: tuple[float, float] | None
+    dropped_resamples: int
+    unmeasured: int
+    task_count: int
+
+
+@dataclass(frozen=True)
+class DocstringFigureOutcome:
+    stem: str
+    arms: dict[str, PooledFigure]
+    reference: PooledFigure
+    difference: FigureDifference
+
+
+def _pooled_figure(task_ids: Sequence[str], counts_by_task: Mapping[str, _ArmCounts | None]) -> PooledFigure:
+    unmeasured = sum(counts_by_task[task_id] is None for task_id in task_ids)
+    ratio = None if unmeasured else _pooled_ratio(task_ids, counts_by_task)
+    return PooledFigure(ratio, unmeasured, len(task_ids))
+
+
+def _figure_difference(
+    task_ids: Sequence[str], toolkit_counts: Mapping[str, _ArmCounts | None], bare_counts: Mapping[str, _ArmCounts | None],
+) -> FigureDifference:
+    unmeasured = sum(toolkit_counts[task_id] is None or bare_counts[task_id] is None for task_id in task_ids)
+    if unmeasured:
+        return FigureDifference(None, None, 0, unmeasured, len(task_ids))
+
+    def pooled_difference(resampled_ids: Sequence[str]) -> float | None:
+        toolkit_ratio, bare_ratio = _pooled_ratio(resampled_ids, toolkit_counts), _pooled_ratio(resampled_ids, bare_counts)
+        return None if toolkit_ratio is None or bare_ratio is None else toolkit_ratio - bare_ratio
+
+    difference = pooled_difference(task_ids)
+    if difference is None:
+        return FigureDifference(None, None, 0, 0, len(task_ids))
+    interval, dropped_resamples = _interval_and_drops_over_tasks(task_ids, pooled_difference)
+    return FigureDifference(difference, interval, dropped_resamples, 0, len(task_ids))
+
+
+def docstring_figure_outcomes(
+    block_records: Mapping[str, Sequence[ReplayRunRecord]], paired_ids: Sequence[str], reference: Mapping[str, dict],
+) -> list[DocstringFigureOutcome]:
+    """Descriptive secondary figures over the primary outcome's paired tasks, non-test files only. They carry no threshold.
+
+    `paired_ids` must be the primary outcome's paired task set, each id present in `block_records` with a valid run in both arms.
+    A violation raises `KeyError` or `statistics.StatisticsError` rather than being filtered.
+    """
+    reference_ids = [task_id for task_id in paired_ids if task_id in reference]
+    outcomes = []
+    for figure in _DOCSTRING_FIGURES:
+        counts = {
+            arm_name: {task_id: _measured_arm_counts(block_records[task_id], arm_name, figure) for task_id in paired_ids}
+            for arm_name in PAIRED_ARM_NAMES
+        }
+        reference_counts = {task_id: _measured_reference_counts(reference[task_id], figure) for task_id in reference_ids}
+        outcomes.append(
+            DocstringFigureOutcome(
+                stem=figure.stem,
+                arms={arm_name: _pooled_figure(paired_ids, counts[arm_name]) for arm_name in PAIRED_ARM_NAMES},
+                reference=_pooled_figure(reference_ids, reference_counts),
+                difference=_figure_difference(paired_ids, counts[TOOLKIT.name], counts[BARE.name]),
+            )
+        )
+    return outcomes
+
+
+def _pooled_figure_text(figure: PooledFigure, subject: str) -> str:
+    if figure.unmeasured:
+        return _unmeasured_text(figure.unmeasured, figure.task_count, subject)
+    return _number(figure.ratio)
+
+
+def _figure_difference_text(figure_difference: FigureDifference) -> str:
+    if figure_difference.unmeasured:
+        return _unmeasured_text(figure_difference.unmeasured, figure_difference.task_count)
+    text = _difference_text(figure_difference.difference, figure_difference.interval)
+    if figure_difference.interval is not None:
+        text += f", {figure_difference.dropped_resamples} of {analysis.BOOTSTRAP_RESAMPLES} resamples dropped"
+    return text
+
+
+def _per_docstring_figure_lines(outcomes: Sequence[DocstringFigureOutcome]) -> list[str]:
+    lines = []
+    for outcome in outcomes:
+        lines.append(
+            f"additional secondary outcome: {outcome.stem}, non-test files, over the paired tasks of the primary outcome "
+            "(a task's counts are its valid runs' means)"
+        )
+        for arm_name in PAIRED_ARM_NAMES:
+            lines.append(f"  {arm_name} {outcome.stem}: {_pooled_figure_text(outcome.arms[arm_name], 'paired tasks')}")
+        reference_text = _pooled_figure_text(outcome.reference, "paired tasks with a reference entry")
+        lines.append(f"  reference (the merged commits) {outcome.stem}: {reference_text}")
+        lines.append(f"  {outcome.stem}, toolkit - bare: {_figure_difference_text(outcome.difference)}")
+    return lines
 
 
 def summarize(campaign_dir: Path, *, local_dir: Path, budget_cap_usd: float) -> list[str]:
@@ -325,14 +500,16 @@ def summarize(campaign_dir: Path, *, local_dir: Path, budget_cap_usd: float) -> 
         lines.append(f"  reference unavailable: {reference_problem}")
     for arm in (TOOLKIT, BARE):
         pooled_rate = _docstring_rate_of_counts(
-            _arm_docstring_counts(block_records[task_id], arm.name) for task_id in paired_ids
+            _arm_counts(block_records[task_id], arm.name, _run_docstring_lines) for task_id in paired_ids
         )
         lines.append(f"  {arm.name}, paired tasks pooled: {_number(pooled_rate)}")
     for task_id in paired_ids:
         toolkit_rate, bare_rate = (
-            _docstring_rate_of_counts([_arm_docstring_counts(block_records[task_id], arm.name)]) for arm in (TOOLKIT, BARE)
+            _docstring_rate_of_counts([_arm_counts(block_records[task_id], arm.name, _run_docstring_lines)])
+            for arm in (TOOLKIT, BARE)
         )
         lines.append(f"  paired task {task_id!r}: toolkit {_number(toolkit_rate)}, bare {_number(bare_rate)}")
+    lines.extend(_per_docstring_figure_lines(docstring_figure_outcomes(block_records, paired_ids, reference)))
 
     lines.append("diagnostics per arm:")
     for arm_name in arm_names:

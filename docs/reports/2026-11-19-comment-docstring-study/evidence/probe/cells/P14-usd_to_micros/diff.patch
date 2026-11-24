@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/pr_cost.py b/claude/.claude/scripts/transcript_analysis/pr_cost.py
+--- a/claude/.claude/scripts/transcript_analysis/pr_cost.py
++++ b/claude/.claude/scripts/transcript_analysis/pr_cost.py
+@@ -232,6 +232,7 @@
+ 
+ 
+ def _usd_to_micros(dollars: float) -> int:
++    """Integer micro-dollars the ledger's own six-decimal rendering of `dollars` denotes."""
+     return int(Decimal(f"{dollars:.6f}").scaleb(6))
+ 
+ 

@@ -1,0 +1,23 @@
+{
+ "packet_id": "p012",
+ "a": {
+  "pass": true,
+  "evidence": "A project whose own name contains that substring falsely merges into another family. This is an accepted risk at current scale. Re-evaluate if cost --by-project, buckets' Proj count, or user-input's Scope project count shows an unexpected merge."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "A project whose own name contains that substring falsely merges into another family. This is an accepted risk at current scale. Re-evaluate if cost --by-project, buckets' Proj count, or user-input's Scope project count shows an unexpected merge."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "A project whose own name contains that substring falsely merges into another family. This is an accepted risk at current scale. Re-evaluate if cost --by-project, buckets' Proj count, or user-input's Scope project count shows an unexpected merge."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"\"\"Match on the literal `--claude-worktrees-` substring, not on worktree provenance."
+ },
+ "e": {
+  "pass": false,
+  "evidence": "A project whose own name contains that substring falsely merges into another family. This is an accepted risk at current scale. Re-evaluate if cost --by-project, buckets' Proj count, or user-input's Scope project count shows an unexpected merge."
+ }
+}

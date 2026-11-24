@@ -510,7 +510,7 @@ class TestCacheRebuildMultiRootRegression:
 
 
 class TestCacheRebuildNoRedactMultiRootRefusal:
-    def test_no_redact_refused_by_cache_rebuild_report_itself_even_when_called_directly(self, tmp_path):
+    def test_no_redact_refused_by_cache_rebuild_report_itself_even_when_called_directly(self, tmp_path, capsys):
         """Defense-in-depth, mirroring _cost_report's own version of this
         test: _cache_rebuild_report must refuse the multi-root + --no-redact
         combination itself rather than trusting that _resolve_cost_roots
@@ -523,6 +523,7 @@ class TestCacheRebuildNoRedactMultiRootRefusal:
         with pytest.raises(SystemExit) as exc_info:
             cache_rebuild._cache_rebuild_report(_cache_rebuild_args(no_redact=True), roots=[root_a, root_b])
         assert exc_info.value.code == 2
+        assert capsys.readouterr().out == ""
 
     def test_no_redact_refused_with_ttl_verdict_and_multi_root(self, tmp_path, capsys):
         """--ttl-verdict's own accumulation family is keyed on
@@ -541,10 +542,7 @@ class TestCacheRebuildNoRedactMultiRootRefusal:
             )
         assert exc_info.value.code == 2
         out = capsys.readouterr().out
-        assert "acct-a" not in out
-        assert "acct-b" not in out
-        assert str(root_a) not in out
-        assert str(root_b) not in out
+        assert out == ""
 
 
 class TestCacheRebuildArgparseWiring:

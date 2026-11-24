@@ -179,6 +179,27 @@ class TestReadScope:
         assert _extract_account_read_calls(out, "account-1") == 1
         assert _extract_account_read_calls(out, "account-2") == 1
 
+    def test_per_account_rows_are_numbered_by_sorted_root_path_not_scan_order(self, tmp_path, capsys):
+        """The active root scans first but sorts last here, so a scan-order numbering would label it account-1."""
+        scanned_first_sorts_last = _write_cost_root(tmp_path, "acct-zeta", "-home-user-repo-z", "sess-z", [
+            _opus([_read_use("r1", file_path="/z1.py"), _read_use("r2", file_path="/z2.py")]),
+            _read_result("r1", "x" * 40),
+            _read_result("r2", "x" * 40),
+        ])
+        scanned_second_sorts_first = _write_cost_root(tmp_path, "acct-alpha", "-home-user-repo-a", "sess-a", [
+            _opus([_read_use("r3", file_path="/a1.py")]),
+            _read_result("r3", "y" * 40),
+        ])
+
+        read_scope._read_scope_report(
+            _read_scope_args(), roots=[scanned_first_sorts_last, scanned_second_sorts_first],
+        )
+
+        out = capsys.readouterr().out
+        assert _extract_account_read_calls(out, "account-1") == 1
+        assert _extract_account_read_calls(out, "account-2") == 2
+        assert out.index("account-1") < out.index("account-2")
+
     def test_per_account_zero_calls_prints_no_read_calls_line(self, tmp_path, capsys):
         root_a = _write_cost_root(tmp_path, "acct-alice-clientwork", "-home-user-repo-a", "sess-a", [
             _opus([_read_use("r1", file_path="/a.py")]),

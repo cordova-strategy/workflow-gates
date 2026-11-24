@@ -1,10 +1,10 @@
 """Three-layer hook alignment test suite.
 
 Layer 0 — Docs coverage: every .sh hook in claude/.claude/hooks/ (excluding
-_lib.sh and _config.sh) must have its own list-item entry in docs/hooks.md.
+helper libraries) must have its own list-item entry in docs/hooks.md.
 
 Layer 1 — Static checks: every .sh hook in claude/.claude/hooks/ and
-plugins/*/hooks/ (excluding _lib.sh/_config.sh siblings) must declare a
+plugins/*/hooks/ (excluding helper libraries) must declare a
 `# hook-class: <value>` header on line 2 with a valid value, and hooks
 matching gate-naming prefixes or the EXPLICIT_GATES set must declare
 `# hook-class: gate`. Every `hook-class: gate` hook must also declare a
@@ -27,17 +27,17 @@ shape checks:
   (e.g. require-respond-pr.sh's `PATTERN_*` family) -- out of scope for
   this check.
 - No hook regex in claude/.claude/hooks/*.sh, plugins/*/hooks/*.sh, or
-  either directory's _lib.sh uses GNU grep's `\\s` extension, which a
+  either directory's helper libraries use GNU grep's `\\s` extension, which a
   POSIX-strict grep reads as a literal `s`.
-- No hook in claude/.claude/hooks/*.sh (including _lib.sh and _config.sh) or
-  plugins/*/hooks/*.sh (including each _lib.sh) pipes into a grep that can
-  exit at its first match.
+- No hook in claude/.claude/hooks/*.sh or plugins/*/hooks/*.sh (including
+  every helper library) pipes into a grep that can exit at its first match.
 - No hook in claude/.claude/hooks/*.sh or plugins/*/hooks/*.sh (excluding
-  each _lib.sh and _config.sh) tokenizes a command with a bare `xargs -n1`.
+  every helper library) tokenizes a command with a bare `xargs -n1`.
   An xargs failure drops every word after the failing one, so a file named
   by a later flag goes unscanned. Main hooks tokenize through
   `_lib_command_words` instead. A plugin hook sources its own `_lib.sh`,
   which does not define it, so it splits with another tool.
+- No hook config registers a helper library as a command.
 - Every hook entry object inside `hooks.<Event>[].hooks[]` in
   claude/.claude/settings.json carries non-empty `type` and `command`
   fields — catches an entry left with only a `timeout` key and no `type`
@@ -52,7 +52,8 @@ The first two carry a small, named exemption dict for a structural holdout
 that resisted conversion. The `\\s` check, the early-exit-grep check, and the
 bare-xargs check have none: no live occurrence remains anywhere in their
 scope. See `_all_hook_files` for why only the `\\s` and early-exit-grep checks
-also sweep each directory's _lib.sh, and why the bare-xargs check sweeps none.
+also sweep each directory's helper libraries, and why the bare-xargs check
+sweeps none.
 
 Layer 2 — Behavior checks: every gate-class hook must deny on malformed
 input, empty stdin, non-object `.tool_input`, and missing `_lib.sh`; and
@@ -77,7 +78,9 @@ from helpers import (
     assert_cap_engaged,
     bash_input,
     build_path_without,
+    helper_libraries,
     init_git_repo_with_commit,
+    is_helper_library,
     pretooluse_matcher_groups_for,
     pretooluse_wired_entries,
     run_hook,
@@ -99,40 +102,21 @@ _MAIN_HOOKS_DIR = _REPO_ROOT / "claude" / ".claude" / "hooks"
 _PLUGIN_HOOKS_DIRS = list((_REPO_ROOT / "plugins").glob("*/hooks"))
 
 
-# Shared helper libraries, not hooks -- sourced by hooks/scripts, never
-# themselves registered on a PreToolUse/PostToolUse matcher or documented as
-# a standalone hook in docs/hooks.md.
-_HELPER_LIBRARY_NAMES: frozenset[str] = frozenset({"_lib.sh", "_config.sh"})
-
-
-def _all_hook_files(*, include_lib: bool = False) -> list[Path]:
+def _all_hook_files(*, include_helper_libraries: bool = False) -> list[Path]:
     """Return every .sh hook across claude/.claude/hooks/ and plugins/*/hooks/.
 
-    Excludes both shared helper libraries (_lib.sh, _config.sh) by default.
-    Pass include_lib=True to add _lib.sh back in -- used by the `\\s` and
-    early-exit-grep detectors, which are safe against _lib.sh because neither
-    primitive is defined there.
-    The bare-xargs check does not opt in, so it sweeps no _lib.sh (the main
-    one or a plugin's) and no _config.sh: the main _lib.sh holds two
-    status-checked `xargs -n1` sites (in `_lib_command_words` and
-    `_lib_commit_fragment_has_worktree_target`) that a sweep would flag.
-    _config.sh stays excluded even then: it exists only under
-    claude/.claude/hooks/, so folding it into ALL_HOOKS_AND_LIBS would break
-    test_all_hooks_and_libs_includes_every_lib_sh's one-_lib.sh-per-directory
-    count invariant. The early-exit-grep test appends _config.sh to its own
-    parametrization instead, since every hook sources it. The bare-jq and
-    inline-matcher detectors stay excluded from _lib.sh because each is
-    itself defined inside _lib.sh using the exact primitive it detects --
-    including it would be a guaranteed self-match.
+    Excludes every helper library by default. Pass include_helper_libraries=True
+    to keep them. The `\\s` and early-exit-grep detectors opt in, because
+    neither primitive is defined in a helper library. The bare-xargs check does
+    not opt in, because _lib.sh holds status-checked `xargs -n1` sites in
+    `_lib_command_words` and `_lib_commit_fragment_has_worktree_target`. The
+    bare-jq and inline-matcher detectors stay off helper libraries because
+    _lib.sh defines the primitive each one detects, a guaranteed self-match.
     """
-    excluded = {"_config.sh"} if include_lib else _HELPER_LIBRARY_NAMES
     hooks: list[Path] = []
-    for sh in sorted(_MAIN_HOOKS_DIR.glob("*.sh")):
-        if sh.name not in excluded:
-            hooks.append(sh)
-    for hooks_dir in _PLUGIN_HOOKS_DIRS:
+    for hooks_dir in [_MAIN_HOOKS_DIR, *_PLUGIN_HOOKS_DIRS]:
         for sh in sorted(hooks_dir.glob("*.sh")):
-            if sh.name not in excluded:
+            if include_helper_libraries or not is_helper_library(sh.name):
                 hooks.append(sh)
     return hooks
 
@@ -160,7 +144,7 @@ _EXPLICIT_GATES: frozenset[str] = frozenset(
 )
 
 ALL_HOOKS = _all_hook_files()
-ALL_HOOKS_AND_LIBS = _all_hook_files(include_lib=True)
+ALL_HOOKS_AND_LIBS = _all_hook_files(include_helper_libraries=True)
 GATE_HOOKS = [h for h in ALL_HOOKS if _hook_class(h) == "gate"]
 
 # Hooks documented in docs/hooks.md only for the main hooks dir — that doc's
@@ -1282,7 +1266,7 @@ def _live_backslash_s_hits(hook: Path) -> list[str]:
 )
 def test_no_gnu_backslash_s_regex_extension(hook: Path) -> None:
     """No hook regex -- claude/.claude/hooks/*.sh, plugins/*/hooks/*.sh, or
-    either directory's _lib.sh -- uses GNU grep's `\\s` extension -- not
+    either directory's helper libraries -- uses GNU grep's `\\s` extension -- not
     POSIX ERE, and a POSIX-strict grep reads it as a literal `s`. Use
     `[[:space:]]` instead.
 
@@ -1292,9 +1276,8 @@ def test_no_gnu_backslash_s_regex_extension(hook: Path) -> None:
     inline-matcher checks stay on _MAIN_HOOKS because each has unresolved
     plugin-side hits requiring adjudication first. See `_all_hook_files`
     for why this detector and the early-exit-grep check also sweep each
-    directory's _lib.sh. Ids
-    are repo-relative paths, not bare filenames, since every hooks
-    directory has a same-named _lib.sh.
+    directory's helper libraries. Ids are repo-relative paths, not bare
+    filenames, since every hooks directory has a same-named _lib.sh.
 
     See _live_backslash_s_hits for the detector's blind spot (a same-line
     trailing comment mentioning `\\s` in prose would also be stripped
@@ -1400,18 +1383,13 @@ def _pipe_into_early_exit_grep_hits(hook: Path) -> list[str]:
     ]
 
 
-# _config.sh is not in ALL_HOOKS_AND_LIBS (see `_all_hook_files`), but every
-# hook sources it, so the early-exit-grep test sweeps it as well.
-_PIPE_LINT_FILES = [*ALL_HOOKS_AND_LIBS, _MAIN_HOOKS_DIR / "_config.sh"]
-
-
 @pytest.mark.parametrize(
     "hook",
-    _PIPE_LINT_FILES,
-    ids=[str(h.relative_to(_REPO_ROOT)) for h in _PIPE_LINT_FILES],
+    ALL_HOOKS_AND_LIBS,
+    ids=[str(h.relative_to(_REPO_ROOT)) for h in ALL_HOOKS_AND_LIBS],
 )
 def test_no_pipe_into_early_exit_grep(hook: Path) -> None:
-    """No hook, _lib.sh, or _config.sh pipes into a grep that can exit at its
+    """No hook or helper library pipes into a grep that can exit at its
     first match (`-q`, `-l`, `-L`, `-m`, or their long forms).
 
     Under `set -o pipefail`, grep exiting at its first match while the writer
@@ -1635,7 +1613,7 @@ def test_hooks_tokenize_through_lib_command_words(hook: Path) -> None:
     tokenizer after an xargs failure.
 
     There is no exemption dict. See `_all_hook_files` for why this check
-    sweeps no `_lib.sh` or `_config.sh`. Ids are repo-relative paths, so a
+    sweeps no helper library. Ids are repo-relative paths, so a
     plugin hook is told apart from a main hook. See
     _bare_xargs_tokenizer_hits for the detector's blind spots and known false
     positives.
@@ -1818,11 +1796,11 @@ def test_bare_xargs_detector_known_false_positives_stay_flagged(tmp_path: Path, 
 
 
 def test_all_hooks_and_libs_includes_every_lib_sh() -> None:
-    """ALL_HOOKS_AND_LIBS must contain exactly one _lib.sh per hooks
-    directory, on top of every entry in ALL_HOOKS. Fails if a hooks
-    directory is added, renamed, or loses its _lib.sh, catching what
-    would otherwise be a silent drop in the backslash-s and early-exit-grep
-    detectors' parametrized case counts.
+    """ALL_HOOKS_AND_LIBS must contain exactly one _lib.sh per hooks directory.
+
+    It must also contain exactly every hook plus every helper library.
+    Both contracts catch what would otherwise be a silent drop in the
+    backslash-s and early-exit-grep detectors' parametrized case counts.
     """
     expected_lib_count = 1 + len(_PLUGIN_HOOKS_DIRS)  # main dir + each plugin
     lib_files = [h for h in ALL_HOOKS_AND_LIBS if h.name == "_lib.sh"]
@@ -1830,7 +1808,28 @@ def test_all_hooks_and_libs_includes_every_lib_sh() -> None:
         f"expected {expected_lib_count} _lib.sh files in ALL_HOOKS_AND_LIBS "
         f"(one per hooks directory), found {len(lib_files)}: {lib_files!r}"
     )
-    assert len(ALL_HOOKS_AND_LIBS) == len(ALL_HOOKS) + expected_lib_count
+    every_helper_library = [
+        helper_library
+        for hooks_dir in [_MAIN_HOOKS_DIR, *_PLUGIN_HOOKS_DIRS]
+        for helper_library in helper_libraries(hooks_dir)
+    ]
+    assert len(ALL_HOOKS_AND_LIBS) == len(set(ALL_HOOKS_AND_LIBS)), "ALL_HOOKS_AND_LIBS lists a path more than once"
+    assert set(ALL_HOOKS_AND_LIBS) == set(ALL_HOOKS) | set(every_helper_library)
+
+
+def test_all_hook_files_excludes_every_helper_library_unless_asked_to_keep_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A third helper library beyond `_lib.sh` and `_config.sh` is classified by name shape, not a fixed list."""
+    for file_name in ("hook.sh", "_lib.sh", "_topic-lib.sh"):
+        (tmp_path / file_name).write_text("#!/bin/bash\n")
+    monkeypatch.setitem(globals(), "_MAIN_HOOKS_DIR", tmp_path)
+    monkeypatch.setitem(globals(), "_PLUGIN_HOOKS_DIRS", [])
+
+    assert _all_hook_files() == [tmp_path / "hook.sh"]
+    assert sorted(_all_hook_files(include_helper_libraries=True)) == sorted(
+        [tmp_path / "hook.sh", tmp_path / "_lib.sh", tmp_path / "_topic-lib.sh"]
+    )
 
 
 def test_no_hook_references_the_cumulative_review_value_helpers() -> None:
@@ -1839,7 +1838,7 @@ def test_no_hook_references_the_cumulative_review_value_helpers() -> None:
 
     Tripwire on direct references to the two helpers only. It does not see a hook that runs
     `marker.sh status` or reads `cumulative-review-markers/`, because neither names a helper.
-    It does not see a future `_lib.sh` wrapper either, because `_all_hook_files()` excludes `_lib.sh`.
+    It does not see a future `_lib.sh` wrapper either, because `_all_hook_files()` excludes every helper library.
     """
     helper_names = ("_lib_cumulative_review_value", "_lib_cumulative_diff_hash")
     referencing_hooks = [
@@ -2437,14 +2436,17 @@ def test_hook_threat_model_section_names_every_tier_token() -> None:
 
 _HOOK_THREAT_MODEL_SECTION = (
     "This repo's hooks default to guarding a **cooperative** agent that makes "
-    "honest mistakes, not one attacking the gate. A review finding that needs a "
+    "honest mistakes, not one attacking the gate, and `cooperative` says "
+    "nothing about whether the gate's input is trusted. A review finding that needs a "
     "command or staged-content shape a cooperative agent would never emit is not "
     "a defect in a gate whose `# tier-threat-model:` line is present but omits "
     "`untrusted-input`. A gate with no tier line at all is not yet classified and "
     "gets no waiver. Non-gate hooks and shared library code get no waiver from "
     "this framework. A gate that lists `untrusted-input` gets no such waiver, "
     "because content read from outside the session can steer a cooperative agent "
-    "into any shape. A gate is at least as strict as any gate whose header names "
+    "into any shape. For example, a cooperative agent that follows a fetched page "
+    "telling it to pipe an installer into a shell is steered, not hostile. A gate is at "
+    "least as strict as any gate whose header names "
     "it as that gate's backstop against evasion. A shared helper function is "
     "never relaxed just because one of its many callers denies less. A gate that "
     "lists `irreversible` is never relaxed on false-positive cost alone. A tier "
@@ -3542,9 +3544,10 @@ def _gate_registration_problems(
 
     Returns (problems, number of gate handlers). Only the `hooks` object is
     walked, so a command elsewhere in the file (for example `statusLine`) is
-    ignored. Every command must resolve to a script in `known_scripts`. A
-    handler carries `"onFailure": "block"` exactly when its script is in
-    `gate_scripts`, and every gate handler sits under PreToolUse and is not async.
+    ignored. Every command must resolve to a script in `known_scripts` and is
+    not a helper library. A handler carries `"onFailure": "block"` exactly
+    when its script is in `gate_scripts`, and every gate handler sits under
+    PreToolUse and is not async.
     """
     problems: list[str] = []
     gate_handler_count = 0
@@ -3555,6 +3558,12 @@ def _gate_registration_problems(
                 command = handler.get("command", "")
                 where = f"{event}[{matcher}] {command!r}"
                 script_name = _hook_command_script_name(command)
+                if script_name is not None and is_helper_library(script_name):
+                    problems.append(
+                        f"{where}: {script_name} is a helper library registered as a hook command; "
+                        f"a helper library is sourced and never registered"
+                    )
+                    continue
                 if script_name is None or script_name not in known_scripts:
                     problems.append(f"{where}: command does not resolve to a hook script")
                     continue
@@ -3583,7 +3592,7 @@ def _plain_handler(script: str, **extra: object) -> dict:
 
 _STATUS_LINE_COMMAND = "bash ~/.claude/statusline-command.sh"
 
-_CONTROL_KNOWN_SCRIPTS = frozenset({"gate-a.sh", "gate-b.sh", "note.sh"})
+_CONTROL_KNOWN_SCRIPTS = frozenset({"gate-a.sh", "gate-b.sh", "note.sh", "_topic-lib.sh"})
 _CONTROL_GATE_SCRIPTS = frozenset({"gate-a.sh", "gate-b.sh"})
 
 _REGISTRATION_CONTROL_TABLE = [
@@ -3672,6 +3681,11 @@ _REGISTRATION_CONTROL_TABLE = [
         },
         None,
         id="plugin-command-with-environment-assignment-prefix",
+    ),
+    pytest.param(
+        {"hooks": {"Stop": [{"hooks": [_plain_handler("_topic-lib.sh")]}]}},
+        "helper library",
+        id="helper-library-registered-as-command",
     ),
 ]
 

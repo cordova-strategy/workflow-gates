@@ -424,27 +424,26 @@ def _count_config_keys_psv_rows() -> int:
     return len(schema())
 
 
-_MIGRATE_LEGACY_CONFIG_REL_PATH = "claude/.claude/scripts/migrate-legacy-config.sh"
+_CONFIG_SH_REL_PATH = "claude/.claude/hooks/_config.sh"
 
 
 def _enforcement_critical_keys() -> frozenset[str]:
     """Return the enforcement-critical key set, derived behaviorally.
 
-    Sources migrate-legacy-config.sh in a bash subprocess and echoes
-    $_MIGRATE_ENFORCEMENT_CRITICAL_KEYS back out. The script's own
-    BASH_SOURCE guard keeps this from running main(). Ground-truthed
+    Sources _config.sh in a bash subprocess and echoes
+    $_CONFIG_ENFORCEMENT_CRITICAL_KEYS back out. Ground-truthed
     against the actual bash variable rather than duplicated as a Python
     literal: a hardcoded copy's len()-only usage below would silently pass
     a future edit that swapped which four keys are enforcement-critical
     while leaving the count unchanged.
     """
-    script_path = REPO_ROOT / _MIGRATE_LEGACY_CONFIG_REL_PATH
+    script_path = REPO_ROOT / _CONFIG_SH_REL_PATH
     result = subprocess.run(
         [
             "bash",
             "-c",
             f"source {shlex.quote(str(script_path))} "
-            '&& printf "%s" "$_MIGRATE_ENFORCEMENT_CRITICAL_KEYS"',
+            '&& printf "%s" "$_CONFIG_ENFORCEMENT_CRITICAL_KEYS"',
         ],
         capture_output=True,
         text=True,
@@ -453,8 +452,8 @@ def _enforcement_critical_keys() -> frozenset[str]:
     keys = frozenset(result.stdout.split())
     if not keys:
         raise ValueError(
-            "Could not read $_MIGRATE_ENFORCEMENT_CRITICAL_KEYS from "
-            f"{_MIGRATE_LEGACY_CONFIG_REL_PATH} (stdout: {result.stdout!r}, "
+            "Could not read $_CONFIG_ENFORCEMENT_CRITICAL_KEYS from "
+            f"{_CONFIG_SH_REL_PATH} (stdout: {result.stdout!r}, "
             f"stderr: {result.stderr!r}); the variable was renamed or removed "
             "and this ground truth needs updating."
         )

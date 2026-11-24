@@ -11,7 +11,9 @@
 # session — unstows, moves, and re-stows so every symlink under ~/.claude/
 # and ~/.local/bin/ keeps resolving. Deliberately does NOT source _lib.sh or
 # otherwise depend on ~/.claude/ being intact: repairing that dependency is
-# exactly this script's job. See README "Repo relocation" and docs/scripts.md.
+# exactly this script's job. Both modes also re-point links in each config dir
+# listed in ~/.claude/transcript-config-dirs. See README "Repo relocation" and
+# docs/scripts.md.
 #
 # Threat model: <new-path> is semi-trusted, not only a deliberate human
 # argument — deny-repo-relocation.sh's own denial message names this script
@@ -23,6 +25,8 @@
 # refuse a destination outside $HOME without an explicit opt-in, and pass
 # `--` before every positional path argument handed to mv/stow/install so a
 # dash-prefixed path can never be parsed as a flag.
+# A --repair destination that passes only the canary check reaches every
+# account listed in ~/.claude/transcript-config-dirs, not only ~/.claude.
 #
 # Usage:
 #   relocate-claude-config <new-path>
@@ -52,11 +56,11 @@
 #      After --repair's `stowing at`, the retry is re-running the same command.
 #   2  bad arguments
 #   3  the checkout moved, or --repair linked the `claude` package, but
-#      linking a package named on stderr failed. Fix it, then run the
-#      --repair command the output ends with. A checkout with no
-#      claude-skills/ directory is the exception: update it to a commit that
-#      has one, then run ./install.sh from it, because the run already
-#      installed the checkout's own copy of this script.
+#      linking a package, or re-pointing a listed config dir, named on stderr
+#      failed. Fix it, then run the --repair command the output ends with. A
+#      checkout with no claude-skills/ directory is the exception: update it to
+#      a commit that has one, then run ./install.sh from it, because the run
+#      already installed the checkout's own copy of this script.
 
 set -euo pipefail
 
@@ -66,13 +70,16 @@ BACKUP_DIR="$HOME/.claude-config-relocate-backup"
 # Rows in stow-packages.sh's format for every package it lists except `claude`.
 # A test keeps this equal to that script's rows.
 RELINK_PACKAGES=($'claude-skills\t.claude')
-RELINK_FAILED_PACKAGES=()
+RELINK_FAILURES=()
+DECLARED_DIRS_FILE="$HOME/.claude/transcript-config-dirs"
+DECLARED_CONFIG_DIRS=()
 
 usage() {
   cat >&2 <<EOF
 Usage:
   $SCRIPT_NAME <new-path>              Relocate this checkout to <new-path>
   $SCRIPT_NAME --repair <new-path>     Repair ~/.claude after an out-of-band move to <new-path>
+  Both modes also re-point links in each config dir listed in ~/.claude/transcript-config-dirs.
 
 Flags:
   --allow-outside-home   Permit a destination outside \$HOME (either mode)
@@ -319,26 +326,35 @@ _ensure_backup_dir_is_usable() {
   fi
 }
 
+# Create a new empty file named <stem>.<random suffix> in $BACKUP_DIR and print
+# its path. Callers run it in $(...), so the unusable-dir refusal's exit ends
+# only that substitution and the caller sees a failed status.
+_new_backup_path() {
+  _ensure_backup_dir_is_usable
+  mkdir -p -- "$BACKUP_DIR" || return 1
+  mktemp "$BACKUP_DIR/$1.XXXXXX"
+}
+
 # Quarantine-move (never delete) $1 when it is a symlink whose target does not
 # exist, and return 1 without touching anything for any other path.
 # Quarantine instead of delete because a dangling-symlink check alone can
 # false-positive on a target that's merely temporarily unreachable (unmounted
 # volume, offline share, mid-sync cloud path), not genuinely broken —
 # quarantining keeps a wrongly-triggered repair reversible.
-# Links with the same basename quarantined in one run share one backup name,
-# so the later move replaces the earlier backup.
 # Callers run it with errexit off, so a failed move exits here instead of
 # returning a status.
 _quarantine_if_dangling() {
-  local dangling_path="$1"
+  local dangling_path="$1" backup_path
   if [ ! -L "$dangling_path" ] || [ -e "$dangling_path" ]; then
     return 1
   fi
-  _ensure_backup_dir_is_usable
-  local backup_path
-  backup_path="$BACKUP_DIR/$(basename -- "$dangling_path").$$"
+  if ! backup_path=$(_new_backup_path "$(basename -- "$dangling_path")"); then
+    err "could not move $dangling_path into $BACKUP_DIR"
+    exit 1
+  fi
   echo "[relocate-claude-config] quarantining dangling $dangling_path -> $backup_path"
-  if ! { mkdir -p -- "$BACKUP_DIR" && mv -- "$dangling_path" "$backup_path"; }; then
+  if ! mv -f -- "$dangling_path" "$backup_path"; then
+    rm -f -- "$backup_path"
     err "could not move $dangling_path into $BACKUP_DIR"
     exit 1
   fi
@@ -476,17 +492,286 @@ _relink_package() (
 )
 
 # Re-link every RELINK_PACKAGES row from the checkout at $1. A failed package
-# is reported and recorded in RELINK_FAILED_PACKAGES, never aborts the run.
+# is reported and recorded in RELINK_FAILURES, never aborts the run.
 relink_packages() {
   local new_path="$1" row package target
-  RELINK_FAILED_PACKAGES=()
+  RELINK_FAILURES=()
   for row in "${RELINK_PACKAGES[@]}"; do
     package="${row%%$'\t'*}"
     target="${row#*$'\t'}"
     echo "[relocate-claude-config] linking $package at $new_path"
     if ! _relink_package "$new_path" "$package" "$HOME/$target"; then
       err "re-linking $package failed"
-      RELINK_FAILED_PACKAGES+=("$package")
+      RELINK_FAILURES+=("$package")
+    fi
+  done
+  return 0
+}
+
+# Warn that line $1 of the roots file is skipped. It names the line only, because
+# a path can identify an engagement.
+_warn_unusable_declared_line() {
+  err "line $1 of ~/.claude/transcript-config-dirs is not an absolute path to an existing directory, so that dir is not re-linked"
+}
+
+# Fill DECLARED_CONFIG_DIRS with a `<line number><TAB><physical path>` row for
+# each usable dir in ~/.claude/transcript-config-dirs.
+# _config_dir.py's declared_roots_matching owns the line grammar, and
+# test_reader_matches_config_dir_parser compares the two on a fixed set of lines.
+# That test does not cover a lone CR, VT, FF or U+2028, which split lines differently.
+# It also does not cover non-ASCII whitespace, which the locale's [:space:] may trim and the Python parser does not.
+read_declared_config_dirs() {
+  DECLARED_CONFIG_DIRS=()
+  [ -f "$DECLARED_DIRS_FILE" ] && [ -r "$DECLARED_DIRS_FILE" ] || return 0
+
+  local raw_line line line_number=0 physical_path row
+  while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+    line_number=$((line_number + 1))
+    line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -z "$line" ] && continue
+    case "$line" in '#'*) continue ;; esac
+    if [ "$line" = "~" ]; then
+      line="$HOME"
+    elif [[ "$line" == \~/* ]]; then
+      line="${HOME}${line#\~}"
+    fi
+    if [[ "$line" != /* ]]; then
+      _warn_unusable_declared_line "$line_number"
+      continue
+    fi
+    echo "[relocate-claude-config] checking line $line_number of ~/.claude/transcript-config-dirs"
+    physical_path=""
+    if [ -d "$line" ]; then
+      physical_path=$(_readlink_f "$line") || physical_path=""
+    fi
+    if [ -z "$physical_path" ]; then
+      _warn_unusable_declared_line "$line_number"
+      continue
+    fi
+    for row in "${DECLARED_CONFIG_DIRS[@]}"; do
+      [ "${row#*$'\t'}" = "$physical_path" ] && continue 2
+    done
+    DECLARED_CONFIG_DIRS+=("$line_number"$'\t'"$physical_path")
+  done < "$DECLARED_DIRS_FILE" || return 0
+}
+
+# Print the relative path from directory $1 to path $2. Callers must pass
+# physical absolute paths with no trailing slash.
+_relative_path() {
+  local from_dir="$1" to_path="$2" climb="" prefix rest=""
+  while :; do
+    prefix="${from_dir%/}"
+    if [[ "$to_path" == "$prefix" || "$to_path" == "$prefix"/* ]]; then
+      break
+    fi
+    from_dir=$(dirname -- "$from_dir")
+    climb+="../"
+  done
+  if [[ "$to_path" != "$prefix" ]]; then
+    rest="${to_path#"$prefix"/}"
+  fi
+  rest="${climb}${rest}"
+  rest="${rest%/}"
+  printf '%s' "${rest:-.}"
+}
+
+# _fail_declared_link, _repoint_declared_link and _walk_declared_position run inside
+# _repoint_declared_dir and share its locals (new_real, dir_real, line_number, roots
+# and the counters) through bash's dynamic scope.
+
+# Count position $1 as a link that could not be re-pointed, for the cause $2.
+_fail_declared_link() {
+  err "could not re-point $1 in the dir on line $line_number of ~/.claude/transcript-config-dirs: $2"
+  failed_links=$((failed_links + 1))
+}
+
+# Replace the dangling link at position $1 with relative text into
+# $new_real/$2/$1, and keep its old text $3 in a backup copy. The old link
+# stays in place until the final rename, so a failed step leaves it for a retry.
+_repoint_declared_link() {
+  local position="$1" root="$2" old_text="$3"
+  local link_path="$dir_real/$position" link_name parent temp_link new_text backup_path
+  link_name="${link_path##*/}"
+  parent="${link_path%/*}"
+  temp_link="$parent/.$link_name.relocate-claude-config.$$"
+
+  if [ -e "$temp_link" ] || [ -L "$temp_link" ]; then
+    _fail_declared_link "$position" "its temporary name is taken"
+    return 0
+  fi
+  # The x sentinel keeps a newline ending the text, which $(...) would drop.
+  new_text=$(_relative_path "$parent" "$new_real/$root/$position"; printf x)
+  new_text=${new_text%x}
+  if ! ln -s -- "$new_text" "$temp_link" 2>/dev/null; then
+    _fail_declared_link "$position" "could not create the new link"
+    return 0
+  fi
+  if [ ! -e "$temp_link" ]; then
+    rm -f -- "$temp_link" 2>/dev/null
+    _fail_declared_link "$position" "the new link does not resolve"
+    return 0
+  fi
+  if ! backup_path=$(_new_backup_path "$link_name.L$line_number"); then
+    rm -f -- "$temp_link" 2>/dev/null
+    _fail_declared_link "$position" "could not copy it into the backup dir"
+    return 0
+  fi
+  if ! ln -sf -- "$old_text" "$backup_path" 2>/dev/null; then
+    rm -f -- "$temp_link" "$backup_path" 2>/dev/null
+    _fail_declared_link "$position" "could not copy it into the backup dir"
+    return 0
+  fi
+  if [ ! -L "$link_path" ] || [ -e "$link_path" ]; then
+    rm -f -- "$temp_link" 2>/dev/null
+    _fail_declared_link "$position" "it changed during the run"
+    return 0
+  fi
+  if ! mv -f -- "$temp_link" "$link_path" 2>/dev/null; then
+    rm -f -- "$temp_link" 2>/dev/null
+    _fail_declared_link "$position" "could not rename the new link over it"
+    return 0
+  fi
+  repointed=$((repointed + 1))
+  echo "[relocate-claude-config] re-pointed $position in the dir on line $line_number of ~/.claude/transcript-config-dirs; its old link is in $backup_path"
+}
+
+# Visit each name the checkout's package roots hold at position $1 under the
+# listed dir ("." is the dir itself). It never lists the account's own tree.
+# Past a root the checkout side is entered only through a real directory.
+_walk_declared_position() {
+  local position="$1" account_dir="$dir_real"
+  if [ "$position" != . ]; then
+    account_dir="$dir_real/$position"
+  fi
+  if [ ! -x "$account_dir" ]; then
+    err "could not search $position in the dir on line $line_number of ~/.claude/transcript-config-dirs"
+    unsearched=$((unsearched + 1))
+    return 0
+  fi
+
+  local root checkout_dir entry child earlier_root held_by_earlier_root
+  local child_path old_text matched_root candidate_root
+  local -a walked_roots=()
+  for root in "${roots[@]}"; do
+    checkout_dir="$new_real/$root"
+    if [ "$position" != . ]; then
+      checkout_dir="$checkout_dir/$position"
+      [ ! -L "$checkout_dir" ] || continue
+    fi
+    [ -d "$checkout_dir" ] || continue
+
+    for entry in "$checkout_dir"/*; do
+      child="${entry##*/}"
+      if [ "$position" != . ]; then
+        child="$position/$child"
+      fi
+      held_by_earlier_root=false
+      for earlier_root in "${walked_roots[@]}"; do
+        if [ -e "$new_real/$earlier_root/$child" ] || [ -L "$new_real/$earlier_root/$child" ]; then
+          held_by_earlier_root=true
+          break
+        fi
+      done
+      if $held_by_earlier_root; then
+        continue
+      fi
+
+      child_path="$dir_real/$child"
+      if [ -L "$child_path" ]; then
+        # The x sentinel keeps a newline ending the text, which $(...) would drop.
+        if ! old_text=$(readlink -n -- "$child_path" 2>/dev/null && printf x); then
+          _fail_declared_link "$child" "could not read its text"
+          continue
+        fi
+        old_text=${old_text%x}
+        if [ -e "$child_path" ]; then
+          continue
+        fi
+        matched_root=""
+        for candidate_root in "${roots[@]}"; do
+          if [ -e "$new_real/$candidate_root/$child" ] && [[ "$old_text" == *"/$candidate_root/$child" ]]; then
+            matched_root="$candidate_root"
+            break
+          fi
+        done
+        if [ -n "$matched_root" ]; then
+          _repoint_declared_link "$child" "$matched_root" "$old_text"
+        else
+          left_alone=$((left_alone + 1))
+          echo "[relocate-claude-config] left $child alone in the dir on line $line_number of ~/.claude/transcript-config-dirs: it does not resolve and is not recognized as this repo's link"
+        fi
+      elif [ -d "$child_path" ]; then
+        _walk_declared_position "$child"
+      fi
+    done
+    walked_roots+=("$root")
+  done
+}
+
+# Re-point each dangling link in the listed dir $2 (a physical path) whose text
+# ends in the path of its position under the checkout $1. $3 is the dir's line in
+# the roots file, and the package roots follow. The body is a subshell, so the
+# shopt change and the counters end with it. Callers run it as an `if`
+# condition, where errexit is off, so each step checks its own status.
+_repoint_declared_dir() (
+  local new_real="$1" dir_real="$2" line_number="$3"
+  shift 3
+  local -a roots=("$@")
+  local repointed=0 failed_links=0 left_alone=0 unsearched=0
+
+  shopt -s nullglob dotglob
+  _walk_declared_position .
+  echo "[relocate-claude-config] the dir on line $line_number of ~/.claude/transcript-config-dirs: re-pointed $repointed, could not re-point $failed_links, left $left_alone alone, could not search $unsearched"
+  if [ "$failed_links" -gt 0 ] || [ "$unsearched" -gt 0 ]; then
+    return 1
+  fi
+  return 0
+)
+
+# Re-point links in each dir listed in ~/.claude/transcript-config-dirs, other
+# than ~/.claude and dirs inside the checkout at $1. A failed dir is recorded in
+# RELINK_FAILURES, never aborts the run.
+relink_declared_dirs() {
+  local new_path="$1"
+  if ! command -v readlink >/dev/null 2>&1; then
+    if [ -f "$DECLARED_DIRS_FILE" ] && [ -r "$DECLARED_DIRS_FILE" ]; then
+      err "readlink is not available, so no dir listed in ~/.claude/transcript-config-dirs is re-linked"
+    fi
+    return 0
+  fi
+  read_declared_config_dirs
+  if [ "${#DECLARED_CONFIG_DIRS[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  local new_real claude_real row package target line_number dir_real
+  local -a roots=("claude/.claude")
+  for row in "${RELINK_PACKAGES[@]}"; do
+    package="${row%%$'\t'*}"
+    target="${row#*$'\t'}"
+    if [ "$target" = ".claude" ]; then
+      roots+=("$package")
+    fi
+  done
+  new_real=$(canonicalize_for_comparison "$new_path")
+  claude_real=$(canonicalize_for_comparison "$HOME/.claude")
+
+  for row in "${DECLARED_CONFIG_DIRS[@]}"; do
+    line_number="${row%%$'\t'*}"
+    dir_real="${row#*$'\t'}"
+    if [ "$dir_real" = "$claude_real" ]; then
+      echo "[relocate-claude-config] the dir on line $line_number of ~/.claude/transcript-config-dirs is ~/.claude, which the stows above cover"
+      continue
+    fi
+    if [ "$dir_real" = "$new_real" ] || [[ "$dir_real" == "$new_real"/* ]]; then
+      echo "[relocate-claude-config] the dir on line $line_number of ~/.claude/transcript-config-dirs lies inside the checkout, which this command never re-links"
+      continue
+    fi
+    echo "[relocate-claude-config] walking the dir on line $line_number of ~/.claude/transcript-config-dirs"
+    if ! _repoint_declared_dir "$new_real" "$dir_real" "$line_number" "${roots[@]}"; then
+      err "re-pointing the dir on line $line_number of ~/.claude/transcript-config-dirs failed"
+      RELINK_FAILURES+=("transcript-config-dirs:line-$line_number")
     fi
   done
   return 0
@@ -508,22 +793,27 @@ EOF
 print_manual_steps() {
   cat <<'EOF'
 Not done by this command:
-  - Other accounts' config dirs, including any listed in ~/.claude/transcript-config-dirs, keep their links into the old location.
+  - Config dirs not listed in ~/.claude/transcript-config-dirs, or listed there and reported above as not re-linked, keep their links into the old location.
     A session under such an account loads none of this repo's settings, hooks or skills until its dir is re-linked.
-    CLAUDE_CONFIG_DIR=<dir> register-marketplace re-points its marketplace registration once that account's settings.json resolves.
+    To have this command re-link one, list its absolute path in that file, or correct the line a warning above names, or make its dir reachable, then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when this run passed it.
+    Listing a dir there also adds it to the transcript tools' scan when it holds `projects/`.
+    Listing a dir there also gives this command write access to its links, whether or not the transcript tools scan it, so list one only if you want that.
+    This command did not touch a link reported above as left alone, so re-link or remove it yourself.
+  - Any other account that registered this repo's marketplace, listed or not, still records it at the old location.
+    `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points it once that account's `settings.json` resolves.
   - Every linked worktree still records the old location: run `git worktree repair` in the moved checkout, naming each linked worktree's current path.
   - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
   See README "Repo relocation".
 EOF
 }
 
-# Print the closing text for the run's outcome: stdout when every package
-# linked, stderr with a --repair retry line when one failed. $2 is "primary"
-# or "repair".
+# Print the closing text for the run's outcome: stdout when every package and
+# listed dir re-linked, stderr with a --repair retry line when a package or
+# listed dir failed. $2 is "primary" or "repair".
 report_relink_outcome() {
   local new_path="$1" mode="$2"
 
-  if [ "${#RELINK_FAILED_PACKAGES[@]}" -eq 0 ]; then
+  if [ "${#RELINK_FAILURES[@]}" -eq 0 ]; then
     if [ "$mode" = primary ]; then
       printf '\nDone. This checkout now lives at: %s\n\n' "$new_path"
       print_primary_reminders "$new_path"
@@ -548,9 +838,9 @@ EOF
   {
     echo
     if [ "$mode" = primary ]; then
-      echo "The checkout moved to $new_path and the claude package is linked, but re-linking failed for: ${RELINK_FAILED_PACKAGES[*]}"
+      echo "The checkout moved to $new_path and the claude package is linked, but re-linking failed for: ${RELINK_FAILURES[*]}"
     else
-      echo "The claude package is linked from $new_path, but re-linking failed for: ${RELINK_FAILED_PACKAGES[*]}"
+      echo "The claude package is linked from $new_path, but re-linking failed for: ${RELINK_FAILURES[*]}"
     fi
     echo "The primary form must not be re-run."
     if [ "$mode" = primary ]; then
@@ -559,6 +849,7 @@ EOF
     print_manual_steps
     echo "The --repair retry also moves other dangling entries (those whose name does not start with a dot) directly under ~/.claude and ~/.local/bin into $BACKUP_DIR, not only those the move broke."
     echo "Resolve each failure named above first, because the retry fails the same way until then: a symlinked ~/.claude needs the replacement its error describes. Anything else at ~/.claude/skills that is not this checkout's link must be moved aside, and a failed move into $BACKUP_DIR needs that directory fixed."
+    echo "A transcript-config-dirs:line-<N> entry is the dir on line <N> of ~/.claude/transcript-config-dirs. The errors above it name each link it could not re-point, with the cause, and each directory it could not search. Fix that cause, such as a dir this command cannot search or write, or delete the dir's line from ~/.claude/transcript-config-dirs so this command leaves it alone, which also drops it from the transcript tools' scan."
     echo "A missing claude-skills/ directory is the exception: update the checkout to a commit that has it, then run ./install.sh from it. This run already replaced the installed script with the checkout's own, so a retry before then runs that script and links nothing."
     printf 'relocate-claude-config --repair%s %q\n' "$retry_allow_flag" "$retry_path"
   } >&2
@@ -607,8 +898,9 @@ relocate_repo() {
 
   relink_packages "$new_path"
   finish_relocation "$new_path"
+  relink_declared_dirs "$new_path"
   report_relink_outcome "$new_path" primary
-  if [ "${#RELINK_FAILED_PACKAGES[@]}" -gt 0 ]; then
+  if [ "${#RELINK_FAILURES[@]}" -gt 0 ]; then
     exit 3
   fi
 }
@@ -631,8 +923,9 @@ repair_repo() {
 
   relink_packages "$new_path"
   finish_relocation "$new_path"
+  relink_declared_dirs "$new_path"
   report_relink_outcome "$new_path" repair
-  if [ "${#RELINK_FAILED_PACKAGES[@]}" -gt 0 ]; then
+  if [ "${#RELINK_FAILURES[@]}" -gt 0 ]; then
     exit 3
   fi
 }

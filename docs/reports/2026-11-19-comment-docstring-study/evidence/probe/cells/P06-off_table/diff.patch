@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/cursor-adapter/hook-shim.py b/claude/.claude/scripts/cursor-adapter/hook-shim.py
+--- a/claude/.claude/scripts/cursor-adapter/hook-shim.py
++++ b/claude/.claude/scripts/cursor-adapter/hook-shim.py
+@@ -1155,6 +1155,7 @@
+ 
+ 
+ def _off_table(mapping, known):
++    """True when `mapping` holds a key outside `known`, or a known key of another type. A null value counts as absent."""
+     return any(key not in known or (value is not None and not _is_known(value, known[key])) for key, value in mapping.items())
+ 
+ 

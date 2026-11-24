@@ -13,7 +13,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from helpers import CLAUDE_DIR, HOOKS_DIR, run_hook, run_hook_reason
+from helpers import CLAUDE_DIR, HOOKS_DIR, is_helper_library, run_hook, run_hook_reason
 
 # claude/.claude/ itself, so `hooks.tests...` below resolves, as in test_diff_size_ack.py.
 sys.path.insert(0, str(CLAUDE_DIR))
@@ -1348,7 +1348,7 @@ class TestParityExceptions:
     def test_every_gate_script_is_listed_or_has_a_registration(self) -> None:
         registered_scripts = {parse_registration_key(key)[2] for key in _settings_registrations()}
         for hook in _hook_scripts():
-            if hook.name.startswith("_"):
+            if is_helper_library(hook.name):
                 continue
             assert hook.name in registered_scripts, f"{hook.name} has no settings.json registration"
 

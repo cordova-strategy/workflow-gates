@@ -1,0 +1,23 @@
+{
+ "packet_id": "p024",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"A project literally named with `--claude-worktrees-` falsely merges into another family."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"A project literally named with `--claude-worktrees-` falsely merges into another family."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "unexpected merge, re-evaluate."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "Accepted risk (pinned by test_non_worktree_label_colliding_with_suffix_shape_merges_into_existing_family)."
+ },
+ "e": {
+  "pass": false,
+  "evidence": "If cost --by-project, buckets' Proj count, or user-input's Scope project count shows an"
+ }
+}

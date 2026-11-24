@@ -1,0 +1,42 @@
+5f4ef9828d36b0f1  labels-v4.md
+3ee51ff976a489be  probe/labels.json
+90e631bd0f3c43bb  probe/bodies/amended-v2.md
+5b6234efc15edc4c  probe/bodies/amended-v2-rule.md
+12530032d4dc71dd  probe/go-no-go.md
+02573291721da22c  probe/v2-diff.md
+3dcfae3c3e4c213b  probe/score.py
+45c694d1041f6274  probe/probe_common.py
+2c1e0c937d7fcae5  probe/stage1_compare.py
+5f4568055456e3a8  probe/stage1_precheck.py
+4428b171bf85acf5  probe/adjudication_score.py
+63fbf2d77b32acd8  probe/adjudication_packets.py
+148ac3cceaafb6c2  probe/run_probe.py
+8ddbd314eaa15070  probe/freeze.py
+65b4b51dc82b9d37  probe/cells/P01-declared_roots_file/diff.patch
+9bd852539181ad95  probe/cells/P03-strip_code_spans/diff.patch
+bf3b7323e57ff119  probe/cells/P05-report_state_dir_left/diff.patch
+ed2ad87cfdac05f4  probe/cells/P08-declared_config_dirs/diff.patch
+1ffdc9b344da27da  probe/cells/P09-list_ledger_files/diff.patch
+2a71e50935961970  probe/cells/P11-gh_kind_for_status/diff.patch
+b5205a90daeed5c4  probe/cells/P12-flatten_untrusted_text/diff.patch
+91dd82a8b00c2251  probe/cells/P16-cmd_read_cost/diff.patch
+f5600c4e0ea0c503  probe/cells/P17-project_family/diff.patch
+c1d246af691a536f  probe/cells/P18-redact_session_id/diff.patch
+6a976086a3b3fbaa  probe/cells/P19-pct_of/diff.patch
+1d1c3529d97ccc70  probe/cells/P22-pooled_compute_review_round_costs/diff.patch
+5d5a3d052be06abc  probe/cells/P23-serialize_capture/diff.patch
+a24ca333c3891426  probe/cells/P25-path_to_project_slug/diff.patch
+ddf55d56660aed8c  probe/cells/P26-path_stripped_scan_error/diff.patch
+b88299d19bcf8735  probe/cells/P27-print_resolved_scope/diff.patch
+95ac22e940fb4a8f  probe/cells/P28-add_extra_config_dirs_arg/diff.patch
+04bb5585f4671a62  probe/cells/K1-fetch_report/diff.patch
+77f0dcf89cd384d5  probe/cells/K2-hash_cache_key/diff.patch
+9e95d00a37ae2c73  probe/cells/R1-schedule_retry/diff.patch
+4e7b20d973661dac  probe/cells/R2-encode_event/diff.patch
+f3dab39148cf4504  probe/snapshot/ (313 files)
+e0c56703a4d1ae05  probe/out/amended/ (315 files)
+de68ac24996e0632  probe/score-report-full.txt
+cd91b2fd4dd4ea9d  probe/adjudication.md
+4c2295990ff30d54  ~/.claude/CLAUDE.md
+fc5c30fa8cb37393  ~/CLAUDE.local.md
+model claude-sonnet-5-5  claude_code_version 2.1.329  (init event of out/amended/P17-project_family/run1.cli.jsonl)
