@@ -75,7 +75,7 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 
 Cell A's fixture and bar are those of Verification step 7 in `.claude/plans/architect-owns-plan-revisions.md`.
 
-Every cell ran on the text its files had when this record merged. No cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
+Every cell ran on the text its files had when this record merged. Cells V, C, A, A-i to A-iv and A-ii-bare read the text of `origin/main` at `970a345e` with this change applied. Cell RR reads `plan-review/ROUTING.md` and `comment-discipline-reviewer.md`. Its recorded run already read this change's `ROUTING.md` edit, and neither file has changed since, so it was not run again. No cell's bar tests the enforcement-invariant sentence of `code-review/SKILL.md`'s **Fix route:** line.
 
 Limits:
 - Each cell is a prose-following check on one fixture, not a measure of live rounds.
