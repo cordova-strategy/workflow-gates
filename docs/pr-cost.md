@@ -284,6 +284,7 @@ Every `--force` re-capture, and every re-record under the exception above, per P
 - re-stamps `rate_stamp`
 - moves a captured `review_rounds` cell to the current round `rule`
 - adds one to the export's `correction_count`
+- takes `join_confidence`, the mechanical proxy columns and the enrichment columns from this run's `--plan-file-glob` and `--risk-surface-glob` values and the PR's current GitHub state, so a run with other globs than the original capture's can change them
 
 A `--force` re-capture also refills a `review_rounds` cell that a failed pass or a failed check left empty, within the `cleanupPeriodDays` caveat above.
 

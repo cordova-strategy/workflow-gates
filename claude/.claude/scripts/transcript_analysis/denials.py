@@ -155,10 +155,9 @@ def _is_readable_result_content(content) -> bool:
 def hook_denied_tool_use_ids(records: list[dict]) -> frozenset[str]:
     """The ids of the main-thread `Skill` and Agent/Task tool_use blocks one of this repository's gates denied.
 
-    Only tool_results (and legacy attachments) that join such a block are classified, so the denial-text match
-    never runs over any other tool's errors. Which attachments and results count is stated under "A call one of
-    this repository's gates denied opens no round" in docs/transcript-analysis.md. A legacy attachment counts
-    from any hook, with no label check. A record of an unreadable shape contributes no id, which counts the round.
+    Which attachments and results count is stated under "A call one of this repository's gates denied opens no
+    round" in docs/transcript-analysis.md. A legacy attachment counts from any hook, with no label check. A record
+    of an unreadable shape contributes no id, which counts the round.
     """
     candidate_ids = _round_open_candidate_ids(records)
     if not candidate_ids:

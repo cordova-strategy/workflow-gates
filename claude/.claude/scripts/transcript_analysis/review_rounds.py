@@ -141,7 +141,6 @@ def _spawn_block_round_skill(blocks: list) -> str | None:
 
 
 def _without_denied_blocks(blocks: list, denied_tool_use_ids: frozenset[str]) -> list:
-    """`blocks` less the content blocks whose `id` a gate denied."""
     return [
         block for block in blocks
         if not (isinstance(block, dict) and isinstance(block.get("id"), str) and block["id"] in denied_tool_use_ids)
@@ -150,7 +149,7 @@ def _without_denied_blocks(blocks: list, denied_tool_use_ids: frozenset[str]) ->
 
 def _round_open_skill(rec: dict, denied_tool_use_ids: frozenset[str]) -> str | None:
     """The REVIEW_SKILLS member this main-thread record opens a round for,
-    or None. A `Skill` or spawn block whose id is in `denied_tool_use_ids` opens nothing.
+    or None.
 
     Three invocation shapes: a `Skill` tool_use's input.skill, a `/slash` user
     record's <command-name> tag, and an Agent/Task spawn block of an agent type
@@ -192,7 +191,6 @@ def _round_open_skill(rec: dict, denied_tool_use_ids: frozenset[str]) -> str | N
 def round_opened_by_spawn(rec: dict, *, denied_tool_use_ids: frozenset[str]) -> bool:
     """True iff this record opens its round through a spawn block rather than
     a `Skill` block, the same per-record order _round_open_skill applies.
-    Blocks whose id is in `denied_tool_use_ids` are ignored, as there.
 
     Public (no leading underscore): the review-bench miner skips such a round,
     and routing_guard.py reads it as that round's spawn_open flag. Both must

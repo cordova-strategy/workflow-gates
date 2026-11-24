@@ -1594,8 +1594,13 @@ Each session's file is read twice — once by the shared scope iterator, once mo
     - A current-shape denial by a hook this repository does not ship.
     - A legacy attachment with no usable id.
     - A call the permission layer, auto mode or the user refused.
-
-  A denied spawn inside an open window counts in that round's `dangling`. An errored `review-orchestrator` result that names a shipped gate loses its round even when the subagent ran, an undercount. `author-outcome`'s orchestrator-spawn scan reads every block of a round-open record without the denial filter, so a record holding a launched round opener and a denied `review-orchestrator` spawn counts the denied one under "orchestrator dispatches with no readable transcript records". `routing-guard` alone still counts a denied call as a round. The invocation counters (`subagent-mix`, `judgment-pair`, `skill-invocation`) still count a denied `Skill` call as an invocation.
+  - Residuals:
+    - A denied spawn inside an open window counts in that round's `dangling`.
+    - An errored `review-orchestrator` result that names a shipped gate loses its round even when the subagent ran, an undercount.
+    - `author-outcome`'s orchestrator-spawn scan reads every block of a round-open record without the denial filter, so a record holding a launched round opener and a denied `review-orchestrator` spawn counts the denied one under "orchestrator dispatches with no readable transcript records".
+  - Still count a denied call:
+    - `routing-guard`, as a round.
+    - The invocation counters (`subagent-mix`, `judgment-pair`, `skill-invocation`) count a denied `Skill` call as an invocation.
 - **A round's dollars are attributed to its own opening branch across its whole window.** Every dollar inside a round's window -- not only the opening record's own turn -- is attributed to the branch the round opened on, even when the session's own `gitBranch` changes partway through the window (e.g. a worktree switch mid-review). A record outside every window carries forward the last main-thread branch, unaffected by any window.
 - **A mid-review user interjection closes the window early.** The window closes at the first fresh user prompt *or* the next round-open, whichever comes first -- a user message sent partway through a review (before the reviewer's own output lands) ends the round there, and everything after it belongs to whatever comes next, not to the interrupted round.
 - **A task notification does not close the window.** A round keeps pricing the main thread's response to a background reviewer or CI watch, and any dispatch after it. The window runs to the next human prompt, the next round-open or the end of the session, so it can include unrelated main-thread work, and `main $` is an upper bound on what the review itself cost the main thread.

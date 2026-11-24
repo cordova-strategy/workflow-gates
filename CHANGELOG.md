@@ -1028,7 +1028,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 - **A call one of this repository's gates denied no longer counts as a review round.**
   - **Cause:** detection read a call's `tool_use` block and never whether a hook denied it, so a routing-gate denial of `Skill(code-review)` and the `review-orchestrator` dispatch after it counted as two rounds.
   - **Affected:** `review-round-cost`, `cost-counts` and the PR-body "Review rounds" table, `author-outcome`, `review-trace`'s round labels, `reviewer-reads`'s round windows, `pr-cost`'s `review_rounds` cell and the review-bench miner. `routing-guard` still counts the denied call, and readers that count calls rather than rounds still count it.
-  - **Migration:** until the next `--record`, `review-cost-by-size` excludes every row recorded before this change. That run re-records each row whose surviving transcripts reproduce its figures (see `docs/pr-cost.md` § "The re-record contract"), and `review-cost-by-size` excludes the rest.
+  - **Migration:** until the next `--record`, `review-cost-by-size` excludes every row recorded before this change. That run re-records each row that meets the conditions in `docs/pr-cost.md` § "The re-record contract", and `review-cost-by-size` excludes the rest.
   - **Re-runs:** a re-run over the same transcripts can give different figures than one made before this fix.
 - **`advance-past-commit-stall.sh` no longer misses a permission question on a later line of a multi-line final message.**
   - **Cause:** it read only the first line of `last_assistant_message`.
