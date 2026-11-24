@@ -275,7 +275,7 @@ An unforced `--record` re-records a captured row whose `review_rounds` cell is b
 - the branch has no activity after the row's `captured_at`;
 - the enrichment status is `ok`, or the row's status was already degraded.
 
-A row the exception skips, or refuses because a cell of the new row failed, needs no command: the next plain `--record` retries it, and a run without `--pr` exits 0. Forcing a row the exception leaves below the rule is the aged-transcript judgment the paragraph above warns about.
+A row the exception skips, or refuses because a cell of the new row failed, needs no command: the next plain `--record` retries it, and a run without `--pr` exits 0. Forcing a row the exception leaves below the rule is the aged-transcript judgment the `cleanupPeriodDays` caveat above warns about.
 
 `--record --force --pr N`, with the run's account flags, also adds a `model_breakdown` to a PR captured before that column existed. The appended row carries the breakdown under the current `rate_stamp`, recomputes every scalar from the transcripts that survive, and becomes the PR's current row. Under `--all-accounts` it does so in every account whose corpus touched the branch. The `cleanupPeriodDays` caveat above applies. A forced re-capture whose breakdown fails its check appends an empty-cell row that supersedes a populated one. The prior row remains in the ledger history, and the fix is to re-force, within the caveat above, after the cause is fixed.
 

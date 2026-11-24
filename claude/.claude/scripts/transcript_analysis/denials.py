@@ -156,8 +156,8 @@ def hook_denied_tool_use_ids(records: list[dict]) -> frozenset[str]:
     """The ids of the main-thread `Skill` and Agent/Task tool_use blocks one of this repository's gates denied.
 
     Which attachments and results count is stated under "A call one of this repository's gates denied opens no
-    round" in docs/transcript-analysis.md. A legacy attachment counts from any hook, with no label check. A record
-    of an unreadable shape contributes no id, which counts the round.
+    round" in docs/transcript-analysis.md.
+    A record of an unreadable shape contributes no id, which counts the round.
     """
     candidate_ids = _round_open_candidate_ids(records)
     if not candidate_ids:
@@ -233,7 +233,7 @@ _DENIAL_HOOK_NAME_COLON_RE = re.compile(
 # in test_transcript_denials.py drives each hook's real deny-path wording
 # and asserts the label it produces is a member here, so a hook's wording
 # change or a new hook shows up as a test failure rather than a silently
-# stale set. Removing or renaming an entry bumps review_rounds.REVIEW_ROUND_RULE.
+# stale set. Editing this set can bump review_rounds.REVIEW_ROUND_RULE; its comment says when.
 _DENIAL_HOOK_LABELS: frozenset[str] = frozenset({
     # "blocked by <name> hook/gate" — one entry per hooks/*.sh DENY_GATE_LABEL.
     "gh-pr-merge",  # block-gh-pr-merge.sh

@@ -3623,6 +3623,21 @@ class TestUnforcedReRecordUnderAnOlderRule:
         pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [seeded_row])
         return seeded_row
 
+    @classmethod
+    def _seed_two_older_rule_rows(cls, fake_projects, monkeypatch, ledger_path: Path, first_row_changes=lambda current_row: {}):
+        """Records feature-a and feature-b through a real run, then replaces both rows with older-rule ones, the first
+        changed by `first_row_changes`. Returns the recorded rows and the two seeded rows. Leaves the two-PR
+        `subprocess.run` fake (PRs 1 and 2, branches feature-a and feature-b) installed for the record run that follows."""
+        _write_one_round_corpus(fake_projects, "feature-b")
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")]))
+        _run_record(fake_projects)
+        current_rows = _ledger_rows(ledger_path)
+        seeded_rows = [cls._older_rule_row_of(current_rows[0], first_row_changes), cls._older_rule_row_of(current_rows[1])]
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, seeded_rows)
+        return current_rows, seeded_rows
+
     @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
     @pytest.mark.parametrize("run_flags", [{}, {"pr": 1}], ids=["no-flags", "pr-1"])
     def test_a_row_the_fresh_scan_reproduces_is_re_recorded_once_and_a_second_run_changes_nothing(
@@ -3672,18 +3687,10 @@ class TestUnforcedReRecordUnderAnOlderRule:
         self, fake_projects, tmp_path, monkeypatch, capsys,
     ):
         ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
-        _write_one_round_corpus(fake_projects, "feature-b")
-        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
-            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")],
-        ))
-        _run_record(fake_projects)
-        current_rows = _ledger_rows(ledger_path)
-        skipped_row = self._older_rule_row_of(
-            current_rows[0], lambda current_row: {"turn_count": current_row["turn_count"] + 1},
+        current_rows, (skipped_row, reproduced_row) = self._seed_two_older_rule_rows(
+            fake_projects, monkeypatch, ledger_path,
+            lambda current_row: {"turn_count": current_row["turn_count"] + 1},
         )
-        reproduced_row = self._older_rule_row_of(current_rows[1])
-        ledger_path.unlink()
-        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [skipped_row, reproduced_row])
         capsys.readouterr()
 
         _run_record(fake_projects)
@@ -3701,16 +3708,9 @@ class TestUnforcedReRecordUnderAnOlderRule:
         self, fake_projects, tmp_path, monkeypatch, capsys,
     ):
         ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
-        _write_one_round_corpus(fake_projects, "feature-b")
-        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
-            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")],
-        ))
-        _run_record(fake_projects)
-        current_rows = _ledger_rows(ledger_path)
-        refused_row = self._older_rule_row_of(current_rows[0])
-        reproduced_row = self._older_rule_row_of(current_rows[1])
-        ledger_path.unlink()
-        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [refused_row, reproduced_row])
+        current_rows, (refused_row, reproduced_row) = self._seed_two_older_rule_rows(
+            fake_projects, monkeypatch, ledger_path,
+        )
         capsys.readouterr()
         _fail_check_on_calls(monkeypatch, {1})
 
