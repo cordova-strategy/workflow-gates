@@ -162,26 +162,56 @@ class TestKeptFixtures:
             or drawn_counts_by_replicate[-1],
         )
         cell = calibrate.Cell(8, 8, true_difference=0.0, shift=0.0)
+        # A scale this small leaves some replicates with fewer than two finding-carrying fixtures.
         config = _config(
             metric="precision", fixture_counts=(8,), k=1, replicates=30, flips=100, finding_floor=0,
-            finding_volume_scale=0.25,
+            finding_volume_scale=0.1,
         )
 
         jobs = calibrate.cell_jobs(config, cell)
         results = calibrate.run_jobs(jobs, pool=None, workers=1)
         row = calibrate.summarize_cell(config, cell, results, cells_planned=1)
 
-        assert {(job.finding_floor, job.finding_volume_scale) for job in jobs} == {(0, 0.25)}
+        assert {(job.finding_floor, job.finding_volume_scale) for job in jobs} == {(0, 0.1)}
         assert len(drawn_counts_by_replicate) == len(results) == 30
+        expected_undefined = 0
         for drawn_counts, result in zip(drawn_counts_by_replicate, results, strict=True):
-            if result.undefined:
-                continue
-            fixtures_without_findings = sum(
-                all(fixture.total_by_arm[arm] == 0 for arm in ARMS) for fixture in drawn_counts.values()
-            )
-            assert result.kept_fixtures == 8 - fixtures_without_findings
+            kept_counts = [
+                fixture for fixture in drawn_counts.values() if any(fixture.total_by_arm[arm] for arm in ARMS)
+            ]
+            arm_has_no_findings = any(sum(fixture.total_by_arm[arm] for fixture in kept_counts) == 0 for arm in ARMS)
+            replicate_is_undefined = len(kept_counts) < 2 or arm_has_no_findings
+            expected_undefined += replicate_is_undefined
+            assert result.undefined == replicate_is_undefined
+            if not replicate_is_undefined:
+                assert result.kept_fixtures == len(kept_counts)
+        assert expected_undefined > 0
+        assert row["undefined_replicates"] == expected_undefined
         assert any(result.kept_fixtures < 8 for result in results if not result.undefined)
         assert sum(row["replicates_by_kept_fixtures"].values()) == row["replicates"] - row["undefined_replicates"]
+
+    def test_a_floor_0_row_straddling_the_exact_cap_reads_mixed_and_matches_the_lengths_the_test_received(
+        self, monkeypatch,
+    ) -> None:
+        lengths_received = []
+        real_p_value = analysis.sign_flip_p_value
+        monkeypatch.setattr(
+            analysis, "sign_flip_p_value",
+            lambda values, **kwargs: lengths_received.append(len(values)) or real_p_value(values, **kwargs),
+        )
+        fixtures = EXACT_CAP + 2
+        cell = calibrate.Cell(fixtures, fixtures, true_difference=0.0, shift=0.0)
+        config = _config(
+            metric="precision", fixture_counts=(fixtures,), k=1, replicates=60, flips=200, finding_floor=0,
+        )
+
+        results = calibrate.run_jobs(calibrate.cell_jobs(config, cell), pool=None, workers=1)
+        row = calibrate.summarize_cell(config, cell, results, cells_planned=1)
+
+        kept_counts = {int(count) for count in row["replicates_by_kept_fixtures"]}
+        assert min(kept_counts) <= EXACT_CAP < max(kept_counts)
+        assert row["sign_flip_path"] == "mixed"
+        assert set(lengths_received) == kept_counts
 
     def test_a_smaller_volume_scale_keeps_fewer_fixtures_at_floor_0(self) -> None:
         cell = calibrate.Cell(8, 8, true_difference=0.0, shift=0.0)
@@ -274,7 +304,7 @@ class TestRowFields:
 class TestFloorZeroPlannedCells:
     """The solved shift, the scaled plans, the floor-0 draws and the production builder together give the cell's difference."""
 
-    # Enough that the 4-sigma tolerance stays under 0.02, a 20% error in the -0.1 cell's difference, at both scales.
+    # Enough replicates for the SIGMA_BOUND tolerance to separate a 20% error in the -0.1 cell's difference.
     REPLICATES = 1600
     TRUE_DIFFERENCES = (-0.1, 0.0)
 

@@ -148,7 +148,9 @@ class CalibrationConfig:
         worker_cap = os.process_cpu_count() or 1
         _require(self.workers <= worker_cap, "workers", f"must be at most the usable CPU count {worker_cap}", self.workers)
         # Above the exact cap no alpha below the smallest attainable p-value can adopt, so a sweep would report a structural zero.
-        # A replicate's kept fixtures never exceed its fixture count, so the largest fixture count bounds every replicate's path.
+        # A replicate keeps at most as many fixtures as its cell's fixture count.
+        # So when the largest fixture count is at most the exact cap, every replicate takes the exact path.
+        # Above the cap, a replicate with few kept fixtures can still be a structural zero for an alpha this check accepts.
         largest_fixture_count = max(self.fixture_counts)
         smallest_p_value = smallest_sign_flip_p_value(largest_fixture_count, self.flips)
         _require(
@@ -216,10 +218,10 @@ def solve_shift(
     """The shift at which the acted fixtures' expected difference (arm X's rate
     minus the baseline rate) equals `acted_target`, or None when the target lies
     outside the differences the bracket's two ends reach. Precision weights each
-    draw by 1 + k * lambda, its expected finding count at the default finding floor
-    and volume scale, as pooled precision does. `finding_rate` is drawn independently
-    of the rates, so any weight on it alone gives the same shift up to draw noise,
-    and the floor and scale stay out."""
+    draw by 1 + k * lambda, as pooled precision does. That is its expected finding
+    count at the default finding floor and volume scale. `finding_rate` is drawn
+    independently of the rates, so any weight on it alone gives the same shift up to
+    draw noise. The finding floor and volume scale therefore stay out of the weight."""
     draw_count = SOLVER_DRAWS if solver_draws is None else solver_draws
     rng = random.Random(SOLVER_SEED)
     draws = [draw_latents(rng, metric) for _ in range(draw_count)]
