@@ -1,0 +1,23 @@
+{
+ "packet_id": "p027",
+ "a": {
+  "pass": false,
+  "evidence": "- Required property: reduce the re-evaluation sentence to the trigger alone (\"re-evaluate if an unexpected merge appears\"), or delete it. Do not name the consumers."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"re-evaluate if an unexpected merge appears\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"re-evaluate if an unexpected merge appears\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"re-evaluate if an unexpected merge appears\""
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Do not name the consumers."
+ }
+}

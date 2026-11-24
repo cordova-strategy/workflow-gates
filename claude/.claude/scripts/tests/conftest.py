@@ -1043,7 +1043,7 @@ def _write_ledger_file(
     """Write one session-keyed review-narrative-ledger file for a synthetic
     session, mirroring review-ledger.sh's own
     $LEDGER_DIR/$REPO_HASH.$SESSION_ID.jsonl naming under
-    <config_dir_root>/review-narrative-ledger/. author_outcome.py attributes
+    <config_dir_root>/review-narrative-ledger/. review_ledger.py attributes
     a row without a `session_id` to the session in this filename, so a
     legacy-shaped row needs no session_id here. The repo-hash prefix is
     irrelevant to that attribution, so a fixed placeholder is fine.

@@ -43,6 +43,10 @@ def _shown(values) -> str:
     return "[" + ", ".join(repr(value) for value in values) + "]"
 
 
+def _denied_call_label(call: dict) -> str:
+    return call["tool"] if call["command"] is None else f"{call['tool']}: {call['command']}"
+
+
 def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
     record = outcome.record
     status = "ok" if record.is_ok else f"missing ({record.missing_reason})"
@@ -60,6 +64,7 @@ def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
     lines.append(f"  other absolute paths outside the fixture: {_shown(record.other_outside_fixture_tokens)}")
     lines.append(f"  out-of-session paths: {_shown(record.out_of_session_paths)}")
     lines.append(f"  permission denials: {record.permission_denials}")
+    lines.append(f"  denied tool calls: {_shown(_denied_call_label(call) for call in record.denied_tool_calls)}")
     denied_allow_list = [read["path"] for read in record.allow_list_reads if read["denied"]]
     lines.append(f"  denied Reads of allow-list paths: {_shown(denied_allow_list)}")
     lines.append(f"  denied Reads of other toolkit files: {_shown(record.denied_other_toolkit_reads)}")

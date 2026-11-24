@@ -391,14 +391,17 @@ class TestCheckSkillLength:
             "plugins/example-plugin/skills/plan-review/SKILL.md",
             "plugins/example-plugin/skills/pr-description/SKILL.md",
             "plugins/example-plugin/skills/subagent-delegation/SKILL.md",
+            "plugins/example-plugin/skills/handoff/SKILL.md",
             "claude-skills/skills/code-review-example/SKILL.md",
             "claude-skills/skills/plan-review-example/SKILL.md",
             "claude-skills/skills/pr-description-example/SKILL.md",
             "claude-skills/skills/subagent-delegation-example/SKILL.md",
+            "claude-skills/skills/handoff-example/SKILL.md",
             "vendor/claude-skills/skills/code-review/SKILL.md",
             "vendor/claude-skills/skills/plan-review/SKILL.md",
             "vendor/claude-skills/skills/pr-description/SKILL.md",
             "vendor/claude-skills/skills/subagent-delegation/SKILL.md",
+            "vendor/claude-skills/skills/handoff/SKILL.md",
         ],
     )
     def test_override_caps_do_not_apply_to_sibling_paths(
@@ -749,12 +752,41 @@ class TestCheckSkillLength:
         assert "219 lines" in reason
         assert "limit 218" in reason
 
+    def test_handoff_at_override_cap_allows(self, isolated_home, tmp_path):
+        """handoff/SKILL.md gets a 220-line cap; exactly 220 lines (over 200) → allow."""
+        handoff_path = "claude-skills/skills/handoff/SKILL.md"
+        # The committed size is the 200-line default, so the default arm denies any
+        # staged size above 200 and only the handoff arm can allow 220.
+        repo = make_repo_with_skill_at(tmp_path, handoff_path, 200)
+        (repo / handoff_path).write_text(make_skill_content(220))
+        subprocess.run(["git", "add", handoff_path], cwd=repo, check=True)
+        assert (
+            run_hook(
+                CHECK_SKILL_LENGTH_HOOK,
+                bash_input("git commit -m foo"),
+                cwd=repo,
+            )
+            == "allow"
+        )
+
+    def test_handoff_over_override_denies(self, isolated_home, tmp_path):
+        """handoff/SKILL.md over the 220-line override and growing → deny."""
+        handoff_path = "claude-skills/skills/handoff/SKILL.md"
+        repo = make_repo_with_skill_at(tmp_path, handoff_path, 220)
+        (repo / handoff_path).write_text(make_skill_content(221))
+        subprocess.run(["git", "add", handoff_path], cwd=repo, check=True)
+        reason = run_hook_reason(
+            CHECK_SKILL_LENGTH_HOOK,
+            bash_input("git commit -m foo"),
+            cwd=repo,
+        )
+        assert reason is not None
+        assert handoff_path in reason
+        assert "221 lines" in reason
+        assert "limit 220" in reason
+
     def test_byte_limit_never_fires_for_this_caller(self, isolated_home, new_skill_repo):
-        """check-skill-length.sh calls _lib_staged_length_gate in its 2-arg
-        form, omitting BYTE_LIMIT — a new SKILL.md well over 30,720 bytes but
-        under its line limit must still be allowed, proving the opt-in byte
-        check stays opt-out for this caller."""
-        (new_skill_repo / SKILL_PATH).write_text("a" * 40000 + "\n")
+        (new_skill_repo / SKILL_PATH).write_text("a" * 40000 + "\n")  # must exceed check-claude-md-length.sh's byte cap
         subprocess.run(["git", "add", SKILL_PATH], cwd=new_skill_repo, check=True)
         assert (
             run_hook(

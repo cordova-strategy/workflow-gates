@@ -274,7 +274,7 @@ class TestPlanBoundaryReport:
         out = capsys.readouterr().out
         assert scope._DO_NOT_PUBLISH_BANNER in out
 
-    def test_no_redact_refused_by_report_itself_when_multi_root(self, tmp_path):
+    def test_no_redact_refused_by_report_itself_when_multi_root(self, tmp_path, capsys):
         """Defense-in-depth, mirroring _cache_rebuild_report's own version of
         this test: every test in this module calls _plan_boundary_report
         directly, bypassing _resolve_cost_roots' CLI-level enforcement."""
@@ -285,6 +285,7 @@ class TestPlanBoundaryReport:
                 _plan_boundary_args(no_redact=True), date(2026, 8, 16), roots=[root_a, root_b]
             )
         assert exc_info.value.code == 2
+        assert capsys.readouterr().out == ""
 
     def test_no_redact_refused_with_multi_root(self, tmp_path, monkeypatch, capsys, fake_config_dir_factory):
         """CLI-level enforcement, mirroring the sibling cost/context-distribution/

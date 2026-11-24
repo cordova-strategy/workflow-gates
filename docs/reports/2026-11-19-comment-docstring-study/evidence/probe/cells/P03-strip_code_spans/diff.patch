@@ -1,0 +1,14 @@
+diff --git a/claude/.claude/scripts/check-handoff.py b/claude/.claude/scripts/check-handoff.py
+--- a/claude/.claude/scripts/check-handoff.py
++++ b/claude/.claude/scripts/check-handoff.py
+@@ -92,6 +92,10 @@
+ 
+ 
+ def strip_code_spans(text: str) -> str:
++    """Remove fenced code blocks and inline code spans -- the natural way a
++    draft would quote a literal string it's citing rather than proposing as a
++    real next step, so a placeholder or anchor-shape scan does not fire on
++    it."""
+     return _INLINE_CODE_RE.sub("", _FENCED_BLOCK_RE.sub("", text))
+ 
+ 

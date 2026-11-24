@@ -7,12 +7,13 @@ existing Python docstring still classifies as docstring.
 """
 from __future__ import annotations
 
+import ast
 import codecs
 import io
 import re
 import tokenize
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import StrEnum
 from fnmatch import fnmatchcase
 from pathlib import PurePosixPath
@@ -53,7 +54,7 @@ _EXTENSIONS_BY_SYNTAX: dict[CommentSyntax, tuple[str, ...]] = {
 }
 
 # Extend these tables to add a language. Python is separate: it classifies comments through `tokenize` and docstrings through
-# `mine_szz._python_docstring_lines`.
+# `mine_szz._python_docstring_owners`.
 COMMENT_SYNTAX_BY_EXTENSION: dict[str, CommentSyntax] = {
     extension: syntax for syntax, extensions in _EXTENSIONS_BY_SYNTAX.items() for extension in extensions
 }
@@ -164,6 +165,21 @@ def _path_of_new_side(header_value: str) -> str | None:
 
 
 @dataclass(frozen=True)
+class PythonDefinitionCounts:
+    """What a change adds to class and function docstrings. A definition is new when its `def` or `class`
+    line and its first body line are both added, so a signature edit alone is no new definition.
+    A field change is a task-set-breaking change: it needs a re-mine and costs any campaign pinned to the old hash."""
+
+    new_docstrings: int = 0
+    new_docstring_words: int = 0
+    new_definitions: int = 0
+    documented_new_definitions: int = 0
+
+
+PYTHON_DEFINITION_COUNT_FIELDS = tuple(count_field.name for count_field in fields(PythonDefinitionCounts))
+
+
+@dataclass(frozen=True)
 class FileClassification:
     """`line_classes` and `words` are keyed by added line number. `words` holds only comment and docstring lines."""
 
@@ -172,6 +188,7 @@ class FileClassification:
     python_trailing_comments: int = 0
     python_ast_rejected: bool = False
     undecodable: bool = False
+    python_definition_counts: PythonDefinitionCounts = field(default_factory=PythonDefinitionCounts)
 
 
 def classify_file(path: str, data: bytes, added_line_numbers: Iterable[int]) -> FileClassification:
@@ -245,7 +262,8 @@ def _block_line_class(stripped_line: str, closer_at: int, syntax: CommentSyntax)
 
 def _classify_python(text: str, lines: list[str], numbers: tuple[int, ...]) -> FileClassification:
     parse_stats = mine_szz._MineStats()
-    docstring_lines = mine_szz._python_docstring_lines(text, stats=parse_stats)
+    docstring_owners = mine_szz._python_docstring_owners(text, stats=parse_stats)
+    docstring_lines = mine_szz._docstring_line_numbers(docstring_owners)
     whole_line_comments, trailing_comments = _python_comment_rows(text, lines)
     classes: dict[int, LineClass] = {}
     trailing_count = 0
@@ -259,12 +277,32 @@ def _classify_python(text: str, lines: list[str], numbers: tuple[int, ...]) -> F
         else:
             classes[number] = LineClass.CODE
             trailing_count += number in trailing_comments
+    words = _comment_words(lines, classes)
     return FileClassification(
         classes,
-        _comment_words(lines, classes),
+        words,
         python_trailing_comments=trailing_count,
         python_ast_rejected=parse_stats.python_docstring_parse_failures > 0,
+        python_definition_counts=_python_definition_counts(docstring_owners, frozenset(numbers), words),
     )
+
+
+def _python_definition_counts(
+    owners: Iterable[tuple[mine_szz._DocstringOwner, range | None]], added: frozenset[int], words: Mapping[int, int],
+) -> PythonDefinitionCounts:
+    """A module docstring is no class or function docstring, so a module owner counts nothing."""
+    new_docstrings = new_docstring_words = new_definitions = documented_new_definitions = 0
+    for node, docstring_range in owners:
+        if isinstance(node, ast.Module):
+            continue
+        docstring_is_new = bool(docstring_range) and all(number in added for number in docstring_range)
+        if docstring_is_new:
+            new_docstrings += 1
+            new_docstring_words += sum(words.get(number, 0) for number in docstring_range)
+        if node.lineno in added and node.body[0].lineno in added:
+            new_definitions += 1
+            documented_new_definitions += docstring_is_new
+    return PythonDefinitionCounts(new_docstrings, new_docstring_words, new_definitions, documented_new_definitions)
 
 
 def _python_comment_rows(text: str, lines: list[str]) -> tuple[set[int], set[int]]:
@@ -347,13 +385,26 @@ def _zeroed_words() -> dict[str, int]:
     return {scope: 0 for scope in _SCOPES}
 
 
+def _zeroed_python_definition_counts() -> dict[str, dict[str, int]]:
+    return {scope: dict.fromkeys(PYTHON_DEFINITION_COUNT_FIELDS, 0) for scope in _SCOPES}
+
+
+def _read_python_definition_counts(data: Mapping) -> dict[str, dict[str, int]]:
+    """Reads by subscript, so a present key that is `null` or lacks a scope or field raises at read time."""
+    definition_counts = data["python_definition_counts"]
+    return {
+        scope: {name: definition_counts[scope][name] for name in PYTHON_DEFINITION_COUNT_FIELDS} for scope in _SCOPES
+    }
+
+
 @dataclass
 class CommentMetrics:
     """One run's tallies over the lines a change adds.
 
     `line_counts` and `comment_words` split by `test` and `non_test` scope. `comment_words`
     counts comment and docstring words together. Entries that end as a symlink or gitlink are counted in
-    `non_file_entries` and never classified."""
+    `non_file_entries` and never classified. `python_definition_counts` is None for a record that
+    predates it, and `to_dict` then omits the key so a task set keeps its hash."""
 
     line_counts: dict[str, dict[str, int]] = field(default_factory=_zeroed_line_counts)
     comment_words: dict[str, int] = field(default_factory=_zeroed_words)
@@ -363,9 +414,10 @@ class CommentMetrics:
     non_file_entries: int = 0
     undecodable_files: int = 0
     changed_paths: list[str] = field(default_factory=list)
+    python_definition_counts: dict[str, dict[str, int]] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        data = {
             "line_counts": {scope: dict(counts) for scope, counts in self.line_counts.items()},
             "comment_words": dict(self.comment_words),
             "blocks": [block.to_dict() for block in self.blocks],
@@ -375,6 +427,11 @@ class CommentMetrics:
             "undecodable_files": self.undecodable_files,
             "changed_paths": list(self.changed_paths),
         }
+        if self.python_definition_counts is not None:
+            data["python_definition_counts"] = {
+                scope: dict(counts) for scope, counts in self.python_definition_counts.items()
+            }
+        return data
 
     @classmethod
     def from_dict(cls, data: Mapping) -> CommentMetrics:
@@ -387,6 +444,7 @@ class CommentMetrics:
             non_file_entries=data["non_file_entries"],
             undecodable_files=data["undecodable_files"],
             changed_paths=list(data["changed_paths"]),
+            python_definition_counts=_read_python_definition_counts(data) if "python_definition_counts" in data else None,
         )
 
 
@@ -398,7 +456,9 @@ def measure_diff(diff_text: str, raw_listing: str, blob_by_path: Mapping[str, by
 
     Raises ValueError when the three inputs disagree about which paths changed."""
     entry_by_path = {entry.path: entry for entry in parse_raw_listing(raw_listing)}
-    metrics = CommentMetrics(changed_paths=sorted(entry_by_path))
+    metrics = CommentMetrics(
+        changed_paths=sorted(entry_by_path), python_definition_counts=_zeroed_python_definition_counts(),
+    )
     metrics.non_file_entries = sum(entry.new_mode in NON_FILE_MODES for entry in entry_by_path.values())
     for path, numbers in parse_added_lines(diff_text).items():
         scope = "test" if is_test_path(path) else "non_test"
@@ -420,4 +480,6 @@ def measure_diff(diff_text: str, raw_listing: str, blob_by_path: Mapping[str, by
         metrics.python_trailing_comments += classification.python_trailing_comments
         metrics.python_files_ast_rejected += classification.python_ast_rejected
         metrics.undecodable_files += classification.undecodable
+        for name in PYTHON_DEFINITION_COUNT_FIELDS:
+            metrics.python_definition_counts[scope][name] += getattr(classification.python_definition_counts, name)
     return metrics

@@ -1,0 +1,23 @@
+{
+ "packet_id": "p019",
+ "a": {
+  "pass": false,
+  "evidence": "Deleting the docstring outright is also acceptable, because the caller's docstring already states the reason and the name states the action."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "`\"\"\"Strips the path from the message, as _iter_scoped_sessions' root-level diagnostic does; the reason is in _dedup_new_project_dirs's docstring.\"\"\"`"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "`\"\"\"Strips the path from the message, as _iter_scoped_sessions' root-level diagnostic does; the reason is in _dedup_new_project_dirs's docstring.\"\"\"`"
+ },
+ "d": {
+  "pass": true,
+  "evidence": "That reason already lives in `_dedup_new_project_dirs`'s docstring (lines 255-257)."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "`\"\"\"Strips the path from the message, as _iter_scoped_sessions' root-level diagnostic does; the reason is in _dedup_new_project_dirs's docstring.\"\"\"`"
+ }
+}

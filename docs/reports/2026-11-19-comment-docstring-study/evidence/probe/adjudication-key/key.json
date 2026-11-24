@@ -1,0 +1,209 @@
+{
+  "seed": 20261120,
+  "packets": {
+    "p001": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run1",
+      "lines_removed": 1
+    },
+    "p002": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run7",
+      "lines_removed": 1
+    },
+    "p003": {
+      "source": "amended-v2",
+      "row_id": "P25c2",
+      "run": "run2",
+      "lines_removed": 1
+    },
+    "p004": {
+      "source": "amended-v1",
+      "row_id": "P25c2",
+      "run": "run1",
+      "lines_removed": 0
+    },
+    "p005": {
+      "source": "amended-v1",
+      "row_id": "P25c2",
+      "run": "run3",
+      "lines_removed": 0
+    },
+    "p006": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run1",
+      "lines_removed": 1
+    },
+    "p007": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run10",
+      "lines_removed": 1
+    },
+    "p008": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run10",
+      "lines_removed": 2
+    },
+    "p009": {
+      "source": "amended-v1",
+      "row_id": "P25c2",
+      "run": "run2",
+      "lines_removed": 1
+    },
+    "p010": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run8",
+      "lines_removed": 2
+    },
+    "p011": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run7",
+      "lines_removed": 0
+    },
+    "p012": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run2",
+      "lines_removed": 1
+    },
+    "p013": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run5",
+      "lines_removed": 0
+    },
+    "p014": {
+      "source": "amended-v2",
+      "row_id": "P25c2",
+      "run": "run1",
+      "lines_removed": 0
+    },
+    "p015": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run5",
+      "lines_removed": 1
+    },
+    "p016": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run4",
+      "lines_removed": 1
+    },
+    "p017": {
+      "source": "amended-v1",
+      "row_id": "P17c7",
+      "run": "run3",
+      "lines_removed": 0
+    },
+    "p018": {
+      "source": "amended-v1",
+      "row_id": "P26c4",
+      "run": "run2",
+      "lines_removed": 1
+    },
+    "p019": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run9",
+      "lines_removed": 0
+    },
+    "p020": {
+      "source": "amended-v1",
+      "row_id": "P26c4",
+      "run": "run1",
+      "lines_removed": 0
+    },
+    "p021": {
+      "source": "amended-v1",
+      "row_id": "P17c7",
+      "run": "run2",
+      "lines_removed": 1
+    },
+    "p022": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run3",
+      "lines_removed": 1
+    },
+    "p023": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run3",
+      "lines_removed": 1
+    },
+    "p024": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run4",
+      "lines_removed": 1
+    },
+    "p025": {
+      "source": "amended-v2",
+      "row_id": "P25c2",
+      "run": "run3",
+      "lines_removed": 1
+    },
+    "p026": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run6",
+      "lines_removed": 0
+    },
+    "p027": {
+      "source": "amended-v1",
+      "row_id": "P17c7",
+      "run": "run1",
+      "lines_removed": 0
+    },
+    "p028": {
+      "source": "amended-v2",
+      "row_id": "P17c7",
+      "run": "run9",
+      "lines_removed": 1
+    },
+    "p029": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run2",
+      "lines_removed": 0
+    },
+    "p030": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run6",
+      "lines_removed": 1
+    },
+    "p031": {
+      "source": "amended-v2",
+      "row_id": "P26c4",
+      "run": "run8",
+      "lines_removed": 1
+    },
+    "p032": {
+      "source": "amended-v1",
+      "row_id": "P26c4",
+      "run": "run3",
+      "lines_removed": 1
+    }
+  },
+  "bar_rows": [
+    "P17c7",
+    "P26c4"
+  ],
+  "external_rows": [
+    "P25c2"
+  ],
+  "listed_only_rows": {
+    "P10c3": "CONTESTED, no packet",
+    "P21c3": "CONTESTED, no packet",
+    "P26c3": "CONTESTED, no packet"
+  }
+}

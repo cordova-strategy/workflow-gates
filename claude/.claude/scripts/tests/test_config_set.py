@@ -2,7 +2,7 @@
 
 The input matrices for the value-type rule and the enforcement-critical key
 list live in test_config_lib.py; this file holds one subprocess case per
-branch, plus two cases run once per input because the property each pins
+branch, plus cases run once per input because the property each pins
 exists only at the CLI.
 """
 from __future__ import annotations

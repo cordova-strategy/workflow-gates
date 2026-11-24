@@ -1,0 +1,93 @@
+source commit 4d2d6ea16136; bar mode scaled; outputs out
+[shipped] cells with no output files: 0; runs without a findings heading: 25; findings without a fix label: 1; echo findings: 8
+[amended] cells with no output files: 0; runs without a findings heading: 11; findings without a fix label: 1; echo findings: 8
+[ablation] cells with no output files: 0; runs without a findings heading: 5; findings without a fix label: 4; echo findings: 3
+
+== Verdict-group recall (non-contested rows, majority across runs) ==
+group                    shipped       amended      ablation     amended bar  result
+KEEP recall                  8/8           6/8           2/8          >= 7/8  FAIL
+DELETE recall              44/76         57/76         74/76        >= 68/76  FAIL
+REWRITE (2 fields)           2/4           0/4           0/4          >= 4/4  FAIL
+subject retention            4/8           5/8           2/8          >= 6/8  FAIL
+ablation KEEP                                 2/8                   <= 2/8  PASS
+  (an ablation pass means the probe can tell the rule from a delete-everything instruction)
+Relative, amended vs shipped: KEEP -2 (needs >= -1) FAIL; DELETE +13 (needs > 0) PASS
+Bars: KEEP >= 7/8, DELETE >= 70/79, REWRITE >= 4/4, subject >= 6/8. CONTESTED rows leave DELETE with 76 scored rows and REWRITE with 4; 'scaled' mode applies the stated ratios, rounded up.
+Overall (amended): FAIL
+
+== External-fact rows (off the REWRITE bar; reported alone) ==
+The False angle cannot reach facts outside this repository, so the correct treatment of these rows is a flagged clause whose suggestion names the outside source, and the reviewer cannot confirm that fact.
+P25c2 [shipped] hit=False treatments={'untouched': 2, 'deleted': 1} angles={'restating': 1} suggestions=[]
+P25c2 [amended] hit=False treatments={'untouched': 1, 'deleted': 1, 'flagged': 1} angles={'restating': 2} suggestions=["Keep only the decision static analysis can't find, which is that the scheme mirrors Claude Code's own directory naming a"]
+P25c2 [ablation] hit=False treatments={'deleted': 2, 'untouched': 1} angles={'restating': 2} suggestions=[]
+
+== Whole-docstring deletions (31 real functions) ==
+[shipped] whole deletions 11; correct 8 of 19 all-DELETE functions; over-deletions ['P01', 'P10', 'P21']; runs with a whole deletion ['P01-declared_roots_file/run1.md', 'P01-declared_roots_file/run3.md', 'P02-declared_transcript_roots/run1.md', 'P02-declared_transcript_roots/run3.md', 'P06-off_table/run2.md', 'P07-has_indeterminate_liveness/run1.md', 'P07-has_indeterminate_liveness/run2.md', 'P07-has_indeterminate_liveness/run3.md', 'P10-cmd_cost_trend/run1.md', 'P10-cmd_cost_trend/run2.md', 'P10-cmd_cost_trend/run3.md', 'P11-gh_kind_for_status/run1.md', 'P11-gh_kind_for_status/run2.md', 'P11-gh_kind_for_status/run3.md', 'P13-render_sample/run1.md', 'P15-encode_json_cell/run1.md', 'P15-encode_json_cell/run3.md', 'P18-redact_session_id/run1.md', 'P18-redact_session_id/run2.md', 'P18-redact_session_id/run3.md', 'P20-sanitize_table_cell/run1.md', 'P20-sanitize_table_cell/run2.md', 'P20-sanitize_table_cell/run3.md', 'P21-pooled_branch_aggregates/run1.md', 'P21-pooled_branch_aggregates/run2.md', 'P21-pooled_branch_aggregates/run3.md', 'P22-pooled_compute_review_round_costs/run1.md', 'P22-pooled_compute_review_round_costs/run3.md', 'P25-path_to_project_slug/run3.md', 'P30-attribute_carried_branch/run2.md', 'P31-bash_command_is_mutating_git/run1.md', 'P31-bash_command_is_mutating_git/run2.md', 'K2-hash_cache_key/run1.md', 'D1-has_rows/run1.md', 'D1-has_rows/run2.md', 'D1-has_rows/run3.md', 'D2-active_users/run1.md', 'D2-active_users/run2.md', 'D2-active_users/run3.md']
+[amended] whole deletions 18; correct 15 of 19 all-DELETE functions; over-deletions ['P01', 'P21', 'P23']; runs with a whole deletion ['P01-declared_roots_file/run1.md', 'P01-declared_roots_file/run2.md', 'P01-declared_roots_file/run3.md', 'P02-declared_transcript_roots/run1.md', 'P04-prompt_text/run1.md', 'P04-prompt_text/run2.md', 'P04-prompt_text/run3.md', 'P05-report_state_dir_left/run1.md', 'P05-report_state_dir_left/run2.md', 'P05-report_state_dir_left/run3.md', 'P06-off_table/run1.md', 'P06-off_table/run2.md', 'P06-off_table/run3.md', 'P07-has_indeterminate_liveness/run1.md', 'P07-has_indeterminate_liveness/run2.md', 'P07-has_indeterminate_liveness/run3.md', 'P09-list_ledger_files/run2.md', 'P10-cmd_cost_trend/run3.md', 'P11-gh_kind_for_status/run3.md', 'P13-render_sample/run1.md', 'P13-render_sample/run2.md', 'P13-render_sample/run3.md', 'P14-usd_to_micros/run1.md', 'P14-usd_to_micros/run2.md', 'P14-usd_to_micros/run3.md', 'P15-encode_json_cell/run1.md', 'P15-encode_json_cell/run2.md', 'P15-encode_json_cell/run3.md', 'P18-redact_session_id/run1.md', 'P18-redact_session_id/run2.md', 'P18-redact_session_id/run3.md', 'P19-pct_of/run1.md', 'P19-pct_of/run2.md', 'P19-pct_of/run3.md', 'P20-sanitize_table_cell/run1.md', 'P20-sanitize_table_cell/run2.md', 'P20-sanitize_table_cell/run3.md', 'P21-pooled_branch_aggregates/run1.md', 'P21-pooled_branch_aggregates/run2.md', 'P21-pooled_branch_aggregates/run3.md', 'P22-pooled_compute_review_round_costs/run1.md', 'P22-pooled_compute_review_round_costs/run2.md', 'P23-serialize_capture/run1.md', 'P23-serialize_capture/run2.md', 'P23-serialize_capture/run3.md', 'P24-lost_event_hides/run1.md', 'P24-lost_event_hides/run2.md', 'P28-add_extra_config_dirs_arg/run1.md', 'P29-attributed_branch/run1.md', 'P29-attributed_branch/run2.md', 'P29-attributed_branch/run3.md', 'P30-attribute_carried_branch/run1.md', 'P30-attribute_carried_branch/run3.md', 'P31-bash_command_is_mutating_git/run1.md', 'P31-bash_command_is_mutating_git/run2.md', 'P31-bash_command_is_mutating_git/run3.md', 'D1-has_rows/run1.md', 'D1-has_rows/run2.md', 'D1-has_rows/run3.md', 'D2-active_users/run1.md', 'D2-active_users/run2.md', 'D2-active_users/run3.md']
+[ablation] whole deletions 28; correct 18 of 19 all-DELETE functions; over-deletions ['P01', 'P03', 'P10', 'P12', 'P16', 'P21', 'P23', 'P25', 'P26', 'P27']; runs with a whole deletion ['P01-declared_roots_file/run1.md', 'P01-declared_roots_file/run2.md', 'P01-declared_roots_file/run3.md', 'P03-strip_code_spans/run1.md', 'P03-strip_code_spans/run2.md', 'P04-prompt_text/run1.md', 'P04-prompt_text/run2.md', 'P04-prompt_text/run3.md', 'P05-report_state_dir_left/run1.md', 'P05-report_state_dir_left/run2.md', 'P05-report_state_dir_left/run3.md', 'P06-off_table/run1.md', 'P06-off_table/run2.md', 'P06-off_table/run3.md', 'P07-has_indeterminate_liveness/run1.md', 'P07-has_indeterminate_liveness/run2.md', 'P07-has_indeterminate_liveness/run3.md', 'P09-list_ledger_files/run1.md', 'P09-list_ledger_files/run2.md', 'P09-list_ledger_files/run3.md', 'P10-cmd_cost_trend/run1.md', 'P10-cmd_cost_trend/run2.md', 'P10-cmd_cost_trend/run3.md', 'P11-gh_kind_for_status/run1.md', 'P11-gh_kind_for_status/run2.md', 'P11-gh_kind_for_status/run3.md', 'P12-flatten_untrusted_text/run1.md', 'P12-flatten_untrusted_text/run2.md', 'P12-flatten_untrusted_text/run3.md', 'P13-render_sample/run1.md', 'P13-render_sample/run2.md', 'P13-render_sample/run3.md', 'P14-usd_to_micros/run1.md', 'P14-usd_to_micros/run2.md', 'P14-usd_to_micros/run3.md', 'P15-encode_json_cell/run1.md', 'P15-encode_json_cell/run2.md', 'P15-encode_json_cell/run3.md', 'P16-cmd_read_cost/run1.md', 'P16-cmd_read_cost/run2.md', 'P16-cmd_read_cost/run3.md', 'P17-project_family/run1.md', 'P18-redact_session_id/run1.md', 'P18-redact_session_id/run3.md', 'P19-pct_of/run1.md', 'P19-pct_of/run2.md', 'P19-pct_of/run3.md', 'P20-sanitize_table_cell/run1.md', 'P20-sanitize_table_cell/run2.md', 'P20-sanitize_table_cell/run3.md', 'P21-pooled_branch_aggregates/run1.md', 'P21-pooled_branch_aggregates/run2.md', 'P21-pooled_branch_aggregates/run3.md', 'P22-pooled_compute_review_round_costs/run1.md', 'P22-pooled_compute_review_round_costs/run2.md', 'P22-pooled_compute_review_round_costs/run3.md', 'P23-serialize_capture/run1.md', 'P23-serialize_capture/run2.md', 'P23-serialize_capture/run3.md', 'P24-lost_event_hides/run1.md', 'P24-lost_event_hides/run2.md', 'P24-lost_event_hides/run3.md', 'P25-path_to_project_slug/run1.md', 'P25-path_to_project_slug/run3.md', 'P26-path_stripped_scan_error/run1.md', 'P26-path_stripped_scan_error/run2.md', 'P26-path_stripped_scan_error/run3.md', 'P27-print_resolved_scope/run1.md', 'P27-print_resolved_scope/run2.md', 'P28-add_extra_config_dirs_arg/run1.md', 'P28-add_extra_config_dirs_arg/run2.md', 'P28-add_extra_config_dirs_arg/run3.md', 'P29-attributed_branch/run1.md', 'P29-attributed_branch/run2.md', 'P29-attributed_branch/run3.md', 'P30-attribute_carried_branch/run1.md', 'P30-attribute_carried_branch/run2.md', 'P30-attribute_carried_branch/run3.md', 'P31-bash_command_is_mutating_git/run1.md', 'P31-bash_command_is_mutating_git/run2.md', 'P31-bash_command_is_mutating_git/run3.md', 'K1-fetch_report/run1.md', 'D1-has_rows/run1.md', 'D1-has_rows/run2.md', 'D1-has_rows/run3.md', 'D2-active_users/run1.md', 'D2-active_users/run2.md', 'D2-active_users/run3.md']
+labels-v3.md rows give 19 all-DELETE functions; the probe brief expected 20.
+
+== Controls (majority of runs; K fails only on a delete or edit, D needs every clause deleted) ==
+K1 (no edit expected): shipped=PASS  amended=PASS  ablation=PASS
+K2 (no edit expected): shipped=PASS  amended=PASS  ablation=PASS
+D1 (delete all expected): shipped=PASS  amended=PASS  ablation=PASS
+D2 (delete all expected): shipped=PASS  amended=PASS  ablation=PASS
+
+== FALSE-angle rows (angle 'False-or-unsourced'; sub-report, also counted in their verdict group) ==
+P06c3 [shipped] verdict DELETE: correct=False treatments={'edited': 1, 'deleted': 1, 'flagged': 1} angles={'false': 2, 'restating': 1}
+P06c3 [amended] verdict DELETE: correct=True treatments={'deleted': 3} angles={'restating': 3}
+P06c3 [ablation] verdict DELETE: correct=True treatments={'deleted': 3} angles={'restating': 3}
+P08c6 [shipped] verdict KEEP AS SUBJECT: correct=True treatments={'flagged': 1, 'edited': 1, 'deleted': 1} angles={'other': 1, 'false': 2}
+P08c6 [amended] verdict KEEP AS SUBJECT: correct=False treatments={'deleted': 2, 'flagged': 1} angles={'false': 3}
+P08c6 [ablation] verdict KEEP AS SUBJECT: correct=True treatments={'deleted': 1, 'flagged': 2} angles={'restating': 3}
+P20c2 [shipped] verdict DELETE: correct=True treatments={'deleted': 3} angles={'false': 3}
+P20c2 [amended] verdict DELETE: correct=True treatments={'deleted': 3} angles={'restating': 3}
+P20c2 [ablation] verdict DELETE: correct=True treatments={'deleted': 3} angles={'restating': 3}
+P25c2 [shipped] verdict REWRITE: correct=False treatments={'untouched': 2, 'deleted': 1} angles={'restating': 1}
+P25c2 [amended] verdict REWRITE: correct=False treatments={'untouched': 1, 'deleted': 1, 'flagged': 1} angles={'restating': 2}
+P25c2 [ablation] verdict REWRITE: correct=False treatments={'deleted': 2, 'untouched': 1} angles={'restating': 2}
+
+== REWRITE evidence (suggestions the scorer accepted; adjudicate by hand) ==
+P01c3 [shipped] correct=False suggestions=[]
+P01c3 [amended] correct=False suggestions=[]
+P01c3 [ablation] correct=False suggestions=[]
+P10c3 [shipped] correct=False suggestions=[]
+P10c3 [amended] correct=False suggestions=['keep only the decision and its reason, as one sentence. For example: "Reads the clock here, not in `_cost_trend_report`,']
+P10c3 [ablation] correct=False suggestions=[]
+P17c7 [shipped] correct=True suggestions=['either keep it, accepting that it can go stale, or say "if any caller\'s project counts show an unexpected merge". The te', 'Replace the inventory with the trigger, e.g. "Re-evaluate if any per-project count shows an unexpected merge." Keep the ']
+P17c7 [amended] correct=False suggestions=['reduce the re-evaluation sentence to the trigger alone ("re-evaluate if an unexpected merge appears"), or delete it. Do ']
+P17c7 [ablation] correct=False suggestions=[]
+P21c3 [shipped] correct=False suggestions=[]
+P21c3 [amended] correct=False suggestions=[]
+P21c3 [ablation] correct=False suggestions=[]
+P25c2 [shipped] correct=False suggestions=[]
+P25c2 [amended] correct=False suggestions=["Keep only the decision static analysis can't find, which is that the scheme mirrors Claude Code's own directory naming a"]
+P25c2 [ablation] correct=False suggestions=[]
+P26c4 [shipped] correct=True suggestions=['one sentence per distinct fact, with every fact kept. The non-obvious facts are:\n- Why `strerror` is used rather than `s', 'keep those two facts and delete the repeated sentence, for example: "Strips the path from the message: `str(exc)` can em']
+P26c4 [amended] correct=False suggestions=['Cut the docstring to one sentence that names the decision, gives the reason and keeps the pointer. For example: "Drops t']
+P26c4 [ablation] correct=False suggestions=[]
+
+== CONTESTED rows (excluded from every count above) ==
+P05c2 (labeled DELETE): shipped={'untouched': 3}  amended={'deleted': 3}  ablation={'deleted': 3}
+P10c3 (labeled REWRITE): shipped={'deleted': 3}  amended={'flagged': 2, 'deleted': 1}  ablation={'deleted': 3}
+P22c3 (labeled DELETE): shipped={'deleted': 2, 'flagged': 1}  amended={'deleted': 2, 'untouched': 1}  ablation={'deleted': 3}
+P29c4 (labeled DELETE): shipped={'deleted': 3}  amended={'deleted': 3}  ablation={'deleted': 3}
+
+== Findings the scorer could not attribute (adjudicate by hand) ==
+[shipped] no fix label: ['P31-bash_command_is_mutating_git/run3.md (restating)']
+[shipped] echo of the whole docstring, no 'all' in the fix: ['P06-off_table/run3.md (false)', 'P08-declared_config_dirs/run1.md (other)', 'P13-render_sample/run3.md (restating)', 'P19-pct_of/run2.md (other)', 'P20-sanitize_table_cell/run2.md (false)', 'P30-attribute_carried_branch/run3.md (restating)', 'K1-fetch_report/run1.md (restating)', 'K2-hash_cache_key/run3.md (false)']
+[amended] no fix label: ['P30-attribute_carried_branch/run2.md (restating)']
+[amended] echo of the whole docstring, no 'all' in the fix: ['P09-list_ledger_files/run1.md (restating)', 'P09-list_ledger_files/run3.md (restating)', 'P10-cmd_cost_trend/run1.md (restating)', 'P10-cmd_cost_trend/run2.md (restating)', 'P11-gh_kind_for_status/run1.md (restating)', 'P11-gh_kind_for_status/run2.md (restating)', 'P25-path_to_project_slug/run3.md (restating)', 'P26-path_stripped_scan_error/run1.md (restating)']
+[ablation] no fix label: ['P08-declared_config_dirs/run3.md (restating)', 'P08-declared_config_dirs/run3.md (restating)', 'P08-declared_config_dirs/run3.md (restating)', 'P08-declared_config_dirs/run3.md (restating)']
+[ablation] echo of the whole docstring, no 'all' in the fix: ['P18-redact_session_id/run2.md (restating)', 'P31-bash_command_is_mutating_git/run2.md (restating)', 'P31-bash_command_is_mutating_git/run3.md (restating)']
+
+== Delete-then-keep on a REWRITE row (neither hit nor miss; the row is undecided for that run) ==
+[shipped] ["P26-path_stripped_scan_error/run3.md P26c4: 'Delete the closing sentence. Keep the other four facts: the path is stripped; it mirrors the root-level `strer'"]
+[amended] ["P10-cmd_cost_trend/run2.md P10c3: 'delete the summary line and the mechanics narration. Keep one sentence that names the decision and its reason,'", "P25-path_to_project_slug/run2.md P25c2: 'delete the transform description and both examples. Keep only the decision static analysis cannot find, which '", "P26-path_stripped_scan_error/run1.md P26c4: 'delete everything except the decision, and point at the doc that holds the reason. For example, a one-line doc'"]
+[ablation] ['P17-project_family/run2.md P17c7: \'Delete the consumer list. Keep only the "re-evaluate if an unexpected merge appears" trigger if the accepted-r\'']
+
+== Paired shipped vs amended (non-contested real rows) ==
+KEEP: both right 6, shipped only 2, amended only 0, both wrong 0
+DELETE: both right 34, shipped only 10, amended only 23, both wrong 9
+REWRITE: both right 0, shipped only 2, amended only 0, both wrong 2
+KEEP AS SUBJECT: both right 2, shipped only 2, amended only 3, both wrong 1

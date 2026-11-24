@@ -135,6 +135,20 @@ class TestAuditRouting:
         # We just verify that private-project labels appear in the output
         assert "private-project-" in out
 
+    def test_redact_flag_keeps_raw_project_label_and_session_id_out_of_stdout(self, fake_projects, capsys):
+        """--redact leaves neither the raw project-dir label nor the raw session-id stem in stdout."""
+        proj_distinctive = fake_projects.parent / "-home-user-zxqvproj"
+        proj_distinctive.mkdir(parents=True)
+        _write_jsonl(proj_distinctive / "rawsid-9c3e7.jsonl", [
+            _opus([_agent_use("a1", "code-writer")], out=100),
+        ])
+        audit_routing.cmd_audit_routing(_audit_routing_args(redact=True))
+        out = capsys.readouterr().out
+        assert "zxqvproj" not in out
+        assert "rawsid-9c3e7" not in out
+        assert "private-project-" in out
+        assert "session-1" in out
+
     def test_since_filter_excludes_out_of_window_turns(self, fake_projects, capsys):
         """--since filter: turn outside window excluded; only in-window turn appears in aggregate."""
         old_ts = "2020-01-01T00:00:00.000Z"   # far in the past — always out-of-window
@@ -362,9 +376,67 @@ class TestAuditRoutingMultiRootRedaction:
             proj.mkdir(parents=True)
             _write_jsonl(proj / "sess.jsonl", [_opus([_agent_use("a1", "code-writer")], out=100)])
 
-        audit_routing.cmd_audit_routing(_audit_routing_args(redact=True))
+        args = _audit_routing_args(redact=True)
+        args.all_accounts = True  # a default run reads the active root alone
+
+        audit_routing.cmd_audit_routing(args)
         out = capsys.readouterr().out
         assert redaction._REDACT_MAP_MISS_TOKEN not in out
         assert "account-1/private-project-1" in out
         assert "account-2/private-project-1" in out
         assert "-home-user-repo" not in out
+
+    def test_redact_over_declared_roots_builds_its_map_per_widening_route(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        """A default run reads the active root alone, so its labels are flat. --this-repo reads every
+        declared root, so its labels carry the account prefix."""
+        roots = _two_declared_roots(tmp_path, monkeypatch)
+        for root in roots:
+            proj = root / "-home-user-repo"
+            proj.mkdir(parents=True)
+            _write_jsonl(proj / "sess.jsonl", [_opus([_agent_use("a1", "code-writer")], out=100)])
+        map_build_roots: list[list] = []
+        real_build_redact_map = redaction._build_redact_map
+
+        def spy_build_redact_map(scan_roots, *args, **kwargs):
+            map_build_roots.append(list(scan_roots))
+            return real_build_redact_map(scan_roots, *args, **kwargs)
+
+        monkeypatch.setattr(redaction, "_build_redact_map", spy_build_redact_map)
+
+        audit_routing.cmd_audit_routing(_audit_routing_args(redact=True))
+        default_out = capsys.readouterr().out
+
+        assert map_build_roots == [[roots[0]]]
+        assert "private-project-1" in default_out
+        assert "account-1/" not in default_out
+        assert "private-project-2" not in default_out
+
+        this_repo_args = _audit_routing_args(redact=True, this_repo=True)
+        this_repo_args._this_repo_slugs = ["-home-user-repo"]
+        audit_routing.cmd_audit_routing(this_repo_args)
+        this_repo_out = capsys.readouterr().out
+
+        assert map_build_roots[-1] == roots
+        assert "account-1/private-project-1" in this_repo_out
+        assert "account-2/private-project-1" in this_repo_out
+
+
+class TestAuditRoutingAbsoluteProjects:
+    def test_redact_with_an_absolute_projects_value_exits_2_before_building_the_redact_map(
+        self, fake_projects, monkeypatch, capsys
+    ):
+        """Path.glob raises NotImplementedError on an absolute pattern. Scope resolution refuses it before the
+        full-corpus redact-map scan that --redact would otherwise pay first."""
+        redact_map_builds: list[object] = []
+        monkeypatch.setattr(redaction, "_build_redact_map", lambda *args, **kwargs: redact_map_builds.append(args))
+
+        with pytest.raises(SystemExit) as exc_info:
+            audit_routing.cmd_audit_routing(_audit_routing_args(redact=True, projects="/abs/*"))
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert "audit-routing: --projects:" in captured.err
+        assert captured.out == ""
+        assert redact_map_builds == []

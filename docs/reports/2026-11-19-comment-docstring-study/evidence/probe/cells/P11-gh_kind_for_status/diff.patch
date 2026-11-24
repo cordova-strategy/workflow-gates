@@ -1,0 +1,12 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/period_cost.py b/claude/.claude/scripts/transcript_analysis/period_cost.py
+--- a/claude/.claude/scripts/transcript_analysis/period_cost.py
++++ b/claude/.claude/scripts/transcript_analysis/period_cost.py
+@@ -740,6 +740,8 @@
+ 
+ 
+ def _gh_kind_for_status(status: str) -> str:
++    """The unavailable kind for a non-empty _gh_pr_list status. A status this table does not know is reported as an
++    unexpected payload rather than aborting the run."""
+     return _GH_STATUS_TO_KIND.get(status, _GH_KIND_UNEXPECTED_PAYLOAD)
+ 
+ 
