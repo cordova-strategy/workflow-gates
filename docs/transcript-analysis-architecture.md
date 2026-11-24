@@ -59,6 +59,12 @@ The rule itself is documented in `docs/transcript-analysis.md` under "Subagent a
 attribute that function defines. `_add_extra_config_dirs_arg` registers the repeatable subcommand-level
 `--config-dir`, whose `extra_config_dirs` values `_resolve_cost_roots` reads.
 
+`scope.py` also owns the shared `--no-redact` refusal. `_refuse_no_redact_above_one_root` exits 2 when the flag
+meets more than one root. `resolve_redaction` calls it and returns whether the subcommand redacts. Nine of the ten
+subcommands that register `--no-redact` read their decision through `resolve_redaction`. `cost` reads `redact` directly
+and calls only `_refuse_no_redact_above_one_root`. Both root resolvers (`resolve_scan_roots`, `_resolve_cost_roots`)
+call `_refuse_no_redact_above_one_root` on the roots they return.
+
 `scope.py` also owns `_iso_date`, the argparse `type=` validator for every YYYY-MM-DD flag, which
 `_parse_absolute_window_args` relies on.
 
@@ -93,7 +99,9 @@ Also owns the `--this-repo` subagent_type disclosure allowlist:
 
 `subagent_mix.py`'s `cmd_subagent_mix` and `cmd_cost_counts` call
 `redaction._repo_tracked_agent_type_names` (attribute access) to gate which raw `subagent_type`
-values a `--this-repo` report may disclose versus fold into a withheld row.
+values a `--this-repo` report may disclose versus fold into a withheld row. `reviewer_yield.py`'s
+`cmd_reviewer_yield` calls `redaction._untracked_agent_type_labels` (attribute access) under `--redact`,
+which keeps each tracked name and numbers every other name `agent-type-<N>`.
 
 ### `pricing.py`
 
@@ -231,7 +239,7 @@ is the one public (non-underscore-prefixed) name here, read by `cost_ledger.py`'
 The reviewer-yield command family: `cmd_reviewer_yield` and every helper used only by it —
 joining each main-thread reviewer-agent dispatch to its own subagent transcript, classifying its
 verdict (findings-found/zero-finding/unclassified), and scoring cited-path edit overlap
-(`compute_reviewer_yield_data`). Imports `corpus`, `pricing`, `render`, and `scope` all by module
+(`compute_reviewer_yield_data`). Imports `corpus`, `pricing`, `redaction`, `render`, and `scope` all by module
 (attribute access), matching `cost.py`'s convention. `compute_reviewer_yield_data` is the one
 public name here, read by `cost_ledger.py`'s own `_cost_ledger_report` as
 `reviewer_yield.compute_reviewer_yield_data`. `_is_reviewer_subagent_type` is read by `review_trace.py`, via
@@ -614,9 +622,9 @@ they use — hook-observable boundary detection (`_hook_observable_boundaries`),
 (`_simulate_rearm_spacing`), `--spacings` parsing (`_parse_rearm_spacings_arg`), the
 nudge-to-handoff conversion classifier (`_nudge_conversion_from_log`), and the per-root log-size
 disclosure line (`_rearm_backtest_log_size_lines`). Imports `handoff_nudge`, `render`, and `scope` all
-by module (attribute access), matching `cost.py`'s convention. The multi-root `--no-redact` refusal
-stays inline in `_rearm_backtest_report`, ahead of any output, in addition to
-`scope._resolve_cost_roots`' own CLI-level refusal. `_add_rearm_backtest_subparser` is the one name
+by module (attribute access), matching `cost.py`'s convention. `_rearm_backtest_report` reads its
+`--no-redact` decision through `scope.resolve_redaction`, ahead of any output, which refuses more than
+one root. `_add_rearm_backtest_subparser` is the one name
 `build_parser()` reaches bare.
 
 ### `spend_over_threshold.py`
@@ -635,8 +643,8 @@ they use — boundary-turn location (`_plan_boundary_turn_index`), the three arm
 (`_arm_b_boundary_plus_one_dollars`, `_arm_b_later_turn_dollars`, `_arm_c_turn_dollars`), and the
 pairwise work-inflation breakeven (`_plan_boundary_work_inflation_breakeven`). Imports
 `handoff_nudge`, `pricing`, `render`, and `scope` all by module (attribute access), matching
-`cost.py`'s convention. The multi-root `--no-redact` refusal is inline in `_plan_boundary_report`,
-ahead of any output, in addition to `scope._resolve_cost_roots`' own CLI-level refusal.
+`cost.py`'s convention. `_plan_boundary_report` reads its `--no-redact` decision
+through `scope.resolve_redaction`, ahead of any output, which refuses more than one root.
 `_add_plan_boundary_subparser` is the one name `build_parser()` reaches bare.
 
 ### `handoff_signal_response.py`
@@ -647,8 +655,8 @@ per-record signal classifiers (`_handoff_signal_bash_check_call`, `_handoff_sign
 scan (`_handoff_signal_response_session_rows`), spend ranking, curation cards, the startup-burn
 benchmark, and the aggregate and markdown renderers. Imports `corpus`, `cost`, `handoff_nudge`,
 `pricing`, `redaction`, `render`, and `scope` all by module (attribute access), matching `cost.py`'s
-convention. The multi-root `--no-redact` refusal lives inline in `cmd_handoff_signal_response`, since
-`scope.resolve_scan_roots` refuses nothing. Its `.handoff-nudge.log` read goes through
+convention. `cmd_handoff_signal_response` reads its `--no-redact` decision through
+`scope.resolve_redaction`, which refuses more than one root. Its `.handoff-nudge.log` read goes through
 `scope.config_dir()` by attribute access, per the rule under `scope.py` above, so `fake_projects`'
 existing `scope.config_dir` patch isolates it. `_add_handoff_signal_response_subparser` is the one name
 `build_parser()` reaches bare.
@@ -873,9 +881,15 @@ the existing tests live.
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
 scan-traversal, scan-gap, and glob-selection classes are tested in
-`tests/test_transcript_scope_scan.py`, and the rest of `scope.py` in
-`tests/test_transcript_scope.py`. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`
-because it walks every subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
+`tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
+`tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
+`tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
+`tests/test_transcript_scope_no_redact.py`, and the rest of `scope.py` in
+`tests/test_transcript_scope.py`. `reviewer_yield.py`'s `AgentType` label map, both the `--redact` relabelling and the raw path's control-character strip, is tested in
+`tests/test_transcript_reviewer_yield_redaction.py`, and the rest of its tests live in
+`tests/test_transcript_reviewer_yield.py`. `TestNoRedactFamilyRefusalThroughMain` and
+`TestProjectsFlagHasNoArgparseType` live in `tests/test_transcript_cli.py` because each walks every
+subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
 in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py` selects as a `SKILL.md`
 reader. `pricing.py`'s
 shared per-session step, staleness rule, and canary return values, and

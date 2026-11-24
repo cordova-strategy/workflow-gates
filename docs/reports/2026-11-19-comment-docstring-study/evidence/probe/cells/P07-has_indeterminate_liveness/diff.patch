@@ -1,0 +1,14 @@
+diff --git a/claude/.claude/scripts/post-crash-sessions.py b/claude/.claude/scripts/post-crash-sessions.py
+--- a/claude/.claude/scripts/post-crash-sessions.py
++++ b/claude/.claude/scripts/post-crash-sessions.py
+@@ -1045,6 +1045,10 @@
+ def _has_indeterminate_liveness(
+     entries: list[RegistryEntry] | list[LookupEntry], liveness: dict[tuple[str, int], str], source_name: str,
+ ) -> bool:
++    """True when any entry in `entries` carries indeterminate liveness under
++    `source_name` in `liveness` -- used to withhold Confirmed-clean-exit
++    promotion when a same-session sibling from the *other* evidence source
++    hasn't resolved to live or dead."""
+     return any(liveness[(source_name, e.pid)] == "indeterminate" for e in entries)
+ 
+ 

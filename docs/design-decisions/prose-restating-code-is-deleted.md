@@ -37,6 +37,14 @@ The rule exempts no prose on the ground that it documents a published API.
 
 PEP 8, Go and Google give every public name a docstring, and Google and Rust document a public API's errors. This rule departs from them by design.
 
+## Why the restating bullet is not narrowed to design decisions
+
+A rewording of the restating bullet in `claude/.claude/CLAUDE.md` § "Durable text" that keeps only design decisions with a reason static analysis cannot find was measured on labelled docstrings from this repository. It failed the bar fixed before its runs.
+
+The maintainer chose to stop there, so the bullet and `comment-discipline-reviewer` keep their wording.
+
+The [report](../reports/2026-11-19-comment-docstring-study/findings.md) holds the evidence, the disputed labels and the limits.
+
 ## Sources
 
 Each quote below was checked against its URL on 2026-10-26.

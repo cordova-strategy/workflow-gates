@@ -1,0 +1,23 @@
+{
+ "packet_id": "p002",
+ "a": {
+  "pass": true,
+  "evidence": "- The accepted-risk sentence (lines 40-42) states a design decision and its reason"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "- The accepted-risk sentence (lines 40-42) states a design decision and its reason"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "re-evaluate."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "Suffix shape: see the comment on `_WORKTREE_SUFFIX_RE`."
+ },
+ "e": {
+  "pass": false,
+  "evidence": "- The revisit trigger (lines 42-44) names real consumers:"
+ }
+}

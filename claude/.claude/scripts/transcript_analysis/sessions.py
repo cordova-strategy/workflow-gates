@@ -15,6 +15,9 @@ from transcript_analysis import corpus, scope
 def cmd_sessions(args: argparse.Namespace) -> None:
     """Emit transcript file paths for the resolved scope, one absolute path per line.
 
+    Reads the active account unless --this-repo, --all-accounts or the top-level
+    --config-dir sets the scope.
+
     --paths is required: it names the one action this subcommand supports today,
     leaving room for a second sessions action later without a bare `sessions`
     invocation silently doing nothing. Sourced from scope.resolve_scan_roots plus
@@ -35,11 +38,12 @@ def cmd_sessions(args: argparse.Namespace) -> None:
         sys.exit(2)
 
     include_subagents = bool(getattr(args, "include_subagents", False))
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(
         args, "sessions", include_subagents=include_subagents, roots=roots
     )
-    scope.print_resolved_scope("sessions", scope_label, roots, file=sys.stderr)
+    scope.print_resolved_scope("sessions", scope_label, roots, file=sys.stderr, active_account_only=active_account_only)
     for jsonl, _records in session_iter:
         print(jsonl)
         if include_subagents:
@@ -57,7 +61,8 @@ def _add_sessions_subparser(subparsers: argparse._SubParsersAction) -> None:
         "sessions",
         help="Emit transcript file paths for the resolved scope, one absolute path per line.",
     )
-    scope._add_project_scope_args(p_sessions)
+    scope._add_project_scope_args(p_sessions, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_sessions)
     p_sessions.add_argument(
         "--paths", action="store_true",
         help="Print one absolute transcript path per line (the only sessions action today; required).",

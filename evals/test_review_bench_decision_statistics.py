@@ -13,7 +13,7 @@ from collections.abc import Callable, Hashable
 from fractions import Fraction
 
 import pytest
-from review_bench import analysis
+from review_bench import analysis, arms
 from test_review_bench_analysis import ARM_BASELINE, ARM_X, _own_fixture_each
 
 
@@ -549,8 +549,16 @@ def _exact_precision_terms(
     return estimate, residuals, [residual + estimate + Fraction(delta) for residual in residuals]
 
 
+# An arm key outside the compared pair.
+UNCOMPARED_ARM = "uncompared-arm"
+
+
 class TestPrecisionFixtureTerms:
     UNEQUAL_FIXTURES = {"d1": (3, 4, 1, 5), "d2": (1, 6, 2, 2), "d3": (4, 4, 2, 3)}
+
+    def test_the_uncompared_arm_is_neither_a_known_arm_nor_a_compared_arm(self) -> None:
+        assert UNCOMPARED_ARM not in arms.KNOWN_ARMS
+        assert UNCOMPARED_ARM not in (ARM_X, ARM_BASELINE)
 
     def test_unequal_precisions_and_totals_match_pinned_fraction_terms(self) -> None:
         """Per-arm pooled precision is 8/14 and 5/10, so the estimate is 1/14. The residuals are pinned
@@ -581,6 +589,15 @@ class TestPrecisionFixtureTerms:
                 pairs[defect_id] = (rng.randint(0, total_x), total_x, rng.randint(0, total_baseline), total_baseline)
                 clusters[defect_id] = f"f{fixture_index}"
         counts = _precision_counts_by_defect(pairs)
+        fixtures_without_findings = {
+            fixture for fixture in clusters.values()
+            if not any(
+                pairs[defect_id][1] or pairs[defect_id][3] for defect_id in pairs if clusters[defect_id] == fixture
+            )
+        }
+        assert not fixtures_without_findings, (
+            f"the seeded draw changed: {sorted(fixtures_without_findings)} carry no finding in either compared arm"
+        )
 
         terms = analysis.precision_fixture_terms(counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters)
 
@@ -611,8 +628,18 @@ class TestPrecisionFixtureTerms:
         assert terms.residuals == pytest.approx(tuple(float(residual) for residual in exact_residuals))
         assert terms.residuals[0] == pytest.approx(15 / 98)
 
-    def test_a_fixture_with_no_finding_in_one_arm_beside_a_nonzero_pool_still_counts_as_a_fixture(self) -> None:
-        counts = _precision_counts_by_defect({"d1": (3, 4, 0, 0), "d2": (1, 6, 2, 2), "d3": (4, 4, 2, 3)})
+    @pytest.mark.parametrize(
+        "kept_shape",
+        [(3, 4, 0, 0), (0, 0, 3, 4), (0, 3, 0, 2), (1, 1, 0, 0), (0, 0, 0, 2), (0, 2, 0, 0)],
+        ids=[
+            "arm-x-only", "baseline-only", "all-invalid", "single-valid-finding-in-arm-x",
+            "all-invalid-in-baseline-only", "all-invalid-in-arm-x-only",
+        ],
+    )
+    def test_a_fixture_with_a_finding_in_a_compared_arm_still_counts_as_a_fixture(
+        self, kept_shape: tuple[int, int, int, int],
+    ) -> None:
+        counts = _precision_counts_by_defect({"d1": kept_shape, "d2": (1, 6, 2, 2), "d3": (4, 4, 2, 3)})
         clusters = _own_fixture_each(counts)
 
         terms = analysis.precision_fixture_terms(counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters)
@@ -623,9 +650,49 @@ class TestPrecisionFixtureTerms:
         assert terms.estimate == pytest.approx(float(exact_estimate))
         assert terms.residuals == pytest.approx(tuple(float(residual) for residual in exact_residuals))
 
-    def test_a_fixture_with_no_finding_in_either_arm_still_counts_as_a_fixture(self) -> None:
-        counts = _precision_counts_by_defect({"d1": (0, 0, 0, 0), "d2": (3, 4, 1, 5), "d3": (4, 4, 2, 3)})
+    @pytest.mark.parametrize(
+        "finding_free_defect",
+        [
+            analysis.DefectPrecisionCounts(
+                defect_id="d1", valid_by_arm={ARM_X: 0, ARM_BASELINE: 0}, total_by_arm={ARM_X: 0, ARM_BASELINE: 0},
+            ),
+            analysis.DefectPrecisionCounts(
+                defect_id="d1", valid_by_arm={UNCOMPARED_ARM: 2}, total_by_arm={UNCOMPARED_ARM: 3},
+            ),
+        ],
+        ids=["all-counts-zero", "findings-only-under-an-uncompared-arm"],
+    )
+    def test_a_fixture_with_no_finding_in_either_arm_is_dropped(
+        self, finding_free_defect: analysis.DefectPrecisionCounts,
+    ) -> None:
+        kept_counts = _precision_counts_by_defect({"d2": (3, 4, 1, 5), "d3": (4, 4, 2, 3)})
+        counts = {"d1": finding_free_defect, **kept_counts}
         clusters = _own_fixture_each(counts)
+
+        terms = analysis.precision_fixture_terms(counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters)
+        without_it = analysis.precision_fixture_terms(
+            kept_counts, list(kept_counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+
+        exact_estimate, exact_residuals, exact_null_centered = _exact_precision_terms(
+            kept_counts, clusters, delta=analysis.DELTA,
+        )
+        assert terms is not None
+        assert len(terms.residuals) == 2
+        assert terms == without_it
+        assert terms.estimate == pytest.approx(float(exact_estimate))
+        assert terms.residuals == pytest.approx(tuple(float(residual) for residual in exact_residuals))
+        assert terms.null_centered == pytest.approx(tuple(float(term) for term in exact_null_centered))
+
+    @pytest.mark.parametrize("finding_free_first", [True, False], ids=["finding-free-defect-first", "finding-free-defect-last"])
+    def test_a_finding_free_defect_beside_one_with_findings_keeps_its_fixture(self, finding_free_first: bool) -> None:
+        """A predicate requiring a finding on every defect, or checking only the first or only the last, drops this fixture."""
+        finding_free = {"d0": (0, 0, 0, 0)}
+        counts = _precision_counts_by_defect(
+            {**finding_free, **self.UNEQUAL_FIXTURES} if finding_free_first else {**self.UNEQUAL_FIXTURES, **finding_free},
+        )
+        clusters = _own_fixture_each(counts)
+        clusters["d0"] = clusters["d1"]
 
         terms = analysis.precision_fixture_terms(counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters)
 
@@ -635,16 +702,13 @@ class TestPrecisionFixtureTerms:
         assert terms.estimate == pytest.approx(float(exact_estimate))
         assert terms.residuals == pytest.approx(tuple(float(residual) for residual in exact_residuals))
 
-    def test_every_finding_in_one_fixture_gives_zero_residuals_and_a_zero_width_interval(self) -> None:
+    def test_every_finding_in_one_fixture_gives_none(self) -> None:
         counts = _precision_counts_by_defect({"d1": (3, 4, 1, 5), "d2": (0, 0, 0, 0), "d3": (0, 0, 0, 0)})
         clusters = {"d1": "A", "d2": "B", "d3": "B"}
 
         terms = analysis.precision_fixture_terms(counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters)
 
-        assert terms is not None
-        assert terms.residuals == pytest.approx((0.0, 0.0))
-        assert terms.estimate == pytest.approx(3 / 4 - 1 / 5)
-        assert analysis.fixture_t_interval(terms) == pytest.approx((terms.estimate, terms.estimate))
+        assert terms is None
 
     @pytest.mark.parametrize("silent_arm", [ARM_X, ARM_BASELINE])
     def test_an_arm_with_no_finding_gives_none(self, silent_arm: str) -> None:
@@ -687,6 +751,33 @@ class TestPrecisionFixtureTerms:
             counts, list(counts), ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
         )
 
+        assert with_absent == without_it
+
+    @pytest.mark.parametrize(
+        ("defect_ids_before_absent", "defect_ids_after_absent"),
+        [([], ["d1", "d2", "d3"]), (["d0"], ["d1", "d2", "d3"])],
+        ids=["absent-defect-before-a-present-one", "absent-defect-after-a-finding-free-present-one"],
+    )
+    def test_an_absent_defect_the_finding_check_could_reach_before_a_finding_is_skipped(
+        self, defect_ids_before_absent: list[str], defect_ids_after_absent: list[str],
+    ) -> None:
+        """A finding check over the unfiltered fixture reaches the absent defect and raises KeyError."""
+        counts = _precision_counts_by_defect({"d0": (0, 0, 0, 0), **self.UNEQUAL_FIXTURES})
+        clusters = _own_fixture_each(counts)
+        clusters["absent"] = clusters["d1"]
+        clusters["d0"] = clusters["d1"]
+        defect_ids = [*defect_ids_before_absent, "absent", *defect_ids_after_absent]
+        defect_ids_without_absent = [defect_id for defect_id in defect_ids if defect_id != "absent"]
+
+        with_absent = analysis.precision_fixture_terms(
+            counts, defect_ids, ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+        without_it = analysis.precision_fixture_terms(
+            counts, defect_ids_without_absent, ARM_BASELINE, ARM_X, cluster_by_defect=clusters,
+        )
+
+        assert with_absent is not None
+        assert len(with_absent.residuals) == 3
         assert with_absent == without_it
 
     def test_a_fixture_whose_defects_are_not_adjacent_in_defect_ids_is_one_fixture(self) -> None:

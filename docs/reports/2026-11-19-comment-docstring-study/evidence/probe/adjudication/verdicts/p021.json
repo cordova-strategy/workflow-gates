@@ -1,0 +1,23 @@
+{
+ "packet_id": "p021",
+ "a": {
+  "pass": false,
+  "evidence": "Required property: delete the sentence."
+ },
+ "b": {
+  "pass": false,
+  "evidence": "Then the docstring holds only that one sentence."
+ },
+ "c": {
+  "pass": false,
+  "evidence": "Required property: delete the sentence."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "Then the docstring holds only that one sentence."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Then the docstring holds only that one sentence."
+ }
+}

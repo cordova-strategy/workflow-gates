@@ -22,6 +22,7 @@ Claude Code's `omitClaudeMd` subagent frontmatter, together with `skills:` prelo
 - A rule addressed to subagents goes to Agent Core: the "Dispatching cannot clear a denial your child inherits" bullet and the "any fork or subagent returns its work to its dispatcher rather than shipping on its own" clause.
 - The MEMORY.md-index bullet sits in Agent Core because every subagent probed (`plan-architect`, `general-purpose`, `code-writer`, `staff-sdet`) reported the index in its own context.
 - The marker `clear-stale` bullet stays in Main session: `clear-stale` cannot clear a subagent's own leftovers.
+- The "Take the next step you name" bullet sits in Main session, an exception to the tool-capability test above. A dispatched agent's final message is its return, where naming follow-ups for its dispatcher is expected, so in Agent Core the rule could push a subagent past its brief. A non-fork subagent that names its own next step and ends its run without taking it is not covered.
 
 Whether subagents comply with the grouping is unmeasured at the time of writing. A post-merge compliance spot-check on this repo's own sessions follows `docs/private-project-redaction.md` § "Publishing a tooling measurement", and GH-1085 records the result.
 

@@ -1,0 +1,19 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -204,6 +204,15 @@
+ 
+ 
+ def _path_stripped_scan_error(exc: OSError) -> OSError:
++    """Same exception type, with any embedded absolute path removed from the
++    message.
++
++    Mirrors _iter_scoped_sessions' own root-level diagnostic, which uses
++    `exc.strerror or 'permission denied'` rather than `str(exc)`. `str(exc)`
++    can embed the offending path. `OSError(errno, strerror)` reconstructs
++    the correct subclass (e.g. `PermissionError`) from `errno`. A caller
++    matching on subclass still sees the same type.
++    """
+     return OSError(exc.errno, exc.strerror or "permission denied")
+ 
+ 

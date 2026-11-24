@@ -290,24 +290,6 @@ class TestReviewerYield:
         assert "distinctive-session-id" not in out
         assert "testrepo" not in out
 
-    def test_redact_flag_is_true_no_op(self, fake_projects, capsys):
-        """--redact produces byte-identical output to the default run, proving
-        the flag is genuinely inert given the aggregate-only schema — not just
-        documented as such."""
-        _write_jsonl(fake_projects / "sess.jsonl", [
-            _asst("claude-opus-4-7", ts="2026-05-19T10:00:00.000Z", content=[_agent_use("a1", "ciso-reviewer")]),
-        ])
-        _write_subagent_dispatch(
-            fake_projects, "sess", "agent-a1", "a1",
-            [_asst("claude-sonnet-4-6", sidechain=True, content=[{"type": "text", "text": "**No CISO concerns**"}])],
-            agent_type="ciso-reviewer",
-        )
-        reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=False))
-        default_out = capsys.readouterr().out
-        reviewer_yield.cmd_reviewer_yield(_reviewer_yield_args(redact=True))
-        redacted_out = capsys.readouterr().out
-        assert default_out == redacted_out
-
     def test_since_filter_excludes_out_of_window_dispatch(self, fake_projects, capsys):
         """A dispatch outside the --since window is excluded from the aggregate;
         one inside it is still counted."""

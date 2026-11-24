@@ -127,6 +127,7 @@ Code comments and durable in-repo documentation (REFERENCES.md, doc files, READM
 ## Working Style
 
 - Walk the user through your proposed approach and its tradeoffs before acting on it.
+- **Take the next step you name.** A message that names your next step carries that step's tool call, since a message with no tool call ends your turn. End it there only when CLAUDE.md, the skill you are following, your dispatcher, or a hold the engineer stated makes the step wait, or work you started that the step needs is still running.
 - **Default-consider delegation.** Before running a Bash command, starting a broad search, initiating a check suite, or beginning a Read-heavy probe, ask whether the *objective* (not the individual command) belongs in a subagent. The parent's context is re-read every turn, so verbose tool output left in it is paid for repeatedly. See the `subagent-delegation` skill for the two-test gate, which subagent fits which case, and what stays inline.
 - If `<config-dir>/output-preferences.md` exists, read it at session start and apply it. That file layers personal tone and style calibration on the rules above; it is not a place to restate them.
 

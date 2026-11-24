@@ -1,0 +1,23 @@
+{
+ "packet_id": "p004",
+ "a": {
+  "pass": true,
+  "evidence": "\"Claude Code derives each `projects/` dir name from the session's cwd by replacing every `/` and `.` with `-`.\""
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"Claude Code derives each `projects/` dir name from the session's cwd by replacing every `/` and `.` with `-`.\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"Claude Code derives each `projects/` dir name from the session's cwd by replacing every `/` and `.` with `-`.\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "delete the summary line and both examples, and keep only the Claude Code naming convention as one sentence."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"Claude Code derives each `projects/` dir name from the session's cwd by replacing every `/` and `.` with `-`.\""
+ }
+}

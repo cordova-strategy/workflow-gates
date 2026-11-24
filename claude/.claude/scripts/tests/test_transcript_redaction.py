@@ -288,3 +288,36 @@ class TestBuildRedactMapDirectUnit:
             "aaa-phantom": "private-project-1",
             "zzz-phantom": "private-project-2",
         }
+
+
+class TestUntrackedAgentTypeLabels:
+    """_untracked_agent_type_labels -- the `reviewer-yield --redact` label map."""
+
+    def test_tracked_name_maps_to_itself(self, stub_repo_tracked_agent_types):
+        stub_repo_tracked_agent_types("tracked-agent")
+        assert redaction._untracked_agent_type_labels(["tracked-agent"]) == {"tracked-agent": "tracked-agent"}
+
+    def test_built_in_name_maps_to_itself(self, stub_repo_tracked_agent_types):
+        stub_repo_tracked_agent_types()
+        assert redaction._untracked_agent_type_labels(["general-purpose"]) == {"general-purpose": "general-purpose"}
+
+    def test_untracked_names_are_numbered_in_sorted_order_regardless_of_input_order(
+        self, stub_repo_tracked_agent_types,
+    ):
+        stub_repo_tracked_agent_types()
+        labels = redaction._untracked_agent_type_labels(["zeta-agent", "alpha-agent"])
+        assert labels == {"alpha-agent": "agent-type-1", "zeta-agent": "agent-type-2"}
+
+    def test_a_tracked_name_does_not_consume_a_number(self, stub_repo_tracked_agent_types):
+        stub_repo_tracked_agent_types("tracked-agent")
+        labels = redaction._untracked_agent_type_labels(["alpha-agent", "tracked-agent", "zeta-agent"])
+        assert labels == {"alpha-agent": "agent-type-1", "tracked-agent": "tracked-agent", "zeta-agent": "agent-type-2"}
+
+    def test_a_repeated_name_gets_one_label(self, stub_repo_tracked_agent_types):
+        stub_repo_tracked_agent_types()
+        labels = redaction._untracked_agent_type_labels(["alpha-agent", "alpha-agent"])
+        assert labels == {"alpha-agent": "agent-type-1"}
+
+    def test_no_names_yields_an_empty_map(self, stub_repo_tracked_agent_types):
+        stub_repo_tracked_agent_types()
+        assert redaction._untracked_agent_type_labels([]) == {}

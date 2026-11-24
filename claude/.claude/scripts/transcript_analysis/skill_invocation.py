@@ -68,20 +68,20 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     --branches scopes to named branches, matching each record's attributed branch
     (scope._attributed_branch): a subagent record counts under the branch its
     dispatching main thread was on, never its own gitBranch. --projects scopes to
-    project dirs and defaults to every project on the machine, which is rarely what
-    a branch-scoped caller wants (branch names are not unique across repos).
+    project dirs. Left unset, it defaults to this repo's own project dirs, and an
+    explicit glob is the escape hatch for a cross-repo read.
     """
     branch_filter = scope._branch_filter(args)
     include_subagents = bool(getattr(args, "include_subagents", False))
 
-    # OUTPUT INVARIANT — provenance, not shape. This output is routinely quoted
-    # into public PR descriptions. Its safety rests on WHAT records are read, not
-    # on scrubbing names after the fact: skill names are user-defined strings and
-    # can themselves be private-project identifiers (a plugin namespace with no
-    # path separator at all). So the control is to scope the read to this repo's
-    # own project dirs (_repo_scoped_project_slugs) — the default when --projects
-    # is unset. An explicit --projects is an escape hatch for corpus analysis;
-    # the caller then owns that the output is no longer publish-safe.
+    # OUTPUT INVARIANT — provenance, not shape. Skill names are user-defined
+    # strings and can themselves be private-project identifiers (a plugin
+    # namespace with no path separator at all), so the control is WHAT records
+    # are read, not scrubbing names after the fact. The default (--projects unset)
+    # scopes the read to this repo's own project dirs (_repo_scoped_project_slugs).
+    # No run of this command is a publication instrument
+    # (docs/transcript-analysis.md, Limits). An explicit --projects is an escape
+    # hatch for corpus analysis; the caller then owns the output's scope.
     #
     # Skill names from --include-subagents can come from a cross-repo subagent,
     # so treat that output as local-only (docs/transcript-analysis.md, Limits).
@@ -90,10 +90,13 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # which holds absolute paths even for in-scope sessions); and
     # _normalize_skill_name collapses this repo's own worktree-qualified spellings
     # for row-hygiene. Neither is the security boundary — scoping is.
-    roots = scope.resolve_scan_roots(args)
-
     projects_arg = getattr(args, "projects", None)
+    # Only an explicit --projects glob narrows to the active account.
+    active_account_only = scope._narrows_to_active_account(args) and bool(projects_arg)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
+
     if projects_arg:
+        scope._refuse_absolute_projects_glob(projects_arg, "skill-invocation")
         if len(roots) > 1:
             # Same one-level restriction as _resolve_project_scope's own
             # multi-root branch; see _single_level_projects_glob's docstring
@@ -161,7 +164,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
         scope_parts.append(f"branches: {','.join(sorted(branch_filter))}")
     # Printed above the zero-match return, not after it: "found nothing" is only
     # interpretable alongside the corpus that was searched.
-    scope.print_resolved_scope("skill-invocation", "; ".join(scope_parts), roots)
+    scope.print_resolved_scope(
+        "skill-invocation", "; ".join(scope_parts), roots, active_account_only=active_account_only,
+    )
 
     if not all_skills:
         print("No skill invocations found.")
@@ -265,8 +270,11 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope = p_skill_inv.add_mutually_exclusive_group()
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
-        help="Project-dir glob. Default: this repo's own worktrees only (publish-safe without --include-subagents). "
-             "Passing an explicit glob is an escape hatch — output is then not scoped to this repo.",
+        help="Project-dir glob. Default: this repo's own worktrees only, read across every declared account "
+             "unless a top-level --config-dir names one. "
+             "No run of this command is a publication instrument (docs/transcript-analysis.md, Limits). "
+             "Passing an explicit glob is an escape hatch — output is then not scoped to this repo. "
+             "An explicit glob reads one account unless --all-accounts is passed.",
     )
     p_skill_inv_scope.add_argument(
         "--this-repo", action="store_true",
@@ -275,6 +283,7 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
             "worktrees. Kept for flag uniformity with every other --projects subcommand."
         ),
     )
+    scope._add_all_accounts_arg(p_skill_inv)
     p_skill_inv.add_argument("--branches", metavar="B1,B2,...", help="Branch name filter (default: all)")
     p_skill_inv.add_argument(
         "--include-subagents", action="store_true",
