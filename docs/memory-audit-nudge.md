@@ -107,7 +107,7 @@ own marker corruption handling already established.
 
 ## How to disable
 
-Set the `memory_audit_nudge` config key to `false` to suppress nudges globally:
+The engineer sets the `memory_audit_nudge` config key to `false` to suppress nudges globally:
 
 ```bash
 ~/.claude/scripts/config-set.sh memory_audit_nudge false

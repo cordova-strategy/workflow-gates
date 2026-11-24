@@ -390,20 +390,20 @@ The disclosed fields are not a safe-by-default aggregate — see the "The disclo
 
 ### Prose tightening pass
 
-`pr-description` runs a `tighten-prose` pass over the drafted body before its checks. On by default, unlike PR cost disclosure above — opt out per account by touching a sentinel scoped the same way.
+`pr-description` runs a `tighten-prose` pass over the drafted body before its checks. On by default, unlike PR cost disclosure above — opt out per account by setting the `pr_description_tighten_prose` config key to `false`, scoped the same way.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pr-description-tighten-prose-optout"
+~/.claude/scripts/config-set.sh pr_description_tighten_prose false
 ```
 
 See [`docs/hooks.md`](docs/hooks.md)'s "Prose tightening opt-out" for the full mechanics.
 
 ### Permission-prompt tracking
 
-If you're running in `auto` permission mode and want to know which commands still trigger an interactive approval dialog — and how often — this opt-in hook captures it. `track-permission-prompts.sh` (a `Notification` hook, matcher `permission_prompt`) appends the redacted payload to a local, gitignored log whenever the sentinel below exists on this machine.
+If you're running in `auto` permission mode and want to know which commands still trigger an interactive approval dialog — and how often — this opt-in hook captures it. `track-permission-prompts.sh` (a `Notification` hook, matcher `permission_prompt`) appends the redacted payload to a local, gitignored log whenever the `permission_prompt_tracking` config key resolves true for the config dir the session resolves.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/track-permission-prompts"
+~/.claude/scripts/config-set.sh permission_prompt_tracking true
 ```
 
 See [`docs/permission-prompt-tracking.md`](docs/permission-prompt-tracking.md) for the log location/format, redaction coverage, and known limitations.
@@ -415,7 +415,7 @@ See [`docs/permission-prompt-tracking.md`](docs/permission-prompt-tracking.md) f
 `./install.sh` now offers this interactively on every run — the snippet below is the non-interactive/scripted alternative, not the only path.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.error-mode-nudge-enabled"
+~/.claude/scripts/config-set.sh error_mode_nudge true
 ```
 
 See [`docs/error-mode-nudge.md`](docs/error-mode-nudge.md) for the fire predicate, log location, and known limitations.

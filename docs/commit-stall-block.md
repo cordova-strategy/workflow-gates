@@ -36,11 +36,13 @@ The reason leaves two gaps:
 ! ~/.claude/scripts/config-set.sh commit_stall_block false
 ```
 
-Set it back to `true` to re-enable — see [`docs/config-file.md`](config-file.md) for the file's hand-edit contract:
+Set it back to `true` to re-enable:
 
 ```bash
 ! ~/.claude/scripts/config-set.sh commit_stall_block true
 ```
+
+If either command exits 1, see [`docs/config-file.md`](config-file.md) § "Writing a value".
 
 The `commit_stall_block` switch and `.commit-stall-block-disabled` silence only this Stop hook, for the config dir the session resolves (one per account). The legacy file counts only while `claude-config.toml` has no `commit_stall_block` row, so on a machine whose config file has the row, touching the file changes nothing. No setting turns off CLAUDE.md's Shipping rule, which keeps telling the agent not to pause.
 
