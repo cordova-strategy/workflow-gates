@@ -11,7 +11,7 @@ import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .test_relocate_claude_config import _SCRIPT, _SUBPROCESS_TIMEOUT_SECONDS, _make_repo, _script_env
+from ._relocate_helpers import _SCRIPT, _SUBPROCESS_TIMEOUT_SECONDS, _make_repo, _script_env
 
 _ROOTS_LABEL = "~/.claude/transcript-config-dirs"
 # The reader's warning for an unusable roots-file line, to `.format(line=<N>)`.

@@ -16,14 +16,14 @@ from ._declared_dirs_helpers import (
     _PACKAGE_ROOT,
     _ROOTS_LABEL,
     _SKILLS_ROOT,
-    _SUBPROCESS_TIMEOUT_SECONDS,
     _left_alone,
     _live_link,
     _outcomes,
     _stale_link,
     _write_roots_file,
 )
-from .test_relocate_claude_config import (
+from ._relocate_helpers import (
+    _SUBPROCESS_TIMEOUT_SECONDS,
     _claude_shim,
     _make_repo,
     _relocation_args_for_mode,

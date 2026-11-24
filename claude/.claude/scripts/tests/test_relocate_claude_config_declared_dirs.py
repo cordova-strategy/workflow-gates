@@ -41,7 +41,7 @@ from ._declared_dirs_helpers import (
     _stale_link,
     _write_roots_file,
 )
-from .test_relocate_claude_config import (
+from ._relocate_helpers import (
     _AWKWARD_DESTINATION_NAME,
     _BACKUP_DIR_REFUSAL_FRAGMENTS,
     _backup_entry_names,

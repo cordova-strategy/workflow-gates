@@ -318,11 +318,6 @@ ceiling = 2345
 verdict = "split pending"
 seam = "Test-class families by concern: preconditions and scope (`TestPreconditionRefusals`, `TestScopeGuard`, `TestLocalOptOut`), marketplace (`TestMarketplacePrecondition`, `TestLocalFiltersRunBeforeMarketplaceListing`), install (`TestInstallArgv`, `TestInstallCapKill`), lock and ceiling (`TestLock`, `TestWallClockCeiling`), audit log (`TestAuditLogFields`, `TestAuditLogConcurrency`, `TestAuditLogSizeCap`)"
 
-["claude/.claude/scripts/tests/test_relocate_claude_config.py"]
-ceiling = 1397
-verdict = "split pending"
-seam = "Test-class families by relocation stage: primary flow and failure recovery (`TestRelocatePrimaryFlow`, `TestRelocateMvFailureRecovery`, `TestRelocateManifestMismatch`), repair of the stow layout (`TestRepairPerEntryForm`, `TestRepairTreeFoldedForm`, `TestRepairSweepsEachLocation`, `TestRepairQuarantineInvariant`), destination and CLI preconditions (`TestDestinationValidation`, `TestClaudeCliMissing`, `TestMarketplaceSubcommandFailure`), package and personal-skills relinking (`TestRelinkPackagesBatch`, `TestPersonalSkillsRelink`, `TestPersonalSkillsRelinkFailure`)"
-
 ["claude/.claude/scripts/tests/test_resume_context.py"]
 ceiling = 1621
 verdict = "split pending"
