@@ -168,6 +168,7 @@ def _call_run_wrapped(deadline_at: float = 8.0, directory: str = "/", wrapper: s
 
 class TestShimHookRun:
     @pytest.mark.timing
+    @pytest.mark.saturates_cpu
     def test_a_hook_that_prints_a_deny_and_exits_at_once_denies_every_time_under_cpu_contention(
         self, tmp_path: Path, gnu_wrapper: str
     ) -> None:

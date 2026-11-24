@@ -105,9 +105,10 @@ def _split_context_sequences(records: list[dict]) -> list[list[dict]]:
 
 def _context_composition_turn_rate_scale(usage: dict) -> float:
     """Fast-mode (2x) / US-inference-geo (1.1x) multiplier scale for one turn, applied uniformly
-    to every rate class that turn -- the same usage.get("speed")/"inference_geo" checks
-    _price_turn applies at its own dollar-scaling step, reused here for the
-    multiplier-only (not dollar) context-composition weighting."""
+    to every rate class that turn -- the same usage.get("speed")/"inference_geo" conditions
+    pricing._pricing_variant reads, reused here for the multiplier-only (not dollar)
+    context-composition weighting. A model in pricing._LONG_PROMPT_TIERS is not weighted for its prompt-length
+    tier, which understates its turns over that tier's threshold."""
     scale = 1.0
     if usage.get("speed") == "fast":
         scale *= pricing._FAST_MODE_RATE_MULTIPLIER

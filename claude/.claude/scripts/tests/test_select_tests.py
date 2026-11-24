@@ -15,6 +15,7 @@ import importlib.util
 import json
 import os
 import shlex
+import signal
 import subprocess
 import sys
 import threading
@@ -22,7 +23,16 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
+from _timing_split import (
+    PARALLEL_PASS,
+    SATURATES_CPU_MARKER,
+    SERIAL_PASS,
+    PytestPass,
+    TimingMarkScan,
+    plan_passes,
+)
 from helpers import ci_test_slice_job
+from pytest import ExitCode
 
 from .conftest import _commit, _init_repo, _make_repo_with_remote
 
@@ -671,6 +681,21 @@ class TestSelectPytestTargets:
         result = _mod.select_pytest_targets([_mod.SKILL_AUXILIARY_FILES_MODULE])
         assert result.is_full_suite is False
         assert _mod.SKILLS_TESTS_DIR in result.target_paths
+
+    def test_timing_split_module_change_also_selects_the_pytest_collection_config_test(self):
+        """The row is hand-declared; test_pytest_collection_config.py imports the module by name, which
+        path-constant scanning cannot see."""
+        result = _mod.select_pytest_targets([_mod.TIMING_SPLIT_MODULE])
+        assert result.is_full_suite is False
+        assert _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH in result.target_paths
+        assert _mod.SCRIPTS_TESTS_DIR in result.target_paths
+
+    def test_cpu_saturating_shim_test_change_selects_the_pytest_collection_config_guard(self):
+        """test_pytest_collection_config.py's guard collects the shim test file for its saturates_cpu mark, so a
+        change to that file must select the guard, by whichever rule."""
+        result = _mod.select_pytest_targets(["claude/.claude/scripts/tests/test_cursor_adapter_shim_hook_run.py"])
+        assert result.is_full_suite is False
+        assert _selection_covers(result.target_paths, _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH)
 
     def test_non_skill_auxiliary_file_under_skills_is_unmatched_and_falls_open(self):
         """A skill-directory file that is not SKILL.md or one of the
@@ -1551,6 +1576,13 @@ class TestSelectPytestTargets:
         up by test_nudge_transcript_toolkit.py's TestNeverFiresOnMarkdown
         (HOOKS_TESTS_DIR) repo-wide rglob("*.md") content scan."""
         result = _mod.select_pytest_targets([_mod.ROOT_CLAUDE_MD])
+        assert result.is_full_suite is False
+        assert result.target_paths == (_mod.HOOKS_TESTS_DIR,)
+
+    def test_rgignore_change_selects_hooks_tests(self):
+        """test_design_decision_files.py (HOOKS_TESTS_DIR) checks that a
+        docs/design-decisions link to .rgignore resolves."""
+        result = _mod.select_pytest_targets([".rgignore"])
         assert result.is_full_suite is False
         assert result.target_paths == (_mod.HOOKS_TESTS_DIR,)
 
@@ -2515,6 +2547,7 @@ class TestPytestSubprocessEnv:
 # nothing, and no test fails.
 _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
     _mod.SKILL_AUXILIARY_FILES_MODULE,
+    _mod.TIMING_SPLIT_MODULE,
     _mod.CONFIG_MODULE,
     _mod.CONFIG_DIR_MODULE,
     _mod.SKILL_STRUCTURE_VALIDATOR_MODULE,
@@ -2539,6 +2572,7 @@ _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
     _mod.GLOBAL_CLAUDE_MD,
     _mod.ROOT_CLAUDE_MD,
     _mod.ROOT_SETTINGS_JSON,
+    _mod.RGIGNORE,
     _mod.STATUSLINE_COMMAND_SH,
     _mod.CONFIG_KEYS_PSV,
     _mod.CHANGELOG_MD,
@@ -2568,6 +2602,7 @@ _EXACT_MATCH_LITERAL_PATH_CONSTANTS: tuple[str, ...] = (
 # use for this distinction, so it stays a test-only constant.
 _FILE_TARGETS: frozenset[str] = frozenset({
     _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH,
+    _mod.PYTEST_COLLECTION_CONFIG_TEST_PATH,
     _mod.SELECT_TESTS_TEST_PATH,
     _mod.TRANSCRIPT_DENIALS_TEST_PATH,
     _mod.TRANSCRIPT_REVIEW_ROUNDS_TEST_PATH,
@@ -2934,6 +2969,111 @@ class TestRuleTablePathFidelity:
         )
 
 
+# CI's serial step runs saturates_cpu tests, so this suffix is the one intended difference between select-tests.py's
+# serial pass and tests.yml.
+_SERIAL_PASS_CPU_EXCLUSION_SUFFIX = f" and not {SATURATES_CPU_MARKER}"
+
+
+def _tokens_contain_run(tokens: list[str], run: tuple[str, ...]) -> bool:
+    return any(tuple(tokens[start:start + len(run)]) == run for start in range(len(tokens) - len(run) + 1))
+
+
+def _pass_option_mismatches(pytest_steps: list[dict], planned_passes: tuple[PytestPass, ...]) -> list[str]:
+    """Every way the passes' added options fail to map one-to-one onto the CI pytest steps."""
+    mismatches: list[str] = []
+    step_tokens = [shlex.split(step["run"]) for step in pytest_steps]
+    matched_steps: list[list[int]] = []
+    for planned_pass in planned_passes:
+        options = list(planned_pass.added_options)
+        if planned_pass.name == SERIAL_PASS:
+            if not options[1].endswith(_SERIAL_PASS_CPU_EXCLUSION_SUFFIX):
+                mismatches.append(f"{planned_pass.name} pass -m {options[1]!r} lacks {_SERIAL_PASS_CPU_EXCLUSION_SUFFIX!r}")
+                continue
+            options[1] = options[1].removesuffix(_SERIAL_PASS_CPU_EXCLUSION_SUFFIX)
+        matching = [index for index, tokens in enumerate(step_tokens) if _tokens_contain_run(tokens, tuple(options))]
+        matched_steps.append(matching)
+        if len(matching) != 1:
+            mismatches.append(f"{planned_pass.name} pass options {options} match {len(matching)} CI steps")
+    for index, step in enumerate(pytest_steps):
+        matching_passes = sum(index in matching for matching in matched_steps)
+        if matching_passes != 1:
+            mismatches.append(f"CI step {step['run']!r} matches {matching_passes} passes")
+    return mismatches
+
+
+class TestPassOptionsMatchCiPytestSteps:
+    """select-tests.py's pass options and tests.yml's pytest steps are two copies of one split."""
+
+    @staticmethod
+    def _live_passes() -> tuple[PytestPass, ...]:
+        plan = plan_passes(
+            [], auto_num_workers=None, scan_selection=lambda: TimingMarkScan(("a/test_marked.py",)),
+        )
+        return plan.passes
+
+    def test_passes_map_one_to_one_onto_the_ci_steps_apart_from_the_cpu_exclusion(self):
+        pytest_steps = _steps_running(ci_test_slice_job()["steps"], _CI_PYTEST_COMMAND)
+
+        mismatches = _pass_option_mismatches(pytest_steps, self._live_passes())
+
+        assert not mismatches, (
+            f"select-tests.py's pass options and tests.yml's pytest steps are two copies of one split, which change "
+            f"together apart from the named {_SERIAL_PASS_CPU_EXCLUSION_SUFFIX!r} suffix: {mismatches}"
+        )
+
+    @pytest.mark.parametrize(
+        ("steps", "passes", "expected_mismatch_text"),
+        [
+            pytest.param(
+                [
+                    {"run": 'pytest a/ -v -m "not timing"'},
+                    {"run": "pytest a/ -v -m timing"},
+                ],
+                None,
+                "serial pass options ['-m', 'timing', '-n0'] match 0 CI steps",
+                id="serial-step-without-n0",
+            ),
+            pytest.param(
+                [
+                    {"run": 'pytest a/ -v -m "not timing and not slow"'},
+                    {"run": "pytest a/ -v -m timing -n0"},
+                ],
+                None,
+                "parallel pass options ['-m', 'not timing'] match 0 CI steps",
+                id="parallel-step-with-a-different-marker-expression",
+            ),
+            pytest.param(
+                [
+                    {"run": 'pytest a/ -v -m "not timing" -m timing -n0'},
+                    {"run": "pytest a/ -v"},
+                ],
+                None,
+                "matches 2 passes",
+                id="one-step-holding-both-passes-options",
+            ),
+            pytest.param(
+                [
+                    {"run": 'pytest a/ -v -m "not timing"'},
+                    {"run": "pytest a/ -v -m timing -n0"},
+                ],
+                (
+                    PytestPass(PARALLEL_PASS, ("-m", "not timing"), []),
+                    PytestPass(SERIAL_PASS, ("-m", "timing and not slow", "-n0"), []),
+                ),
+                f"lacks {_SERIAL_PASS_CPU_EXCLUSION_SUFFIX!r}",
+                id="serial-pass-with-a-different-exclusion",
+            ),
+        ],
+    )
+    def test_reports_a_mismatch_for_a_seeded_drift(self, steps, passes, expected_mismatch_text):
+        planned_passes = passes if passes is not None else self._live_passes()
+
+        mismatches = _pass_option_mismatches(steps, planned_passes)
+
+        assert mismatches
+        assert any(expected_mismatch_text in mismatch for mismatch in mismatches), mismatches
+
+
 class TestComputeChangedPathsGitSmoke:
     """Exercises the real git codepath against throwaway fixture repos
     (not a local-only stand-in for merge-base(HEAD, origin/main))."""
@@ -3137,6 +3277,24 @@ class TestComputeChangedPathsFailureModes:
             _mod.compute_changed_paths(tmp_path, run=fake_run)
 
 
+_MARKED_FILE_STUB = "claude/.claude/scripts/tests/test_marked.py"
+_PARALLEL_PASS_OPTIONS = ["-m", "not timing"]
+_SERIAL_PASS_OPTIONS = ["-m", "timing and not saturates_cpu", "-n0"]
+
+
+def _patch_timing_scan(monkeypatch, *, marked_files=(_MARKED_FILE_STUB,)):
+    """Replaces main()'s scan with a recording stub, so a test that uses a fake repo root does not depend on where
+    marks sit in the tree. Returns the list the stub appends each call's arguments to."""
+    calls = []
+
+    def fake_scan(target_paths, caller_args, *, repo_root):
+        calls.append({"target_paths": list(target_paths), "caller_args": list(caller_args), "repo_root": repo_root})
+        return TimingMarkScan(tuple(marked_files))
+
+    monkeypatch.setattr(_mod, "scan_timing_marks", fake_scan)
+    return calls
+
+
 class TestMainComposition:
     """main()'s selection-to-invocation wiring, with resolve_repo_root,
     compute_changed_paths, and run_pytest all monkeypatched so no real git
@@ -3148,16 +3306,18 @@ class TestMainComposition:
         def fake_compute_changed_paths(repo_root):
             raise _mod.GitDiffUnavailable("stub failure")
 
-        recorded = {}
+        recorded_calls = []
 
         def fake_run_pytest(pytest_argv, *, cwd, env):
-            recorded["pytest_argv"] = pytest_argv
-            recorded["cwd"] = cwd
+            recorded_calls.append({"pytest_argv": pytest_argv, "cwd": cwd})
             return 0
 
+        monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: fake_repo_root)
         monkeypatch.setattr(_mod, "compute_changed_paths", fake_compute_changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        _patch_timing_scan(monkeypatch)
 
         exit_code = _mod.main([])
 
@@ -3166,31 +3326,44 @@ class TestMainComposition:
         # which always sorts its output -- FULL_SUITE_TARGETS' declared order
         # was never a contract, so the recorded argv is compared against the
         # sorted form rather than the tuple's own literal order.
-        assert recorded["pytest_argv"] == sorted(_mod.FULL_SUITE_TARGETS)
-        assert recorded["cwd"] == fake_repo_root
+        expected_targets = sorted(_mod.FULL_SUITE_TARGETS)
+        assert [call["pytest_argv"] for call in recorded_calls] == [
+            [*expected_targets, *_PARALLEL_PASS_OPTIONS],
+            [*expected_targets, *_SERIAL_PASS_OPTIONS],
+        ]
+        assert [call["cwd"] for call in recorded_calls] == [fake_repo_root, fake_repo_root]
 
     def test_domain_selected_paths_are_passed_through_to_run_pytest(self, monkeypatch):
         fake_repo_root = Path("/fake/repo/root")
         recorded = {}
+        recorded_argvs = []
 
         def fake_compute_changed_paths(repo_root):
             recorded["repo_root_passed_to_compute"] = repo_root
             return ["claude/.claude/scripts/mark-terminal.py"]
 
         def fake_run_pytest(pytest_argv, *, cwd, env):
-            recorded["pytest_argv"] = pytest_argv
+            recorded_argvs.append(pytest_argv)
             recorded["cwd"] = cwd
             return 0
 
+        monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: fake_repo_root)
         monkeypatch.setattr(_mod, "compute_changed_paths", fake_compute_changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        scan_calls = _patch_timing_scan(monkeypatch)
 
         exit_code = _mod.main(["-k", "foo"])
 
         assert exit_code == 0
-        assert recorded["pytest_argv"] == [
-            _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR, "-k", "foo",
+        leading_targets = [_mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR]
+        assert recorded_argvs == [
+            [*leading_targets, "-k", "foo", *_PARALLEL_PASS_OPTIONS],
+            [*leading_targets, "-k", "foo", *_SERIAL_PASS_OPTIONS],
+        ]
+        assert scan_calls == [
+            {"target_paths": leading_targets, "caller_args": ["-k", "foo"], "repo_root": fake_repo_root},
         ]
         assert recorded["repo_root_passed_to_compute"] == fake_repo_root
         assert recorded["cwd"] == fake_repo_root
@@ -3274,6 +3447,7 @@ class TestMainComposition:
 
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
         monkeypatch.setattr(sys, "argv", ["select-tests.py", "-k", "bar"])
+        _patch_timing_scan(monkeypatch, marked_files=())
 
         exit_code = _mod.main(None)
 
@@ -3354,23 +3528,222 @@ class TestMainComposition:
         resolve_repo_root is monkeypatched to the real _REPO_ROOT, not a
         fake one, because the first case's selection includes a glob
         target that must really expand."""
-        recorded = {}
+        recorded_argvs = []
 
         def fake_run_pytest(pytest_argv, *, cwd, env):
-            recorded["pytest_argv"] = pytest_argv
+            recorded_argvs.append(pytest_argv)
             return 0
 
+        monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: _REPO_ROOT)
         monkeypatch.setattr(_mod, "compute_changed_paths", lambda repo_root: changed_paths)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        _patch_timing_scan(monkeypatch)
 
         exit_code = _mod.main([])
 
         assert exit_code == 0
-        assert recorded["pytest_argv"] == expected_argv
-        assert _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH not in recorded["pytest_argv"]
+        assert recorded_argvs == [
+            [*expected_argv, *_PARALLEL_PASS_OPTIONS],
+            [*expected_argv, *_SERIAL_PASS_OPTIONS],
+        ]
+        for recorded_argv in recorded_argvs:
+            assert _mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH not in recorded_argv
         stderr = capsys.readouterr().err
-        assert f"select-tests: running {', '.join(recorded['pytest_argv'])}" in stderr
+        assert f"select-tests: running {', '.join(expected_argv)}" in stderr
+
+
+class TestPassSummary:
+    def test_two_passes_report_each_exit_code_and_duration_and_the_merged_code(self):
+        summary = _mod._pass_summary(
+            [ExitCode.TESTS_FAILED, ExitCode.INTERNAL_ERROR], [12.34, 5.0], ExitCode.TESTS_FAILED,
+        )
+
+        assert summary == "select-tests: parallel pass exited 1 in 12.3s, serial pass exited 3 in 5.0s; exiting 1"
+
+    def test_a_skipped_serial_pass_is_named_and_a_signal_death_keeps_its_negative_code(self):
+        summary = _mod._pass_summary([-signal.SIGKILL], [0.04], -signal.SIGKILL)
+
+        assert summary == "select-tests: parallel pass exited -9 in 0.0s; serial pass skipped; exiting -9"
+
+
+class TestMainPassPlanning:
+    """main()'s split into a parallel and a serial pytest pass, with run_pytest faked so each test controls the pass
+    exit codes."""
+
+    CHANGED_PATH = "claude/.claude/scripts/mark-terminal.py"
+    TARGETS = [_mod.TICKET_REFERENCE_DISCIPLINE_TEST_PATH, _mod.SCRIPTS_TESTS_DIR]
+
+    def _stub_main(self, monkeypatch, results, *, repo_root=Path("/fake/repo/root")):
+        """Fakes the repo root and the changed paths, and has run_pytest return each of results in order, or raise
+        one that is an exception. Returns the argvs run_pytest received."""
+        argvs: list[list[str]] = []
+        remaining = list(results)
+
+        def fake_run_pytest(pytest_argv, *, cwd, env):
+            argvs.append(pytest_argv)
+            result = remaining.pop(0)
+            if isinstance(result, BaseException):
+                raise result
+            return result
+
+        monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        # Sizes workers from a fixed CPU budget, so a one-CPU host does not collapse these runs to one pass.
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
+        monkeypatch.setattr(_mod, "resolve_repo_root", lambda *, cwd: repo_root)
+        monkeypatch.setattr(_mod, "compute_changed_paths", lambda root: [self.CHANGED_PATH])
+        monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        return argvs
+
+    def test_first_failing_pass_in_run_order_decides_the_exit_code_and_both_headers_print(
+        self, monkeypatch, capsys,
+    ):
+        self._stub_main(monkeypatch, [ExitCode.TESTS_FAILED, ExitCode.INTERNAL_ERROR])
+        _patch_timing_scan(monkeypatch)
+
+        exit_code = _mod.main([])
+
+        stderr = capsys.readouterr().err
+        assert exit_code == ExitCode.TESTS_FAILED
+        assert "select-tests: parallel pass: -m 'not timing'\n" in stderr
+        assert "select-tests: serial pass: -m 'timing and not saturates_cpu' -n0\n" in stderr
+        assert "select-tests: parallel pass exited 1 in " in stderr
+        assert ", serial pass exited 3 in " in stderr
+        assert "s; exiting 1" in stderr
+
+    def test_pass_that_collected_no_tests_defers_to_the_other_pass(self, monkeypatch):
+        argvs = self._stub_main(monkeypatch, [ExitCode.NO_TESTS_COLLECTED, ExitCode.OK])
+        _patch_timing_scan(monkeypatch)
+
+        exit_code = _mod.main([])
+
+        assert exit_code == ExitCode.OK
+        assert len(argvs) == 2
+
+    @pytest.mark.parametrize(
+        "parallel_exit_code",
+        [
+            pytest.param(ExitCode.INTERNAL_ERROR, id="internal-error"),
+            pytest.param(ExitCode.USAGE_ERROR, id="usage-error"),
+            pytest.param(-signal.SIGKILL, id="killed-by-signal"),
+        ],
+    )
+    def test_serial_pass_is_skipped_after_a_pytest_error_or_a_kill(self, monkeypatch, parallel_exit_code):
+        argvs = self._stub_main(monkeypatch, [parallel_exit_code])
+        _patch_timing_scan(monkeypatch)
+
+        exit_code = _mod.main([])
+
+        assert len(argvs) == 1
+        assert exit_code == parallel_exit_code
+
+    def test_interrupt_in_the_parallel_pass_propagates_before_the_serial_pass_and_the_summary(
+        self, monkeypatch, capsys,
+    ):
+        argvs = self._stub_main(monkeypatch, [KeyboardInterrupt()])
+        _patch_timing_scan(monkeypatch)
+
+        with pytest.raises(KeyboardInterrupt):
+            _mod.main([])
+
+        assert len(argvs) == 1
+        assert "pass exited" not in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("caller_args", "worker_env", "marked_files", "reason", "scan_calls"),
+        [
+            pytest.param(
+                ["-n", "0", "-k", "foo"], None, (_MARKED_FILE_STUB,),
+                "the caller's -n starts one or fewer workers", 0, id="caller-n-zero",
+            ),
+            pytest.param(
+                ["-n", "1", "-k", "foo"], None, (_MARKED_FILE_STUB,),
+                "the caller's -n starts one or fewer workers", 0, id="caller-n-one",
+            ),
+            pytest.param(
+                ["-k", "foo"], "0", (_MARKED_FILE_STUB,),
+                "PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers", 0, id="environment-workers-zero",
+            ),
+            pytest.param(
+                ["-k", "foo"], "1", (_MARKED_FILE_STUB,),
+                "PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers", 0, id="environment-workers-one",
+            ),
+            pytest.param(
+                ["@args.txt"], None, (_MARKED_FILE_STUB,),
+                "a caller argument starts with @", 0, id="argument-file",
+            ),
+            pytest.param(
+                ["--", "some/path.py"], None, (_MARKED_FILE_STUB,),
+                "a caller argument is --", 0, id="bare-double-dash",
+            ),
+            pytest.param(
+                ["-k", "foo"], None, (),
+                "no selected file contains mark.timing", 1, id="no-marked-file",
+            ),
+        ],
+    )
+    def test_unsplit_run_makes_one_call_with_the_callers_arguments_verbatim(
+        self, monkeypatch, capsys, caller_args, worker_env, marked_files, reason, scan_calls,
+    ):
+        argvs = self._stub_main(monkeypatch, [ExitCode.OK])
+        if worker_env is not None:
+            monkeypatch.setenv(_mod.XDIST_WORKER_ENV_VAR, worker_env)
+        recorded_scans = _patch_timing_scan(monkeypatch, marked_files=marked_files)
+
+        exit_code = _mod.main(caller_args)
+
+        stderr = capsys.readouterr().err
+        assert exit_code == ExitCode.OK
+        assert argvs == [[*self.TARGETS, *caller_args]]
+        assert len(recorded_scans) == scan_calls
+        assert f"select-tests: one pass, not split: {reason}\n" in stderr
+        assert "pass exited" not in stderr
+
+    def test_a_one_cpu_budget_runs_one_unsplit_pass_without_reading_any_file(self, monkeypatch, capsys):
+        argvs = self._stub_main(monkeypatch, [ExitCode.OK])
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 1)
+        monkeypatch.setattr(os, "getloadavg", lambda: (0.0, 0.0, 0.0))
+        recorded_scans = _patch_timing_scan(monkeypatch)
+
+        exit_code = _mod.main([])
+
+        stderr = capsys.readouterr().err
+        assert exit_code == ExitCode.OK
+        assert argvs == [self.TARGETS]
+        assert recorded_scans == []
+        assert "select-tests: one pass, not split: PYTEST_XDIST_AUTO_NUM_WORKERS sets one or fewer workers\n" in stderr
+
+    def test_scan_over_a_real_tree_gives_both_passes_the_whole_selection_with_no_ignore_option(
+        self, monkeypatch, tmp_path,
+    ):
+        tests_dir = tmp_path / _mod.SCRIPTS_TESTS_DIR
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_marked.py").write_text("import pytest\n\n@pytest.mark.timing\ndef test_a(): pass\n")
+        (tests_dir / "test_plain.py").write_text("def test_b(): pass\n")
+        argvs = self._stub_main(monkeypatch, [ExitCode.OK, ExitCode.OK], repo_root=tmp_path)
+
+        exit_code = _mod.main([])
+
+        assert exit_code == ExitCode.OK
+        assert argvs == [
+            [*self.TARGETS, *_PARALLEL_PASS_OPTIONS],
+            [*self.TARGETS, *_SERIAL_PASS_OPTIONS],
+        ]
+
+    def test_scan_over_a_real_tree_with_no_marked_file_runs_one_unsplit_pass(
+        self, monkeypatch, capsys, tmp_path,
+    ):
+        tests_dir = tmp_path / _mod.SCRIPTS_TESTS_DIR
+        tests_dir.mkdir(parents=True)
+        (tests_dir / "test_plain.py").write_text("def test_b(): pass\n")
+        argvs = self._stub_main(monkeypatch, [ExitCode.OK], repo_root=tmp_path)
+
+        exit_code = _mod.main([])
+
+        assert exit_code == ExitCode.OK
+        assert argvs == [self.TARGETS]
+        assert "select-tests: one pass, not split: no selected file contains mark.timing\n" in capsys.readouterr().err
 
 
 class TestMainWorkerSizingStderr:
@@ -3501,18 +3874,21 @@ class TestMainWorkerSizingStderr:
         monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
         monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(os, "getloadavg", lambda: (2.0, 1.0, 0.5))
-        recorded = {}
+        recorded_envs = []
 
         def fake_run_pytest(pytest_argv, *, cwd, env):
-            recorded["env"] = env
+            recorded_envs.append(env)
             return 0
 
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        _patch_timing_scan(monkeypatch)
 
         _mod.main(["-k", "foo"])
 
-        assert recorded["env"][_mod.XDIST_WORKER_ENV_VAR] == "6"
-        assert recorded["env"] != dict(os.environ)
+        assert len(recorded_envs) == 2
+        for recorded_env in recorded_envs:
+            assert recorded_env[_mod.XDIST_WORKER_ENV_VAR] == "6"
+            assert recorded_env != dict(os.environ)
 
     def test_computed_worker_sizing_reaches_the_persisted_log_matching_stderr(
         self, monkeypatch, capsys, tmp_path,
@@ -3860,11 +4236,14 @@ class TestRecordSelection:
             call_order.append("run_pytest")
             return 0
 
+        monkeypatch.delenv(_mod.XDIST_WORKER_ENV_VAR, raising=False)
+        monkeypatch.setattr(_mod, "_cpu_budget", lambda: 8)
         monkeypatch.setattr(_mod, "run_pytest", fake_run_pytest)
+        _patch_timing_scan(monkeypatch)
 
         _mod.main([])
 
-        assert call_order == ["record_selection", "run_pytest"]
+        assert call_order == ["record_selection", "run_pytest", "run_pytest"]
 
 
 class TestRecordSelectionReasonCoverage:

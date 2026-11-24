@@ -60,7 +60,7 @@ class TestCacheRebuildExcessPricing:
 
     def test_fable_5_1_warm_read_leg_uses_reduced_cache_read_multiplier(self):
         """This function re-derives rates["cache_read"] via its own
-        _model_rates(model) call, independent of _price_turn -- cache-
+        _turn_rates(model, usage) call, independent of _price_turn -- cache-
         rebuild's entire thesis is a cache-read-vs-cache-write delta, the
         exact axis Fable 5.1's reduced cache-read multiplier deviates on, so
         this is the site most exposed to the Fable pricing change. Like
@@ -73,6 +73,24 @@ class TestCacheRebuildExcessPricing:
         # 0.025x reduced multiplier, not the standard 0.1x: 1,000,000/1e6 *
         # 10.00*0.025 = 0.25; excess = 12.25.
         assert excess == pytest.approx(12.25)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_warm_read_leg_uses_the_turns_own_tier(self):
+        """The 110,000-token prompt is over Haiku 5.5's threshold although its re-priced write tokens alone are
+        under it, so the warm-read leg keeps the write's higher tier."""
+        usage = _priced("claude-haiku-5-5", cache_read=90_000, ephemeral_5m=20_000)["message"]["usage"]
+        excess, unpriced_tokens = cache_rebuild_rules._cache_rebuild_excess_dollars("claude-haiku-5-5", usage)
+        # write: 20,000/1e6 * 0.50*1.25 = 0.0125; warm read: 20,000/1e6 * 0.50*0.1 = 0.001; excess = 0.0115.
+        assert excess == pytest.approx(0.0115)
+        assert unpriced_tokens == 0
+
+    def test_haiku_5_5_warm_read_leg_at_the_threshold_uses_the_lower_tier(self):
+        """The 100,000-token prompt sits exactly at Haiku 5.5's threshold, which is not over it, so the write and
+        its warm-read leg both stay on the lower tier."""
+        usage = _priced("claude-haiku-5-5", cache_read=80_000, ephemeral_5m=20_000)["message"]["usage"]
+        excess, unpriced_tokens = cache_rebuild_rules._cache_rebuild_excess_dollars("claude-haiku-5-5", usage)
+        # write: 20,000/1e6 * 0.10*1.25 = 0.0025; warm read: 20,000/1e6 * 0.10*0.1 = 0.0002; excess = 0.0023.
+        assert excess == pytest.approx(0.0023)
         assert unpriced_tokens == 0
 
 
