@@ -108,10 +108,10 @@ more focused task than writing it — use that asymmetry deliberately.
 
 1. Re-read your complete diff, file by file. For each hunk, ask what a reviewer
    would flag.
-   - Scope "your complete diff" to the files your own Edit/Write calls, or a
-     cross-file find-and-replace the Charter allows, touched this dispatch;
-     cross-check against `git status --porcelain` to catch a path your own
-     tracking missed (e.g. a retried or corrected `Write` call).
+   - Scope "your complete diff" to the files your own Edit/Write calls touched
+     this dispatch, plus the files of a cross-file find-and-replace the Charter
+     allows. Cross-check against `git status --porcelain` to catch a path your
+     own tracking missed (e.g. a retried or corrected `Write` call).
    - For a pre-existing file you modified, diff it with `git diff -- <paths>`.
    - For a file your `Write` call created new this dispatch, `Read` it
      directly — there is no "before" state to diff against.

@@ -83,8 +83,8 @@ class TestCodeWriterEditMethodRule:
     def test_bars_bash_file_writes(self):
         """The Charter must route file changes to Edit and Write, not Bash."""
         charter = self._charter()
-        assert "never through Bash" in charter
-        assert "Within one file, use Edit" in charter
+        assert "never through Bash: not" in charter
+        assert "Within one file, use Edit, with `replace_all` for a repeated string" in charter
         assert "Create a new file with Write" in charter
 
     def test_requires_read_tool_for_changed_files(self):
@@ -94,9 +94,10 @@ class TestCodeWriterEditMethodRule:
         assert "A Bash `cat`, `head` or `sed -n` does not count" in charter
 
     def test_names_the_bash_exception_cross_file_scope(self):
-        """The one Bash exception must be bound to its cross-file scope in a single fragment."""
+        """The one Bash exception must be the sole, single-command route, bound to its cross-file scope in a single fragment."""
         assert (
-            f"{_BASH_EXCEPTION_TERM}, literal or pattern, applied the same way to two or more files"
+            f"The one exception is a single {_BASH_EXCEPTION_TERM}, literal or pattern,"
+            " applied the same way to two or more files. It may run as one Bash command"
             in self._charter()
         )
 
@@ -111,8 +112,10 @@ class TestCodeWriterEditMethodRule:
         end = section.index(scope_end)
         assert start < end, f"{scope_start!r} is expected to precede {scope_end!r}"
         scope_sentence = section[start:end]
-        assert _BASH_EXCEPTION_TERM in scope_sentence
-        assert "the Charter allows" in scope_sentence
+        assert (
+            f"touched this dispatch, plus the files of a cross-file {_BASH_EXCEPTION_TERM} the Charter allows"
+            in scope_sentence
+        )
 
 
 class TestSkillFidelityReviewerUndecidableDismissal:
