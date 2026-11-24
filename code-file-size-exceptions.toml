@@ -252,6 +252,7 @@ seam = "Liveness probes (`_ps_lstart`, `_entry_liveness`, `_boot_time`), evidenc
 ceiling = 1557
 verdict = "split pending"
 seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_PATHS`) apart from git plumbing (`compute_changed_paths`), worker sizing (`compute_worker_count`, `pytest_subprocess_env`) and selection logging (`record_selection`)"
+issue = 1603
 
 ["claude/.claude/scripts/tests/conftest.py"]
 ceiling = 2039
@@ -362,6 +363,7 @@ seam = "Test-class families by check: usage and marker (`TestUsageErrors`, `Test
 ceiling = 4396
 verdict = "split pending"
 seam = "Test-class families matching the script's parts: selection (`TestSelectPytestTargets`, `TestCursorAdapterSelection`, `TestResolveTargetPaths`), rule-table audits (`TestCrossDomainReadCompleteness`, `TestKnownCrossDomainReadsAudit`, `TestRuleTablePathFidelity`), run and workers (`TestBuildPytestArgv`, `TestComputeWorkerCount`, `TestPytestSubprocessEnv`), git paths (`TestComputeChangedPathsGitSmoke`, `TestComputeChangedPathsFailureModes`), logging (`TestRecordSelection`, `TestRecordSelectionReasonCoverage`), main (`TestMainComposition`)"
+issue = 1603
 
 ["claude/.claude/scripts/tests/test_stow_migration_lib.py"]
 ceiling = 1085
