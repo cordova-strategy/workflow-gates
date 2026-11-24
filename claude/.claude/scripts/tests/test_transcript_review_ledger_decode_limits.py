@@ -2,7 +2,7 @@
 import pytest
 from transcript_analysis import review_ledger
 
-from ._ledger_reader_helpers import HOSTILE_LINES, LINES_OVER_DECODER_LIMITS
+from ._ledger_reader_helpers import HOSTILE_LINES, LINES_OVER_DECODER_LIMITS, fake_transcript_path
 from .conftest import _ledger_row, _write_branch_ledger_file, _write_ledger_file
 
 pytestmark = pytest.mark.usefixtures("default_int_str_digit_limit")
@@ -43,12 +43,6 @@ class TestReaderFlag:
 
 @pytest.mark.parametrize("line", HOSTILE_LINES)
 class TestSessionLookupOverAFileWithSuchALine:
-    def _session_jsonl(self, tmp_path):
-        session_jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
-        session_jsonl.parent.mkdir(parents=True)
-        session_jsonl.write_text("")
-        return session_jsonl
-
     def test_the_rows_around_the_line_and_in_the_other_files_are_kept(self, tmp_path, line):
         poisoned_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
         _append_line(poisoned_path, line)
@@ -57,7 +51,7 @@ class TestSessionLookupOverAFileWithSuchALine:
             tmp_path, "b" * 64, [_ledger_row(round=3, disposition="DEFER", session_id="sess-1")],
         )
 
-        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         assert any_file_found is True
         assert sorted(row["round"] for _, row in entries) == [1, 2, 3]
@@ -66,7 +60,7 @@ class TestSessionLookupOverAFileWithSuchALine:
         ledger_path = _write_ledger_file(tmp_path, "sess-1", [])
         _append_line(ledger_path, line)
 
-        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(self._session_jsonl(tmp_path))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         assert entries == []
         assert any_file_found is True
@@ -82,7 +76,7 @@ class TestSessionLookupOverAFileWithSuchALine:
             return real_read(ledger_path, **reader_options)
 
         monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", _counting_read)
-        session_jsonl = self._session_jsonl(tmp_path)
+        session_jsonl = fake_transcript_path(tmp_path, "sess-1")
         ledger_indexes = {}
 
         for _ in range(2):

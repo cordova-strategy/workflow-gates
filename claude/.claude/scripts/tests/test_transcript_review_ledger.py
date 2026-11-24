@@ -10,6 +10,7 @@ from helpers import HOOKS_DIR, SCRIPTS_DIR, init_git_repo_with_commit
 from hooks.tests.conftest import _seed_session
 from transcript_analysis import author_outcome, review_ledger
 
+from ._ledger_reader_helpers import fake_transcript_path
 from .conftest import _ledger_row, _write_branch_ledger_file, _write_ledger_file
 
 _REVIEW_LEDGER_SH = SCRIPTS_DIR / "review-ledger.sh"
@@ -32,15 +33,6 @@ class TestConfigDirRootForSession:
 
         assert review_ledger._config_dir_root_for_session(jsonl_a) == root_a
         assert review_ledger._config_dir_root_for_session(jsonl_b) == root_b
-
-
-def _fake_transcript_path(config_dir_root: Path, session_id: str) -> Path:
-    """A placeholder transcript path: the ledger lookup reads only its stem
-    (the session id) and walks three parents up to the config-dir root."""
-    jsonl = config_dir_root / "projects" / "-home-user-testrepo" / f"{session_id}.jsonl"
-    jsonl.parent.mkdir(parents=True, exist_ok=True)
-    jsonl.write_text("")
-    return jsonl
 
 
 def _grow_keeping_mtime(ledger_path: Path, before: os.stat_result) -> None:
@@ -83,7 +75,7 @@ class TestLedgerRowAttribution:
         _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
         _write_ledger_file(tmp_path, "sess-2", [_ledger_row(round=1, disposition="DEFER")], repo_hash="1" * 64)
 
-        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-1"))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         assert [row["disposition"] for _file_index, row in entries] == ["ADDRESS"]
         assert any_file_found is True
@@ -94,8 +86,8 @@ class TestLedgerRowAttribution:
             _ledger_row(round=2, disposition="DEFER", schema_version=3, session_id="sess-2"),
         ])
 
-        entries_1, found_1 = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-1"))
-        entries_2, _found_2 = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-2"))
+        entries_1, found_1 = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
+        entries_2, _found_2 = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-2"))
 
         assert [row["round"] for _file_index, row in entries_1] == [1]
         assert [row["round"] for _file_index, row in entries_2] == [2]
@@ -107,7 +99,7 @@ class TestLedgerRowAttribution:
         row["session_id"] = session_id_value
         _write_ledger_file(tmp_path, "sess-1", [row])
 
-        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-1"))
+        entries, any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         assert entries == []
         assert any_file_found is True
@@ -119,7 +111,7 @@ class TestLedgerRowAttribution:
             _ledger_row(round=1, disposition="DEFER", schema_version=3, session_id="sess-9"),
         ])
 
-        entries, _any_file_found = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-1"))
+        entries, _any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         assert entries == []
 
@@ -131,7 +123,7 @@ class TestLedgerRowAttribution:
                          event_time="2026-08-01T10:05:00Z")],
         )
 
-        entries, _any_file_found = review_ledger._read_ledger_row_entries_for_session(_fake_transcript_path(tmp_path, "sess-1"))
+        entries, _any_file_found = review_ledger._read_ledger_row_entries_for_session(fake_transcript_path(tmp_path, "sess-1"))
 
         file_index_by_round = {row["round"]: file_index for file_index, row in entries}
         assert set(file_index_by_round) == {1, 2}
@@ -142,8 +134,8 @@ class TestReadLedgerRowEntriesForSession:
     """_write_ledger_file/_ledger_row (the conftest fixtures other
     tests in this file use) can only ever produce valid-JSON lines, so they
     can't exercise the malformed-line/unreadable-file tolerance
-    _read_ledger_rows_from_file's own docstring claims -- these
-    write the ledger file directly instead."""
+    _read_ledger_rows_from_file's own docstring claims -- the
+    tests here that exercise that tolerance write the ledger file directly instead."""
 
     def test_malformed_line_is_skipped_not_fatal(self, tmp_path):
         config_dir_root = tmp_path
@@ -598,9 +590,7 @@ class TestLedgerIndex:
         ledger_dir = tmp_path / "review-narrative-ledger"
         ledger_dir.mkdir(parents=True)
         first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
-        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
-        jsonl.parent.mkdir(parents=True)
-        jsonl.write_text("")
+        jsonl = fake_transcript_path(tmp_path, "sess-1")
         real_read = review_ledger._read_ledger_rows_from_file
         parsed_paths = []
 
@@ -637,9 +627,7 @@ class TestLedgerIndex:
         self, tmp_path, change_one_signature_half, expected_rounds,
     ):
         first_path = _write_ledger_file(tmp_path, "sess-1", [_ledger_row(round=1, disposition="ADDRESS")])
-        jsonl = tmp_path / "projects" / "-home-user-testrepo" / "sess-1.jsonl"
-        jsonl.parent.mkdir(parents=True)
-        jsonl.write_text("")
+        jsonl = fake_transcript_path(tmp_path, "sess-1")
         ledger_indexes = {}
         entries, _ = review_ledger._read_ledger_row_entries_for_session(jsonl, ledger_indexes)
         assert [row["round"] for _file_index, row in entries] == [1]
