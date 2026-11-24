@@ -55,7 +55,6 @@ def _fixture_git(tmp_path: Path, cwd: Path, *args: str) -> str:
 
 
 def _make_git_checkout(tmp_path: Path, name: str = "old-repo", *, parent: Path | None = None) -> Path:
-    """A fake claude-config checkout that is also a git repository with one commit."""
     repo = _make_repo(parent or tmp_path, name)
     init_git_repo(repo, branch="main", env=_fixture_env(tmp_path))
     _fixture_git(tmp_path, repo, "add", "-A")
@@ -78,7 +77,6 @@ def _make_decoy_with_worktree(tmp_path: Path, name: str = "decoy") -> tuple[Path
 
 
 def _assert_links_resolve(tmp_path: Path, checkout: Path, worktree: Path) -> None:
-    """The worktree names the checkout's `.git`, and the checkout lists the worktree at its current path."""
     common_dir = _fixture_git(tmp_path, worktree, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()
     assert Path(common_dir).resolve() == (checkout / ".git").resolve()
     listing = _fixture_git(tmp_path, checkout, "worktree", "list", "--porcelain").splitlines()
@@ -422,6 +420,28 @@ class TestRepairLinkedWorktreesRunner:
         announced = _lines_holding(run.stdout, "also reaches")
         assert len(announced) == 1
         assert _bash_quote(str(third_level)) in announced[0]
+
+    def test_the_root_parent_ceiling_fallback_and_all_four_unsets_reach_git(self, tmp_path: Path) -> None:
+        repository_variables = ("GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_INDEX_FILE")
+        exports = "".join(f"export {name}=/inherited\n" for name in repository_variables)
+        # The shim's stdout is lost to the listing's command substitution, so it reports on stderr and fails the call.
+        reporting_git = _intercepting_function(
+            "git",
+            "true",
+            'echo "ceiling=$GIT_CEILING_DIRECTORIES" >&2; '
+            f'for name in {" ".join(repository_variables)}; do '
+            'if [[ -v $name ]]; then echo "$name=set" >&2; else echo "$name=unset" >&2; fi; done; return 1',
+        )
+        home = tmp_path / "home"
+        home.mkdir()
+
+        run = _run_sourced(home, [["_repair_linked_worktrees", "/"]], cwd=tmp_path, prelude=exports + reporting_git)
+
+        assert run.call_statuses == [1]
+        assert "ceiling=/\n" in run.stderr
+        stderr_lines = run.stderr.splitlines()
+        for name in repository_variables:
+            assert f"{name}=unset" in stderr_lines
 
     def test_collecting_candidates_keeps_a_worktree_and_skips_a_full_clone(self, tmp_path: Path) -> None:
         worktrees_dir = tmp_path / _WORKTREES

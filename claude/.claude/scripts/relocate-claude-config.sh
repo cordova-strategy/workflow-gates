@@ -815,11 +815,11 @@ _read_worktree_records() {
   return 0
 }
 
-# Run one `git worktree repair` from the checkout $1 (a physical path) that names
-# each linked worktree under its .claude/worktrees, then report each recorded
-# worktree whose path does not exist. The body is a subshell, so the
-# environment changes and the shopt end with it. Callers run it as an `if`
-# condition, where errexit is off, so each step checks its own status.
+# Run one `git worktree repair` from the checkout $1 (a physical path), then
+# report each recorded worktree whose path does not exist. The body is a
+# subshell, so the environment changes and the shopt end with it. Callers run
+# it as an `if` condition, where errexit is off, so each step checks its own
+# status.
 _repair_linked_worktrees() (
   local new_real="$1"
   local -a candidates=() record_paths=()
@@ -923,10 +923,10 @@ Not done by this command:
 EOF
 }
 
-# Print the closing text for the run's outcome: stdout when every package,
-# listed dir and linked worktree re-linked, stderr with a --repair retry line
-# when a package, a listed dir or the linked-worktrees repair failed. $2 is
-# "primary" or "repair".
+# Print the closing text for the run's outcome.
+# stdout when no package, listed dir or linked-worktrees repair failed,
+# stderr with a --repair retry line when one did.
+# $2 is "primary" or "repair".
 report_relink_outcome() {
   local new_path="$1" mode="$2"
 
