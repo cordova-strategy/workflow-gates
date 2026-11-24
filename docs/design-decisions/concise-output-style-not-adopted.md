@@ -2,7 +2,13 @@
 
 *2026-11-23.*
 
-The maintainer's aim was "hoping that the concise option will produce fewer words, make it easier for a human to read, but will keep like quality output". `claude/.claude/settings.json` sets no `outputStyle`. Claude Code's built-in Concise output style was evaluated as the stow-wide default. Per the output-styles page, it would have reached every stow consumer's main conversation and forks. It was not adopted. The recorded reason is the maintainer's: "quality metrics, doesn't meet the bar". This record states no other grounds, and presents the results below as the evidence the evaluation produced. On Sonnet, replies across the five probe prompts were about 26% shorter. The readability proxies showed neither a clear gain nor a clear regression. On exploratory counts at five samples per style, Concise dropped content a reader decides from. The closing priority line, numbered review findings and per-option pros and cons are the three differences that reach a Fisher exact p of about 0.05, before any correction for nine markers. See "What Concise kept" for what it kept and "Not measured" for the coverage limits.
+Claude Code's built-in Concise output style was evaluated as the stow-wide default and not adopted, and `claude/.claude/settings.json` sets no `outputStyle`. The maintainer's aim was "hoping that the concise option will produce fewer words, make it easier for a human to read, but will keep like quality output". Per the output-styles page, it would have reached every stow consumer's main conversation and forks. The recorded reason is the maintainer's: "quality metrics, doesn't meet the bar". The evaluation produced these results:
+
+- On Sonnet, replies across the five probe prompts were about 26% shorter.
+- The readability proxies showed neither a clear gain nor a clear regression.
+- On exploratory counts at five samples per style, Concise dropped content a reader decides from.
+
+See "What Concise dropped" for those counts, "What Concise kept" for what it kept and "Not measured" for the coverage limits.
 
 ## What the scripted probes measured
 
@@ -86,7 +92,7 @@ The scripted runs could not observe the approach walk-through. `claude -p` under
 - Whether Concise keeps Claude Code's built-in software-engineering instructions. The [output styles page](https://code.claude.com/docs/en/output-styles) says "Each of the four other built-in styles keeps those instructions and adds its own", and its four non-Default styles include Concise. No probe observed it.
 - Whether replies stay accurate. Reply accuracy was not assessed, so "What Concise kept" covers content, not the correctness of computed values.
 - Delivery through user scope, the path a stow-wide default would use.
-- Whether `/config` writes `outputStyle` into `claude/.claude/settings.json`. The probes confirmed that `/output-style` leaves the file unchanged. The `/config` path is untested, and `guard-settings-session-keys.sh` does not list the key, so a written value would pass the guard.
+- Whether `/config` writes `outputStyle` into `claude/.claude/settings.json`. The probes ran in scratch directories, where `/output-style` wrote that directory's `.claude/settings.local.json`, so none observed the stow-source file. The `/config` path is untested, and `guard-settings-session-keys.sh` does not list the key, so a written value would pass the guard.
 
 ## Sources
 
