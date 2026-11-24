@@ -538,14 +538,14 @@ Projected diff: about 95 changed lines against origin/main. That is 8 in `test-c
    - Counts the script asserts against literals written in the script from this plan, not read back from its own extraction:
      - variant 2 is 5 lines and M1 is 3;
      - M2, M2a, M3, M3a, M4, M6 and M7 are 1 line each, and M5 is 28 non-blank lines;
-     - M2b's hook comment block is 8 lines, and its hook log line and CHANGELOG bullet are 1 line each;
+     - M2b's hook comment block is 9 lines, and its hook log line and CHANGELOG bullet are 1 line each;
      - M2c's entry is 6 non-blank lines and its table row is 1.
      - A pass prints one result line with those counts.
    - M2a's second edit, on the "Discriminator literals where a canonical symbol exists" bullet of `claude/.claude/CLAUDE.md`:
      - `since importing it from that code would make the test pass whatever the value. Otherwise reach for the language or framework's named constant first;` occurs once, and `. Reach for the language or framework's named constant first;` zero times.
      - The unchanged tail `if the discriminator is project-defined and the project ships a registry or named-type module, use that.` occurs once, and `if the project defines the discriminator` zero times.
    - M2b, each its own assertion:
-     - The hook holds `GLOBAL_CLAUDE_MD_BYTE_LIMIT=31744` once and `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720` zero times. Its comment paragraph is M2b's 8-line block, checked by exactly-once above.
+     - The hook holds `GLOBAL_CLAUDE_MD_BYTE_LIMIT=31744` once and `GLOBAL_CLAUDE_MD_BYTE_LIMIT=30720` zero times. Its comment paragraph is M2b's 9-line block, checked by exactly-once above.
      - The hook's dated log holds the 2026-11-21 line once.
      - The test holds `BYTE_LIMIT = 31744` once and `BYTE_LIMIT = 30720` zero times.
      - `docs/hooks.md` holds "31,744-byte" once and "30,720-byte" zero times.
