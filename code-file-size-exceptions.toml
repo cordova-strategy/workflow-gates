@@ -81,7 +81,7 @@ verdict = "split pending"
 seam = "Test-class families `TestCheckClaudeMdLength` and `TestCheckClaudeMdLengthMergeAwareBase`, with the merge builders (`_build_clean_merge_growing_claude_md`) moving with the second"
 
 ["claude/.claude/hooks/tests/test_check_skill_length.py"]
-ceiling = 1472
+ceiling = 1468
 verdict = "split pending"
 seam = "Test-class families `TestCheckSkillLength` and `TestCheckSkillLengthMergeAwareBase`, with the merge builders (`_build_clean_merge_growing_skill`) moving with the second"
 

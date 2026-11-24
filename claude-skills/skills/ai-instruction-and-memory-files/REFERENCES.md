@@ -101,6 +101,14 @@ every figure in this section as **asserted, not measured**.
   First-party and asserted-as-tested ("we found"), but no methodology,
   benchmark, or numeric result is published alongside the claim.
 
+- [OpenAI Codex — AGENTS.md guide](https://learn.chatgpt.com/docs/agent-configuration/agents-md)
+  — official vendor docs, fetched 2026-11-23. The page shows no
+  last-updated date, and `developers.openai.com/codex/guides/agents-md`
+  redirects to it. The limit covers the loaded files combined:
+
+  > Codex "stops adding files once the combined size reaches the limit
+  > defined by `project_doc_max_bytes` (32 KiB by default)"
+
 ### Google
 
 - **Gemini API — Prompting strategies** (`ai.google.dev/gemini-api/docs/prompting-strategies`),
@@ -124,7 +132,7 @@ every figure in this section as **asserted, not measured**.
 | Anthropic — CLAUDE.md | Under 200 lines | Recommendation |
 | Anthropic — CLAUDE.md | 4 MiB | Hard skip threshold (file silently ignored past this size) |
 | Anthropic — MEMORY.md | 200 lines or 25KB, whichever comes first | Hard load window |
-| OpenAI Codex — `project_doc_max_bytes` | 32 KiB (default) | Hard truncation |
+| OpenAI Codex — `project_doc_max_bytes` | 32 KiB (default), across the loaded files combined | Hard limit (Codex stops adding files) |
 | GitHub Copilot | "No longer than 2 pages" | Recommendation |
 | GitHub Copilot | 4,000-character code-review instruction cutoff | Removed 2026-06-12 (no longer in force) |
 | Google Antigravity | 12,000 characters per rules file | Hard limit |
