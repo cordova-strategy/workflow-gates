@@ -13,12 +13,11 @@ from ._declared_dirs_helpers import (
     _READER_WARNING,
     _ROOTS_LABEL,
     _outcomes,
-    _run_sourced,
     _runner_scene_base,
     _stale_link,
     _write_roots_file,
 )
-from ._relocate_helpers import requires_non_root
+from ._relocate_helpers import _run_sourced, requires_non_root
 
 # ---------------------------------------------------------------------------
 # Roots-file states: the runner never aborts the errexit-on main shell

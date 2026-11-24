@@ -14,10 +14,10 @@ from ._declared_dirs_helpers import (
     _ROOTS_LABEL,
     _add_checkout_entry,
     _outcomes,
-    _run_sourced,
     _scene,
     _write_roots_file,
 )
+from ._relocate_helpers import _run_sourced
 
 _REAL_FILE_CONTENT = "{}\n"
 _DIR_TEST_PROBE_MARKER = "@@DIR-TEST-PROBE@@"

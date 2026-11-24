@@ -12,9 +12,9 @@ Shared fixtures live in _relocate_helpers.py.
 from __future__ import annotations
 
 import os
+import shlex
 import shutil
 import subprocess
-import textwrap
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +32,7 @@ from ._relocate_helpers import (
     _relocation_args_for_mode,
     _run_printed_retry_line,
     _run_script,
+    _run_sourced,
     _script_env,
     _stow,
     _stow_tree_folded,
@@ -313,8 +314,7 @@ class TestClaudeCliMissing:
                 (min_bin / tool).symlink_to(tool_path)
         link_bash_into(min_bin)
 
-        env = dict(os.environ)
-        env["HOME"] = str(home)
+        env = _script_env(home)
         env["PATH"] = str(min_bin)
         new_repo = home / "new-repo"
         result = subprocess.run(
@@ -449,8 +449,6 @@ def _words_bash_reads_from(line: str) -> list[str]:
     return result.stdout.split("\0")[:-1]
 
 
-
-
 class TestRelinkPackagesBatch:
     def test_a_failed_package_does_not_stop_the_next_and_the_failed_list_resets_per_call(
         self, tmp_path: Path
@@ -466,24 +464,26 @@ class TestRelinkPackagesBatch:
         (checkout / "refused-pkg" / "shared" / "item.txt").write_text("refused\n")
         (checkout / "linked-pkg").mkdir()
         (checkout / "linked-pkg" / "entry.txt").write_text("linked\n")
-        script = textwrap.dedent("""\
-            source "$1"
-            RELINK_PACKAGES=("$3" "$4")
-            relink_packages "$2"
-            printf 'failed-after-batch=%s\\n' "${RELINK_FAILURES[*]}"
-            RELINK_PACKAGES=("$4")
-            relink_packages "$2"
-            printf 'failed-after-rerun=%s\\n' "${RELINK_FAILURES[*]}"
-        """)
+        refused_row = shlex.quote("refused-pkg\t.claude")
+        linked_row = shlex.quote("linked-pkg\t.other-target")
 
-        result = subprocess.run(
-            ["bash", "-c", script, "_", str(_SCRIPT), str(checkout), "refused-pkg\t.claude", "linked-pkg\t.other-target"],
-            capture_output=True, text=True, check=False, env=_script_env(home),
+        result = _run_sourced(
+            home,
+            [
+                f"RELINK_PACKAGES=({refused_row} {linked_row})",
+                ["relink_packages", str(checkout)],
+                'printf "failed-after-batch=%s\\n" "${RELINK_FAILURES[*]}"',
+                f"RELINK_PACKAGES=({linked_row})",
+                ["relink_packages", str(checkout)],
+                'printf "failed-after-rerun=%s\\n" "${RELINK_FAILURES[*]}"',
+            ],
+            cwd=tmp_path,
+            bare=True,
         )
 
         assert result.returncode == 0, result.stderr
         assert f"linking refused-pkg at {checkout}" in result.stdout
-        assert f"linking linked-pkg at {checkout}" in result.stdout
+        assert f"linking linked-pkg at {checkout}" in result.call_outputs[0]
         assert "re-linking refused-pkg failed" in result.stderr
         assert "re-linking linked-pkg failed" not in result.stderr
         assert "failed-after-batch=refused-pkg\n" in result.stdout
@@ -501,11 +501,11 @@ class TestRelinkPackagesBatch:
         (home / ".claude").symlink_to(own_claude_dir)
         checkout = _make_repo(tmp_path, "checkout")
 
-        script = 'source "$1"; relink_packages "$2"; echo "${RELINK_FAILURES[*]}"'
-
-        result = subprocess.run(
-            ["bash", "-c", script, "_", str(_SCRIPT), str(checkout)],
-            capture_output=True, text=True, check=False, env=_script_env(home),
+        result = _run_sourced(
+            home,
+            [["relink_packages", str(checkout)], 'echo "${RELINK_FAILURES[*]}"'],
+            cwd=tmp_path,
+            bare=True,
         )
 
         assert result.returncode == 0, result.stderr

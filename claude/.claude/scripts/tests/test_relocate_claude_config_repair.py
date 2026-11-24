@@ -9,23 +9,20 @@ Like test_relocate_claude_config.py, these use the real `stow` against a fake ch
 from __future__ import annotations
 
 import os
-import subprocess
-import textwrap
 from pathlib import Path
 
 import pytest
 
 from ._relocate_helpers import (
     _BACKUP_DIR_REFUSAL_FRAGMENTS,
-    _SCRIPT,
-    _SUBPROCESS_TIMEOUT_SECONDS,
     _backup_entry_names,
     _claude_shim,
+    _intercepting_function,
     _make_repo,
     _plant_unusable_backup_dir,
     _read_log,
     _run_script,
-    _script_env,
+    _run_sourced,
     _stow,
     _stow_tree_folded,
 )
@@ -273,10 +270,11 @@ class TestRepairQuarantineInvariant:
         first_link.symlink_to(tmp_path / "gone-one")
         second_link.symlink_to(tmp_path / "gone-two")
 
-        result = subprocess.run(
-            ["bash", "-c", 'source "$1"; _quarantine_if_dangling "$2"; _quarantine_if_dangling "$3"',
-             "_", str(_SCRIPT), str(first_link), str(second_link)],
-            capture_output=True, text=True, check=False, env=_script_env(home), timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+        result = _run_sourced(
+            home,
+            [["_quarantine_if_dangling", str(first_link)], ["_quarantine_if_dangling", str(second_link)]],
+            cwd=tmp_path,
+            bare=True,
         )
 
         assert result.returncode == 0, result.stderr
@@ -293,26 +291,13 @@ class TestRepairQuarantineInvariant:
         dangling = home / ".claude" / "dup-name"
         dangling.symlink_to(tmp_path / "gone")
         backup_dir = home / ".claude-config-relocate-backup"
-        script = textwrap.dedent("""\
-            source "$1"
-            mv() {
-              if [[ "${!#}" == "$HOME/.claude-config-relocate-backup"/* ]]; then
-                printf 'mv: %s: Permission denied\\n' "${!#}" >&2
-                return 1
-              fi
-              command mv "$@"
-            }
-            if _quarantine_if_dangling "$2"; then :; fi
-            echo continued-after-call
-        """)
+        failing_mv = _intercepting_function("mv", '[[ "$destination" == "$HOME/.claude-config-relocate-backup"/* ]]')
 
-        result = subprocess.run(
-            ["bash", "-c", script, "_", str(_SCRIPT), str(dangling)],
-            capture_output=True, text=True, check=False, env=_script_env(home), timeout=_SUBPROCESS_TIMEOUT_SECONDS,
-        )
+        result = _run_sourced(home, [["_quarantine_if_dangling", str(dangling)]], cwd=tmp_path, prelude=failing_mv)
 
+        # The unit ends the shell, so no call returns a status.
         assert result.returncode == 1
-        assert "continued-after-call" not in result.stdout
+        assert result.call_statuses == []
         assert f"could not move {dangling} into {backup_dir}" in result.stderr
         assert dangling.is_symlink() and os.readlink(dangling) == str(tmp_path / "gone")
         assert _backup_entry_names(home) == []

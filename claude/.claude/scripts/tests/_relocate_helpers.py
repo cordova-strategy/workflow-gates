@@ -4,15 +4,21 @@ Tests drive the REAL `stow`/`stow -D` binary (not a stub): stow's own symlink-ad
 what the script's correctness depends on, and a fake stow would let a wrong working directory or -t/-d
 targeting pass silently. This module shims only the `claude` CLI on PATH, matching
 test_update_claude_config_plugins.py's precedent.
+
+`_run_sourced` sources the script and calls its functions in one shell. It keeps the caller's PATH with no
+`claude` shim, so a sourced call that can reach `claude` passes a `path=` that leads with a shim dir.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
+import shlex
 import shutil
 import subprocess
 import textwrap
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -156,6 +162,8 @@ def _script_env(home: Path, *path_dirs: Path) -> dict[str, str]:
     (the claude shim dir, the installed-copy dir) ahead of the real PATH."""
     env = dict(os.environ)
     env["HOME"] = str(home)
+    # Stow reads STOW_DIR ahead of its working directory, so an exported value would redirect every stow run.
+    env.pop("STOW_DIR", None)
     if path_dirs:
         env["PATH"] = ":".join([*(str(path_dir) for path_dir in path_dirs), env["PATH"]])
     return env
@@ -234,7 +242,7 @@ def _run_printed_retry_line(
     resolves its command through PATH, so a missing installed copy fails here
     instead of falling through to a real copy elsewhere on PATH."""
     installed_copy = home / ".local" / "bin" / "relocate-claude-config"
-    assert installed_copy.is_file() and not installed_copy.is_symlink()
+    assert installed_copy.is_file() and not installed_copy.is_symlink(), f"no regular-file installed copy at {installed_copy}"
     return subprocess.run(
         ["bash", "-c", _last_nonempty_line(first_run_stderr)],
         capture_output=True, text=True, check=False,
@@ -257,3 +265,81 @@ def _relocation_args_for_mode(tmp_path: Path, home: Path, old_repo: Path, mode: 
     new_repo = tmp_path / "new-repo"
     old_repo.rename(new_repo)
     return new_repo, ["--repair", "--allow-outside-home", str(new_repo)]
+
+
+_BASH = shutil.which("bash") or "bash"
+
+
+def _intercepting_function(tool: str, condition: str, body: str | None = None) -> str:
+    """Bash text for a function that shadows `tool`. `condition` tests `$destination` (the last
+    argument) and `$forced` (a flag argument before `--` holds an `f`). `body` runs when it holds
+    and defaults to failing with a real-shaped message that names the destination."""
+    if body is None:
+        body = f"printf '{tool}: %s: Permission denied\\n' \"$destination\" >&2; return 1"
+    return (
+        f"{tool}() {{\n"
+        '  local destination="${!#}" forced=false arg\n'
+        '  for arg in "$@"; do\n'
+        '    case "$arg" in --) break ;; -*f*) forced=true ;; esac\n'
+        "  done\n"
+        f"  if {condition}; then {body}; fi\n"
+        f'  command {tool} "$@"\n'
+        "}\n"
+    )
+
+
+@dataclass
+class _SourcedRun:
+    returncode: int
+    stdout: str
+    stderr: str
+    call_outputs: list[str]
+    call_statuses: list[int]
+    tail: str
+
+
+_CALL_MARKER = re.compile(r"\n@@CALL (\d+) (\d+)@@\n")
+
+
+def _run_sourced(
+    home: Path,
+    steps: list[str | list[str]],
+    *,
+    cwd: Path,
+    prelude: str = "",
+    bare: bool = False,
+    path: str | None = None,
+) -> _SourcedRun:
+    """Source the script and run `steps` in one shell: a `str` is a bash fragment, a `list` is one call's
+    argv. A marker line after each call ends its output slice. By default each call is an `if` condition,
+    as production runs the units, so errexit is off. `bare` calls it plain with errexit on, as production
+    calls the runner."""
+    lines = ['source "$1"', prelude]
+    call_count = 0
+    for step in steps:
+        if isinstance(step, str):
+            lines.append(step)
+            continue
+        command = shlex.join(step)
+        if bare:
+            lines += [command, "status=0"]
+        else:
+            lines.append(f"if {command}; then status=0; else status=$?; fi")
+        lines.append(f'printf "\\n@@CALL {call_count} %s@@\\n" "$status"')
+        call_count += 1
+    env = _script_env(home)
+    if path is not None:
+        env["PATH"] = path
+    completed = subprocess.run(
+        [_BASH, "-c", "\n".join(lines), "relocate-claude-config", str(_SCRIPT)],
+        cwd=cwd, capture_output=True, text=True, env=env, check=False, timeout=_SUBPROCESS_TIMEOUT_SECONDS,
+    )
+    parts = _CALL_MARKER.split(completed.stdout)
+    return _SourcedRun(
+        returncode=completed.returncode,
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        call_outputs=parts[0::3][:-1],
+        call_statuses=[int(status) for status in parts[2::3]],
+        tail=parts[-1],
+    )

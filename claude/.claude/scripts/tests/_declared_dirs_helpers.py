@@ -1,17 +1,15 @@
-"""Builders shared by the declared-dirs relocate test modules: roots-file and account fixtures,
-the sourced-shell runner, and the parsers for the script's outcome lines.
+"""Builders shared by the declared-dirs relocate test modules: roots-file and account fixtures, and the parsers
+for the script's outcome lines.
 """
 from __future__ import annotations
 
 import os
 import re
 import shlex
-import shutil
-import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ._relocate_helpers import _SCRIPT, _SUBPROCESS_TIMEOUT_SECONDS, _make_repo, _script_env
+from ._relocate_helpers import _make_repo, _run_sourced, _SourcedRun
 
 _ROOTS_LABEL = "~/.claude/transcript-config-dirs"
 # The reader's warning for an unusable roots-file line, to `.format(line=<N>)`.
@@ -23,7 +21,6 @@ _SKILLS_ROOT = "claude-skills"
 _UNIT_ROOTS = [_PACKAGE_ROOT, _SKILLS_ROOT]
 # The roots-file line number every unit-layer call passes, so a backup name's `.L7.` is checkable.
 _LINE = 7
-_BASH = shutil.which("bash") or "bash"
 
 _AWKWARD_ENTRY_NAME = "-a b$c]`d@e*f\\g$(touch injected)"
 _AWKWARD_DIR_NAME = "-h i$j]`k@l*m\\né$(touch injected)"
@@ -76,81 +73,6 @@ def _decoy_link(directory: Path, old_checkout: Path) -> str:
     text = os.path.relpath(old_checkout / _PACKAGE_ROOT / "hooks", directory.resolve())
     (directory / "decoy-link").symlink_to(text)
     return text
-
-
-def _intercepting_function(tool: str, condition: str, body: str | None = None) -> str:
-    """Bash text for a function that shadows `tool`. `condition` tests `$destination` (the last
-    argument) and `$forced` (a flag argument before `--` holds an `f`). `body` runs when it holds
-    and defaults to failing with a real-shaped message that names the destination."""
-    if body is None:
-        body = f"printf '{tool}: %s: Permission denied\\n' \"$destination\" >&2; return 1"
-    return (
-        f"{tool}() {{\n"
-        '  local destination="${!#}" forced=false arg\n'
-        '  for arg in "$@"; do\n'
-        '    case "$arg" in --) break ;; -*f*) forced=true ;; esac\n'
-        "  done\n"
-        f"  if {condition}; then {body}; fi\n"
-        f'  command {tool} "$@"\n'
-        "}\n"
-    )
-
-
-@dataclass
-class _SourcedRun:
-    returncode: int
-    stdout: str
-    stderr: str
-    call_outputs: list[str]
-    call_statuses: list[int]
-    tail: str
-
-
-_CALL_MARKER = re.compile(r"\n@@CALL (\d+) (\d+)@@\n")
-
-
-def _run_sourced(
-    home: Path,
-    steps: list[str | list[str]],
-    *,
-    cwd: Path,
-    prelude: str = "",
-    bare: bool = False,
-    path: str | None = None,
-) -> _SourcedRun:
-    """Source the script and run `steps` in one shell: a `str` is a bash fragment, a `list` is one call's
-    argv. A marker line after each call ends its output slice. By default each call is an `if` condition,
-    as production runs the units, so errexit is off. `bare` calls it plain with errexit on, as production
-    calls the runner."""
-    lines = ['source "$1"', prelude]
-    call_count = 0
-    for step in steps:
-        if isinstance(step, str):
-            lines.append(step)
-            continue
-        command = shlex.join(step)
-        if bare:
-            lines += [command, "status=0"]
-        else:
-            lines.append(f"if {command}; then status=0; else status=$?; fi")
-        lines.append(f'printf "\\n@@CALL {call_count} %s@@\\n" "$status"')
-        call_count += 1
-    env = _script_env(home)
-    if path is not None:
-        env["PATH"] = path
-    completed = subprocess.run(
-        [_BASH, "-c", "\n".join(lines), "relocate-claude-config", str(_SCRIPT)],
-        cwd=cwd, capture_output=True, text=True, env=env, check=False, timeout=_SUBPROCESS_TIMEOUT_SECONDS,
-    )
-    parts = _CALL_MARKER.split(completed.stdout)
-    return _SourcedRun(
-        returncode=completed.returncode,
-        stdout=completed.stdout,
-        stderr=completed.stderr,
-        call_outputs=parts[0::3][:-1],
-        call_statuses=[int(status) for status in parts[2::3]],
-        tail=parts[-1],
-    )
 
 
 _OUTCOME_LINE = re.compile(
