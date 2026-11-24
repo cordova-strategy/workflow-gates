@@ -598,7 +598,7 @@ def resolve_scan_roots(parsed: argparse.Namespace) -> list[Path]:
     return roots
 
 
-# The one-sentence statement of the --this-repo scope that every --help text reuses.
+# The one-sentence statement of the --this-repo scope that every --help text describing that scope reuses.
 _THIS_REPO_SCOPE_HELP = (
     "the project dirs of this repo's live worktrees, and of removed worktrees under the main "
     "checkout's .claude/worktrees/ (see docs/transcript-analysis.md for what else it admits)"
