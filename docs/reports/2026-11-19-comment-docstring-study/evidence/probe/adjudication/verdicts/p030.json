@@ -1,0 +1,23 @@
+{
+ "packet_id": "p030",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc`'s message so a `--redact` run never prints a raw"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc`'s message so a `--redact` run never prints a raw"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "config-dir path; see `_dedup_new_project_dirs` for why this level can't label it instead.\"\"\""
+ },
+ "d": {
+  "pass": false,
+  "evidence": "\"\"\"Strip the path from `exc`'s message so a `--redact` run never prints a raw"
+ },
+ "e": {
+  "pass": true,
+  "evidence": "config-dir path; see `_dedup_new_project_dirs` for why this level can't label it instead.\"\"\""
+ }
+}

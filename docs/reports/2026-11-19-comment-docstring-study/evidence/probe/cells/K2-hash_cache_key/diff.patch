@@ -1,0 +1,9 @@
+diff --git a/claude/.claude/scripts/probe_synthetic/ctl_keep_cache_key.py b/claude/.claude/scripts/probe_synthetic/ctl_keep_cache_key.py
+--- a/claude/.claude/scripts/probe_synthetic/ctl_keep_cache_key.py
++++ b/claude/.claude/scripts/probe_synthetic/ctl_keep_cache_key.py
+@@ -2,4 +2,5 @@
+ 
+ 
+ def hash_cache_key(payload):
++    """The digest is sha256 rather than the faster blake2b because the CDN vendor's "Cache keys" page accepts only FIPS-approved hex digests in the cache-key header. It is cut to 32 hex characters because the same page rejects header values longer than 32 bytes."""
+     return hashlib.sha256(payload).hexdigest()[:32]

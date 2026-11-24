@@ -1,0 +1,17 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -83,6 +83,13 @@
+ 
+ 
+ def _path_to_project_slug(path: str) -> str:
++    """Map an absolute path to Claude Code's project-directory slug.
++
++    Claude Code names each project dir under ~/.claude/projects/ by taking the
++    session's cwd and replacing every '/' and '.' with '-'. Verified against real
++    dirs: /home/<user>/repo -> -home-<user>-repo;
++    /home/<user>/repo/.claude/worktrees/b -> -home-<user>-repo--claude-worktrees-b.
++    """
+     return re.sub(r"[/.]", "-", path)
+ 
+ 

@@ -1,0 +1,23 @@
+{
+ "packet_id": "p032",
+ "a": {
+  "pass": true,
+  "evidence": "\"Drops the path from the message because a raw path would leak account/client identity into a redacted run; same decision as `_iter_scoped_sessions`' root-level diagnostic.\""
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"Drops the path from the message because a raw path would leak account/client identity into a redacted run; same decision as `_iter_scoped_sessions`' root-level diagnostic.\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"Drops the path from the message because a raw path would leak account/client identity into a redacted run; same decision as `_iter_scoped_sessions`' root-level diagnostic.\""
+ },
+ "d": {
+  "pass": false,
+  "evidence": "\"Drops the path from the message because a raw path would leak account/client identity into a redacted run; same decision as `_iter_scoped_sessions`' root-level diagnostic.\""
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"Drops the path from the message because a raw path would leak account/client identity into a redacted run; same decision as `_iter_scoped_sessions`' root-level diagnostic.\""
+ }
+}

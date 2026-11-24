@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/routing_guard.py b/claude/.claude/scripts/transcript_analysis/routing_guard.py
+--- a/claude/.claude/scripts/transcript_analysis/routing_guard.py
++++ b/claude/.claude/scripts/transcript_analysis/routing_guard.py
+@@ -861,6 +861,7 @@
+ 
+ 
+ def _lost_event_hides(round_ts: float, session_rows: Sequence[_LogRow], lost_event_times: Sequence[float]) -> bool:
++    """`logged_at` is floored, so a row follows an event only past the event's whole second."""
+     return any(
+         not any(math.floor(event_ts) < row.logged_at <= round_ts for row in session_rows)
+         for event_ts in lost_event_times

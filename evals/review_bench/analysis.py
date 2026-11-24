@@ -581,26 +581,42 @@ def precision_fixture_terms(
 
     - A defect absent from the counts is skipped, as pooled_precision skips it.
     - An absent defect still needs a cluster_by_defect entry, else KeyError.
-    - A fixture with no present defect is dropped from the fixture set.
-    - A fixture with present defects but no adjudicated finding stays in the
-      fixture set, so it counts in the degrees of freedom and the mean totals.
-    - When every finding sits in one fixture all residuals are 0 and the
-      interval has zero width.
+    - A fixture is dropped from the fixture set only when it has no present
+      defect or no adjudicated finding in either arm_x or arm_baseline, so it
+      counts in neither the degrees of freedom nor the mean totals. A fixture
+      with a finding in just one of the two arms is kept, and the other arm's
+      totals contribute 0 for it.
+    - Returns None when fewer than two fixtures carry a finding, even when
+      precision_difference is defined.
+    - Returns None when an arm has no adjudicated finding at all.
+    - len(residuals) is the number of kept fixtures, not the number of
+      fixtures in the inputs.
     """
-    present_fixtures = [
+
+    def carries_a_finding(fixture_defect_ids: Sequence[str]) -> bool:
+        return any(
+            precision_counts_by_defect[defect_id].total_by_arm.get(arm, 0)
+            for defect_id in fixture_defect_ids
+            for arm in (arm_x, arm_baseline)
+        )
+
+    fixtures_with_findings = [
         present_ids
         for fixture in _fixture_groups(defect_ids, cluster_by_defect)
         if (present_ids := [defect_id for defect_id in fixture if defect_id in precision_counts_by_defect])
+        if carries_a_finding(present_ids)
     ]
-    if len(present_fixtures) < 2:
+    if len(fixtures_with_findings) < 2:
         return None
 
     def per_fixture_sums(arm: str) -> tuple[list[int], list[int]]:
         valid = [
-            sum(precision_counts_by_defect[d].valid_by_arm.get(arm, 0) for d in fixture) for fixture in present_fixtures
+            sum(precision_counts_by_defect[d].valid_by_arm.get(arm, 0) for d in fixture)
+            for fixture in fixtures_with_findings
         ]
         total = [
-            sum(precision_counts_by_defect[d].total_by_arm.get(arm, 0) for d in fixture) for fixture in present_fixtures
+            sum(precision_counts_by_defect[d].total_by_arm.get(arm, 0) for d in fixture)
+            for fixture in fixtures_with_findings
         ]
         return valid, total
 
@@ -610,8 +626,8 @@ def precision_fixture_terms(
         return None
     precision_x = sum(valid_x) / sum(total_x)
     precision_baseline = sum(valid_baseline) / sum(total_baseline)
-    mean_total_x = sum(total_x) / len(present_fixtures)
-    mean_total_baseline = sum(total_baseline) / len(present_fixtures)
+    mean_total_x = sum(total_x) / len(fixtures_with_findings)
+    mean_total_baseline = sum(total_baseline) / len(fixtures_with_findings)
     estimate = precision_x - precision_baseline
     residuals = tuple(
         (fixture_valid_x - precision_x * fixture_total_x) / mean_total_x

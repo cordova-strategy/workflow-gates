@@ -3,3 +3,6 @@
 # Its Glob and Read tools do not consult this file.
 # git grep does not consult this file.
 .claude/plans/
+# The evidence/ line below hides a verbatim study copy from Grep, so a Grep rooted above it skips it.
+# A redaction or leak sweep must use git grep, or root its Grep at each directory this file lists.
+docs/reports/2026-11-19-comment-docstring-study/evidence/

@@ -1,0 +1,17 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/cost.py b/claude/.claude/scripts/transcript_analysis/cost.py
+--- a/claude/.claude/scripts/transcript_analysis/cost.py
++++ b/claude/.claude/scripts/transcript_analysis/cost.py
+@@ -1120,6 +1120,13 @@
+ 
+ 
+ def cmd_cost_trend(args: argparse.Namespace) -> None:
++    """CLI entry point for the cost-trend subcommand.
++
++    Reads the wall-clock date exactly once, here, then delegates to
++    _cost_trend_report, which takes `today` as an explicit parameter — the
++    same split _cost_report uses so the trailing week's "(partial)" label
++    doesn't depend on a live clock read inside a function under test.
++    """
+     _cost_trend_report(args, datetime.now(UTC).date())
+ 
+ 

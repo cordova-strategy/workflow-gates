@@ -29,6 +29,10 @@ disclaims independence without disqualifying escalation — is grounded in
 `docs/design-decisions.md` §3's `### Sources` block. See that block for the
 citations rather than restating them here.
 
+## Threat declaration
+
+What the declaration block's four fields rest on, and what they do not, is recorded in `docs/design-decisions/review-threat-declaration-independent-fields.md`, including its `## Sources` block. See that file for the citations rather than restating them here.
+
 ## Finding disposition
 
 ### Default ADDRESS / opportunistic refactoring
