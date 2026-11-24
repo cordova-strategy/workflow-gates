@@ -300,7 +300,7 @@ A refusal prints this to stderr, and the ledger stays unchanged:
 pr-cost:   PR #<a> for machine=<m>: refusing --force -- the new row would lose captured review rounds (<reason>); see docs/pr-cost.md
 ```
 
-A single-account `--pr` run exits 1 at once. Under `--all-accounts`, that account skips the PR, and an account that records no row counts as skipped in the summary, as other skips do. The run then exits 1 after its summary and any count line. Without `--force`, a re-record under the exception prints `refusing to re-record (<reason>)` in place of the line above, where `<reason>` can also be a failed per-model breakdown check, and skips the PR as an already-captured one is. The `--force --pr N` steps in the reason bullets below apply only under `--force`.
+A single-account `--pr` run exits 1 at once. Under `--all-accounts`, that account skips the PR, and an account that records no row counts as skipped in the summary, as other skips do. The run then exits 1 after its summary and any count line. Without `--force`, a re-record under the exception prints `refusing to re-record (<reason>)` in place of the line above. There `<reason>` can also be a failed per-model breakdown check. The ledger stays unchanged, and the exit matches the already-captured skip: a single-account `--pr` run exits 1, and any other run exits 0. The `--force --pr N` steps in the reason bullets below apply only under `--force`.
 
 The guard has no override, so it also blocks a re-capture meant to heal a degraded `status` whenever that would lose rounds. A higher-rule re-capture over partly aged transcripts passes, leaving the prior series only in the superseded row, and prints no notice.
 

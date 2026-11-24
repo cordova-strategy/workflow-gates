@@ -1,11 +1,10 @@
 """Tests for denials.hook_denials_in_record and denials.hook_denied_tool_use_ids, the record walk that finds
 which main-thread Skill and spawn tool_use blocks one of this repository's gates denied.
 
-In the transcript format, `hookEvent` sits inside `attachment` beside `hookName` and `toolUseID`. `Stop` and
-`SubagentStop` are the observed values; `PreToolUse` and `PostToolUse` are unobserved.
+In the transcript format, `hookEvent` sits inside `attachment` beside `hookName` and `toolUseID`.
 """
 import pytest
-from transcript_analysis import denials, review_trace
+from transcript_analysis import denials, review_rounds, review_trace
 
 from ._review_round_helpers import _SONNET
 from ._routing_guard_helpers import _routing_deny_record
@@ -134,9 +133,6 @@ class TestHookDeniedToolUseIds:
             id="a-legacy-attachment-naming-another-event",
         ),
         pytest.param(
-            [_launch("launched-call"), _legacy_denial("")], id="a-legacy-attachment-with-an-empty-tool-use-id",
-        ),
-        pytest.param(
             [_launch("unjoined-call"), _legacy_denial("", toolUseID=None)],
             id="a-legacy-attachment-with-no-tool-use-id",
         ),
@@ -151,6 +147,37 @@ class TestHookDeniedToolUseIds:
     ])
     def test_a_call_that_was_not_denied_by_a_shipped_gate_is_left_out(self, records):
         assert denials.hook_denied_tool_use_ids(records) == frozenset()
+
+    @pytest.mark.parametrize("attachment_type", [
+        pytest.param("hook_success", id="a-hook-that-allowed-the-call"),
+        pytest.param("hook_non_blocking_error", id="a-hook-that-errored-without-blocking"),
+    ])
+    def test_a_pre_tool_use_attachment_that_did_not_block_the_call_is_left_out(self, attachment_type):
+        """A hook that lets a call through writes an attachment carrying that call's id; only a block is a denial."""
+        allowed_attachment = {
+            "type": "attachment",
+            "attachment": {
+                "type": attachment_type, "hookName": "PreToolUse:Skill", "hookEvent": "PreToolUse",
+                "toolUseID": "allowed-call",
+            },
+        }
+
+        assert denials.hook_denied_tool_use_ids([_launch("allowed-call"), allowed_attachment]) == frozenset()
+
+    def test_a_launch_with_an_empty_id_is_not_paired_with_a_denial_carrying_an_empty_id_and_still_opens_a_round(self):
+        records = [_launch(""), _legacy_denial("")]
+
+        assert denials.hook_denied_tool_use_ids(records) == frozenset()
+        assert review_rounds.detect_round_windows(records) == [(0, 2, "code-review")]
+
+    def test_an_errored_result_whose_content_is_a_list_of_text_blocks_naming_a_shipped_gate_is_collected(self):
+        denial_result = _shipped_gate_result("list-content-call", "block-gh-pr-merge.sh")
+        denial_block = denial_result["message"]["content"][0]
+        denial_block["content"] = [{"type": "text", "text": denial_block["content"]}]
+
+        assert denials.hook_denied_tool_use_ids([_launch("list-content-call"), denial_result]) == frozenset(
+            {"list-content-call"}
+        )
 
     @pytest.mark.parametrize("denial_record", [
         pytest.param(_routing_deny_record("bash-call", shape="current"), id="a-result-denial"),

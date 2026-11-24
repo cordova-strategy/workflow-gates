@@ -192,8 +192,9 @@ def hook_denied_tool_use_ids(records: list[dict]) -> frozenset[str]:
                     continue
                 if not _is_readable_result_content(block.get("content")):
                     continue
-                # _HOOK_DENIAL_SIGNATURE is quadratic on a very long whitespace run, so classifying one errored
-                # `Skill` or spawn result with thousands of spaces is slow; the candidate-id gate keeps that off other results.
+                # _HOOK_DENIAL_SIGNATURE can backtrack on a long whitespace run, so classifying one errored
+                # `Skill` or spawn result with thousands of spaces is slow.
+                # The candidate-id gate keeps that cost off every other result.
                 denial = hook_denial_key(block)
                 if denial is not None and _denial_hook_label("", denial[1]) in _DENIAL_HOOK_LABELS:
                     denied.add(tool_use_id)

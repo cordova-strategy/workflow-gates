@@ -1511,6 +1511,24 @@ class TestRoundNumberMismatchIntegration:
         result = ao.compute_author_outcomes(_session_iter(fake_projects))
         assert result["data_quality"][ao._DQ_ROUND_NUMBER_MISMATCH] == 1
 
+    def test_a_gate_denied_skill_call_before_a_launched_spawn_leaves_the_counter_at_zero(self, fake_projects):
+        """The denied call is no round, so the one round-keyed ledger block matches the one launched spawn."""
+        session_id = "sess-1"
+        _seed_ledger(fake_projects, session_id, [_ledger_row(round=1, disposition="DEFER")])
+        _write_jsonl(fake_projects / f"{session_id}.jsonl", [
+            _asst(
+                "claude-sonnet-5", branch="feat", ts="2026-08-01T10:00:00.000Z",
+                content=[_skill_block("s-denied", "code-review")],
+            ),
+            _routing_deny_record("s-denied", shape="legacy", branch="feat"),
+            _orchestrator_spawn("o1", "2026-08-01T10:01:00.000Z"),
+            _dispatch_complete("o1", "2026-08-01T10:02:00.000Z"),
+        ])
+
+        result = ao.compute_author_outcomes(_session_iter(fake_projects))
+
+        assert result["data_quality"][ao._DQ_ROUND_NUMBER_MISMATCH] == 0
+
     def test_ledger_matching_every_round_open_does_not_increment_the_counter(self, fake_projects):
         session_id = "sess-1"
         _seed_ledger(fake_projects, session_id, [_ledger_row(round=1, disposition="DEFER")])

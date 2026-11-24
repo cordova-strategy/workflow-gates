@@ -2333,6 +2333,15 @@ def _write_four_round_corpus(proj: Path, branch: str = "feature-a") -> None:
     _write_subagent_dispatch(proj, "sess-rounds", "agent-1", "d1", [subagent_turn])
 
 
+def _write_one_round_corpus(proj: Path, branch: str) -> None:
+    """One code-review round on `branch`, in a session file apart from _write_four_round_corpus's."""
+    _write_jsonl(proj / f"sess-one-round-{branch}.jsonl", [
+        _priced(
+            "claude-sonnet-5", input=1_000_000, branch=branch, ts=_PRE_MERGE_TS, content=[_skill_block("s1", "code-review")],
+        ),
+    ])
+
+
 _FOUR_ROUND_CELL = {
     "rule": review_rounds.REVIEW_ROUND_RULE,
     "rounds": {
@@ -3585,16 +3594,13 @@ def _one_second_after(captured_at: str) -> str:
 
 class TestUnforcedReRecordUnderAnOlderRule:
     @staticmethod
-    def _seed_an_older_rule_row(fake_projects, ledger_path: Path, row_changes=lambda current_row: {}) -> dict:
-        """Records the four-round corpus through a real run, then replaces that row with one whose cell sits one rule
-        below the current one and holds an extra code-review round, so only a re-record can correct it. The writer
-        refuses to change a row already on disk, so the ledger file is replaced rather than rewritten."""
-        _run_record(fake_projects)
-        (current_row,) = _ledger_rows(ledger_path)
+    def _older_rule_row_of(current_row: dict, row_changes=lambda current_row: {}) -> dict:
+        """A copy of `current_row` whose cell sits one rule below the current one and holds an extra code-review
+        round, so only a re-record can correct it."""
         current_rounds = current_row["review_rounds"]["rounds"]
         older_rate_stamp = date.fromisoformat(current_row["rate_stamp"]) - timedelta(days=1)
         older_captured_at = datetime.strptime(current_row["captured_at"], _CAPTURED_AT_FORMAT) - timedelta(days=1)
-        seeded_row = {
+        return {
             **current_row,
             "captured_at": older_captured_at.strftime(_CAPTURED_AT_FORMAT),
             "rate_stamp": older_rate_stamp.isoformat(),
@@ -3605,6 +3611,14 @@ class TestUnforcedReRecordUnderAnOlderRule:
             },
             **row_changes(current_row),
         }
+
+    @classmethod
+    def _seed_an_older_rule_row(cls, fake_projects, ledger_path: Path, row_changes=lambda current_row: {}) -> dict:
+        """Records the four-round corpus through a real run, then replaces that row with an older-rule one. The
+        writer refuses to change a row already on disk, so the ledger file is replaced rather than rewritten."""
+        _run_record(fake_projects)
+        (current_row,) = _ledger_rows(ledger_path)
+        seeded_row = cls._older_rule_row_of(current_row, row_changes)
         ledger_path.unlink()
         pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [seeded_row])
         return seeded_row
@@ -3652,6 +3666,67 @@ class TestUnforcedReRecordUnderAnOlderRule:
         assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
         assert ledger_path.read_bytes() == bytes_before
         assert spy.round_scans == []
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    def test_one_plain_record_skips_a_row_the_scan_does_not_reproduce_and_still_re_records_the_next_row_and_exits_0(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        _write_one_round_corpus(fake_projects, "feature-b")
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")],
+        ))
+        _run_record(fake_projects)
+        current_rows = _ledger_rows(ledger_path)
+        skipped_row = self._older_rule_row_of(
+            current_rows[0], lambda current_row: {"turn_count": current_row["turn_count"] + 1},
+        )
+        reproduced_row = self._older_rule_row_of(current_rows[1])
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [skipped_row, reproduced_row])
+        capsys.readouterr()
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        seeded_skipped_row, seeded_reproduced_row, re_recorded_row = _ledger_rows(ledger_path)
+        assert seeded_skipped_row == skipped_row
+        assert seeded_reproduced_row == reproduced_row
+        assert re_recorded_row["pr_number"] == 2
+        assert re_recorded_row["supersedes"] == reproduced_row["captured_at"]
+        assert re_recorded_row["review_rounds"] == current_rows[1]["review_rounds"]
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    def test_one_plain_record_skips_a_row_whose_new_cell_cannot_be_written_and_still_re_records_the_next_row_and_exits_0(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        _write_one_round_corpus(fake_projects, "feature-b")
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")],
+        ))
+        _run_record(fake_projects)
+        current_rows = _ledger_rows(ledger_path)
+        refused_row = self._older_rule_row_of(current_rows[0])
+        reproduced_row = self._older_rule_row_of(current_rows[1])
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [refused_row, reproduced_row])
+        capsys.readouterr()
+        _fail_check_on_calls(monkeypatch, {1})
+
+        _run_record(fake_projects)
+
+        captured = capsys.readouterr()
+        assert _unforced_refusal_line(
+            1, _SEEDED_MACHINE_IDENTITY, "the per-model breakdown failed its dollars check",
+        ) in captured.err.splitlines()
+        assert _COUNT_LINE_STEM not in captured.err
+        seeded_refused_row, seeded_reproduced_row, re_recorded_row = _ledger_rows(ledger_path)
+        assert seeded_refused_row == refused_row
+        assert seeded_reproduced_row == reproduced_row
+        assert re_recorded_row["pr_number"] == 2
+        assert re_recorded_row["supersedes"] == reproduced_row["captured_at"]
+        assert re_recorded_row["review_rounds"] == current_rows[1]["review_rounds"]
 
     def test_a_degraded_fresh_status_over_an_ok_row_is_skipped_before_any_round_scan(
         self, fake_projects, tmp_path, monkeypatch, capsys,

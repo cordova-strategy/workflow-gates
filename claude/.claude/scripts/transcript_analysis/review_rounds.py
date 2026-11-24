@@ -211,8 +211,9 @@ def detect_round_windows(
     (already deduped) records. A record flagged isSidechain never opens a round.
 
     A call whose id is in `denied_tool_use_ids` neither opens a round nor ends
-    the window before it; None computes the set with denials.hook_denied_tool_use_ids,
-    and an empty set keeps every call.
+    the window before it.
+    None computes the set with denials.hook_denied_tool_use_ids, and an empty
+    set keeps every call.
 
     Re-expresses judgment_pair.cmd_judgment_pair's boundary rule. window_end
     is the index of the next fresh user prompt or the next round-open record,

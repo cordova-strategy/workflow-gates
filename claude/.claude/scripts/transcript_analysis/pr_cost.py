@@ -1078,6 +1078,8 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     overwrite_captured = force or _reproduces_older_rule_row(
                         already, branch_totals.get(branch), row_status,
                     )
+                    # Reached when another recorder lands this PR's row after the hint read.
+                    # No test pins that this skip moves on to the next PR.
                     if already is not None and not overwrite_captured:
                         _print_already_captured(resolved_pr["number"], machine_identity)
                         if target_pr is not None and not all_accounts:
