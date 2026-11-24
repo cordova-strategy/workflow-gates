@@ -718,11 +718,10 @@ class TestGoalFrameStructure:
 
 _CARRIED_MARKER = "`(carried from a handoff)`"
 
-# Each row is (file, section heading, phrase, test id), pinned because another file
-# reads the phrase, because it is a mechanism's main rule, or because it is the
-# anti-license clause of the plan-review and plan-architect goal rules together with
-# the goal-change exception that bounds it. Phrases are matched whitespace-collapsed,
-# so a hard-wrap does not break a row.
+# A row is pinned because another file reads the phrase, because it is a mechanism's
+# main rule, or because it is the anti-license clause of the plan-review and
+# plan-architect goal rules together with the goal-change exception that bounds it.
+# Phrases are matched whitespace-collapsed, so a hard-wrap does not break a row.
 # A pin checks only its own phrase, so text added before or after it, a contradicting
 # clause included, stays green.
 _GOAL_FRAME_PHRASE_PINS: tuple[tuple[Path, str, str, str], ...] = (
