@@ -34,7 +34,7 @@
 # only inflate the composite toward the nudge threshold, never corrupt
 # state).
 #
-# Opt-in: dormant by default. Until the error_mode_nudge config key is true,
+# Opt-in: dormant by default. Until the error_mode_nudge config key resolves true,
 # every invocation exits 0 before reading the transcript.
 # docs/error-mode-nudge.md "How to enable" has the config-set.sh command.
 #

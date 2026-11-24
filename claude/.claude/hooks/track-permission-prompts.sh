@@ -3,7 +3,7 @@
 # Notification hook (matcher permission_prompt): appends the raw hook
 # payload -- redacted for credential-shaped strings, with one added
 # `logged_at` field -- to a local, gitignored JSONL log, when the
-# permission_prompt_tracking config key is true.
+# permission_prompt_tracking config key resolves true.
 # This hook only logs: it gates nothing, blocks nothing, and has no deny
 # primitive.
 #
@@ -28,7 +28,8 @@
 #   atomic, so a symlink planted in the narrow window between them would
 #   still be followed -- requires local write access to $CONFIG_DIR already.
 #
-# Opt-in: the permission_prompt_tracking config key, off by default.
+# Opt-in: off by default until the permission_prompt_tracking config key
+# resolves true.
 # docs/permission-prompt-tracking.md "Activation" and "How to disable" have
 # the config-set.sh commands.
 set -uo pipefail
