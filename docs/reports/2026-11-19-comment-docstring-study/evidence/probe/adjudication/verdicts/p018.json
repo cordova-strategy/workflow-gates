@@ -1,0 +1,23 @@
+{
+ "packet_id": "p018",
+ "a": {
+  "pass": true,
+  "evidence": "Strips the path from the message so a redacted run never prints a raw account or client path; see `_iter_scoped_sessions`."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "Strips the path from the message so a redacted run never prints a raw account or client path; see `_iter_scoped_sessions`."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "Strips the path from the message so a redacted run never prints a raw account or client path; see `_iter_scoped_sessions`."
+ },
+ "d": {
+  "pass": false,
+  "evidence": "Strips the path from the message so a redacted run never prints a raw account or client path; see `_iter_scoped_sessions`."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Strips the path from the message so a redacted run never prints a raw account or client path; see `_iter_scoped_sessions`."
+ }
+}

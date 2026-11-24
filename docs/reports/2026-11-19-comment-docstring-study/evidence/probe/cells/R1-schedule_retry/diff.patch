@@ -1,0 +1,9 @@
+diff --git a/claude/.claude/scripts/probe_synthetic/retry_backoff.py b/claude/.claude/scripts/probe_synthetic/retry_backoff.py
+--- a/claude/.claude/scripts/probe_synthetic/retry_backoff.py
++++ b/claude/.claude/scripts/probe_synthetic/retry_backoff.py
+@@ -2,4 +2,5 @@
+ 
+ 
+ def schedule_retry(attempt):
++    """The ceiling follows the vendor's "Rate limits" page, which locks a key out for an hour when a client retries faster, and a lockout stalls every job sharing that key. Revisit the ceiling if the vendor starts publishing per-account limits."""
+     return min(2 ** attempt, MAX_BACKOFF_SECONDS)

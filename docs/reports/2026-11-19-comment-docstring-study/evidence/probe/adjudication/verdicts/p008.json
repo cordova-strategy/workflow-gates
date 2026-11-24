@@ -1,0 +1,23 @@
+{
+ "packet_id": "p008",
+ "a": {
+  "pass": true,
+  "evidence": "Re-evaluate if a per-project count shows an unexpected merge."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "Re-evaluate if a per-project count shows an unexpected merge."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "Re-evaluate if a per-project count shows an unexpected merge."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "`test_non_worktree_label_colliding_with_suffix_shape_merges_into_existing_family`."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "Re-evaluate if a per-project count shows an unexpected merge."
+ }
+}

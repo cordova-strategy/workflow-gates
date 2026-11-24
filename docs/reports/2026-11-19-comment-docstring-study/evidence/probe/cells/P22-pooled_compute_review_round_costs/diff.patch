@@ -1,0 +1,15 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/review_rounds.py b/claude/.claude/scripts/transcript_analysis/review_rounds.py
+--- a/claude/.claude/scripts/transcript_analysis/review_rounds.py
++++ b/claude/.claude/scripts/transcript_analysis/review_rounds.py
+@@ -1283,6 +1283,11 @@
+ 
+ 
+ def _pooled_compute_review_round_costs(*args, **kwargs) -> dict:
++    """compute_review_round_costs, routed through _pooled_filtered_stderr_call.
++
++    --pooled must never print the resolved root count (see
++    _pooled_resolved_scope_header).
++    """
+     return _pooled_filtered_stderr_call(compute_review_round_costs, *args, **kwargs)
+ 
+ 

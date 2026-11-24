@@ -1,0 +1,23 @@
+{
+ "packet_id": "p006",
+ "a": {
+  "pass": true,
+  "evidence": "- The \"accepted risk at current scale\" clause is a decision with a reason, so it stays."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "- The \"accepted risk at current scale\" clause is a decision with a reason, so it stays."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "ever shows an unexpected merge, re-evaluate."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "risk at current scale (pinned by"
+ },
+ "e": {
+  "pass": false,
+  "evidence": "If cost --by-project, buckets' Proj count, or user-input's Scope project count"
+ }
+}

@@ -1,0 +1,23 @@
+{
+ "packet_id": "p031",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc` so the error can propagate without leaking it; `_dedup_new_project_dirs` explains why this level cannot label it instead.\"\"\""
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc` so the error can propagate without leaking it; `_dedup_new_project_dirs` explains why this level cannot label it instead.\"\"\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc` so the error can propagate without leaking it; `_dedup_new_project_dirs` explains why this level cannot label it instead.\"\"\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "(`_dedup_new_project_dirs`, lines 254-257: \"this level, unlike the root level, has no per-account ordinal to label it with\")"
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Strip the path from `exc` so the error can propagate without leaking it; `_dedup_new_project_dirs` explains why this level cannot label it instead.\"\"\""
+ }
+}

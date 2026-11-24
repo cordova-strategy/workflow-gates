@@ -1,0 +1,15 @@
+diff --git a/claude/.claude/scripts/_config_dir.py b/claude/.claude/scripts/_config_dir.py
+--- a/claude/.claude/scripts/_config_dir.py
++++ b/claude/.claude/scripts/_config_dir.py
+@@ -42,6 +42,11 @@
+ 
+ 
+ def declared_roots_file() -> Path:
++    """Return the path declared_roots_matching() reads: TRANSCRIPT_CONFIG_DIRS_FILE
++    if set (a test seam mirroring cleanup-merged-branches.sh's
++    CLEANUP_MERGED_BRANCHES_ROOTS_FILE), else ~/.claude/transcript-config-dirs.
++    Unlike TRANSCRIPT_CONFIG_DIRS_LABEL, this DOES follow the seam.
++    """
+     return Path(os.environ.get("TRANSCRIPT_CONFIG_DIRS_FILE") or (Path.home() / ".claude" / "transcript-config-dirs"))
+ 
+ 
