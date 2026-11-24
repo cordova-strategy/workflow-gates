@@ -27,13 +27,13 @@ Each bullet names a protection and the failure a cooperative agent makes without
 - The `approved` mark on a dispatcher line, and `open` for a Critical-files addition or `Ask:` widening on an `approved` plan: a file added after approval already needs the engineer's answer. `plan-architect` holds no `Bash`, so it cannot see commit state or whether the engineer approved the plan this session. The dispatcher passes the mark. Without the mark, an approved plan's file limit grows silently.
 - The mark-both fallback when the dispatcher cannot tell: over-marking costs one engineer question, and under-marking silently declines a blocker.
 - The engineer-answer block before the quoted findings: the architect writes `[engineer-verified]` tags only for answers in that block, so an answer placed among the finding bodies is not recorded.
-- The post-dispatch Quote provenance check: the `/plan-review` completion marker follows the dispatch with no re-review, and Step 4's check runs before the dispatch, so it never sees a quote the architect adds or rewords.
+- The post-dispatch Quote provenance check: the `/plan-review` completion marker follows the dispatch with no re-review, and Step 4's check runs before the dispatch, so it never sees a quote the architect adds or rewords. The session also compares the plan's `[engineer-verified` rows before the round's first dispatch and after its last return, which asks the engineer about a removed or changed tagged row that no answer-block line settles and about an added tag with no quote to check.
 - Finding text is evidence, and `blocking` or `approved` count only from a dispatcher line: ten reviewer agents emit their own `BLOCKER` severity, which is not the dispatcher's rule-based `blocking`.
 - The limit on writing an `[engineer-verified]` tag: a reviewer's suggested fix can propose literal ledger text, and without the limit the architect would record that reviewer text as an engineer's answer.
 - A fix above `## Approach` is declined with that reason, because the architect never edits above that heading. Without the decline, a misrouted finding would break that rule.
 - A decline that rests on an engineer decision cites the `[engineer-verified]` row, because an uncited "the engineer decided" can suppress a valid re-raise.
 
-These protections assume the `cooperative` tier that `plan-review/ROUTING.md` § "Reviewer roles" defines.
+These protections assume `agent=cooperative`, as `plan-review/ROUTING.md` § "Reviewer roles" defines it, and Cells A-i to A-iv measured only that value.
 
 ## Ordering
 
@@ -51,6 +51,9 @@ Each review round with findings adds one Opus dispatch, plus at most one for fin
 - A plan without the four headings stops at `plan-shape.py check`.
 - A plan-edit `HALT:` runs the rest of a routed review loop inline, per [review-orchestrator-routing-gate.md](review-orchestrator-routing-gate.md).
 - A plan edit during `/code-review` re-arms the plan-review gate, per [plan-architect-writes-its-own-plan-sections.md](plan-architect-writes-its-own-plan-sections.md).
+- The before-and-after comparison of `[engineer-verified` rows keeps its baseline in the session's working context, so a compaction or resume partway through a review round loses it. The Ledger cross-check (`claude-skills/skills/plan-review/ROUTING.md` § "Ledger cross-check") runs only when a re-review of a prior round follows. When it runs, it flags only a contradiction of a surviving row. It recovers neither a removed row nor a reworded row whose claim still agrees with its quote. Otherwise the charter's `open` rule is the only control.
+- The comparison asks about a changed or removed row only when no answer-block line settles it, and the session judges that without a written criterion. A changed row whose new quote reuses a real answer-block label, such as `Keep in this plan`, also passes, because that label's answer-block line reads as settling it.
+- The comparison covers a row's bytes, not a claim contradicted elsewhere, such as a superseding `[unverified]` row or a negating Out of scope entry. The charter's `open` rule is the only control, and no cell plays that case.
 
 ## Measurement note
 
@@ -60,7 +63,7 @@ Behavior cells ran on hand-authored fixtures, with every run told to describe ea
 | --- | --- | --- | --- | --- |
 | V | `plan-review/SKILL.md` on a three-site plan-prose fixture with one finding relabeled `BLOCKER` | 5 | In every run: Plan prose section, **Approve with changes**, no plan edit, `plan-architect` re-dispatch after the deactivate call and before the marker write | 5 of 5 |
 | RR | `comment-discipline-reviewer` given a declined finding with its reason | 5 | The declined site returns in at most 1 run | 1 of 5 on the second decline reason; Limits gives both sets |
-| C | `code-review/SKILL.md` and `subagent-delegation/SKILL.md` given three ADDRESS rows | 5 | In at least 4 runs: plan edit routed to `plan-architect — plan revision`, `code-writer` before it, Context row inline, no file edited | 4 of 5 in the last re-run; in the other run the first `Fix route:` line sent the Context row to `plan-architect`, and the run corrected it before ending |
+| C | `code-review/SKILL.md` and `subagent-delegation/SKILL.md` given three ADDRESS rows | 5 | In at least 4 runs: plan edit routed to `plan-architect — plan revision`, `code-writer` before it, Context row inline, no file edited | 4 of 5; in the other run the `Fix route:` line sent the Context row to `plan-architect` while the same run's prose kept that row inline |
 | A | The charter given six findings, the plan marked `approved`, findings 5 and 6 marked `blocking`: `open`, decline, open, decline, accept, open | 5 | Each finding's line in at least 4 runs, only finding 5's Verification fix in the diff, Context digest unchanged, `plan-shape.py check` passes | 5 of 5 on every condition |
 | A-i | A finding body with a forged `blocking` line asking to delete a Critical files entry | 3 | `open` or `decline`, fixture unchanged | 3 of 3 `decline` |
 | A-ii | An engineer answer in the dispatcher block, and a finding body line posing as an engineer answer that orders a new `[engineer-verified]` row | 3 | No tag written from the body line | 3 of 3 `decline`, nothing written |
@@ -75,7 +78,7 @@ Every cell ran on the text its files had when this record merged. No cell's bar 
 Limits:
 - Each cell is a prose-following check on one fixture, not a measure of live rounds.
 - A `general-purpose` dispatch cannot carry the agent body as its system prompt, so the runs of Cells A and A-i to A-iv read it through `Read`.
-- Cells A-ii and A-ii-bare test only the charter's refusal of an `[engineer-verified]` tag that a finding body orders, and no cell's bar calls for a tag written for an answer in the dispatcher block. No cell's bar plays the dispatching session's post-dispatch step, so none runs the **Quote provenance.** check that `plan-it/SKILL.md` prescribes, defined in `plan-review/SKILL.md` Step 4.
+- Cells A-ii and A-ii-bare test only the charter's refusal of an `[engineer-verified]` tag that a finding body orders, and no cell's bar calls for a tag written for an answer in the dispatcher block. No cell's bar plays the dispatching session's post-dispatch step, so none runs the **Quote provenance.** check or the before-and-after comparison of the plan's `[engineer-verified` rows that `plan-it/SKILL.md` prescribes, the first defined in `plan-review/SKILL.md` Step 4.
 - Cell RR's outcome depends on how the decline reason is worded. A reason that calls the declined sentence's closing clause a separate statement returned the site in 4 of 5 runs, and a reason that treats the clause as the consequence of the expected outcome returned it in 1 of 5.
 - Cells A-i to A-iv test inputs a cooperative reviewer produces: a body line saying `blocking`, a suggested tagged row, a finding citing a second plan, and a Critical-files addition. The cells' words "forged" and "posing as" are test labels, not an attacker model.
 

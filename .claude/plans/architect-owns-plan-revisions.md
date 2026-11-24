@@ -41,7 +41,7 @@ Paths are repository-relative. A bare `file:N` cites the merge-base.
 - Running `/plan-review`'s dispatch before `marker.sh deactivate plan-review`. A Step 5 stop would then leave the active marker live, and that marker lets every non-plan write past the plan-review gate. No gate needs it for the dispatch (row 30).
 - `review-orchestrator` running the `plan-architect` dispatch itself. It holds no `Edit` for Step 5's splice and cannot ask the engineer at Step 5's stops. The dispatcher holds both, so it runs the dispatch after the orchestrator's `HALT:` (row 17).
 
-**M1 — `plan-it` Step 5 gains a Review findings paragraph** (anchors: root, row 1, row 8, row 14, row 36). Insert it after the paragraph starting "A near-empty return is the success shape" and before the one starting "`claude/.claude/agents/plan-architect.md` § "Design principles"", as a one-line paragraph followed by five flush bullets, then a one-line paragraph followed by three flush bullets:
+**M1 — `plan-it` Step 5 gains a Review findings paragraph** (anchors: root, row 1, row 8, row 14, row 36, row 42, row 43). Insert it after the paragraph starting "A near-empty return is the success shape" and before the one starting "`claude/.claude/agents/plan-architect.md` § "Design principles"", as a one-line paragraph followed by five flush bullets, then a one-line paragraph followed by three flush bullets:
 
 > **Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading down in answer to a `/plan-review` or `/code-review` finding, and it gets a review round's findings together in one revision re-dispatch. After line 2, that prompt carries the findings in place of the Context and Step 3 evidence bullets, with each mark and answer on a prompt line outside every quoted finding:
 > - Number the findings, each as the review rendered it, under a lead-in naming the review and round, with the findings-file path of each reviewer that wrote one.
@@ -50,7 +50,7 @@ Paths are repository-relative. A bare `file:N` cites the merge-base.
 > - When you cannot tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` and the plan `approved`.
 > - Carry each engineer answer on its own prompt line, in a block that precedes every quoted finding body: the number of the finding it settles, the question it answered, and the selected label or typed text, with any option description marked as your own proposal.
 >
-> Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each `[engineer-verified: "<quote>"]` quote it added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "Step 4 — Design-fitness gate" says, and ask the engineer about any you cannot find. On the return:
+> Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this re-dispatch. After the dispatch, check each `[engineer-verified: "<quote>"]` quote it added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "Step 4 — Design-fitness gate" says, and ask the engineer about any you cannot find. Also keep each ledger row carrying `[engineer-verified`, from its number through its `anchors:` list, as it stood before the round's first review-findings dispatch. After the round's last return, ask the engineer about any such row removed or changed since then that no answer-block line settles, and about any added `[engineer-verified` tag with no quote to check. On the return:
 > - Relay each `decline` line to the engineer with its reason.
 > - Ask each `open` line as an open decision above.
 > - Re-dispatch once more with only the findings the return gave no line, and ask any still without one as an open decision.
@@ -104,7 +104,7 @@ A hook fails where these hold. It sees an edit's strings and agent type, never t
 
 > Then write the completion marker, but only when the verdict is **Approve** or **Approve with changes** and any such dispatch, with any re-dispatch it led to, is complete. Do not write it on **Request changes** — write it only after `plan-architect` revises the plan and a clean re-review completes.
 
-- `claude-skills/skills/plan-review/ROUTING.md:55`: the bullet's last sentence, "What's been applied stays inline regardless: `marker.sh write plan-review` records only a content hash of the plan set, so there is no on-disk artifact for that half to point at.", becomes:
+- `claude-skills/skills/plan-review/ROUTING.md:56`: the bullet's last sentence, "What's been applied stays inline regardless: `marker.sh write plan-review` records only a content hash of the plan set, so there is no on-disk artifact for that half to point at.", becomes:
 
 > Each finding `plan-architect` accepted that round, as what's been applied, and each one it declined, with its reason, stay inline regardless. `marker.sh write plan-review` records only a content hash of the plan set, so no on-disk artifact holds them.
 
@@ -149,7 +149,7 @@ The row claims, one per Step 4 answer kind:
 
 > Invoke `/plan-review` against the written plan file. It sends its findings to `plan-architect` under Step 5's **Review findings.** paragraph. Re-run it after each **Request changes** verdict, and present the plan only after a round ends **Approve** or **Approve with changes**.
 
-**M7 — pins, decision record, changelog** (anchors: row 11, row 19, row 20, row 21, row 39, row 40). The pins are text tripwires on prose that sessions and agents follow. The bullets below give each test file's invariants and bounds, and the test files hold the pinned literals.
+**M7 — pins, decision record, changelog** (anchors: row 11, row 19, row 20, row 21, row 39, row 40, row 43). The pins are text tripwires on prose that sessions and agents follow. The bullets below give each test file's invariants and bounds, and the test files hold the pinned literals.
 - `claude-skills/skills/tests/_skill_md_helpers.py`:
   - `_assert_pinned_clause_right_bounded` (`_skill_md_helpers.py:490`) gains a `closes_bullet_run` option. Its default bound accepts a clause that ends before a line starting `-` or `#`, so a bullet appended after a pinned list still passes. With the option, only the section's end or a blank line not followed by a list marker, as `_LIST_MARKER_RE` defines one, closes the clause, so the pin holds the whole list.
   - `_raw_subsection_text` ends a `###` section at the next `#` line.
@@ -189,7 +189,7 @@ The row claims, one per Step 4 answer kind:
     - `code-review`'s `Fix route:` clause, its enforcement-invariant stop-and-ask included, and the round-cap re-plan verdict.
     - `review-orchestrator` item 6, its `blocking` mark, "cannot tell" clause and `HALT:` catch-all included.
     - `subagent-delegation`'s not-code carve-out, and its `HALT:` dispatch with that dispatch's `blocking` stop-and-ask.
-    - `ROUTING.md:55`'s re-review feed.
+    - `ROUTING.md:56`'s re-review feed.
   - `_PLAN_ARCHITECT_NO_ACCEPT_RETURN` holds the stop-and-ask key, "gives it no `accept` line, even after `plan-it` Step 5's re-dispatch where a line was missing", which the `code-review` and `subagent-delegation` stop-and-ask pins share.
   - `_ENGINEER_ANSWERS_POINTER_SITES` pins the two pointers to M5's paragraph and that the paragraph exists. `_ENGINEER_ANSWER_ROW_CLAIM_SITES` pins each row claim in its asking step.
   - `_REMOVED_SECOND_PLAN_WRITER_PHRASES` holds the six phrases Verification step 3 greps for, each with its file. A parametrized test asserts each stays out of that file, since presence pins stay green when an old route returns beside a new one.
@@ -199,11 +199,11 @@ The row claims, one per Step 4 answer kind:
   - Why skill text and not a hook: G1 and row 23, citing `code-review-fix-route-plan-architect.md` and `plan-architect-writes-its-own-plan-sections.md`.
   - Why engineer answers are the one exception: the session that asked holds the quote, and a templated append carries no design text.
   - Why a prose-only round always ends **Approve with changes**.
-  - Why each review-round protection exists: the cooperative failure behind each rule, among them these four:
+  - Why each review-round protection exists: the cooperative failure behind each rule, under `agent=cooperative` as `plan-review/ROUTING.md` § "Reviewer roles" defines it, among them these four:
     - A reviewer's own `BLOCKER` severity is not the dispatcher's `blocking` mark.
     - A reviewer's suggested fix often proposes literal ledger text.
     - A writer with no `Bash` cannot see commit state or whether the engineer approved the plan this session, so the dispatcher passes the `approved` mark.
-    - The `/plan-review` completion marker follows the dispatch with no re-review, so the Quote provenance check runs after the dispatch.
+    - The `/plan-review` completion marker follows the dispatch with no re-review, so the Quote provenance check runs after each dispatch. For the same reason, the before-and-after comparison runs after the round's last return, against the ledger rows carrying `[engineer-verified` as they stood before its first dispatch.
   - Why `/plan-review`'s dispatch follows its deactivate call (row 30), and why `code-writer` runs before `plan-architect` in a `/code-review` round (row 16).
   - Cost: each review round with findings adds one Opus dispatch, plus at most one for findings the return left without a line, besides Step 5's own re-dispatches.
   - Accepted residuals:
@@ -237,7 +237,7 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 1. `plan-architect` decides each finding. `[engineer-verified: "Architect decides (Recommended)"]` Covers only who decides. — anchors: root
 2. The flow in that option's description is the session's proposal, and this design adopts it. The parent relays findings verbatim. The architect accepts or declines each against the plan's recorded engineer decisions and Out of scope, applies what it accepts, and returns declines with reasons. The parent asks the engineer only the open decisions the architect returns. `[unverified: session proposal, relayed by the dispatching session]` — anchors: row 1
 3. No hook enforces the rule. `[engineer-verified: "Skill text only (Recommended)"]` — anchors: root
-4. The sites in that option's description are the session's proposal, and the engineer did not object to them: `plan-it` Step 6, `plan-review`'s prose pass and `code-review`'s fix route. `[unverified: relayed by the dispatching session]` This plan adds `review-orchestrator` item 6, `ROUTING.md:55` and `subagent-delegation/SKILL.md:170, 215` as the same routes' sibling arms (rows 15, 17, 31). — anchors: row 3
+4. The sites in that option's description are the session's proposal, and the engineer did not object to them: `plan-it` Step 6, `plan-review`'s prose pass and `code-review`'s fix route. `[unverified: relayed by the dispatching session]` This plan adds `review-orchestrator` item 6, `ROUTING.md:56` and `subagent-delegation/SKILL.md:170, 215` as the same routes' sibling arms (rows 15, 17, 31). — anchors: row 3
 5. The session that asked the engineer appends a row recording the answer. `[engineer-verified: "Accept narrow exception"]` — anchors: root
 6. The exception's terms come from the session's proposal, which an earlier consult drafted. They are:
     - The next row number.
@@ -259,7 +259,7 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 12. `MODE=challenge` already borrows the Review stance's bar for a rejection by name. M2 reuses it the same way. `[verified: claude/.claude/agents/plan-architect.md:146-148, 194-195]` — anchors: M2
 13. A contradiction of an `[engineer-verified]` quote pauses and asks. It is never revised silently. `[verified: plan-it/SKILL.md:126]` — anchors: M2
 14. `plan-review`'s fix-or-ask rule allows an enforcement-invariant finding only two ends: a fix, or an engineer answer. `[verified: plan-review/SKILL.md:283]` — anchors: M1
-15. A re-review's reviewers get the prior round's applied changes inline, and they diff every `[engineer-verified]` row. `[verified: plan-review/ROUTING.md:55, 80]` Today the session that made the edits supplies the applied changes, so M3 names a new source for them. — anchors: M1, M3
+15. A re-review's reviewers get the prior round's applied changes inline, and they diff every `[engineer-verified]` row. `[verified: plan-review/ROUTING.md:56, 81]` Today the session that made the edits supplies the applied changes, so M3 names a new source for them. — anchors: M1, M3
 16. During `/code-review` the plan is usually committed, so a plan edit re-arms the plan-review gate. The architect therefore runs after `code-writer` in a round. Today's inline plan-file fix re-arms the gate the same way (row 31). `[verified: row 9; plan-architect-writes-its-own-plan-sections.md:23]` — anchors: M4
 17. `review-orchestrator` item 8 sends a plan-revision return to `HALT:`. A stop-and-ask about one finding ends only that finding's handling. An entry's fields carry no suggested fix or findings-file path. Item 7 writes no marker while a `HALT:` entry stands. After any `HALT:` entry the dispatcher runs the rest of the loop inline. That step names no action for the halted row itself, so M4 gives it one. `[verified: review-orchestrator.md:29-47; subagent-delegation/SKILL.md:215]` — anchors: M4
 18. `code-review/SKILL.md` is 546 lines against its 550-line cap, so M4 adds no line. `[verified: line count; claude/.claude/hooks/tests/test_check_skill_length.py:337-340]` — anchors: M4
@@ -270,7 +270,7 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
     — anchors: M4, M7
 20. This plan re-runs Cells V and RR by hand, since an edit to the Plan prose paragraph re-runs that decision's measurement cells. By cell:
     - Cell V reads `plan-review/SKILL.md`. The record says to run it on the V control's plan, which names no prior round's finding.
-    - Cell RR hands the reviewer the re-review handoff that M3 rewrites at `ROUTING.md:55`.
+    - Cell RR hands the reviewer the re-review handoff that M3 rewrites at `ROUTING.md:56`.
     - Cells P, D and R hand `comment-discipline-reviewer` a plan or a diff and read neither file, so they are not re-run.
     `[verified: docs/design-decisions/plan-prose-reviewed-inside-plan-review.md:30-43; .claude/plans/plan-prose-pass.md:450-451]` — anchors: M7
 21. A stowed agent resolves to the main checkout's file until merge, so behavior cells run the edited body through a `general-purpose` dispatch. `[verified: docs/design-decisions/plan-prose-reviewed-inside-plan-review.md:28]` — anchors: M7
@@ -293,7 +293,15 @@ Each writer can add text no engineer decision asked for. This plan makes `plan-a
 38. The design record's Measurement note names Cell A as Verification step 7's own fixture, because step 7 now carries Cell A. `[verified: docs/design-decisions/plan-architect-decides-review-findings.md Measurement note; Verification step 7]` Applied as a consult-decided correction, not an engineer answer. — anchors: M7
 39. `claude-skills/skills/tests/test_plan_architect_routing_contracts.py` joins this plan's Critical files. `[engineer-verified: "Move new tests to a new file (Recommended)"]` — anchors: root
 40. `claude/.claude/tests/test_code_file_size.py` fails a tracked `.py` file past 1,000 lines that has no exception row, and `test_review_dispatch_contracts.py` with the routing pins ran past that limit. `[verified: claude/.claude/tests/test_code_file_size.py:1, 367; line counts of both test files]` — anchors: M7
-41. Row 40's counts: `test_review_dispatch_contracts.py` held 1,201 lines at commit `243c63d7`, before the routing pins moved out. `[verified: git show 243c63d7:claude-skills/skills/tests/test_review_dispatch_contracts.py | wc -l prints 1201]` `test_review_dispatch_contracts.py` and `test_plan_architect_routing_contracts.py` now hold fewer than 1,000 lines each. `[verified: wc -l prints 819 and 402 for the two files]` — anchors: row 40
+41. Row 40's counts: `test_review_dispatch_contracts.py` sits within 100 lines of the limit, and the routing pins fill more than 300 lines of `test_plan_architect_routing_contracts.py` below its imports, so they could not stay in the first file. Each file holds fewer than 1,000 lines. `[verified: Read of each file's opening and closing lines]` — anchors: row 40
+42. After a review-findings re-dispatch, the session also compares the plan's `[engineer-verified` lines from before and after it. `[engineer-verified: "Add the before/after check (Recommended)"]` — anchors: root
+43. The check's terms come from the session's proposal for that option, and this design adopts them, with M1 tightening three: the unit is the whole row, the baseline is the plan before the round's first review-findings dispatch, and an added tag of any form with no quote to check goes to the engineer. The proposal's terms:
+    - The session keeps the plan's `[engineer-verified` lines from before the dispatch.
+    - It asks the engineer about any such line the dispatch removed or changed with no answer-block line behind it, and about any bare tag the dispatch added.
+    - `plan-it/SKILL.md` gains no physical line.
+    - One pin and one design-record bullet change.
+    - The tag-pairing residual stays documented, under Out of scope.
+    `[unverified: session proposal, relayed by the dispatching session]` — anchors: row 42
 
 ## Critical files
 
@@ -301,7 +309,7 @@ One `code-writer` dispatch implements every file below. The routing wording recu
 
 - `claude-skills/skills/plan-it/SKILL.md` — modify: M1 and M5 paragraphs in Step 5, the item 3 sentence, Step 6 (M6).
 - `claude-skills/skills/plan-review/SKILL.md` — modify: Step 4 row claims, the two Plan prose bullets, the Record-completion paragraph and marker sentence (M3).
-- `claude-skills/skills/plan-review/ROUTING.md` — modify line 55 (M3).
+- `claude-skills/skills/plan-review/ROUTING.md` — modify line 56 (M3).
 - `claude-skills/skills/code-review/SKILL.md` — modify line 359 in place (M4).
 - `claude-skills/skills/subagent-delegation/SKILL.md` — modify lines 170 and 215 in place (M4).
 - `claude/.claude/agents/plan-architect.md` — modify: description, one bullet, one new block, one sentence (M2).
@@ -319,13 +327,13 @@ Reuse rather than reimplement:
 - `review-orchestrator`'s `HALT:` channel and the dispatcher's step-2 staging.
 - `_PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES`, `_PLAN_IT_STEP5_CONTEXT_CHECK_AND_GRAMMAR_LITERALS`, `_assert_pinned_clause_right_bounded` and `_heading_section_text` in the test helpers.
 
-Projected diff: about 1,020 changed lines against the merge base outside `.claude/plans/`: the session's count of about 579 added and 43 deleted lines in tracked files, plus the new test file's 402 lines.
+Projected diff: about 1,048 changed lines against the merge base outside `.claude/plans/`: the session's count of about 604 added and 44 deleted lines in tracked files, plus the new test file's 400 lines.
 
 ## Verification
 
 1. From the worktree root, `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` passes. It selects the skills, agents and docs domains, including `test_skill_citation_grammar.py`, which resolves the new `` `plan-it/SKILL.md` § "Step 5 — Architecture design" `` and `` `code-review/SKILL.md` § "Finding disposition" `` citations.
 2. `scripts/venv-run.sh ruff check claude/.claude/ claude-skills/ plugins/ evals/` is clean.
-3. `git grep -n --untracked -F -e "Address any findings" -e "Apply each one you accept" -e "the plan author revises" -e "Record each answer on its own ledger row quoting it" -e "What's been applied stays inline regardless" -e "The session then adds it to the list itself" -- ':!.claude/plans' ':!CHANGELOG.md' ':!claude-skills/skills/tests/test_plan_architect_routing_contracts.py'` prints nothing. `--untracked` also reads files not yet staged, and `.gitignore`d paths such as `agent-reviews/` stay out. The excluded test file holds the six phrases on purpose, in `_REMOVED_SECOND_PLAN_WRITER_PHRASES`, and its parametrized test is the standing check that each stays out of its site.
+3. `git grep -n --untracked -F -e "Address any findings" -e "Apply each one you accept" -e "the plan author revises" -e "Record each answer on its own ledger row quoting it" -e "What's been applied stays inline regardless" -e "The session then adds it to the list itself" -- ':!.claude/plans' ':!CHANGELOG.md' ':!claude-skills/skills/tests/test_plan_architect_routing_contracts.py'` prints nothing. `--untracked` also reads files not yet staged, and `.gitignore`d paths such as `agent-reviews/` stay out. The excluded test file holds the six phrases on purpose, in `_REMOVED_SECOND_PLAN_WRITER_PHRASES`. Its parametrized test is the standing check that each stays out of its site.
 4. `wc -l claude-skills/skills/code-review/SKILL.md claude-skills/skills/subagent-delegation/SKILL.md claude-skills/skills/plan-it/SKILL.md` prints 546 and 218, the merge-base counts, and at most 200, the cap, for `plan-it/SKILL.md`.
 5. Steps 6-8 are behavior cells, under six rules:
    - Each is a foreground dispatch on fixtures hand-authored in a scratchpad outside the repository and never committed.
@@ -340,8 +348,18 @@ Projected diff: about 1,020 changed lines against the merge base outside `.claud
      - The run ends **Approve with changes**. A **Request changes** run fails the cell, since the fixture gives the Self-referential findings tripwire nothing to catch.
      - The run describes no edit to the plan.
      - It names a `plan-architect` revision re-dispatch after the deactivate call and before the completion-marker write.
-   - Cell RR: dispatch `comment-discipline-reviewer` itself, whose body this plan leaves unchanged, with `plan_path:` set to the fixture after one finding is applied and another's site is left as it was. The prompt carries the findings file's path, finding 1 as accepted and finding 2 as declined with its reason, as the edited `ROUTING.md:55` prescribes, and no account of the edit itself. Bar: the declined site returns as a new finding in at most 1 of 5 runs.
-7. Cell A, the architect's decision, K=5. A `general-purpose` dispatch at `model: opus` reads this worktree's edited `claude/.claude/agents/plan-architect.md` body through `Read`, follows it as its instructions, and is told it holds only `Read`, `Grep`, `Glob` and `Edit`. Prompt line 1 is `MODE=plan-sections`, and line 2 is the absolute path of a scratch fixture at `<scratch>/.claude/plans/fixture.md`, with an untouched copy kept outside that directory. The fixture is a plan in the four-heading shape whose ledger holds one `[engineer-verified: "<quote>"]` row, whose `## Out of scope` holds one entry, and whose Verification runs a test file its Approach deletes. Dispatcher lines outside every finding body mark the plan `approved` and findings 5 and 6 `blocking`. The prompt carries six numbered findings, each listed here with its expected line:
+   - Cell RR: dispatch `comment-discipline-reviewer` itself, whose body this plan leaves unchanged, with `plan_path:` set to the fixture after one finding is applied and another's site is left as it was. The prompt carries the findings file's path, finding 1 as accepted and finding 2 as declined with its reason, as the edited `ROUTING.md:56` prescribes, and no account of the edit itself. Bar: the declined site returns as a new finding in at most 1 of 5 runs.
+7. Cell A, the architect's decision, K=5. Its setup:
+   - A `general-purpose` dispatch at `model: opus` reads this worktree's edited `claude/.claude/agents/plan-architect.md` body through `Read`, follows it as its instructions, and is told it holds only `Read`, `Grep`, `Glob` and `Edit`.
+   - Prompt line 1 is `MODE=plan-sections`, and line 2 is the absolute path of a scratch fixture at `<scratch>/.claude/plans/fixture.md`.
+   - An untouched copy of the fixture sits outside that directory.
+   - The fixture is a plan in the four-heading shape:
+     - Its ledger holds one `[engineer-verified: "<quote>"]` row.
+     - Its `## Out of scope` holds one entry.
+     - Its Verification runs a test file its Approach deletes.
+   - Dispatcher lines outside every finding body mark the plan `approved` and findings 5 and 6 `blocking`.
+
+   The prompt carries six numbered findings, each listed here with its expected line:
    - (1) Critical files omits a second test file that Verification runs: `1. open`, since the plan is marked `approved`.
    - (2) "B11 — Rollback strategy" asks for a rollback plan on a change a plain revert fully undoes: `2. decline`.
    - (3) A fix that rewrites the `[engineer-verified]` row's quoted claim: `3. open`.
@@ -385,10 +403,11 @@ Projected diff: about 1,020 changed lines against the merge base outside `.claud
   - Changing ledger semantics lies outside the Ask.
 - A named `/plan-review` run between `/code-review` rounds after a plan edit. The plan-review gate's deny names it when a later non-plan write needs it, and the next `/code-review` round reviews the staged plan edit. Today's inline plan-file fix re-arms the gate the same way (rows 16, 31).
 - An engineer answer for each non-blocking decline before `/plan-review` writes its completion marker. Row 1 gives that decision to `plan-architect`, and M1 relays every decline to the engineer.
+- Matching each `[engineer-verified]` tag `plan-architect` adds or changes to the answer-block line behind it, by finding number and question. A reused answer label, such as `Keep in this plan`, paired with a claim the engineer never answered still passes the existence-only **Quote provenance.** check. A changed row whose new quote reuses a real answer-block label passes M1's before-and-after comparison the same way, because that label's answer-block line reads as settling it. The adopted proposal leaves this pairing a residual (row 43), and M2's limit on writing a tag is the guard at the writer.
 - Behavior cells for these sites, each of which keeps a residual:
-  - M5's row append has no runtime check that its quote is byte-exact or that no existing row changed, the same as today's Step 4 row. M5 only narrows that row to a template.
+  - M5's row append has no runtime check that its quote is byte-exact or that no existing row changed, the same as today's Step 4 row. M5 only narrows that row to a template. M1's before-and-after comparison spans only a review round's `plan-architect` dispatches, so it does not reach this append.
   - M1's relay reuses Step 5's existing open-decision relay (`plan-it/SKILL.md:77`), and this plan measures neither.
-  - M1's post-dispatch **Quote provenance.** check. No cell plays the session's steps after a `plan-architect` return.
+  - M1's post-dispatch checks: the **Quote provenance.** check after each dispatch, and the before-and-after comparison of the ledger rows carrying `[engineer-verified`, from before the round's first dispatch to after its last return. No cell plays the session's steps after a `plan-architect` return.
   - The charter's decline of a fix above `## Approach`. No Cell A finding asks for one, so Cell A's Context-digest bar catches only an unprompted edit there. At runtime, Step 5's **Context hash.** stops the run on any edit above that heading.
   - The charter's rule that a decline reason resting on an engineer decision cites the `[engineer-verified]` row it rests on. No cell checks it.
   - The charter's allow path for an `[engineer-verified]` tag. Cells A-ii and A-ii-bare test only the refusal of a tag a finding body orders, so A-ii's bar also passes for an architect that never writes a tag.

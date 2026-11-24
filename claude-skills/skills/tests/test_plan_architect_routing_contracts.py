@@ -157,6 +157,7 @@ _PLAN_ARCHITECT_ROUTING_SITES = (
         path=_skill_file("subagent-delegation"),
         heading="### Exception: gate/review loops stay orchestrator-driven",
         phrase=(
+            "- With any `HALT:` entry, first, "
             f"when at least one entry names `{_PLAN_ARCHITECT_PLAN_REVISION_LABEL}`, dispatch "
             "`plan-architect` with every such entry, as `code-review/SKILL.md` § \"Finding disposition\" "
             "says, and stage that plan as step 2 stages `Fix paths:`; otherwise skip that clause. "
@@ -193,10 +194,6 @@ _PLAN_ARCHITECT_ROUTING_FEED_SITES = (
 
 
 def _assert_site_carries_pinned_phrase(site: _PlanArchitectPinnedPhrase, *, context: str) -> None:
-    """Assert `site.phrase` sits in the site's section, ending on a structural boundary when `right_bounded`.
-
-    `###` headings use `_raw_subsection_text`.
-    """
     assert site.heading is not None or not site.right_bounded, (
         f"{site.name}: right_bounded needs a heading to bound against; with heading=None the whole file is "
         "searched and the bound would be ignored."

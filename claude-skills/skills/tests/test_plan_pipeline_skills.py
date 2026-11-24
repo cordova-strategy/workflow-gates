@@ -327,6 +327,11 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "re-dispatch. After the dispatch, check each `[engineer-verified: \"<quote>\"]` quote it "
         "added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "
         "\"Step 4 — Design-fitness gate\" says, and ask the engineer about any you cannot find. "
+        "Also keep each ledger row carrying `[engineer-verified`, from its number through its "
+        "`anchors:` list, as it stood before the round's first review-findings dispatch. After the "
+        "round's last return, ask the engineer about any such row removed or changed since then "
+        "that no answer-block line settles, and about any added `[engineer-verified` tag with no "
+        "quote to check. "
         "On the return: - Relay each `decline` line to the engineer with its reason. - Ask each `open` line as an "
         "open decision above. - Re-dispatch once more with only the findings the return gave no "
         "line, and ask any still without one as an open decision."
@@ -462,7 +467,7 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
             context=(
                 f"plan-architect.md's MODE=plan-sections charter no longer carries its "
                 f"review-findings {decision_key!r} decision verbatim. Re-run Cell A, the architect's "
-                "decision cell, and cells A-i to A-iv, its adversarial cases, in "
+                "decision cell, and the Cells A-i to A-iv cases in "
                 "docs/design-decisions/plan-architect-decides-review-findings.md by hand after this edit."
             ),
             closes_bullet_run=decision_key == _PLAN_ARCHITECT_LAST_DECISION_KEY,
@@ -479,7 +484,7 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
                 "plan-architect.md's MODE=plan-sections charter no longer holds its accept, decline "
                 "and open decision bullets as one run from `Decide as follows:`, so a decision "
                 "bullet was added, moved or removed. Re-run Cell A, the architect's decision cell, "
-                "and cells A-i to A-iv, its adversarial cases, "
+                "and the Cells A-i to A-iv cases "
                 "in docs/design-decisions/plan-architect-decides-review-findings.md by hand after this edit."
             ),
             closes_bullet_run=True,
@@ -543,8 +548,9 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
         """plan-it Step 5 points its post-dispatch check of a quote `plan-architect` added at
         `/plan-review` Step 4's **Quote provenance.** paragraph.
 
-        That paragraph is the session's only post-dispatch quote check, and it backs the charter's
-        refusal to tag a quote taken from finding text.
+        That paragraph is the session's only check of whether a quote the architect added or changed
+        is the engineer's own, and it backs the charter's refusal to tag a quote taken from finding
+        text.
         """
         step4_lines = _raw_heading_section_text(_skill_file("plan-review"), _STEP4_HEADING).splitlines()
         provenance_paragraphs = [
@@ -676,7 +682,6 @@ _SEEDED_DECISION_BULLET = "- Apply a `decline` yourself when the edit is small."
 def test_decision_bullet_run_pin_fails_when_a_bullet_is_inserted_anywhere_in_the_run(
     inserted_at: int,
 ) -> None:
-    """The pin holds the three decision bullets as one run, whichever gap a new bullet lands in."""
     decision_bullets = list(_PLAN_ARCHITECT_DECISION_BULLETS)
     unmodified_section = "Decide as follows:\n\n" + "\n".join(decision_bullets) + "\n\nNext paragraph.\n"
     decision_bullets.insert(inserted_at, _SEEDED_DECISION_BULLET)
