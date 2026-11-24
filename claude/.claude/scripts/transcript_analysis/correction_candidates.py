@@ -821,7 +821,10 @@ def _add_correction_candidates_subparser(subparsers: argparse._SubParsersAction)
         type=_non_negative_int,
         default=DEFAULT_TRUNCATE_CHARS,
         metavar="N",
-        help=f"Maximum characters for each free-text field, 0 for no limit (default: {DEFAULT_TRUNCATE_CHARS}).",
+        help=(
+            "Maximum characters kept of each free-text field, not counting its truncation note;"
+            f" 0 for no limit (default: {DEFAULT_TRUNCATE_CHARS})."
+        ),
     )
     p_cc.add_argument(
         "--out",

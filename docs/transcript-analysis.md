@@ -698,6 +698,7 @@ Good catch. I'll add IP-range validation before trusting that header.
 - `--truncate-chars N` — maximum characters kept of each free-text field (default: 2000, chosen rather than measured). `0` disables truncation, and a negative value exits 2.
 - `--out PATH` — the file to write. Required unless `--preview` is given. It must be a new path outside any git work tree, in a directory that already exists, and that directory must be writable, on a filesystem that supports hard links, and have free space for the file.
   - Before any transcript is read, an existing path, a missing directory (a parent that is a regular file counts as one), and a path inside a git work tree each exit 2.
+  - A symlink at `--out` whose target does not exist passes these checks when that target lies outside any git work tree, and then exits 2 only at publish, after the scan.
   - Three requirements fail only at publish, after the scan:
     - The directory is writable.
     - Its filesystem supports hard links.
@@ -710,9 +711,9 @@ The top-level `--config-dir PATH` narrows a run to that one root. It goes before
 - It is unanchored, so it matches any project directory whose name contains `-<name>`: a fork, a sibling clone, or an unrelated project. The prefix glob in "Scoping to this repo" is anchored on one checkout's own slug and does not over-include this way.
 - Each emitted line carries its `family`, so a consumer can drop a stray one later.
 - A checkout cloned under another directory name matches nothing, and the zero-session warning shows it.
-- At one root a nested glob such as `**` can match a subagent file as a session, and the preview then lists a `subagents` family.
+- At one root a nested glob such as `**` can match a subagent file as a session, and the preview then lists a `subagents` family. A record in that file that carries `isSidechain` adds no line and no count.
 
-**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600` through a hidden `.correction-candidates-<random>` file beside `--out` that keeps `--out`'s extension when the name has a suffix. A killed run leaves at most that temp file, holding some or all of the text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
+**Run and exit codes.** A run scans every matched session, builds the whole file in memory, and publishes it once. The file appears only when complete, created `0600`. It is published through a hidden `.correction-candidates-<random>` file beside `--out`. A killed run leaves at most that temp file, holding some or all of the text. A kill after the link and before the temp name's removal leaves both names for one file. Deleting the visible file then leaves the text under the hidden one.
 
 A `--projects '*'` run has three costs:
 - It holds every candidate and the file's text in memory until the one publish.
@@ -738,7 +739,16 @@ Its stderr and scope record also list every project family of every declared acc
 
   This run writes no file at `--out`.
 
-Refusals run before the header and any read, and only the first that applies prints: argparse, then no effective scope, then a `--projects` value that starts with `/`, then an unapplied or reversed window bound, then neither `--out` nor `--preview`, then the `--out` path, checked as an existing path, then a missing directory or a file parent, then a git work tree, then, under more than one root, a `--projects` value naming more than one directory level.
+Refusals run before the header and any read, and only the first that applies prints:
+1. An argparse error.
+2. No effective scope.
+3. A `--projects` value that starts with `/`.
+4. An unapplied or reversed window bound.
+5. Neither `--out` nor `--preview`.
+6. The `--out` path, checked as an existing path.
+7. A missing directory or a file parent.
+8. A git work tree.
+9. Under more than one root, a `--projects` value naming more than one directory level.
 
 **Stderr.** A run prints the resolved-scope header first. At two or more roots it then prints `scope`'s own `scanning root i/N...` line for each root, and `--this-repo` can print `scope`'s notice for a root it cannot list. After publishing, a run prints the `--out` path as its only stdout line. It then prints these stderr lines:
 - the `DO NOT PUBLISH` banner (`scope._DO_NOT_PUBLISH_BANNER`), because the next line names raw project directories;
@@ -764,11 +774,12 @@ After the header, a `--preview` prints the banner, the families line and the zer
 - Stderr names raw project directories, so it carries the repository's `DO NOT PUBLISH` banner. That banner is shared with other subcommands and names only project names and session IDs.
 - The scope record's `do_not_publish` is this subcommand's own notice, which says the file holds raw message text.
 - The file outlives the transcripts it came from, and deleting those transcripts does not delete it.
-- The engineer deletes each file once the classification pass, a model pass the engineer runs over the files, has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete (see "Run and exit codes"). Deleting the file does not recall a copy that a backup agent or sync client already took. The pass must read only the files the engineer names, never a folder listing, since a listing includes hidden entries.
+- The engineer deletes each file once the classification pass, a model pass the engineer runs over the files, has consumed it, or once they decide no follow-up exists. A hidden temp file a killed run left is also the engineer's to delete (see "Run and exit codes"). Deleting the file does not recall a copy that a backup agent or sync client already took.
+- The pass must read only the files the engineer names, never a folder listing, since a listing includes hidden entries.
 - This subcommand is not a publication instrument. See `docs/private-project-redaction.md` § "Publishing a tooling measurement" before quoting any figure from its files.
 
 **What a candidate is.**
-- A line's context fields carry `text` blocks only. A plan shown for approval through a tool call, and a subagent's dispatch prompt, never reach a line, and neither does the engineer's typed reason on a rejected tool call (unverified: whether it arrives as a typed prompt), so their absence is not an absence of failures.
+- A line's context fields carry `text` blocks only. A plan shown for approval through a tool call, and a subagent's dispatch prompt, never reach a line. Neither does the engineer's typed reason on a rejected tool call (unverified: whether it arrives as a typed prompt). So their absence is not an absence of failures.
 - A record is **prompt-shaped** as Terms defines under "typed prompt". An **asking record** is a main-thread assistant record holding an `AskUserQuestion` `tool_use` block.
 - An **exchange** opens at every prompt-shaped record except an interrupt marker, local-command output and a bash-mode record. An interrupt opens none, so the interrupted exchange's text stays in front of the prompt that follows it. A task notification is not prompt-shaped and opens none. `exchange` is the 1-based ordinal of openings over the whole file. A prompt carries its own. A question carries the one it sits in, or 0 before the first opening.
 - `preceding_assistant_text` is the text of the main-thread assistant records between the previous exchange opening, or the file's start, and the prompt. For a question it runs from its exchange's opening through the asking record. Records are joined by a blank line, and a record with no text adds nothing. It keeps its last N characters.
@@ -912,8 +923,13 @@ Extraction runs first because transcripts expire. No step moves a file off the m
    - For the cross-check, ask the engineer for each root's absolute path, with no `~`. The number of paths must equal the header's root count, and a mismatch is a stop. Type every path as a literal, and never reference `$CLAUDE_CONFIG_DIR`. Apply step 2's refusal bullet to each path, because the session types it inside double quotes as step 2 does.
    - For each root, run the pipeline with `<root>` in double quotes and the glob unquoted, so the shell expands only the glob, for example `cat "<root>"/projects/*-workflow-gates*/*.jsonl | grep -o -F '"name":"AskUserQuestion"' | wc -l`.
    - Any stderr line from `cat` or the shell is a stop, because the pipeline still exits 0. Name the root. The check resumes only when the engineer corrects the path or says that root holds none of this repo's sessions.
-   - The sum must be at least `ask_user_question_calls`. A sum below it, or a positive sum with `ask_user_question_calls` at 0, is a stop: report the sum, the count and each root's total verbatim, and edit nothing.
-   - Report any excess with its possible sources: blocks in sidechain records, in uninterpretable records, or on undecodable lines; a project directory reached through two roots, which the run reads once; and the live session's own growth since the extraction.
+   - The sum is an upper bound on `ask_user_question_calls`, because the literal also matches outside the extractor's population:
+     - Records that copy request content, such as `api-request-blob`, and a tool list a record carries.
+     - Sidechain and uninterpretable records.
+     - Undecodable lines.
+     - A directory reached through two roots, which the run reads once.
+     - The live session's growth since the extraction.
+   - A sum below `ask_user_question_calls` is a stop: report the sum, the count and each root's total verbatim, and edit nothing.
 6. Report each path, header, families line, counts line, file-check line and cross-check sum, in session only. Never put them in a commit, PR, issue, comment, or handoff file.
    - Report the engineer's answer on the read guard, the engineer's exclusion answer from step 2, the `<out-dir>` the engineer named in step 2, and on the worktree route the worktree's path and branch.
    - Name each `failed_relations` entry, with its population counts beside it. A file with a non-empty `failed_relations` is kept and reported, and nothing classifies it until the engineer explains the failure.

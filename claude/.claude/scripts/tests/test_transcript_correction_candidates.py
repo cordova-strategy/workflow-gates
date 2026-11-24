@@ -26,6 +26,7 @@ from ._correction_candidates_helpers import (
     record_streams,
     run_main,
     seed,
+    sidechain,
     ts,
     written_lines,
 )
@@ -580,6 +581,18 @@ class TestRun:
         assert stdout == f"{out}\n"
         assert stat.S_IMODE(out.stat().st_mode) == 0o600
 
+    def test_a_relative_out_prints_the_path_as_typed_and_creates_the_file_in_the_working_directory(
+        self, fake_projects, out_dir, monkeypatch, capsys,
+    ):
+        seed(fake_projects, question_session())
+        monkeypatch.chdir(out_dir)
+
+        status, stdout, _stderr = run_main(monkeypatch, capsys, "--projects", "*", "--out", "run.jsonl")
+
+        assert status == 0
+        assert stdout == "run.jsonl\n"
+        assert stat.S_IMODE((out_dir / "run.jsonl").stat().st_mode) == 0o600
+
     def test_the_path_prints_after_the_publish_and_before_the_families_and_counts_lines(
         self, fake_projects, out_dir, monkeypatch,
     ):
@@ -793,6 +806,29 @@ class TestSubagentFiles:
         assert question_line["questions"][0]["answer"] == "Alpha"
         assert (scope_record["counts"]["prompts"], scope_record["counts"]["questions"]) == (1, 1)
         assert scope_record["families"] == {"-home-user-testrepo": 1}
+
+    @pytest.mark.parametrize("is_preview", [True, False], ids=["preview", "run"])
+    def test_a_nested_glob_counts_a_subagent_file_as_its_own_family_in_the_families_line_and_the_scope_record(
+        self, is_preview, fake_projects, out_dir, monkeypatch, capsys,
+    ):
+        seed(fake_projects, question_session())
+        seed(
+            fake_projects / "sess" / "subagents",
+            [sidechain(prompt(_SUBAGENT_CANARY, 9, uuid="subagent-uuid"))],
+            "agent-1.jsonl",
+        )
+        out = out_dir / "run.jsonl"
+        mode_flags = ["--preview"] if is_preview else ["--out", str(out)]
+
+        _status, _stdout, stderr = run_main(monkeypatch, capsys, "--projects", "**", *mode_flags)
+
+        expected_families = {"-home-user-testrepo": 1, "subagents": 1}
+        assert families_of(stderr) == expected_families
+        if not is_preview:
+            assert _SUBAGENT_CANARY not in out.read_text(encoding="ascii")
+            scope_record = written_lines(out)[0]
+            assert (scope_record["counts"]["prompts"], scope_record["counts"]["questions"]) == (1, 1)
+            assert scope_record["families"] == expected_families
 
 
 _OUT_OF_SCOPE_FAMILY = "-home-user-unrelated"
