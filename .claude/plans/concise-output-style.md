@@ -45,7 +45,7 @@ Alternatives weighed:
 - **M2.** `git mv` the record to `docs/design-decisions/concise-output-style-not-adopted.md` (Critical files 5).
 
   anchors: row6, row7, row8
-- **M3.** Rewrite the record: a new title, provenance line and opening paragraph, the measurement sections kept verbatim except two shipping-framed passages and one added "Not measured" bullet, the shipped-default sections deleted, and Sources trimmed to the one entry the kept text cites (Critical files 5).
+- **M3.** Rewrite the record: a new title, provenance line and opening paragraph, the measurement sections kept verbatim except two shipping-framed passages, one added "Not measured" bullet and two reworded "Not measured" bullets, the shipped-default sections deleted, and Sources trimmed to the one entry the kept text cites (Critical files 5).
 
   anchors: root, row3, row10, row11, row12, row13, row14, row19, row21, row22
 - **M4.** After the commit, the session syncs PR #1595's body through `/pr-description` and edits the title by hand, since the title still names shipping Concise (Verification 6).
@@ -71,7 +71,7 @@ Alternatives weighed:
 16. A test pins a settings key's absence when a decision keeps it unset, including one never set: `test_subagentpromptcachettl_stays_unset_in_stow_source_settings`. [verified: `test_hook_alignment.py:862-897`; `docs/design-decisions/main-bucket-prompt-cache-ttl-unset.md:14`]
 17. `/pr-description` sync mode edits the body only, with `gh pr edit <n> --body-file`. [verified: `claude-skills/skills/pr-description/SKILL.md:18-24`]
 18. PR #1595's title is "Ship Concise as the stow-wide default output style". [verified: `gh pr view 1595 --json title`, run by the staff-sdet reviewer this round]
-19. The engineer decided on 2026-11-23, this session's date. [unverified: the dispatch relays the answers undated]
+19. The record's date line reads 2026-11-23, the local date the earlier session wrote the record. The commit that added the record, `10cfdc57`, is dated 2026-11-24 local. [unverified: the dispatch relayed the decision's own date undated, so neither date is confirmed as the decision's date]
 20. The study stays in the repo as the renamed and reframed record. Asked whether to keep the record or revert everything, the engineer selected "Keep and rename (Recommended)". [engineer-verified: "Keep and rename (Recommended)"]
 21. The engineer gave one reason for not adopting Concise: "quality metrics, doesn't meet the bar". The record states that reason in those words and presents the probe results as the evidence the evaluation produced. It records no other grounds. [engineer-verified: "quality metrics, doesn't meet the bar"]
 22. Whether Claude Code's `/config` writes `outputStyle` into the stowed settings file is untested. `guard-settings-session-keys.sh` does not list `outputStyle` in `GUARDED_KEYS_JSON`, so a tool-written value would pass the guard. The record keeps the question as a "Not measured" bullet and adds no absence pin. [verified: record `:37-39`; `grep outputStyle claude/.claude/hooks/guard-settings-session-keys.sh` prints nothing]
@@ -96,24 +96,23 @@ The dispatch's verification command is `scripts/venv-run.sh python3 claude/.clau
 5. `docs/design-decisions/concise-output-style-stow-default.md`, moved with `git mv` to `docs/design-decisions/concise-output-style-not-adopted.md` (M2), then rewritten (M3). Line numbers below are the old file's.
    - Line 1 becomes `# Concise output style not adopted as the stow-wide default`.
    - Line 3 becomes `*2026-11-23.*` (row 19).
-   - One opening paragraph replaces `:5` and `:7`. Each item below is its own sentence:
-     - The aim, as the old `:7` states it: the maintainer's aim was "hoping that the concise option will produce fewer words, make it easier for a human to read, but will keep like quality output". The quote is copied unchanged (row 10).
-     - `claude/.claude/settings.json` sets no `outputStyle`.
-     - Claude Code's built-in Concise output style was evaluated as the stow-wide default.
-     - Per the output-styles page, it would have reached every stow consumer's main conversation and forks.
-     - It was not adopted. The recorded reason is the maintainer's: "quality metrics, doesn't meet the bar" (row 21). The record states no other grounds, and presents the results below as the evidence the evaluation produced.
-     - On Sonnet, replies across the five probe prompts were about 26% shorter.
-     - The readability proxies showed neither a clear gain nor a clear regression.
-     - On exploratory counts at five samples per style, Concise dropped content a reader decides from.
-     - The closing priority line, numbered review findings and per-option pros and cons are the three differences that reach a Fisher exact p of about 0.05, before any correction for nine markers.
-     - A pointer to "What Concise kept" for what it kept and to "Not measured" for the coverage limits.
+   - One opening paragraph replaces `:5` and `:7`. Its parts, in order:
+     - The outcome comes first, together with the fact that `claude/.claude/settings.json` sets no `outputStyle`.
+     - The maintainer's aim, quoted unchanged from the old `:7` (row 10).
+     - The output-styles page's claim about Concise's reach: every stow consumer's main conversation and forks.
+     - The maintainer's recorded reason, "quality metrics, doesn't meet the bar" (row 21).
+     - A three-item results list:
+       - About 26% shorter replies on Sonnet across the five probe prompts.
+       - No clear readability gain or regression.
+       - Dropped decision content on exploratory counts at five samples per style.
+     - A closing pointer to "What Concise dropped", "What Concise kept" and "Not measured".
 
      "Default" capitalized names only Claude Code's style.
    - Delete `:9-47`, from "Why the default lives in the tracked file" through the pin-test paragraph. Collapse the doubled blank lines the deletion leaves.
-   - Keep `:49-130` byte-for-byte, with three edits:
+   - Keep `:49-130` byte-for-byte, with three edits. Review rounds after the implementation commit reworded two further "Not measured" bullets, the skill-driven relays and the edit check, and Verification 3 counts them:
      - at `:117`, end the last sentence at "stays unobserved.", deleting "until ordinary use after the pull";
      - reword the `:130` bullet to "Delivery through user scope, the path a stow-wide default would use." (row 11);
-     - add one "Not measured" bullet after it: "Whether `/config` writes `outputStyle` into `claude/.claude/settings.json`. The probes confirmed that `/output-style` leaves the file unchanged. The `/config` path is untested, and `guard-settings-session-keys.sh` does not list the key, so a written value would pass the guard." (row 22).
+     - add one "Not measured" bullet after it for the untested `/config` write path and the unguarded key (row 22).
    - Delete `:132-151`, "Surfaces calibrated on Default output" and "Maintainer rollback". Collapse the doubled blank lines the deletion leaves.
    - Under Sources, keep only the output-styles entry. Trim its gloss to what the kept text cites: Concise as a built-in style, the main-conversation and fork reach, full-length destructive-action confirmations, and the built-in styles keeping Claude Code's software-engineering instructions. Delete the settings-page, PR #744 and `settings-base-render` entries (row 13).
 
@@ -125,7 +124,7 @@ Projected diff: ~105 lines against `main` in the new record, not counting this p
 
 1. **Net diff.** `git diff --stat origin/main...HEAD` lists exactly `.claude/plans/concise-output-style.md` and `docs/design-decisions/concise-output-style-not-adopted.md`, and none of the four restored paths. Before the restore, the same command lists all six files, which shows the stat shrinks (rows 4, 5). This check does not depend on the merge-base SHA the restore used.
 2. **No stale reference.** `git grep -n concise-output-style-stow-default -- ':!.claude/plans/'` prints nothing, and `git grep -n outputStyle -- claude/ README.md CHANGELOG.md` prints nothing (rows 5, 6).
-3. **Verbatim carry.** Compare the kept range of the old record, pinned at branch head `01aad481`, with the new record. The old extract is `git show 01aad481:docs/design-decisions/concise-output-style-stow-default.md | sed -n '49,130p'`. The new extract runs from the line `## What the scripted probes measured` to the line before `## Sources`. `diff` of the two extracts shows only three hunks: the `:117` sentence, the `:130` bullet and the added `/config` bullet. This catches a changed figure without relying on git's rename detection or on `HEAD~1`.
+3. **Verbatim carry.** Compare the kept range of the old record, pinned at branch head `01aad481`, with the new record. The old extract is `git show 01aad481:docs/design-decisions/concise-output-style-stow-default.md | sed -n '49,130p'`. The new extract runs from the line `## What the scripted probes measured` to the line before `## Sources`. `diff` of the two extracts shows five hunks: the `:117` sentence, the `:130` bullet, the added `/config` bullet, and the reworded skill-driven-relays and edit-check bullets. Figures outside those hunks are unchanged. This catches a changed figure without relying on git's rename detection or on `HEAD~1`.
 4. **Scoped suite.** Run `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py` twice: after the restore and the record rewrite but before the commit, and again after the commit. The first run still selects the dependents of the restored files. Both runs select `claude/.claude/hooks/tests/` through the `docs/` row (row 15), which covers `test_design_decision_files.py`'s H1 and provenance checks on the new record (row 14). Both must pass.
 5. **Read-through.** One read of the new record finds no sentence that describes Concise as shipped, rolled back or reaching consumers. Every figure in the opening paragraph appears in a kept section.
 6. **PR (the session, after the dispatch).**

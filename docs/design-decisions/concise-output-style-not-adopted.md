@@ -86,13 +86,13 @@ The scripted runs could not observe the approach walk-through. `claude -p` under
 - Models other than the Sonnet and Opus models probed.
 - Claude Code builds other than 2.1.329, the one probed.
 - Multi-turn sessions.
-- Skill-driven relays, such as the main session relaying review findings, and the questions the main session asks the maintainer. The relay reported in "What Concise dropped" came from a plain prompt asking the session to delegate a review to a subagent and relay what it finds, with no skill driving the relay, at three samples per style.
-- Whether Concise still runs its own edit to check it. In the one completed refactor pair, Default tried to run the code after its edit and Concise did not. That is one sample.
+- Skill-driven relays, such as the main session relaying review findings, and the questions the main session asks the maintainer. The relay reported in "What Concise dropped" came from a plain prompt, not a skill.
+- Whether Concise still runs the code to check its own edit. In the one completed refactor pair, Default tried to run the code after its edit and Concise did not. That is one sample.
 - Destructive-action confirmation and risk-disclosure text. The output-styles page says Concise keeps full length for destructive-action confirmations. No probe observed it.
 - Whether Concise keeps Claude Code's built-in software-engineering instructions. The [output styles page](https://code.claude.com/docs/en/output-styles) says "Each of the four other built-in styles keeps those instructions and adds its own", and its four non-Default styles include Concise. No probe observed it.
 - Whether replies stay accurate. Reply accuracy was not assessed, so "What Concise kept" covers content, not the correctness of computed values.
 - Delivery through user scope, the path a stow-wide default would use.
-- Whether `/config` writes `outputStyle` into `claude/.claude/settings.json`. The probes ran in scratch directories, where `/output-style` wrote that directory's `.claude/settings.local.json`, so none observed the stow-source file. The `/config` path is untested, and `guard-settings-session-keys.sh` does not list the key, so a written value would pass the guard.
+- Whether `/config` writes `outputStyle` into `claude/.claude/settings.json`. The probes ran in scratch directories, where `/output-style` wrote that directory's `.claude/settings.local.json`, so none observed the stow-source file. `guard-settings-session-keys.sh` does not list the key, so a written value would pass the guard.
 
 ## Sources
 
