@@ -107,23 +107,23 @@ own marker corruption handling already established.
 
 ## How to disable
 
-Set the `memory_audit_nudge` config key to `false` to suppress nudges globally:
+The engineer sets the `memory_audit_nudge` config key to `false` to suppress nudges globally:
 
 ```bash
-printf '\nmemory_audit_nudge = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh memory_audit_nudge false
 ```
 
 Set it back to `true` to re-enable — see [`docs/config-file.md`](config-file.md) for the file's hand-edit contract:
 
 ```bash
-printf '\nmemory_audit_nudge = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh memory_audit_nudge true
 ```
 
 The hook checks this key before any filesystem scan. The grammar:
 
 - `memory_audit_nudge = false` disables the nudge.
 - With no row for the key, the legacy `<config-dir>/.memory-audit-nudge-disabled` file disables it.
-- An explicit `memory_audit_nudge = true` row beats the legacy file, so the re-enable recipe above (which appends `true`) also switches the legacy file off.
+- An explicit `memory_audit_nudge = true` row beats the legacy file, so the re-enable recipe above (which writes a `true` row) also switches the legacy file off.
 - A non-bare value such as `"false"` is a malformed line, and the nudge keeps firing.
 - A schema-read failure (unreadable, absent, or truncated `config-keys.psv` row) keeps the nudge enabled.
 
