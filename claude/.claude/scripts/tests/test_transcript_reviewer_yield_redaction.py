@@ -142,6 +142,14 @@ class TestReviewerYieldRedactLabelIdentity:
         assert _type_row_dispatches(out, "agent-type-2", table=SECOND_TABLE, bucket=FINDINGS_FOUND_BUCKET) == "1"
         assert UNTRACKED_AGENT_TYPE_BEFORE not in out
         assert UNTRACKED_AGENT_TYPE_AFTER not in out
+        # Rows follow the raw-name sort, not the printed label's: the tracked name sits between the two relabelled rows.
+        first_table_text, second_table_text = out.split("## Reviewer-agent cited-path edit overlap")
+        for table_text in (first_table_text, second_table_text):
+            assert (
+                table_text.index("agent-type-1")
+                < table_text.index(TRACKED_AGENT_TYPE_BETWEEN)
+                < table_text.index("agent-type-2")
+            )
 
     def test_a_failed_tracked_set_lookup_labels_every_reviewer_type(
         self, fake_projects, tmp_path, monkeypatch, capsys,

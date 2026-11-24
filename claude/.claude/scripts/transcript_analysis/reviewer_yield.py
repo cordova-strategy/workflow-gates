@@ -666,7 +666,8 @@ def cmd_reviewer_yield(args: argparse.Namespace) -> None:
 
     --redact prints each agent type not defined in this toolkit's own
     agents/ directory as agent-type-<N> in both tables (redaction._untracked_agent_type_labels),
-    at any root count. Without it both tables print every agent type raw.
+    at any root count. Without it both tables print every agent type by its
+    own name, with ASCII control characters removed.
     Cited-path candidates are held only as sha256 digests
     (_normalize_cited_path), never as raw paths, so no path can reach this
     subcommand's aggregate-only output by construction — this does not cover
