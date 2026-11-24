@@ -37,7 +37,7 @@ from helpers import (
     unwrapped_check_ignore_status,
 )
 
-# claude/.claude/ itself, so `hooks.tests...` below resolves, as in test_author_outcome.py.
+# claude/.claude/ itself, so `hooks.tests...` below resolves, as in _cursor_shim_helpers.py.
 sys.path.insert(0, str(CLAUDE_DIR))
 from hooks.tests.test_config_lib import _locale_that_widens_ascii_ranges  # noqa: E402
 from hooks.tests.test_review_ledger_script import (  # noqa: E402

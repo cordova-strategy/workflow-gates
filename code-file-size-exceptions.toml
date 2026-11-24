@@ -260,9 +260,9 @@ verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
 ["claude/.claude/scripts/tests/test_author_outcome.py"]
-ceiling = 3998
+ceiling = 3461
 verdict = "split pending"
-seam = "Test-class families by stage: round and marker detection (`TestIsCleanMarkerWrite`, `TestRoundHasMarkerWrite`, `TestClassifyRound`), ledger lookup and sweep (`TestLedgerIndex`, `TestLedgerPossiblySwept`, `TestMultiWorktreeLedgerMerge`), outcome buckets (`TestComputeAuthorOutcomesBuckets`, `TestRankMapping`), orchestrator projection (`TestOrchestratorTranscriptProjection`, `TestOrchestratorDispatchIsARoundOpen`)"
+seam = "Test-class families by stage: round and marker detection (`TestIsCleanMarkerWrite`, `TestRoundHasMarkerWrite`, `TestClassifyRound`), ledger lookup and sweep (`TestLedgerPossiblySwept`, `TestMultiWorktreeLedgerMerge`), outcome buckets (`TestComputeAuthorOutcomesBuckets`, `TestRankMapping`), orchestrator projection (`TestOrchestratorTranscriptProjection`, `TestOrchestratorDispatchIsARoundOpen`)"
 
 ["claude/.claude/scripts/tests/test_ci_watch.py"]
 ceiling = 2212

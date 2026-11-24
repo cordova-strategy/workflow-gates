@@ -296,10 +296,7 @@ The author-outcome command family: `cmd_author_outcome` and every helper used on
 for each `--agent`-typed dispatch (default `code-writer`), joins it to the `code-review` round
 that judged its diff (`compute_author_outcomes`), by completion-index ordering against
 `review_rounds.detect_round_windows`' own `open_idx`, and classifies the outcome by reading that
-session's own review-narrative-ledger rows directly. `_LedgerIndex` holds one config-dir root's
-parsed ledger files, refreshed on every session lookup, and attributes each row to a session by
-its `session_id` field or, for a row without one, by its filename. `_read_ledger_row_entries_for_session`
-returns one session's rows sorted by `event_time`. See `docs/transcript-analysis.md`'s
+session's own review-narrative-ledger rows through `review_ledger`. See `docs/transcript-analysis.md`'s
 author-outcome section ("Ledger lookup") for the attribution rules and the residual gaps they
 still leave. `_round_blocks` groups a session's rows into blocks, and the k-th round-open takes
 the k-th block by rank, not by `round` value. The transcript is still the sole source for
@@ -315,11 +312,20 @@ See `_lib.sh`'s own `_lib_acquire_append_lock`/`_lib_append_json_line_locked`
 docstrings for the append-lock mechanism `review-ledger.sh`'s
 write depends on.
 
-Imports `corpus`, `pricing`, `render`, `review_rounds`, and `scope` all by module
+Imports `corpus`, `pricing`, `render`, `review_ledger`, `review_rounds`, and `scope` all by module
 (attribute access), matching `review_rounds.py`'s own convention.
 `_add_author_outcome_subparser` is the one name `build_parser()` reaches bare. See
 `docs/transcript-analysis.md`'s author-outcome section for the full failure definition, output
 shape, and documented scope gaps.
+
+### `review_ledger.py`
+
+Reads the review-narrative-ledger files under a config-dir root and attributes their rows to sessions. A leaf: it imports no other
+package module. `_LedgerIndex` holds one config-dir root's parsed ledger files, refreshed on
+every session lookup, and attributes each row to a session by its `session_id` field or, for a row without one, by its
+filename. `_read_ledger_row_entries_for_session` returns one session's rows sorted by `event_time`.
+`_read_ledger_rows_from_file` prints the file's path on an open failure, with an `author-outcome:` prefix.
+`author_outcome.py` and `ledger_dispositions.py` import it by module.
 
 ### `denials.py`
 
@@ -398,7 +404,7 @@ The review ledger's terminal dispositions over this checkout's ledger files. It 
 takes the config root, the worktree paths, the window and the scanned session ids, and returns a
 `LedgerDispositionCounts` of aggregates only.
 
-- It reads each file `publication_scope._this_repo_ledger_files` selects through `author_outcome._read_ledger_rows_from_file`, with stderr held in a buffer.
+- It reads each file `publication_scope._this_repo_ledger_files` selects through `review_ledger._read_ledger_rows_from_file`, with stderr held in a buffer.
 - A file is unreadable when a point-in-time `os.lstat` by name finds a symlink, a named pipe or any other non-regular entry, which is refused unopened. A hard link and a swap between the check and the open are not detected, and the ledger writer's own check has the same limits.
 - `publication_scope._this_repo_ledger_files` drops a directory, or a symlink to a directory, without counting it.
 - A file is also unreadable when its read printed anything, because that reader prints the file's path.
@@ -406,10 +412,11 @@ takes the config root, the worktree paths, the window and the scanned session id
 - The row reduction and the supersession rule are in the module docstring. `docs/transcript-analysis.md`'s `reviewer-reads` section states them under "Review-ledger dispositions".
 - The module takes no transcript gap counter, so an unreadable ledger directory shows only as its `directory_state`.
 
-Imports, all by module (attribute access): `author_outcome`, `corpus` and `publication_scope`.
+Imports, all by module (attribute access): `author_outcome`, `corpus`, `publication_scope` and `review_ledger`.
 
 Cross-module private reads:
-- `author_outcome._read_ledger_rows_from_file`, its disposition and `carry` constants, `_SESSION_ID_PATTERN` and `_REVIEW_LEDGER_DIRNAME`;
+- `review_ledger._read_ledger_rows_from_file`, `_SESSION_ID_PATTERN`, `_DECODER_LIMIT_ERRORS` and `_REVIEW_LEDGER_DIRNAME`;
+- `author_outcome`'s disposition and `carry` constants;
 - `corpus._parse_ts`;
 - `publication_scope._this_repo_ledger_files` and `_GAP_LEDGER_DIR`.
 
@@ -934,7 +941,9 @@ docstrings for why `fake_projects` patches four `config_dir` bindings: `scope.co
 live in `tests/test_author_outcome.py`. Most exercise the package module directly through
 `from transcript_analysis import author_outcome as ao`. That alias is the exception to the
 unaliased rule, so the file is absent from `TEST_FILES`. A small `spec_from_file_location`-loaded
-shim copy is reserved for the argparse-wiring tests.
+shim copy is reserved for the argparse-wiring tests. `review_ledger.py`'s tests live in
+`tests/test_transcript_review_ledger.py` and `tests/test_transcript_review_ledger_decode_limits.py`.
+Both import `review_ledger` unaliased and are listed in `TEST_FILES`.
 
 `fake_projects`, `cost_ledger_file`, and `cost_ledger_enabled` patch the package modules directly, so a
 test file that uses them needs no `transcript-analysis.py` loader of its own.
