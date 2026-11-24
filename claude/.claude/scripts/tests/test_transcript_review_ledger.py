@@ -52,7 +52,10 @@ def _grow_keeping_mtime(ledger_path: Path, before: os.stat_result) -> None:
 
 def _rewrite_at_same_size_with_newer_mtime(ledger_path: Path, before: os.stat_result) -> None:
     """Change only the mtime half of the index signature."""
-    ledger_path.write_text(ledger_path.read_text().replace('"round": 1', '"round": 7'))
+    original_text = ledger_path.read_text()
+    rewritten_text = original_text.replace('"round": 1', '"round": 7')
+    assert rewritten_text != original_text
+    ledger_path.write_text(rewritten_text)
     os.utime(ledger_path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
 
 
@@ -186,6 +189,18 @@ class TestReadLedgerRowEntriesForSession:
             "row must still be returned"
         )
         assert any_file_found is True
+
+    def test_a_line_that_is_not_valid_utf8_is_skipped_like_a_malformed_line(self, tmp_path):
+        ledger_path = tmp_path / "0.sess-1.jsonl"
+        good_row = json.dumps(_ledger_row(round=1, disposition="DEFER")).encode()
+        ledger_path.write_bytes(
+            good_row + b"\n" + b'{"finding": "\xff\xfe torn"}\n' + b"{not json\n" + good_row + b"\n",
+        )
+
+        rows, opened = review_ledger._read_ledger_rows_from_file(ledger_path)
+
+        assert opened is True
+        assert len(rows) == 2
 
     def test_unreadable_ledger_path_returns_empty_list_and_is_not_found(self, tmp_path):
         """A directory where a ledger file is expected raises OSError
@@ -576,18 +591,6 @@ class TestLedgerIndex:
         index.refresh()
 
         assert index.entries_for_session("sess-1") == ([], False)
-
-    def test_a_line_that_is_not_valid_utf8_is_skipped_like_a_malformed_line(self, tmp_path):
-        ledger_path = tmp_path / "0.sess-1.jsonl"
-        good_row = json.dumps(_ledger_row(round=1, disposition="DEFER")).encode()
-        ledger_path.write_bytes(
-            good_row + b"\n" + b'{"finding": "\xff\xfe torn"}\n' + b"{not json\n" + good_row + b"\n",
-        )
-
-        rows, opened = review_ledger._read_ledger_rows_from_file(ledger_path)
-
-        assert opened is True
-        assert len(rows) == 2
 
     def test_an_index_shared_across_lookups_sees_a_new_file_and_appended_rows_and_parses_an_unchanged_file_once(
         self, tmp_path, monkeypatch,

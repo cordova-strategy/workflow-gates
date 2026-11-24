@@ -27,8 +27,9 @@ def _config_dir_root_for_session(jsonl: Path) -> Path:
     return jsonl.parent.parent.parent
 
 
-# json.loads raises these two, which are not decode errors, for an integer over the interpreter's digit limit
-# (ValueError) and for a line nested past the decoder's stack (RecursionError).
+# json.loads raises ValueError for an integer over the interpreter's digit limit. ValueError is also the base
+# of JSONDecodeError and UnicodeDecodeError. json.loads raises RecursionError for a line nested past the
+# decoder's stack.
 _DECODER_LIMIT_ERRORS = (ValueError, RecursionError)
 
 
