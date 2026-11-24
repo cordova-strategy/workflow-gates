@@ -972,30 +972,6 @@ def _main_thread_turns(records: list[dict]) -> list[tuple[int, str, int]]:
     return turns
 
 
-def _hook_denials_in_record(rec: dict) -> Iterable[tuple[str, str, str]]:
-    """(tool_use_id, hook name, message) for each hook denial in `rec`, in both transcript shapes."""
-    if rec.get("type") == "attachment":
-        denial = denials.hook_denial_key(rec)
-        if denial is None:
-            return
-        tool_use_id, attachment = denial
-        normalized = denials._normalize_blocking_error(attachment.get("blockingError"))
-        if isinstance(normalized, dict):
-            message = normalized.get("blockingError") or normalized.get("message") or str(normalized)
-        else:
-            message = str(normalized) if normalized else ""
-        hook_name = attachment.get("hookName")
-        yield tool_use_id, hook_name if isinstance(hook_name, str) else "", message if isinstance(message, str) else ""
-    elif rec.get("type") == "user":
-        for block in (rec.get("message") or {}).get("content") or []:
-            if not isinstance(block, dict) or block.get("type") != "tool_result":
-                continue
-            denial = denials.hook_denial_key(block)
-            if denial is not None:
-                denial_text = denial[1]
-                yield denial[0], "", denial_text if isinstance(denial_text, str) else ""
-
-
 def _main_thread_tool_use_ids(records: list[dict]) -> tuple[set[str], set[str]]:
     """(the ids of this session's main-thread tool_use blocks, those among them that are `Skill(code-review)` calls)."""
     tool_use_ids: set[str] = set()
@@ -1033,7 +1009,7 @@ def _record_routing_denies(scan: _ScanFacts, records: list[dict], record_branche
     for idx, rec in enumerate(records):
         if rec.get("isSidechain"):
             continue
-        for tool_use_id, hook_name, message in _hook_denials_in_record(rec):
+        for tool_use_id, hook_name, message in denials.hook_denials_in_record(rec):
             if denials._denial_hook_label(hook_name, message) != _ROUTING_DENY_LABEL:
                 continue
             if not isinstance(tool_use_id, str):
@@ -1081,6 +1057,10 @@ def _record_recorder_events(scan: _ScanFacts, records: list[dict]) -> None:
             events.lost_event_times.append(ts)
 
 
+# The recorded overhead definition counts a denied call as a round, so round detection here drops no block.
+_NO_DENIED_TOOL_USE_IDS: frozenset[str] = frozenset()
+
+
 def _opens_with_denied_skill(rec: dict, denied_tool_use_ids: Collection[str]) -> bool:
     return any(
         isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill"
@@ -1092,12 +1072,12 @@ def _opens_with_denied_skill(rec: dict, denied_tool_use_ids: Collection[str]) ->
 def _add_session_facts(scan: _ScanFacts, jsonl: Path, raw_records: list[dict]) -> None:
     """Nothing here keeps a reference to a record."""
     records = pricing.dedup_turns_by_request_id(raw_records)
-    windows = review_rounds.detect_round_windows(records)
+    windows = review_rounds.detect_round_windows(records, denied_tool_use_ids=_NO_DENIED_TOOL_USE_IDS)
     record_branches = review_rounds._session_record_branches(records, windows)
     _record_branch_activity(scan, records, record_branches)
     _record_recorder_events(scan, records)
-    denied_tool_use_ids = _record_routing_denies(scan, records, record_branches)
-    code_review_spans = dict(author_outcome._code_review_rounds(records))
+    routing_denied_ids = _record_routing_denies(scan, records, record_branches)
+    code_review_spans = dict(author_outcome._code_review_rounds(records, denied_tool_use_ids=_NO_DENIED_TOOL_USE_IDS))
     if not code_review_spans:
         return
 
@@ -1145,8 +1125,8 @@ def _add_session_facts(scan: _ScanFacts, jsonl: Path, raw_records: list[dict]) -
             later_turns=dict(Counter(model for _idx, model in outside_turns[first_later:])),
             overhead_tokens=entry["tokens"],
             degraded=entry["dangling"] > 0 or entry["invalid_usage_records"] > 0,
-            denied_open=_opens_with_denied_skill(open_rec, denied_tool_use_ids),
-            spawn_open=review_rounds.round_opened_by_spawn(open_rec),
+            denied_open=_opens_with_denied_skill(open_rec, routing_denied_ids),
+            spawn_open=review_rounds.round_opened_by_spawn(open_rec, denied_tool_use_ids=_NO_DENIED_TOOL_USE_IDS),
         ))
     if unreadable_counter[author_outcome._DQ_ORCHESTRATOR_TRANSCRIPT_UNREADABLE] > 0:
         for branch in round_branches:

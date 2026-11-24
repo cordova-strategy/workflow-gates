@@ -11,6 +11,7 @@ from transcript_analysis import author_outcome as ao
 from transcript_analysis import corpus, review_ledger
 
 from ._review_round_helpers import _MARKER_WRITE_COMMAND, _marker_write_use
+from ._routing_guard_helpers import _routing_deny_record
 from .conftest import (
     _agent_use,
     _asst,
@@ -2963,6 +2964,24 @@ class TestOrchestratorSpawnMarkerFacts:
 
         assert spawn.has_clean_marker_write is True
         assert spawn.has_confirmed_marker_write is expected_confirmed
+
+
+class TestCodeReviewRoundsDeniedCalls:
+    @staticmethod
+    def _denied_skill_then_launched_spawn() -> list[dict]:
+        return [
+            _asst("claude-sonnet-5", branch="feat", content=[_skill_block("s-denied", "code-review")]),
+            _routing_deny_record("s-denied", shape="legacy", branch="feat"),
+            _asst("claude-sonnet-5", branch="feat", content=[_agent_use("o1", _ORCHESTRATOR_AGENT_TYPE)]),
+        ]
+
+    def test_a_denied_skill_call_opens_no_round_by_default(self):
+        assert ao._code_review_rounds(self._denied_skill_then_launched_spawn()) == [(2, 3)]
+
+    def test_an_empty_denied_set_keeps_the_denied_skill_call_as_a_round(self):
+        records = self._denied_skill_then_launched_spawn()
+
+        assert ao._code_review_rounds(records, denied_tool_use_ids=frozenset()) == [(0, 2), (2, 3)]
 
 
 class TestOrchestratorUnreadableTranscriptCounter:

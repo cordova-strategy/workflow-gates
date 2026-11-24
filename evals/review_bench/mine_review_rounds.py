@@ -29,7 +29,7 @@ _SCRIPTS_DIR = _REPO_ROOT / "claude" / ".claude" / "scripts"
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from transcript_analysis import corpus, pricing, review_rounds, reviewer_yield, scope  # noqa: E402
+from transcript_analysis import corpus, denials, pricing, review_rounds, reviewer_yield, scope  # noqa: E402
 
 from review_bench import mine_szz  # noqa: E402
 from review_bench.defects import (  # noqa: E402
@@ -189,14 +189,15 @@ def _collect_round_entries(session_iter) -> list[_RoundEntry]:
     """
     entries: list[_RoundEntry] = []
     for jsonl, records in session_iter:
-        windows = review_rounds.detect_round_windows(records)
+        denied_tool_use_ids = denials.hook_denied_tool_use_ids(records)
+        windows = review_rounds.detect_round_windows(records, denied_tool_use_ids=denied_tool_use_ids)
         if not windows:
             continue
         branches = review_rounds._session_record_branches(records, windows)
         dispatch_index, _meta_errors = corpus._index_subagent_dispatches(jsonl)
         for window in windows:
             open_idx = window[0]
-            if review_rounds.round_opened_by_spawn(records[open_idx]):
+            if review_rounds.round_opened_by_spawn(records[open_idx], denied_tool_use_ids=denied_tool_use_ids):
                 continue
             ts = corpus._parse_ts(records[open_idx].get("timestamp"))
             entries.append(_RoundEntry(

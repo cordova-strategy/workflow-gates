@@ -1025,6 +1025,11 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 - **`_config.sh`'s two writers no longer replace a state path that is not absent or a readable regular file.**
   - **Cause:** `install.sh`'s opt-in prompt and `migrate-legacy-config.sh` both write through `_config.sh`, and an unreadable file or a dangling or looped symlink at the `claude-config.toml` path read as empty, so the rebuild replaced it with a new file.
   - **Behavior:** the writers now refuse and write nothing. The migrator's scaffold error for that case no longer suggests deleting the file, and its write warning names the unreadable and not-a-regular-file causes. `install.sh`'s opt-in prompt and the migrator now refuse a dangling or unresolvable symlink at the state path, where they used to replace it. `install.sh` prints its generic "could not write" line. `config-set.sh` exits 3 on it and writes nothing. The repair is to fix the path by hand and re-run.
+- **A call one of this repository's gates denied no longer counts as a review round.**
+  - **Cause:** detection read a call's `tool_use` block and never whether a hook denied it, so a routing-gate denial of `Skill(code-review)` and the `review-orchestrator` dispatch after it counted as two rounds.
+  - **Affected:** `review-round-cost`, `cost-counts` and the PR-body "Review rounds" table, `author-outcome`, `review-trace`'s round labels, `pr-cost`'s `review_rounds` cell and the review-bench miner. `routing-guard` still counts the denied call, and readers that count calls rather than rounds still count it.
+  - **Migration:** until the next `--record`, `review-cost-by-size` excludes every row recorded before this change. That run re-records each row whose surviving transcripts reproduce its figures (see `docs/pr-cost.md` § "The re-record contract"), and `review-cost-by-size` excludes the rest.
+  - **Re-runs:** a re-run over the same transcripts can give different figures than one made before this fix.
 - **`advance-past-commit-stall.sh` no longer misses a permission question on a later line of a multi-line final message.**
   - **Cause:** it read only the first line of `last_assistant_message`.
   - **Judgment:** it now reads the whole message and judges the last sentence of the last non-blank line, so a heading, bullets, then a closing "Should I push and open a PR?" fires.

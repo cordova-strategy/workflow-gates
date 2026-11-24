@@ -173,6 +173,7 @@ _ROUNDS_SCAN_START_STEM = "transcripts for review rounds..."
 _ROUNDS_PASS_FAILURE_STEM = "the review-round pass failed"
 _ROUNDS_PER_PR_STEM = ": review rounds "
 _FORCE_REFUSAL_STEM = "refusing --force -- the new row would lose captured review rounds"
+_UNFORCED_REFUSAL_STEM = "refusing to re-record"
 _UPGRADE_NOTICE_STEM = "pr-cost: upgraded "
 _UPGRADE_NOTICE_FRAGMENT = (
     "to the current header -- older claude-config checkouts refuse this file until they are updated,"
@@ -201,6 +202,10 @@ def _rounds_per_pr_line(pr_number: int, reason: str) -> str:
 
 def _force_refusal_line(pr_number: int, machine: str, reason: str) -> str:
     return f"pr-cost:   PR #{pr_number} for machine={machine}: {_FORCE_REFUSAL_STEM} ({reason}); see docs/pr-cost.md"
+
+
+def _unforced_refusal_line(pr_number: int, machine: str, reason: str) -> str:
+    return f"pr-cost:   PR #{pr_number} for machine={machine}: {_UNFORCED_REFUSAL_STEM} ({reason}); see docs/pr-cost.md"
 
 
 _SEEDED_MACHINE_IDENTITY = "c0ffee01"  # _enable_pr_cost's default identity, so a seeded row shares the run's key
@@ -731,7 +736,8 @@ def _write_ledger_row_on_lock_acquire(monkeypatch, ledger_path: Path, row: dict,
         nonlocal acquire_count
         acquire_count += 1
         if acquire_count == acquire_ordinal:
-            pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [row])
+            prior_rows, _header_is_current = pr_cost_ledger._read_prior_pr_cost_ledger(ledger_path)
+            pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [*prior_rows, row])
         real_acquire(lock_f)
 
     monkeypatch.setattr(pr_cost_ledger, "_acquire_pr_cost_ledger_lock", acquiring_after_a_concurrent_record)

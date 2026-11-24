@@ -147,6 +147,7 @@ _REVIEW_BENCH_SCRIPTS_DEPENDENCIES: frozenset[str] = frozenset({
     "claude/.claude/scripts/_config_dir.py",
     "claude/.claude/scripts/transcript_analysis/__init__.py",
     "claude/.claude/scripts/transcript_analysis/corpus.py",
+    "claude/.claude/scripts/transcript_analysis/denials.py",
     "claude/.claude/scripts/transcript_analysis/pricing.py",
     "claude/.claude/scripts/transcript_analysis/redaction.py",
     "claude/.claude/scripts/transcript_analysis/render.py",

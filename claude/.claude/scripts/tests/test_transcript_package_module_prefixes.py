@@ -88,6 +88,7 @@ TEST_FILES = (
     "test_transcript_cache_rebuild_ttl_accumulation.py",
     "test_transcript_cache_rebuild_ttl_footing.py",
     "test_transcript_denials.py",
+    "test_transcript_denials_tool_use_ids.py",
     "test_transcript_gh_cli.py",
     "test_transcript_pr_cost.py",
     "test_transcript_pr_cost_read_mode.py",

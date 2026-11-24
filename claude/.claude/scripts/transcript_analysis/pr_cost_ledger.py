@@ -602,11 +602,13 @@ def _append_pr_cost_ledger_row(existing_rows: list[dict], new_row: dict, already
     """Append new_row to existing_rows, keyed by (host, repo, pr_number, machine).
 
     Unlike the weekly ledger's in-place replace, a duplicate key with
-    --force APPENDS a new row (carrying new_row["supersedes"], already set
+    `force` set APPENDS a new row (carrying new_row["supersedes"], already set
     by the caller to the prior latest row's own captured_at) rather than
     overwriting -- this ledger is append-only by design, so a correction
     keeps the full history instead of losing everything before the latest
-    edit. Refuses (raises ValueError) on a duplicate key without --force. `already`
+    edit. `force` is the caller's overwrite decision: --force, or an unforced
+    re-record the caller has judged to reproduce an older rule's row.
+    Refuses (raises ValueError) on a duplicate key when `force` is unset. `already`
     is the caller's own _latest_pr_cost_row lookup, passed in rather than
     re-derived here so there is one call site for that lookup per write.
     """

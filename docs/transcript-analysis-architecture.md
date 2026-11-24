@@ -259,7 +259,7 @@ per-branch review-round-window detection across three invocation shapes (the `Sk
 subagent dollar attribution via `corpus._index_subagent_dispatches`' toolUseId join (`compute_review_round_costs`). Also exports `compute_review_round_counts`, a
 count-only sibling reusing the same detection helpers to produce per-skill round counts with no
 pricing, no dispatch index, and no recursion — `subagent_mix.py`'s `cmd_cost_counts` calls it as
-`review_rounds.compute_review_round_counts` for the `### Review rounds` half of its output. Imports `corpus`, `pricing`, `redaction`, `render`,
+`review_rounds.compute_review_round_counts` for the `### Review rounds` half of its output. Imports `corpus`, `denials`, `pricing`, `redaction`, `render`,
 `scope`, and `session_pricing` all by module (attribute access), matching `cost.py`'s convention — deliberately no
 `cost.py` import: a round's own branch is its opening record's own `gitBranch`, carried forward
 when absent and passed through `scope._attribute_carried_branch`, and every record inside that round's
@@ -339,10 +339,9 @@ Hook-denial detection and classification, with no dependency on any `cmd_*` func
 current-format `is_error` `tool_result`), the label/cause/command-shape classifiers
 (`_denial_hook_label`, `_denial_cause_kind`, `_denial_command_shape`), and `toolDenialKind`
 non-gate-friction classification (`_is_nongate_friction_kind`, `_friction_kind_label`). A leaf:
-imports `corpus` and `render` by module (attribute access), matching `cost.py`'s convention —
-`corpus._parse_ts` for the module-level `_TOOL_DENIAL_KIND_REGIME_START_TS` constant,
-`render._content_text` for `hook_denial_key`'s current-shape decode. `turn_shape.py` reads
-`_drop_denial_command_flag_values` as `denials._drop_denial_command_flag_values`. `friction_count.py` reads `hook_denial_key` as `denials.hook_denial_key`.
+imports `corpus`, `pricing`, and `render` by module (attribute access), matching `cost.py`'s
+convention. `turn_shape.py` reads
+`_drop_denial_command_flag_values` as `denials._drop_denial_command_flag_values`. `friction_count.py` reads `hook_denial_key` as `denials.hook_denial_key`. `review_rounds.py` reads `hook_denied_tool_use_ids` as `denials.hook_denied_tool_use_ids`. `routing_guard.py` reads `hook_denials_in_record` as `denials.hook_denials_in_record`.
 
 ### `review_trace.py`
 

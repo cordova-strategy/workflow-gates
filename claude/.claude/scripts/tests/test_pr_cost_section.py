@@ -139,7 +139,7 @@ _EXPECTED_COST_BLOCK_COMBINED_ZERO_STATE = (
     "### Review rounds\n"
     "\n"
     "Each invocation of a review skill, and each main-thread `review-orchestrator` dispatch, is one"
-    " round, whether or not it produced findings."
+    " round, whether or not it produced findings, unless a gate denied it."
     " Counts reflect this section's last render; a review round that ran afterward may not"
     " be included yet.\n"
     "\n"
@@ -316,7 +316,8 @@ def _fake_transcript_analysis_source_combined_zero_state() -> str:
             print()
             print(
                 "Each invocation of a review skill, and each main-thread `review-orchestrator`"
-                " dispatch, is one round, whether or not it produced findings. Counts reflect"
+                " dispatch, is one round, whether or not it produced findings, unless a gate"
+                " denied it. Counts reflect"
                 " this section's last render; a review round that ran afterward may not be"
                 " included yet."
             )

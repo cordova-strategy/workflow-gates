@@ -9,7 +9,7 @@ shapes: the `Skill` tool_use, the `/slash` tag, and an `Agent`/`Task` spawn of
 an agent type in _ROUND_OPEN_AGENT_SKILLS. It attributes each round's dollars
 recursively, via corpus._index_subagent_dispatches' toolUseId join.
 
-Imports corpus, pricing, redaction, render, scope, and session_pricing by
+Imports corpus, denials, pricing, redaction, render, scope, and session_pricing by
 module (attribute access, not by name) — see scope.py's own top-of-file comment for why.
 
 This module never imports cost.py. A round's own branch is the opening
@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from _config_dir import declared_roots_file_is_overridden
-from transcript_analysis import corpus, pricing, redaction, render, scope, session_pricing
+from transcript_analysis import corpus, denials, pricing, redaction, render, scope, session_pricing
 
 # The three review-loop skills a round opens on.
 REVIEW_SKILLS: tuple[str, ...] = ("code-review", "plan-review", "ready-for-review")
@@ -45,10 +45,11 @@ _REVIEW_SKILL_SET: frozenset[str] = frozenset(REVIEW_SKILLS)
 
 # Stamped into pr-cost ledger review_rounds cells; bump it with any change to which records open a round, where a
 # window ends, which branch a round goes to, or which turns and dispatches it prices. ledger_rounds excludes every
-# cell stamped with another value, so a bump drops every older row from its reports. A forced re-capture cannot restore
-# a row whose sessions have all aged out, and restores a partly aged one undercounted;
-# see `docs/pr-cost.md` § "The re-record contract".
-REVIEW_ROUND_RULE: int = 1
+# cell stamped with another value, so a bump drops every older row from its reports. Changing denials.py's
+# _HOOK_DENIAL_SIGNATURE or _DENIAL_HOOK_NAME_PATTERNS, or removing or renaming a _DENIAL_HOOK_LABELS entry, also bumps
+# it, because each changes which calls read as denied. A forced re-capture cannot restore a row whose sessions have all
+# aged out, and restores a partly aged one undercounted; see `docs/pr-cost.md` § "The re-record contract".
+REVIEW_ROUND_RULE: int = 2
 
 
 # Opens a /slash invocation's <command-name> tag; also the cheap substring pre-check before the pattern below runs.
@@ -139,9 +140,17 @@ def _spawn_block_round_skill(blocks: list) -> str | None:
     return None
 
 
-def _round_open_skill(rec: dict) -> str | None:
+def _without_denied_blocks(blocks: list, denied_tool_use_ids: frozenset[str]) -> list:
+    """`blocks` less the content blocks whose `id` a gate denied."""
+    return [
+        block for block in blocks
+        if not (isinstance(block, dict) and isinstance(block.get("id"), str) and block["id"] in denied_tool_use_ids)
+    ]
+
+
+def _round_open_skill(rec: dict, denied_tool_use_ids: frozenset[str]) -> str | None:
     """The REVIEW_SKILLS member this main-thread record opens a round for,
-    or None.
+    or None. A `Skill` or spawn block whose id is in `denied_tool_use_ids` opens nothing.
 
     Three invocation shapes: a `Skill` tool_use's input.skill, a `/slash` user
     record's <command-name> tag, and an Agent/Task spawn block of an agent type
@@ -163,7 +172,7 @@ def _round_open_skill(rec: dict) -> str | None:
         return None
     rtype = rec.get("type")
     if rtype == "assistant":
-        blocks = _assistant_content_blocks(rec)
+        blocks = _without_denied_blocks(_assistant_content_blocks(rec), denied_tool_use_ids)
         return _skill_block_round_skill(blocks) or _spawn_block_round_skill(blocks)
     if rtype == "user":
         # A review slash tag quoted as prose inside a fresh human prompt can still open a round,
@@ -180,9 +189,10 @@ def _round_open_skill(rec: dict) -> str | None:
     return None
 
 
-def round_opened_by_spawn(rec: dict) -> bool:
+def round_opened_by_spawn(rec: dict, *, denied_tool_use_ids: frozenset[str]) -> bool:
     """True iff this record opens its round through a spawn block rather than
     a `Skill` block, the same per-record order _round_open_skill applies.
+    Blocks whose id is in `denied_tool_use_ids` are ignored, as there.
 
     Public (no leading underscore): the review-bench miner skips such a round,
     and routing_guard.py reads it as that round's spawn_open flag. Both must
@@ -190,13 +200,19 @@ def round_opened_by_spawn(rec: dict) -> bool:
     """
     if rec.get("isSidechain") or rec.get("type") != "assistant":
         return False
-    blocks = _assistant_content_blocks(rec)
+    blocks = _without_denied_blocks(_assistant_content_blocks(rec), denied_tool_use_ids)
     return _skill_block_round_skill(blocks) is None and _spawn_block_round_skill(blocks) is not None
 
 
-def detect_round_windows(records: list[dict]) -> list[tuple[int, int, str]]:
+def detect_round_windows(
+    records: list[dict], *, denied_tool_use_ids: frozenset[str] | None = None,
+) -> list[tuple[int, int, str]]:
     """Every (open_idx, window_end, skill) round window in one session's
     (already deduped) records. A record flagged isSidechain never opens a round.
+
+    A call whose id is in `denied_tool_use_ids` neither opens a round nor ends
+    the window before it; None computes the set with denials.hook_denied_tool_use_ids,
+    and an empty set keeps every call.
 
     Re-expresses judgment_pair.cmd_judgment_pair's boundary rule. window_end
     is the index of the next fresh user prompt or the next round-open record,
@@ -217,10 +233,12 @@ def detect_round_windows(records: list[dict]) -> list[tuple[int, int, str]]:
     cmd_judgment_pair keeps its own `Skill`-only matcher, so it deliberately
     does not open a round on a spawn block.
     """
+    if denied_tool_use_ids is None:
+        denied_tool_use_ids = denials.hook_denied_tool_use_ids(records)
     n = len(records)
     windows: list[tuple[int, int, str]] = []
     for idx, rec in enumerate(records):
-        skill = _round_open_skill(rec)
+        skill = _round_open_skill(rec, denied_tool_use_ids)
         if skill is None:
             continue
         window_end = n
@@ -229,7 +247,7 @@ def detect_round_windows(records: list[dict]) -> list[tuple[int, int, str]]:
             if render._is_fresh_user_prompt(scan_rec):
                 window_end = scan_idx
                 break
-            if _round_open_skill(scan_rec) is not None:
+            if _round_open_skill(scan_rec, denied_tool_use_ids) is not None:
                 window_end = scan_idx
                 break
         windows.append((idx, window_end, skill))

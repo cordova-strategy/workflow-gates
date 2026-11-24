@@ -475,6 +475,24 @@ def _review_rounds_force_refusal(
     return None
 
 
+def _reproduces_older_rule_row(prior_row: dict | None, agg: dict | None, fresh_status: str) -> bool:
+    """Whether a plain --record may re-record `prior_row`; the conditions are in docs/pr-cost.md § "The re-record contract"."""
+    if prior_row is None or agg is None:
+        return False
+    prior_cell = prior_row["review_rounds"]
+    if prior_cell is None or prior_cell["rule"] >= review_rounds.REVIEW_ROUND_RULE:
+        return False
+    if prior_row["session_count"] != len(agg["sessions"]) or prior_row["turn_count"] != agg["turn_count"]:
+        return False
+    if any(prior_row[f"{token_class}_tokens"] != agg["tokens"][token_class] for token_class in pricing._TOKEN_CLASSES):
+        return False
+    captured_ts = corpus._parse_ts(prior_row["captured_at"])
+    # Narrows the parsed timestamp for the type checker; a ledger-parsed row's captured_at never parses to None.
+    if captured_ts is None or agg["last_activity_ts"] > captured_ts:
+        return False
+    return fresh_status == pr_cost_ledger._PR_COST_STATUS_OK or prior_row["status"] != pr_cost_ledger._PR_COST_STATUS_OK
+
+
 def _review_rounds_degrade_reason(absence: str | None, build_error_class: str | None) -> str | None:
     if absence is None or absence in _QUIET_ROUNDS_ABSENCES:
         return None
@@ -690,10 +708,11 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
     network failures degrade that branch's row instead of aborting), and the
     ledger read/print/write -- loops once per resolved root.
 
-    A --record row whose model_breakdown fails _check_model_breakdown_cell is
-    still written, with an empty cell.
+    A first --record row, or a --force one, whose model_breakdown fails
+    _check_model_breakdown_cell is still written, with an empty cell.
     A row whose review_rounds cell is empty because the round pass or the
     cell's check failed is likewise still written, with the empty cell.
+    A re-record without --force skips instead of writing either empty cell.
     After that row's write, the loop prints a per-PR line for each degraded
     cell.
     A ledger rewritten from an older header prints one upgrade notice.
@@ -1026,9 +1045,12 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
 
             # A hint only: the locked check below stays authoritative, so a row a concurrent --record appended since is
             # still caught.
-            if not force and pr_cost_ledger._latest_pr_cost_row(
+            hint_row = pr_cost_ledger._latest_pr_cost_row(
                 existing_rows, corpus_host, pinned_repo, resolved_pr["number"], machine_identity
-            ) is not None:
+            )
+            if hint_row is not None and not (
+                force or _reproduces_older_rule_row(hint_row, branch_totals.get(branch), row_status)
+            ):
                 _print_already_captured(resolved_pr["number"], machine_identity)
                 if target_pr is not None and not all_accounts:
                     sys.exit(1)
@@ -1053,7 +1075,10 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     already = pr_cost_ledger._latest_pr_cost_row(
                         current_rows, corpus_host, pinned_repo, resolved_pr["number"], machine_identity
                     )
-                    if already is not None and not force:
+                    overwrite_captured = force or _reproduces_older_rule_row(
+                        already, branch_totals.get(branch), row_status,
+                    )
+                    if already is not None and not overwrite_captured:
                         _print_already_captured(resolved_pr["number"], machine_identity)
                         if target_pr is not None and not all_accounts:
                             sys.exit(1)
@@ -1114,23 +1139,36 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     except _ModelBreakdownCheckError as exc:
                         failed_breakdown_check = exc
                         new_row["model_breakdown"] = None
-                    if force and already is not None:
+                    if overwrite_captured and already is not None:
                         refusal_reason = _review_rounds_force_refusal(
                             already["review_rounds"], review_rounds_cell, rounds_absence, rounds_build_error_class,
                         )
+                        if refusal_reason is None and not force and failed_breakdown_check is not None:
+                            refusal_reason = f"the per-model breakdown failed its {failed_breakdown_check.rule} check"
                         if refusal_reason is not None:
-                            print(
-                                f"pr-cost:   PR #{resolved_pr['number']} for machine={machine_identity}: refusing --force"
-                                f" -- the new row would lose captured review rounds ({refusal_reason});"
-                                " see docs/pr-cost.md",
-                                file=sys.stderr,
-                            )
+                            if force:
+                                print(
+                                    f"pr-cost:   PR #{resolved_pr['number']} for machine={machine_identity}: refusing --force"
+                                    f" -- the new row would lose captured review rounds ({refusal_reason});"
+                                    " see docs/pr-cost.md",
+                                    file=sys.stderr,
+                                )
+                            else:
+                                # A skipped row stays below the rule, so every plain --record retries it and pays one round scan.
+                                print(
+                                    f"pr-cost:   PR #{resolved_pr['number']} for machine={machine_identity}:"
+                                    f" refusing to re-record ({refusal_reason}); see docs/pr-cost.md",
+                                    file=sys.stderr,
+                                )
                             if target_pr is not None and not all_accounts:
                                 sys.exit(1)
-                            force_refused = True
+                            if force:
+                                force_refused = True
                             continue
                     try:
-                        updated_rows = pr_cost_ledger._append_pr_cost_ledger_row(current_rows, new_row, already, force)
+                        updated_rows = pr_cost_ledger._append_pr_cost_ledger_row(
+                            current_rows, new_row, already, overwrite_captured,
+                        )
                     except ValueError as exc:
                         print(f"pr-cost: {exc}", file=sys.stderr)
                         sys.exit(1)

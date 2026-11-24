@@ -24,7 +24,7 @@ import _config
 import _config_dir
 import pytest
 from helpers import REPO_ROOT, add_linked_worktree, heading_texts, normalize_heading
-from transcript_analysis import ledger_common, pricing, review_trace, routing_guard, scope
+from transcript_analysis import ledger_common, pricing, routing_guard, scope
 
 from ._pr_cost_helpers import _enable_pr_cost
 from ._review_round_corpus_helpers import (
@@ -81,7 +81,6 @@ from .conftest import (
     _compact_boundary_rec,
     _declared_deny_gate_label,
     _hook_deny,
-    _hook_deny_current,
     _init_repo,
     _priced,
     _skill_block,
@@ -1627,25 +1626,6 @@ class TestDenyExtraction:
 
         assert len(scan.denies) == 1
 
-    @pytest.mark.parametrize("denial_record", [
-        pytest.param(_routing_deny_record("deny-legacy", shape="legacy", ts=_ts(1)), id="attachment-with-a-dict-error"),
-        pytest.param(_hook_deny("alpha-gate", stringified=True, ts=_ts(1)), id="attachment-with-a-stringified-error"),
-        pytest.param(_routing_deny_record("deny-current", shape="current", ts=_ts(1)), id="is-error-tool-result"),
-        pytest.param(
-            _hook_deny_current("Blocked by alpha gate: body", tool_id="deny-other", ts=_ts(1)), id="other-gate-tool-result",
-        ),
-    ])
-    def test_a_denial_record_carries_the_same_tool_use_id_hook_name_and_message_as_in_review_trace(self, denial_record):
-        records = [_asst(_SONNET, branch=_BRANCH, ts=_ts(0)), denial_record]
-
-        events, _tool_use_commands, _pre_regime = review_trace._review_trace_session_events(records, None, None, None)
-
-        trace_denials = [
-            (event["tool_use_id"], event["hook_name"], event["message"]) for event in events if event["kind"] == "denial"
-        ]
-        assert len(trace_denials) == 1
-        assert list(routing_guard._hook_denials_in_record(denial_record)) == trace_denials
-
     def test_a_deny_repeated_in_a_second_session_is_counted_once(self, tmp_path):
         scan = routing_guard._ScanFacts()
         records = [_denied_skill_call("deny-1"), _routing_deny_record("deny-1", branch=_BRANCH, ts=_ts(1))]
@@ -1668,6 +1648,21 @@ class TestDenyExtraction:
         ]
         assert len(scan.denies) == 1
         assert [round_facts.denied_open for round_facts in skill_opens_of_second_session] == [True]
+
+    def test_a_round_opened_by_a_gate_denied_orchestrator_spawn_still_counts_as_spawn_open(self, tmp_path):
+        """routing-guard keeps its recorded overhead definition, which counts a denied call as a round."""
+        scan = routing_guard._ScanFacts()
+        records = [
+            _priced(
+                _SONNET, input=1_000, branch=_BRANCH, ts=_ts(0),
+                content=[_agent_use("deny-spawn", "review-orchestrator")],
+            ),
+            _routing_deny_record("deny-spawn", shape="legacy", branch=_BRANCH, ts=_ts(1)),
+        ]
+
+        routing_guard._add_session_facts(scan, tmp_path / "s.jsonl", records)
+
+        assert [round_facts.spawn_open for round_facts in scan.rounds_by_branch[_BRANCH]] == [True]
 
     @pytest.mark.parametrize("answered_call", [
         pytest.param(_bash_use("deny-1", "pytest hooks/tests"), id="a-bash-result-carrying-the-gate-wording"),

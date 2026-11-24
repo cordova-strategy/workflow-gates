@@ -220,7 +220,7 @@ def _round_has_marker_write(
     )
 
 
-def _code_review_rounds(records: list[dict]) -> list[tuple[int, int]]:
+def _code_review_rounds(records: list[dict], denied_tool_use_ids: frozenset[str] | None = None) -> list[tuple[int, int]]:
     """Every code-review round's (open_idx, span_end) in one session's
     already-deduped, main-thread records.
 
@@ -231,7 +231,9 @@ def _code_review_rounds(records: list[dict]) -> list[tuple[int, int]]:
     review and its marker write must not end the round's own outcome span).
     """
     opens = [
-        open_idx for open_idx, _window_end, skill in review_rounds.detect_round_windows(records)
+        open_idx for open_idx, _window_end, skill in review_rounds.detect_round_windows(
+            records, denied_tool_use_ids=denied_tool_use_ids,
+        )
         if skill == _CODE_REVIEW_SKILL
     ]
     return [
