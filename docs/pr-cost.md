@@ -300,11 +300,17 @@ A refusal prints this to stderr, and the ledger stays unchanged:
 pr-cost:   PR #<a> for machine=<m>: refusing --force -- the new row would lose captured review rounds (<reason>); see docs/pr-cost.md
 ```
 
-A single-account `--pr` run exits 1 at once. Under `--all-accounts`, that account skips the PR, and an account that records no row counts as skipped in the summary, as other skips do. The run then exits 1 after its summary and any count line. Without `--force`, a re-record under the exception prints `refusing to re-record (<reason>)` in place of the line above. There `<reason>` can also be a failed per-model breakdown check. The ledger stays unchanged, and the exit matches the already-captured skip: a single-account `--pr` run exits 1, and any other run exits 0. The `--force --pr N` steps in the reason bullets below apply only under `--force`.
+A single-account `--pr` run exits 1 at once. Under `--all-accounts`, that account skips the PR, and an account that records no row counts as skipped in the summary, as other skips do. The run then exits 1 after its summary and any count line.
+
+A refused re-record under the exception, run without `--force`:
+- prints `refusing to re-record (<reason>)` in place of the line above;
+- takes one more `<reason>`, a failed per-model breakdown check;
+- leaves the ledger unchanged;
+- exits as the already-captured skip does: 1 for a single-account `--pr` run, otherwise 0.
 
 The guard has no override, so it also blocks a re-capture meant to heal a degraded `status` whenever that would lose rounds. A higher-rule re-capture over partly aged transcripts passes, leaving the prior series only in the superseded row, and prints no notice.
 
-Each `<reason>` has a next step, and none is a hand edit (see "Data"):
+Each `<reason>` has a next step, and none is a hand edit (see "Data"). The `--force --pr N` steps apply only under `--force`:
 - `the review-round pass failed`: follow the remedy under "Write-time check failures". The captured row stays current, so repeat the same `--force --pr N` once the cause is fixed, inside `cleanupPeriodDays`.
 - `the new cell failed its <rule> check`: the captured row stays current. For `build`, the reason ends with the exception's class name, as the per-PR line does, and never its message. Repeat the re-record once the cause is fixed. The "After an exit 1 for a `review_rounds` check failure" bullets under "Write-time check failures" say which rules are transcript-caused and which are defects to report.
 - `this branch has no local transcript activity`: either the sessions aged out or ran on another machine, so a re-capture here would understate the scalars too and the captured row should stay, or this run's `--projects` or `--this-repo` scope is narrower than the original capture's, so repeat the original scope flags.

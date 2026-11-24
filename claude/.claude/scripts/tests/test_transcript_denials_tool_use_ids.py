@@ -130,7 +130,11 @@ class TestHookDeniedToolUseIds:
         ),
         pytest.param(
             [_launch("deny-subagent-stop"), _legacy_denial("deny-subagent-stop", hookEvent="SubagentStop")],
-            id="a-legacy-attachment-naming-another-event",
+            id="a-legacy-attachment-naming-the-subagent-stop-event",
+        ),
+        pytest.param(
+            [_launch("deny-stop"), _legacy_denial("deny-stop", hookEvent="Stop")],
+            id="a-legacy-attachment-naming-the-stop-event",
         ),
         pytest.param(
             [_launch("unjoined-call"), _legacy_denial("", toolUseID=None)],
@@ -186,7 +190,8 @@ class TestHookDeniedToolUseIds:
     def test_a_denied_call_that_is_neither_a_skill_nor_a_spawn_is_not_collected(self, denial_record):
         launch = _asst(_SONNET, branch=_BRANCH, content=[_bash_use("bash-call", "git status")])
 
-        assert denials.hook_denied_tool_use_ids([launch, denial_record]) == frozenset()
+        # The Skill launch keeps the candidate set non-empty so the join check runs.
+        assert denials.hook_denied_tool_use_ids([_launch("skill-call"), launch, denial_record]) == frozenset()
 
     def test_the_denial_text_of_a_result_joining_no_skill_or_spawn_is_never_matched(self, monkeypatch):
         def fail_on_any_match(item):
