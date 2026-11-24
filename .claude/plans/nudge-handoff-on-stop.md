@@ -6,16 +6,14 @@
 session's carried context crosses 60% of the resolved model's context
 window, but it only checks on `UserPromptSubmit` — so a session that crosses
 the threshold on its own final assistant turn, with no further user prompt,
-gets no warning at all. An ad-hoc query over this machine's 307 main-session
-transcripts (`~/.claude/projects/*/*.jsonl`, script left at
-`/private/tmp/claude-501/-Users-jared-MyCode-claude-config/138b05bb-6f1f-4354-aef9-a70fe273da92/scratchpad/nudge_trigger_gap.py`,
-reusing the hook's own model-window table from commit `d9bd16e`) found 18 of
-299 usage-bearing sessions crossed the threshold at some point; of those, 2
-(11.1%) crossed on their final turn with no subsequent prompt — sessions the
-current design structurally cannot reach. The other 16 (88.9%) had a later
-prompt and so had a chance to fire, possibly delayed by one turn. This is a
-small sample (n=18 crossers); the plan treats it as directional evidence of
-a real gap, not a precise rate. The intended outcome is closing that
+gets no warning at all. An ad-hoc query over the author's local main-session
+transcripts (`~/.claude/projects/*/*.jsonl`, reusing the hook's own
+model-window table from commit `d9bd16e`) found that a small minority of
+sessions crossed the threshold at some point, and that a few of those crossed
+on their final turn with no subsequent prompt — sessions the current design
+structurally cannot reach. Most crossers had a later prompt and so had a
+chance to fire, possibly delayed by one turn. The sample of crossers is small;
+the plan treats it as directional evidence of a real gap, not a precise rate. The intended outcome is closing that
 specific gap: the same nudge, checked at one more point in the turn cycle,
 with no change to its threshold, marker, or message logic.
 
