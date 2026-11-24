@@ -1,0 +1,23 @@
+{
+ "packet_id": "p005",
+ "a": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/, which this repo cannot change; a different transform would stop matching the real dirs.\"\"\"`"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/, which this repo cannot change; a different transform would stop matching the real dirs.\"\"\"`"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/, which this repo cannot change; a different transform would stop matching the real dirs.\"\"\"`"
+ },
+ "d": {
+  "pass": false,
+  "evidence": "a different transform would stop matching the real dirs.\"\"\"`"
+ },
+ "e": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/, which this repo cannot change; a different transform would stop matching the real dirs.\"\"\"`"
+ }
+}

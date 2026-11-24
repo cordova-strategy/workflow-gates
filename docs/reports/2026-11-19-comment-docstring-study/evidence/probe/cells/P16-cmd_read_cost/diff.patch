@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/read_cost.py b/claude/.claude/scripts/transcript_analysis/read_cost.py
+--- a/claude/.claude/scripts/transcript_analysis/read_cost.py
++++ b/claude/.claude/scripts/transcript_analysis/read_cost.py
+@@ -411,6 +411,7 @@
+ 
+ 
+ def cmd_read_cost(args: argparse.Namespace) -> None:
++    """See docs/transcript-analysis.md's `read-cost` section for the flags, the unit, and the publication scope."""
+     _read_cost_report(args, _read_cost_roots())
+ 
+ 

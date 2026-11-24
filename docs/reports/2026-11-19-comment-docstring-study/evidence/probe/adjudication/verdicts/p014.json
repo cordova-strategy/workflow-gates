@@ -1,0 +1,23 @@
+{
+ "packet_id": "p014",
+ "a": {
+  "pass": true,
+  "evidence": "\"\"\"Reproduce Claude Code's naming of each project dir under ~/.claude/projects/."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Reproduce Claude Code's naming of each project dir under ~/.claude/projects/."
+ },
+ "c": {
+  "pass": true,
+  "evidence": "The format is fixed by Claude Code, not by this repository."
+ },
+ "d": {
+  "pass": true,
+  "evidence": "\"\"\"Reproduce Claude Code's naming of each project dir under ~/.claude/projects/."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Reproduce Claude Code's naming of each project dir under ~/.claude/projects/."
+ }
+}

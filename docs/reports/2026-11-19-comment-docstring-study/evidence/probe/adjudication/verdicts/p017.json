@@ -1,0 +1,23 @@
+{
+ "packet_id": "p017",
+ "a": {
+  "pass": false,
+  "evidence": "Required property: delete the \"If cost --by-project ... re-evaluate\" sentence."
+ },
+ "b": {
+  "pass": false,
+  "evidence": "The result is one sentence: a project whose own name contains `--claude-worktrees-` merges into the family before it, and that is accepted because <reason>."
+ },
+ "c": {
+  "pass": false,
+  "evidence": "Required property: delete the \"If cost --by-project ... re-evaluate\" sentence."
+ },
+ "d": {
+  "pass": false,
+  "evidence": "for example that real project names are not expected to contain `--claude-worktrees-`."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "The result is one sentence: a project whose own name contains `--claude-worktrees-` merges into the family before it, and that is accepted because <reason>."
+ }
+}

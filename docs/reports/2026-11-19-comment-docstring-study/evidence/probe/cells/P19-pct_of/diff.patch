@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/render.py b/claude/.claude/scripts/transcript_analysis/render.py
+--- a/claude/.claude/scripts/transcript_analysis/render.py
++++ b/claude/.claude/scripts/transcript_analysis/render.py
+@@ -82,6 +82,7 @@
+ 
+ 
+ def _pct_of(value: float, total: float) -> str:
++    """value/total as a percentage string; 0.0% (not an undefined dash) when total is zero."""
+     return _fmt_pct(_pct_value(value, total))
+ 
+ 

@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/period_cost.py b/claude/.claude/scripts/transcript_analysis/period_cost.py
+--- a/claude/.claude/scripts/transcript_analysis/period_cost.py
++++ b/claude/.claude/scripts/transcript_analysis/period_cost.py
+@@ -1448,6 +1448,7 @@
+ 
+ 
+ def _render_sample() -> str:
++    """The synthetic report `--sample` prints and the docs show; it reads no transcript and runs no subprocess."""
+     return _render_slack_report(_SAMPLE_GROUPS, _ReportFlags(), _SAMPLE_WINDOW, _SAMPLE_RUN_DATE)
+ 
+ 

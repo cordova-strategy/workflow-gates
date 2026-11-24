@@ -1,0 +1,14 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/author_outcome.py b/claude/.claude/scripts/transcript_analysis/author_outcome.py
+--- a/claude/.claude/scripts/transcript_analysis/author_outcome.py
++++ b/claude/.claude/scripts/transcript_analysis/author_outcome.py
+@@ -300,6 +300,10 @@
+ 
+ 
+ def _list_ledger_files(ledger_dir: Path) -> list[Path]:
++    """Every ledger file directly under ledger_dir, sorted by filename for a
++    deterministic read order. [] when the directory does not exist. This is
++    the index's only directory listing, so a test can stand in for a file
++    that vanishes between the listing and the read."""
+     return sorted(ledger_dir.glob("*.jsonl"))
+ 
+ 

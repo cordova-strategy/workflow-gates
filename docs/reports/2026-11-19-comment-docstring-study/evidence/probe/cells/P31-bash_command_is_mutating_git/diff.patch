@@ -1,0 +1,13 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/turn_shape.py b/claude/.claude/scripts/transcript_analysis/turn_shape.py
+--- a/claude/.claude/scripts/transcript_analysis/turn_shape.py
++++ b/claude/.claude/scripts/transcript_analysis/turn_shape.py
+@@ -59,6 +59,9 @@
+ 
+ 
+ def _bash_command_is_mutating_git(command: str) -> bool:
++    """Return True iff any &&/;/|/||-chained segment of `command` invokes a
++    mutating git subcommand (see _command_segment_is_mutating_git).
++    """
+     return any(
+         _command_segment_is_mutating_git(segment)
+         for segment in corpus.split_command_segments(command)

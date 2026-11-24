@@ -1,0 +1,23 @@
+{
+ "packet_id": "p020",
+ "a": {
+  "pass": true,
+  "evidence": "a one-line docstring: \"Strips the path from the message, because the caller has no per-account label for it; see `_dedup_new_project_dirs`.\""
+ },
+ "b": {
+  "pass": true,
+  "evidence": "a one-line docstring: \"Strips the path from the message, because the caller has no per-account label for it; see `_dedup_new_project_dirs`.\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "a one-line docstring: \"Strips the path from the message, because the caller has no per-account label for it; see `_dedup_new_project_dirs`.\""
+ },
+ "d": {
+  "pass": false,
+  "evidence": "a one-line docstring: \"Strips the path from the message, because the caller has no per-account label for it; see `_dedup_new_project_dirs`.\""
+ },
+ "e": {
+  "pass": true,
+  "evidence": "a one-line docstring: \"Strips the path from the message, because the caller has no per-account label for it; see `_dedup_new_project_dirs`.\""
+ }
+}

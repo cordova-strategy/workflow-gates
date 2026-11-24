@@ -1,0 +1,17 @@
+diff --git a/claude/.claude/scripts/transcript_analysis/scope.py b/claude/.claude/scripts/transcript_analysis/scope.py
+--- a/claude/.claude/scripts/transcript_analysis/scope.py
++++ b/claude/.claude/scripts/transcript_analysis/scope.py
+@@ -677,6 +677,13 @@
+ 
+ 
+ def print_resolved_scope(subcommand: str, scope_label: str, roots: Sequence[Path], *, file=None) -> None:
++    """Print the one-line resolved-scope header cmd_skill_invocation already uses,
++    so machine-wide vs. --this-repo output is never scope-ambiguous. `file` defaults
++    to stdout (resolved at call time, not import time — a `sys.stdout` default
++    value would bind the stream object process startup captured, bypassing test
++    capture and any later reassignment); audit-routing-samples routes it to stderr
++    instead, since its stdout is a JSON (or curation-markdown) data stream a header
++    line would corrupt."""
+     print(_resolved_scope_header(subcommand, scope_label, roots), file=file or sys.stdout)
+ 
+ 
