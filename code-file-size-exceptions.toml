@@ -254,7 +254,7 @@ verdict = "structural exception"
 reason = "install.sh installs it as a standalone real-file copy at ~/.local/bin/relocate-claude-config that must run while ~/.claude is broken, so it sources no sibling file and every split would change how it is installed (the script's header; install.sh's real-file-copy step)."
 
 ["claude/.claude/scripts/select-tests.py"]
-ceiling = 1557
+ceiling = 1558
 verdict = "split pending"
 seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_PATHS`) apart from git plumbing (`compute_changed_paths`), worker sizing (`compute_worker_count`, `pytest_subprocess_env`) and selection logging (`record_selection`)"
 issue = 1603
@@ -265,7 +265,7 @@ verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
 ["claude/.claude/scripts/tests/test_author_outcome.py"]
-ceiling = 3461
+ceiling = 3480
 verdict = "split pending"
 seam = "Test-class families by stage: round and marker detection (`TestIsCleanMarkerWrite`, `TestRoundHasMarkerWrite`, `TestClassifyRound`), ledger lookup and sweep (`TestLedgerPossiblySwept`, `TestMultiWorktreeLedgerMerge`), outcome buckets (`TestComputeAuthorOutcomesBuckets`, `TestRankMapping`), orchestrator projection (`TestOrchestratorTranscriptProjection`, `TestOrchestratorDispatchIsARoundOpen`)"
 
@@ -401,7 +401,7 @@ verdict = "split pending"
 seam = "Test-class families matching the module's parts: windows (`TestValidatedWindow`, `TestReviewPrWindows`), pull-request lookup (`TestValidatedPrList`, `TestFetchPrLists`), group assembly (`TestAssembleGroups`, `TestPeriodStreamTotals`), rendering (`TestRenderSlackReport`, `TestGoldenSample`), notices (`TestNoticeLines`, `TestNoticesAtReportLevel`), topology and command (`TestTopologyReport`, `TestCommandBehavior`, `TestCommandWiring`)"
 
 ["claude/.claude/scripts/tests/test_transcript_pr_cost.py"]
-ceiling = 3608
+ceiling = 3942
 verdict = "split pending"
 seam = "Test-class families by ledger cell: branch totals (`TestComputePrCostBranchTotals`, `TestPrCostBranchTotalsByModel`), branch-to-PR resolution (`TestResolveBranchPrTieBreak`, `TestResolveBranchPrJoinConfidence`), report and recording (`TestPrCostReportOrchestration`, `TestPrCostRecordWritesAndReportsTheBreakdown`), model-breakdown cell (`TestCheckModelBreakdownCell`, `TestSeededBreakdownSweep`), review-rounds cell (`TestReviewRoundsCellCapture`, `TestCheckReviewRoundsCell`, `TestReviewRoundsForceRefusal`)"
 
@@ -416,7 +416,7 @@ verdict = "split pending"
 seam = "Test-class families by ledger layer: rows (`TestAppendPrCostLedgerRow`, `TestPrCostLedgerConcurrentWrite`, `TestParsePrCostLedgerFileTextMalformed`), headers and migration (`TestPrCostLedgerFrozenHeaders`, `TestPrCostLedgerLegacyHostColumnMigration`), model-breakdown cell (`TestDecodeModelBreakdownCell`, `TestFormatModelBreakdownCell`), file write (`TestWritePrCostLedgerFileDurability`, `TestWritePrCostLedgerFileValuePostcondition`), review-rounds cell (`TestDecodeReviewRoundsCellAccepts`, `TestDecodeReviewRoundsCellRefuses`)"
 
 ["claude/.claude/scripts/tests/test_transcript_review_rounds.py"]
-ceiling = 6612
+ceiling = 6684
 verdict = "split pending"
 seam = "Test-class families matching the module's parts: round costs (`TestComputeReviewRoundCosts`, `TestComputeReviewRoundCounts`, `TestGoldenRoundProjections`), round-open detection (`TestRoundOpenAgentSkills`, `TestSlashRoundOpenRecordClass`, `TestOrchestratorDispatchOpensCodeReviewRound`), command (`TestCmdReviewRoundCost`), bootstrap (`TestBootstrapShareIntervals`), pooled block (`TestPooledPricingTrustLines`, `TestCmdReviewRoundCostPooled`, `TestPooledShowWithheld`)"
 
@@ -426,7 +426,7 @@ verdict = "split pending"
 seam = "Test-class families: reviewer detection (`TestIsReviewerSubagentType`), core yield (`TestReviewerYield`), cited paths (`TestExtractCitedPaths`, `TestNormalizeCitedPath`, `TestReviewerYieldCitedKeys`), transcript scanning (`TestScanReviewerTranscripts`, `TestScanReviewerTranscriptHandback`), edit indexing (`TestIndexSessionEdits`)"
 
 ["claude/.claude/scripts/tests/test_transcript_routing_guard_capture.py"]
-ceiling = 5548
+ceiling = 5543
 verdict = "split pending"
 seam = "Test-class families by lifecycle stage: capture (`TestFirstCapture`, `TestLoops`, `TestGrowthAndLaterTurns`), note parsing (`TestNoteParser`, `TestNoteLocation`), deny reconciliation (`TestDenyExtraction`, `TestReconcileDenies`), store and rows (`TestStore`, `TestValidator`, `TestRowLines`), log reading and causes (`TestLogReader`, `TestKeyStateAt`, `TestCauses`, `TestLostEvents`), output (`TestOutput`, `TestFreeText`)"
 
@@ -456,17 +456,17 @@ verdict = "split pending"
 seam = "Review-window detection (`_review_pr_windows`, `_ReviewWindow`), pull-request lookup (`_fetch_pr_lists`, `_validated_pr_list`), group assembly (`_assemble_groups`), Slack rendering (`_render_slack_report`), report notices (`_notice_lines`)"
 
 ["claude/.claude/scripts/transcript_analysis/pr_cost.py"]
-ceiling = 1272
+ceiling = 1310
 verdict = "split pending"
 seam = "Model-breakdown cell (`_build_model_breakdown_cell`, `_check_model_breakdown_cell`), review-rounds cell (`_build_review_rounds_cell`, `_check_review_rounds_cell`), branch-to-PR resolution (`_resolve_branch_pr`, `_gh_pr_view_enrichment`) apart from the report body (`_pr_cost_report`)"
 
 ["claude/.claude/scripts/transcript_analysis/review_rounds.py"]
-ceiling = 1591
+ceiling = 1609
 verdict = "split pending"
 seam = "Round-window detection (`detect_round_windows`), dispatch pricing (`compute_review_round_costs`, `_price_dispatch`), pooled block (`_render_pooled_block`, `_pooled_shares`, `_bootstrap_share_intervals`), subcommand entry (`cmd_review_round_cost`)"
 
 ["claude/.claude/scripts/transcript_analysis/routing_guard.py"]
-ceiling = 2092
+ceiling = 2072
 verdict = "split pending"
 seam = "Lifecycle stages: capture (`_run_capture`, `_parse_capture_bytes`, `_load_capture_file`), session config-keys log reading (`_read_session_config_keys_log`), deny reconciliation (`_reconcile_denies`), compute (`_run_compute`, `_bootstrap_net`)"
 
