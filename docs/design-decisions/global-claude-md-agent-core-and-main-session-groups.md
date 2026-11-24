@@ -139,7 +139,7 @@ Follow-ups for dangling phrases left by verbatim moves:
 
 ## Byte margin
 
-CLAUDE.md is gated by 200 lines and a 31,744-byte limit, and the byte ratchet compares each commit to HEAD. Wording growth must fit under the limit.
+CLAUDE.md is gated by 200 lines and a 31,744-byte limit, and the byte ratchet compares each commit to its base (`docs/hooks.md` § "Gate hooks"). Wording growth must fit under the limit.
 
 Standing constraints:
 
