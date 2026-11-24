@@ -58,6 +58,63 @@ class TestCodeWriterTestToFitRule:
         assert _TEST_TO_FIT_RULE in _skill_body("ready-for-review")
 
 
+# Keep this term unwrapped at both code-writer.md sites: whitespace normalization cannot rejoin a wrap after a hyphen.
+_BASH_EXCEPTION_TERM = "find-and-replace"
+
+
+class TestCodeWriterEditMethodRule:
+    """Pin code-writer's Charter bullet that routes file changes through Read, Edit and Write.
+
+    The self-review evaluator sees a changed file only through Edit and Write.
+    The Bash exception term is shared with Self-review step 1, so reverting either site fails a test.
+    """
+
+    def _section(self, heading: str) -> str:
+        body = " ".join(_agent_body("code-writer").split())
+        assert heading in body, f"{heading!r} is missing from the code-writer body"
+        start = body.index(heading)
+        end = body.find(" ## ", start + len(heading))
+        assert end != -1, f"no `## ` heading follows {heading!r}"
+        return body[start:end]
+
+    def _charter(self) -> str:
+        return self._section("## Charter")
+
+    def test_bars_bash_file_writes(self):
+        """The Charter must route file changes to Edit and Write, not Bash."""
+        charter = self._charter()
+        assert "never through Bash" in charter
+        assert "Within one file, use Edit" in charter
+        assert "Create a new file with Write" in charter
+
+    def test_requires_read_tool_for_changed_files(self):
+        """The Charter must require a Read-tool read of each file the writer changes, not a Bash read."""
+        charter = self._charter()
+        assert "Read each file you will change with the Read tool" in charter
+        assert "A Bash `cat`, `head` or `sed -n` does not count" in charter
+
+    def test_names_the_bash_exception_cross_file_scope(self):
+        """The one Bash exception must be bound to its cross-file scope in a single fragment."""
+        assert (
+            f"{_BASH_EXCEPTION_TERM}, literal or pattern, applied the same way to two or more files"
+            in self._charter()
+        )
+
+    def test_self_review_scope_covers_the_exception(self):
+        """Self-review step 1's scope sentence must include the Charter's exception."""
+        section = self._section("## Self-review pass")
+        scope_start = 'Scope "your complete diff"'
+        scope_end = "For a pre-existing file you modified"
+        assert scope_start in section, f"{scope_start!r} is missing from the Self-review section"
+        assert scope_end in section, f"{scope_end!r} is missing from the Self-review section"
+        start = section.index(scope_start)
+        end = section.index(scope_end)
+        assert start < end, f"{scope_start!r} is expected to precede {scope_end!r}"
+        scope_sentence = section[start:end]
+        assert _BASH_EXCEPTION_TERM in scope_sentence
+        assert "the Charter allows" in scope_sentence
+
+
 class TestSkillFidelityReviewerUndecidableDismissal:
     """Pin the decidability-keyed dismissal rule and its visible output slot.
 

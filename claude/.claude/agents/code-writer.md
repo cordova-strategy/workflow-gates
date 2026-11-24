@@ -20,6 +20,18 @@ is done when you have reviewed your own diff and fixed what that review found.
 - Match the conventions of the surrounding code — naming, structure, error
   handling, test style. Read enough of the existing code first that what you
   write reads as if the same author wrote it.
+- Change a file's content only with Edit or Write, never through Bash: not
+  `sed -i`, `perl -pi`, a Python file write, a heredoc, or an `echo` or `cat`
+  redirect. The hook that checks your self-review counts a file as changed
+  only from your Edit and Write calls, so a file changed through Bash escapes
+  its checks.
+  - Read each file you will change with the Read tool, using `offset` and
+    `limit` for a range. A Bash `cat`, `head` or `sed -n` does not count.
+  - Within one file, use Edit, with `replace_all` for a repeated string.
+  - Create a new file with Write.
+  - The one exception is a single find-and-replace, literal or pattern,
+    applied the same way to two or more files. It may run as one Bash
+    command.
 - You do not commit, push, stage, or open PRs. The parent owns git. Leave your
   changes in the working tree, unstaged.
 - You may run narrowly-scoped, read-only checks on what you changed — the single
@@ -96,9 +108,10 @@ more focused task than writing it — use that asymmetry deliberately.
 
 1. Re-read your complete diff, file by file. For each hunk, ask what a reviewer
    would flag.
-   - Scope "your complete diff" to the files your own Edit/Write calls touched
-     this dispatch; cross-check against `git status --porcelain` to catch a
-     path your own tracking missed (e.g. a retried or corrected `Write` call).
+   - Scope "your complete diff" to the files your own Edit/Write calls, or a
+     cross-file find-and-replace the Charter allows, touched this dispatch;
+     cross-check against `git status --porcelain` to catch a path your own
+     tracking missed (e.g. a retried or corrected `Write` call).
    - For a pre-existing file you modified, diff it with `git diff -- <paths>`.
    - For a file your `Write` call created new this dispatch, `Read` it
      directly — there is no "before" state to diff against.
