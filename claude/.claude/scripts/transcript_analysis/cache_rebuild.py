@@ -106,21 +106,10 @@ def _cache_rebuild_report(args: argparse.Namespace, roots: Sequence[Path] | None
     body directly; --this-repo/--config-dir CLI validation happens once in
     cmd_cache_rebuild.
     """
-    redact: bool = not bool(getattr(args, "no_redact", False))
     ttl_verdict: bool = bool(getattr(args, "ttl_verdict", False))
     scan_roots: Sequence[Path] = roots if roots is not None else (scope.PROJECTS_DIR,)
     multi_root = len(scan_roots) > 1
-
-    # Defense-in-depth: _resolve_cost_roots is the CLI-level enforcement
-    # point for this refusal, but every direct caller of this function
-    # (including this module's own tests) bypasses that boundary.
-    if not redact and multi_root:
-        print(
-            "cache-rebuild: --no-redact is refused when more than one root is in scope"
-            " (--config-dir was given); drop --no-redact or scope to a single profile",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    redact: bool = scope.resolve_redaction(args, scan_roots, "cache-rebuild")
 
     if not redact:
         print(scope._DO_NOT_PUBLISH_BANNER)
@@ -911,7 +900,7 @@ def _add_cache_rebuild_subparser(subparsers: argparse._SubParsersAction) -> None
             "This report's output is aggregate-only (no project names or session IDs), so"
             " --no-redact has no effect on its content, but it still prints the DO NOT PUBLISH"
             " banner and enforces the same multi-root refusal as cost, for CLI parity."
-            " Refused when --config-dir puts more than one root in scope."
+            " Refused whenever more than one root is in scope."
         ),
     )
     p_cache_rebuild.add_argument(

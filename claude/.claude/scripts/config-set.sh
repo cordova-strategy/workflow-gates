@@ -65,8 +65,7 @@ case "$SCHEMA_FIELD_STATUS" in
   3) _exit_partial_install "schema file not found or unreadable: $_CONFIG_SCHEMA_FILE" ;;
   4)
     # Status 4 covers a schema with no rows, a key absent from a populated
-    # schema, and a key whose `type` column is empty. Only the last two need
-    # the key list to tell apart.
+    # schema, and a key whose `type` column is empty.
     KNOWN_KEYS=$(_config_schema_known_keys) \
       || _exit_partial_install "schema file has no key rows: $_CONFIG_SCHEMA_FILE"
     # The list is space-joined, so a KEY holding whitespace could match a span

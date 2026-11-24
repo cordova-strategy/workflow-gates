@@ -745,7 +745,7 @@ class TestRedaction:
 
 
 class TestDirectCallerDefenseInDepth:
-    def test_direct_caller_with_no_redact_and_multiple_roots_refuses(self, tmp_path):
+    def test_direct_caller_with_no_redact_and_multiple_roots_refuses(self, tmp_path, capsys):
         """_resolve_cost_roots is the CLI-level enforcement point for the --no-redact +
         multi-root refusal, but _context_composition_report re-checks it itself for a direct
         caller that bypasses that boundary (this module's own tests included) -- proven here by
@@ -754,6 +754,7 @@ class TestDirectCallerDefenseInDepth:
         with pytest.raises(SystemExit) as exc_info:
             context_composition._context_composition_report(args, roots=[tmp_path / "root-a", tmp_path / "root-b"])
         assert exc_info.value.code == 2
+        assert capsys.readouterr().out == ""
 
 
 class TestCategoryCoverage:

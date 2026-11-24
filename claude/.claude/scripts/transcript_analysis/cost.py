@@ -633,14 +633,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
             )
             sys.exit(2)
 
-    # Defense-in-depth, same rationale as the --summary multi-root check above.
-    if not redact and multi_root:
-        print(
-            "cost: --no-redact is refused when more than one root is in scope"
-            " (--config-dir was given); drop --no-redact or scope to a single profile",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    scope._refuse_no_redact_above_one_root(args, scan_roots, "cost")
 
     if not redact:
         print(scope._DO_NOT_PUBLISH_BANNER)
@@ -1319,7 +1312,7 @@ def _add_cost_subparser(subparsers: argparse._SubParsersAction) -> None:
         help=(
             "Emit real project names and session IDs instead of anonymized labels."
             " Never publish --no-redact output — see docs/transcript-analysis.md."
-            " Refused when --config-dir puts more than one root in scope."
+            " Refused whenever more than one root is in scope."
         ),
     )
     p_cost.add_argument("--branches", metavar="B1,B2,...", help="Branch name filter (default: all)")

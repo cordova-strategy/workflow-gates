@@ -172,6 +172,17 @@ class TestContextDistribution:
         assert exc_info.value.code == 2
         assert "--no-redact" in capsys.readouterr().err
 
+    def test_no_redact_refused_by_report_itself_when_multi_root(self, tmp_path, capsys):
+        """_resolve_cost_roots is the CLI-level enforcement point, but a direct caller of
+        _context_distribution_report that passes roots=[...] bypasses it, so the report refuses
+        before printing the DO NOT PUBLISH banner."""
+        with pytest.raises(SystemExit) as exc_info:
+            context_distribution._context_distribution_report(
+                _context_distribution_args(no_redact=True), roots=[tmp_path / "root-a", tmp_path / "root-b"]
+            )
+        assert exc_info.value.code == 2
+        assert capsys.readouterr().out == ""
+
     def test_no_redact_allowed_alone_with_single_root(self, fake_projects, capsys):
         """--no-redact with no --config-dir (single root) is unaffected — it
         prints the DO NOT PUBLISH banner but does not exit, the allow-path

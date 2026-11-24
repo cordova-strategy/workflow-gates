@@ -2,6 +2,8 @@
 
 Reference material that informed this skill. Not loaded during skill execution — consult when editing the skill to verify a rule still holds or to add new guidance.
 
+Cite the printed book for a rule. Every xunitpatterns.com page this file cites is a pre-publication draft, and the site's home page says: "Note that the material here is now somewhat out of step with the book content because it hasn't been updated based on the results of copy editing." A page quote is the draft's wording, and the printed book governs where the two differ.
+
 ## Test-first discipline and its recognized exceptions
 
 The test-first invariant is most strongly stated in:
@@ -55,3 +57,46 @@ URL: https://nx.dev/docs/reference/devkit/ImplicitDependency
 Verbatim: an implicit dependency is "a connection without an explicit reference in code" between two projects, and declaring one manually is "the best way to manually set up a dependency between two projects that Nx is not able to detect automatically."
 
 **Applies to the rule as:** Nx's own affected-project graph is built primarily from static imports. `ImplicitDependency` is Nx's own escape hatch for a real dependency that graph can't see. A test that shells into another domain's script or reads its file by path — rather than importing it — is the same shape: invisible to both import-based and directory-based selection unless declared explicitly.
+
+## Test data: repetition in tests and values shared across test files
+
+Grounds `SKILL.md` § "6. Test data". Defining a helper or value once for every test file that must keep it equal is this repository's own policy. None of the sources below states it as a rule.
+
+**Software Engineering at Google, ch. 12 "Unit Testing" — "Tests and Code Sharing: DAMP, Not DRY"**
+Erik Kuefler; CC BY-NC-ND 4.0. URL: https://abseil.io/resources/swe-book/html/ch12.html
+
+Verbatim:
+> "A little bit of duplication is OK in tests so long as that duplication makes the test simpler and clearer."
+>
+> "DAMP is not a replacement for DRY; it is complementary to it."
+
+From "Shared Values" (footnote marker omitted):
+> "Engineers are usually drawn to using shared constants because constructing individual values in each test can be verbose. A better way to accomplish this goal is to construct data using helper methods (see Shared values using helper methods) that require the test author to specify only values they care about, and setting reasonable defaults for all other values."
+
+From "Defining Test Infrastructure", on code shared across test suites:
+> "Test infrastructure needs to be treated as its own separate product, and accordingly, test infrastructure must always have its own tests."
+
+**Applies to the rule as:** § 6's builder bullet and its repeat-a-chosen-value bullet follow the chapter, which prefers builders with defaults over shared constants. The shared test module § 6 prescribes is test infrastructure in the chapter's sense, so a helper placed there carries the chapter's caution about its own tests.
+
+**Google Testing Blog — "Testing on the Toilet: Tests Too DRY? Make Them DAMP!"**
+Derek Snyder and Erik Kuefler, 2019-12-03. URL: https://testing.googleblog.com/2019/12/testing-on-toilet-tests-too-dry-make.html
+
+Verbatim:
+> "Note that the DRY principle is still relevant in tests; for example, using a helper function for creating value objects can increase clarity by removing redundant details from the test body."
+>
+> "When writing unit tests and faced with a choice between the DRY and DAMP principles, lean more heavily toward DAMP."
+
+**Jay Fields — "DRY code, DAMP DSLs"**
+2006-05-09. URL: http://blog.jayfields.com/2006/05/dry-code-damp-dsls.html
+
+Verbatim: "A well designed Domain Specific Language will appear as Descriptive And Meaningful Phrases."
+
+**Applies to the rule as:** the post applies DAMP to domain-specific languages, not tests. It dates the term; never cite it for a test-code rule.
+
+**Gerard Meszaros, *xUnit Test Patterns* (Addison-Wesley, 2007) — Literal Value, "Variation: Symbolic Constant"**
+URL: http://xunitpatterns.com/Literal%20Value.html (page 714 of the printed book, per the web page)
+
+Verbatim:
+> "When we need to use the same Literal Value in several places in a single Test Method (page X) or within several distinct tests, it is a good practice to use a symbol constant instead of a Literal Value."
+
+**Applies to the rule as:** this recommendation is in tension with the Google chapter's preference for builders over shared constants. § 6 sides with the chapter for a stand-in value and uses one shared definition only for what a second test file would otherwise copy: a helper, setup, or a value two test files must keep equal.

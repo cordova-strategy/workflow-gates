@@ -8,7 +8,7 @@ import sys
 import pytest
 from transcript_analysis import cli, scope
 
-from .conftest import _asst, _write_jsonl
+from .conftest import _asst, _two_declared_roots, _write_jsonl
 
 
 class TestConfigDirFlag:
@@ -622,3 +622,33 @@ class TestAbsoluteProjectsThroughMain:
         captured = capsys.readouterr()
         assert captured.out == ""
         assert "not an absolute path" in captured.err
+
+
+_NO_REDACT_FAMILY_SUBCOMMANDS = (
+    "cost", "cache-efficiency", "cache-rebuild", "context-composition", "context-distribution", "edit-format",
+    "handoff-signal-response", "plan-boundary", "read-scope", "rearm-backtest",
+)
+
+
+class TestNoRedactFamilyRefusalThroughMain:
+    def test_subcommands_registering_no_redact_are_exactly_the_ten_family_members(self):
+        registrants = {
+            name for name, subparser in _subparsers_by_name(cli.build_parser()).items()
+            if "--no-redact" in subparser._option_string_actions
+        }
+        assert registrants == set(_NO_REDACT_FAMILY_SUBCOMMANDS)
+
+    @pytest.mark.parametrize("subcommand", _NO_REDACT_FAMILY_SUBCOMMANDS)
+    def test_no_redact_over_two_roots_exits_2_with_the_shared_line_naming_the_subcommand(
+        self, monkeypatch, tmp_path, capsys, subcommand,
+    ):
+        _two_declared_roots(tmp_path, monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["transcript-analysis.py", subcommand, "--no-redact"])
+
+        with pytest.raises(SystemExit) as exc_info:
+            cli.main()
+
+        assert exc_info.value.code == 2
+        captured = capsys.readouterr()
+        assert captured.err == f"{subcommand}: --no-redact is refused when more than one root is in scope; drop --no-redact\n"
+        assert captured.out == ""
