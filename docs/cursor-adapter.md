@@ -82,7 +82,7 @@ The adapter targets the local IDE, and the Cursor CLI (`agent`) reads the same u
   - that a review skill runs, and that `marker.sh` resolves its identity and writes the routed config dir, under a CLI sandbox mode.
 
   Recovery's CLI entry gives the way out for each gate class.
-- **The directory pin.** The CLI applied a `preToolUse` `updated_input` rewrite when observed. Whether its `beforeShellExecution` entry receives the rewritten command, so `pin-check` passes, is pending an unrecorded probe.
+- **The directory pin.** The CLI applied a `preToolUse` `updated_input` rewrite when observed. On the one CLI version observed, its `beforeShellExecution` entry received the rewritten command, so its Shell calls passed `pin-check`.
 
 ## Cursor-update regression checklist
 
@@ -284,7 +284,7 @@ Each is the shim or a hook meeting input it does not translate, or a hook killed
 
 ### A deny in a Cursor CLI session beside the installed adapter
 
-A CLI session meets the adapter's gates as an IDE conversation does (see "Cursor CLI beside the adapter"), and the way out depends on the deny's class. Each way out that needs the CLI to run a skill, or to apply the directory pin's rewrite, is pending an unrecorded probe.
+A CLI session meets the adapter's gates as an IDE conversation does (see "Cursor CLI beside the adapter"), and the way out depends on the deny's class. Each way out that needs the CLI to run a skill is pending an unrecorded probe.
 
 - A completion gate's deny, from `require-code-review`, `require-plan-review` or `require-ready-for-review`, has three routes. After the first or second, the CLI retries the gated operation.
   1. Run the review skill in that CLI conversation.
@@ -292,7 +292,7 @@ A CLI session meets the adapter's gates as an IDE conversation does (see "Cursor
   3. While the CLI session is open, make the gated operation from your own terminal.
 - An active-bypass gate's deny, from `require-respond-pr` or `require-memory-skill`: run the skill in that CLI conversation. Where the CLI cannot run it, make the gated operation from your own terminal, where no hook runs, or have an IDE conversation make it under its own bypass. Another conversation's skill run releases nothing for the CLI, because a bypass is keyed on its own conversation's session id.
 - In no case write a marker for the CLI conversation's session id from anywhere else.
-- A deny no IDE call would get, such as `pin-check` or `dir-input-refused` on every CLI call: run `uninstall` and report the finding, at least until a probe records whether the CLI's `beforeShellExecution` receives the rewritten command.
+- A deny no IDE call would get, such as `pin-check` or `dir-input-refused` on every CLI call: run `uninstall` and report the finding.
 
 ## Limitations
 
@@ -329,7 +329,7 @@ A CLI session meets the adapter's gates as an IDE conversation does (see "Cursor
   - A `cursor-agent` worker that outlives the app anchors a hook it runs after Cursor quits on itself, and a lock it holds outlives the quit. Whether such a worker runs hooks is pending an unrecorded probe.
   - A lock holder's liveness is a bare `kill -0` on its recorded process id. A short-lived `agent -p` run's id, once reused, makes its lock read as live, a rare deny that clears once the id is free.
   - The entries that rest on `stop`, `beforeSubmitPrompt`, `subagentStart` or `subagentStop` get no event under `agent -p`, which fired none when observed. That is a gap, not a deny.
-  - A hook `ask` on a Shell call ran unprompted under `agent -p --force`, which Cursor documents as "Force allow commands unless explicitly denied". That was observed for one test entry on one CLI version. A Shell-call `ask` is therefore not enforced under `agent -p --force`. The exception is each `ask` that the adapter turns into a write-tool deny, from `ask-review-permissions` and `ask-new-dependency-disclosure`. It is also listed as not enforced under the IDE's Run Everything (Unsandboxed), because that mode was not run for `ask`, until an observation records a prompt there. The interactive CLI prompted with the test entry's text, and so did the IDE under Auto-Review (with Sandbox). The asks from `ask-review-permissions` and `ask-new-dependency-disclosure` reach Cursor as write-tool denies, not asks, so neither listing covers them.
+  - A hook `ask` on a Shell call ran unprompted under `agent -p --force`, which Cursor documents as "Force allow commands unless explicitly denied". That was observed for one test entry on one CLI version. A Shell-call `ask` is therefore not enforced under `agent -p --force`. A Shell-call `ask` is also listed as not enforced under the IDE's Run Everything (Unsandboxed) until an observation records a prompt there, because that mode was not run for `ask`. The interactive CLI prompted with the test entry's text, and so did the IDE under Auto-Review (with Sandbox). The asks from `ask-review-permissions` and `ask-new-dependency-disclosure` reach Cursor as write-tool denies, not asks, so neither listing covers them.
   - A call with no `parent_agent_id` meets no attribution deny, and a CLI main agent's calls are such calls if they carry none, as the IDE's never do.
   - A CLI subagent's Write and Shell calls carry no `parent_agent_id`, and no `subagentStart` fires, under `agent -p` and interactively. A CLI subagent therefore sits outside the agent-keyed bars. Its conversation id differs from its parent's on the same host process id. A CLI conversation and its writing subagent cannot both write in one worktree: whichever writes first holds the lock until the CLI exits, and the other takes the live-holder deny. This was observed on one CLI version.
   - An unattributed-subagent deny, if one is added, must handle a CLI subagent call that carries `parent_agent_id` when no `subagentStart` arrives.
