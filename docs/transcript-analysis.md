@@ -87,7 +87,7 @@ The default differs by subcommand: `skill-invocation` defaults to the repo-scope
 
 **`review-trace` output is not publish-safe at its default scope** — each event line's branch string can carry a ticket ID or project name. The timeline reads the active account's projects by default and every declared account under `--this-repo` or `--all-accounts`, and `--deny-summary` pools every declared account by default (see "Corpus scope: the declared-roots file" below). `--this-repo` does not guarantee single-account output: once `~/.claude/transcript-config-dirs` declares more than one root, it unions across every resolved root the same way `--all-accounts` does. The default timeline still covers every project in the active account, so bound it with `--this-repo`, and name one account with an explicit single top-level `--config-dir PATH`, before quoting output anywhere public. This applies to a zero-match run too: its scope header echoes an explicit `--projects` glob verbatim, so a glob naming a private project reaches the output even when no session matched.
 
-The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.claude/worktrees/` among them, reach anything a subcommand prints or writes per session, and every transcript read through `sessions --paths`. The classes known today:
+The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.claude/worktrees/` among them, reach anything a subcommand prints or writes per session, and every transcript read through `sessions --paths`. Each subcommand's own section, and the narrowed-command and redaction paragraphs under "Corpus scope: the declared-roots file" below, say what it prints raw. Examples, not a complete set:
 
 - branch strings
 - project-directory names
