@@ -319,7 +319,7 @@ workflows, only functional in repos the engineer may commit config artifacts int
 | `rate_limits` is delivered **only** to a statusline command's stdin, and never lands in a transcript record | The harness decides which fields it passes to which extension point. That is its hook contract — a platform boundary no plan can change from inside it. Scoped narrowly on purpose: this given covers the *delivery channel* only. Whether this repo *persists* what that channel already hands it is inside reach (`claude/.claude/statusline-command.sh` is a repo-owned file) and is therefore **not** a given — it is a deliberate deferral, recorded in Out of scope. |
 | Local figures are list price, not billed price | Transcripts persist token counts only; no `costUSD` field exists on any record, and subscription billing terms are exposed to no local artifact — no repo-owned file can derive one. Carried forward unchanged from `.claude/plans/pr-cost-disclosure.md`. |
 
-The `CLAUDE_CONFIG_DIR`→Claude-account mapping (owned by `workstation-setup`'s
+The `CLAUDE_CONFIG_DIR`→Claude-account mapping (owned by `<private-setup-repo>`'s
 `accounts.tsv`) is deliberately **not** listed as a given: this design consumes the
 resolved env var and asserts nothing about which account it denotes, so the mapping
 is not a condition it depends on.
