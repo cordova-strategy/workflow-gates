@@ -54,7 +54,7 @@ Three fixes to one module, unified by a single reframing: **a dead pid is crash 
 - **G1** — Claude Code's session registry, its `procStart` field format, and the timing of its own prune sweep are undocumented first-party state owned by Anthropic and can change per platform and per CLI version without notice. Anthropic owns it; this plan can only read defensively, never pin it. `[verified: post-crash-sessions.py:26-30, :85-89]`
 - **G2** — `capture-session-id.sh` will keep writing `<config-dir>/sessions/<pid>` at every SessionStart and SubagentStart with no self-sweep. That absence is a deliberate, documented property (`capture-session-id.sh:38-42`), and changing it would renegotiate the `require-respond-pr.sh` bypass contract — a decision outside this plan. `[verified: capture-session-id.sh:38-42, :106]`
 - **G3** — `claude --resume <id>` is assumed to accept main-session ids only, not subagent session ids. Harness-owned CLI behavior this plan cannot change; it bounds the worst case for row7 rather than gating it. `[unverified]`
-- **G4** — multi-account auto-discovery stays out of scope, per the merged plan behind PR #582 which assigned account-name-to-config-dir resolution to `workstation-setup`. Reach genuinely stops at that ownership boundary. `[verified: .claude/plans/post-crash-sessions-report-fixes.md G1]`
+- **G4** — multi-account auto-discovery stays out of scope, per the merged plan behind PR #582 which assigned account-name-to-config-dir resolution to `<private-setup-repo>`. Reach genuinely stops at that ownership boundary. `[verified: .claude/plans/post-crash-sessions-report-fixes.md G1]`
 
 **Per-mechanism:**
 
@@ -126,7 +126,7 @@ Three fixes to one module, unified by a single reframing: **a dead pid is crash 
 - **A flag to print the uncapped legacy list.** The "re-run after deleting" note covers the workflow without new CLI surface.
 - **Adding a platform dimension to `_VALIDATED_REGISTRY_VERSIONS`** (`:89`). The Linux-`procStart`-ticks fix proves the schema is platform-variant, but that constant only drives a banner and never changes parsing; the platform fact belongs in row4's comment at the parse site.
 - **Any change to `capture-session-id.sh`**, including adding the sweep it deliberately omits (G2) — Source D is read-only consumption of a format that already exists.
-- **Multi-account auto-discovery** (G4) — belongs in `workstation-setup`.
+- **Multi-account auto-discovery** (G4) — belongs in `<private-setup-repo>`.
 - **Any change to `render_report`'s `--redact` contract.** All new output composes with it unchanged. In reach of this plan, deliberately not taken.
 - **A test asserting `--crash-window-hours`/`--near-boot-hours` last-wins behavior when both are passed with conflicting values** (plan-review finding, staff-sdet B8(e)). argparse's default last-option-wins is the accepted behavior; not worth a dedicated test at this severity.
 - **A structural guard against a new `_classify_session` test omitting `lookup_entries=`** (plan-review finding, staff-sdet testability note). The keyword-only default already prevents positional misassignment; `code-writer`'s self-review should grep new tests for `lookup_entries=` rather than adding a signature-level guard.

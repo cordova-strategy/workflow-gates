@@ -395,7 +395,7 @@ def build_replay_world(
     source_dir.mkdir()
     repo = _make_repo(source_dir, base_files)
     for index in range(task_count):
-        _change(repo, {f"src/mod_{index}.py": _app_with(12)}, message=f"Add module {index}")
+        _change(repo, {f"src/mod_{index}.py": _app_with(12)}, message=f"Add module {index}\n\nAdds module {index}.")
     task_list = list(_mine(repo, max_tasks=task_count + 1).tasks)
     monkeypatch.setattr(review_runner, "_worktree_top_levels", lambda checkout: ())
     # Only the provenance tests probe git for real, over their own throwaway repositories.
@@ -411,7 +411,7 @@ def add_second_account(world: ReplayWorld, task_count: int = 1) -> tuple[Account
     source_dir.mkdir()
     repo = _make_repo(source_dir, name="repo-b")
     for index in range(task_count):
-        _change(repo, {f"src/other_{index}.py": _app_with(12)}, message=f"Add other {index}")
+        _change(repo, {f"src/other_{index}.py": _app_with(12)}, message=f"Add other {index}\n\nAdds other {index}.")
     task_list = list(_mine(repo, max_tasks=task_count + 1).tasks)
     return make_account(config_dir, world.home), task_list
 
@@ -419,15 +419,18 @@ def add_second_account(world: ReplayWorld, task_count: int = 1) -> tuple[Account
 def make_settings(
     world: ReplayWorld, launch: Callable, *, campaign_id: str = "test", fixture_git_timeout_s: float = 60.0,
     budget_cap_usd: float = 10.0, runner: RunnerProvenance = RUNNER,
+    no_retry_reasons: frozenset[str] | None = None,
 ) -> attempt.RunSettings:
+    """`RunSettings` as a campaign builds it, with its field default for `no_retry_reasons` unless a test gives one."""
     campaign_dir = world.local_dir / "campaigns" / campaign_id
+    retry_override = {} if no_retry_reasons is None else {"no_retry_reasons": no_retry_reasons}
     return attempt.RunSettings(
         campaign_id=campaign_id, attempts_root=campaign_dir / "attempts", local_dir=world.local_dir, model_id=MODEL_ID,
         budget_cap_usd=budget_cap_usd, timeout_s=30, fixture_git_timeout_s=fixture_git_timeout_s,
         run_store=RunStore(campaign_dir / "store"),
         spend=SpendFile(campaign_dir / "spend.jsonl", budget_cap_usd=budget_cap_usd),
         runner_environ={"PATH": "/usr/bin", "HOME": str(world.home)}, launch=launch,
-        runner=runner,
+        runner=runner, **retry_override,
     )
 
 

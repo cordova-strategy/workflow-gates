@@ -249,7 +249,7 @@ class TestEnforceMarkerScriptShape:
                 "/home/testuser/.claude/scripts/marker.sh deactivate plan-review"
             ),
             "~/.claude/scripts/marker.sh write ready-for-review   &&   ~/.claude/scripts/marker.sh deactivate ready-for-review",
-            "~/.claude/scripts/marker.sh write plan-review && /home/jared/.claude/scripts/marker.sh deactivate plan-review",
+            "~/.claude/scripts/marker.sh write plan-review && /home/testuser/.claude/scripts/marker.sh deactivate plan-review",
             # mixed-skill pairs, both orderings — every segment is individually
             # valid, so the chain grants no new capability over running the
             # two calls separately
@@ -542,11 +542,11 @@ class TestEnforceMarkerScriptShape:
     # ------------------------------------------------------------------ #
 
     def test_absolute_path_form_allowed(self):
-        cmd = "/home/jared/.claude/scripts/marker.sh write code-review"
+        cmd = "/home/testuser/.claude/scripts/marker.sh write code-review"
         assert run_hook(ENFORCE_MARKER_SCRIPT_SHAPE_HOOK, bash_input(cmd)) == "allow"
 
     def test_path_traversal_denied(self):
-        cmd = "/home/evil/../../home/jared/.claude/scripts/marker.sh write code-review"
+        cmd = "/home/evil/../../home/testuser/.claude/scripts/marker.sh write code-review"
         assert run_hook(ENFORCE_MARKER_SCRIPT_SHAPE_HOOK, bash_input(cmd)) == "deny"
 
     # ------------------------------------------------------------------ #

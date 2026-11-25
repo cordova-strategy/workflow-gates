@@ -153,11 +153,11 @@ redundant line on ~20 correct subcommands.
 
 | # | Assumption | Tag |
 |---|---|---|
-| 1 | No non-test consumer depends on empty stdout from either subcommand | `[verified: repo-wide search of hooks, skills, docs, `.github/workflows/tests.yml`, and `~/MyCode/workstation-setup`; sole automated caller is `ready-for-review/SKILL.md:95`, whose "Empty list →" instruction is read by an agent, not shell-tested]` |
+| 1 | No non-test consumer depends on empty stdout from either subcommand | `[verified: repo-wide search of hooks, skills, docs, `.github/workflows/tests.yml`, and the owner's private machine-setup repo; sole automated caller is `ready-for-review/SKILL.md:95`, whose "Empty list →" instruction is read by an agent, not shell-tested]` |
 | 2 | Exactly 7 assertions pin empty `review-trace` stdout | `[verified: grep — test_transcript_analysis.py:4121, 4218, 4238, 4247, 4343, 4420, 4451, all inside `class TestReviewTrace` (:4022)]` |
 | 3 | Those 7 assert empty stdout as a *proxy* for "no event blocks emitted", not as an output contract | `[verified: read of each test's name and message, e.g. :4343 "the session's first-record branch must return zero events"]` |
 | 4 | The deferral is documented at exactly 3 prose sites | `[verified: grep "until a match is found" → docs/transcript-analysis.md:40 and SKILL.md:69 ("defer their header print until a match is found", verbatim twins); README.md:75 words it differently ("defer the header until a match is found") and does NOT match the narrower "defer their header print" string — use the wider grep or README is missed]` |
-| 5 | `~/CLAUDE.local.md` is a symlink to the private `workstation-setup` repo | `[verified: ls -la — /Users/jared/CLAUDE.local.md → MyCode/workstation-setup/claude-local/CLAUDE.local.md]` |
+| 5 | `~/CLAUDE.local.md` is a symlink into a private machine-setup repo | `[verified: ls -la — ~/CLAUDE.local.md is a symlink into that repo]` |
 | 6 | Following the stale note narrows rather than widens both tools | `[verified: transcript-analysis top-level --config-dir overrides the union to one root (docs/transcript-analysis.md:44); post-crash-sessions --config-dir yields active profile + named dirs, dropping the declared roots (post-crash-sessions.py:1230-1258)]` |
 | 7 | Editing `CLAUDE.local.md` needs the engineer's say-so before a PR is opened | `[engineer-verified: task brief §5, §6.5]` |
 | 8 | Adding a header line ahead of `skill-invocation`'s table will not confuse `skill-fidelity-reviewer` | `[unverified]` — it is an LLM reading rendered text and every non-empty run already carries this header, so the zero-match case simply becomes uniform; not mechanically provable |
@@ -241,8 +241,7 @@ redundant line on ~20 correct subcommands.
 
 **Deferred, pending engineer approval (assumption 7):**
 
-- `~/MyCode/workstation-setup/claude-local/CLAUDE.local.md:17-22` — replace the
-  stale paragraph. Separate repo, separate worktree, separate PR. Machine-level
+- The stale paragraph in the `CLAUDE.local.md` that `<private-setup-repo>` holds — replace it. Separate repo, separate worktree, separate PR. Machine-level
   `~/.claude/worktree-required` applies there too.
 
 **Do not touch:** any other subcommand's header behavior. `cmd_user_input` and

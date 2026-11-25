@@ -17,9 +17,10 @@
 # re-arm on the advisory path too, so a hard block can't truncate the
 # skill's own multi-turn write.
 #
-# Kill-switch: touching ~/.claude/.handoff-nudge-disabled suppresses all
-# nudges globally, including the hard block above (useful when running
-# automated pipelines).
+# Kill switch: the handoff_nudge config key set to false suppresses all
+# nudges, including the hard block above (useful when running automated
+# pipelines).
+# docs/handoff-nudge.md "How to disable" has the config-set.sh command.
 #
 # Fail-open everywhere except the escalation block above: any unexpected
 # error (missing jq, missing _lib.sh, malformed input) exits 0 with no

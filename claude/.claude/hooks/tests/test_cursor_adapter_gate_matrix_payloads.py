@@ -1,4 +1,6 @@
-"""Gate matrix: the Cursor payload builders, and what a hook receives through the shim, its payload and its envelope."""
+"""Gate matrix: the Cursor payload builders and script writers.
+
+Also what a hook receives through the shim, its payload and its envelope."""
 
 from __future__ import annotations
 
@@ -8,6 +10,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import assert_stub_written_warm, record_subprocess_runs
 
 from ._cursor_gate_matrix_helpers import DIRECT_HOOK_TIMEOUT_SECONDS
 from ._cursor_payloads import (
@@ -26,6 +29,7 @@ from ._cursor_payloads import (
     shim_json,
     shim_process_env,
     write_hook_script,
+    write_sh_script,
 )
 
 # --- builders ---
@@ -412,3 +416,23 @@ class TestShimEnvelope:
         }
         direct_compared = {k: v for k, v in direct_environment.items() if k not in _ENV_NOISE | allowed_to_differ}
         assert shim_compared == direct_compared
+
+
+class TestScriptWritersWarmTheStubTheyWrite:
+    """A writer that skips `write_prewarmed_stub` leaves each stub's first exec to the code under test."""
+
+    @pytest.mark.parametrize(
+        ("write_script", "expected_shebang"),
+        [(write_hook_script, "#!/usr/bin/env bash"), (write_sh_script, "#!/bin/sh")],
+        ids=["write_hook_script", "write_sh_script"],
+    )
+    def test_one_write_leaves_one_warm_exec_and_the_guard_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write_script, expected_shebang: str
+    ) -> None:
+        recorded_calls = record_subprocess_runs(monkeypatch)
+
+        script = write_script(tmp_path / "stub.sh", "exit 0\n")
+
+        assert script.read_text(encoding="utf-8").splitlines()[0] == expected_shebang
+
+        assert_stub_written_warm(recorded_calls, script)

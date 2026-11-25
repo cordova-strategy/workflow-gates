@@ -151,7 +151,7 @@ a smaller safe increment; they ship in one PR, one commit if convenient.
 **Alternatives weighed:**
 
 - **Hardcode the destination to a specific private repo** (e.g. this
-  operator's `workstation-setup`) — rejected per the public-repo given
+  operator's `<private-setup-repo>`) — rejected per the public-repo given
   above; breaks for every other stow consumer.
 - **Local-only, no override, always `$CLAUDE_CONFIG_DIR/cost-ledger.md`,
   no env var** — rejected: simpler, but forecloses an operator who *does*
@@ -387,7 +387,7 @@ confirm the row lands there instead.
   correct as designed by PR #617; this plan only relocates where the row
   is written, not what's written.
 - **Provisioning `COST_LEDGER_PATH` for this operator's own machines** (e.g.
-  a `workstation-setup` change pointing it at a private repo). That is a
+  a `<private-setup-repo>` change pointing it at a private repo). That is a
   separate, per-operator follow-up outside this public repo — this plan
   only builds the override mechanism, not any particular operator's use of
   it.

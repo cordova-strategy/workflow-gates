@@ -16,6 +16,8 @@ from _skill_md_helpers import (
     _GLOBAL_CLAUDE_MD,
     _PLAN_ARCHITECT_CONSULT_HEADING,
     _PLAN_ARCHITECT_PATH,
+    _PLAN_ARCHITECT_PLAN_SECTIONS_HEADING,
+    _PLAN_IT_STEP5_HEADING,
     _STEP4_HEADING,
     _assert_citation_resolves_to_heading,
     _assert_pinned_clause_right_bounded,
@@ -151,22 +153,21 @@ _PLAN_IT_STEP5_CONTEXT_CHECK_AND_GRAMMAR_LITERALS = (
     "on every return",
     "(pending: plan-architect)",
     "absolute path as the prompt's second line",
+    # The consult latch skips only this exact first line of a dispatch prompt.
+    "`MODE=plan-sections` as the prompt's first line",
 )
 
 _PLAN_ARCHITECT_CONSULT_NEVER_EDIT_SENTENCE = (
     "never call `Edit`, even when the prompt names a plan file"
 )
 
-_PLAN_ARCHITECT_PLAN_SECTIONS_HEADING = "## MODE=plan-sections"
-
 _PLAN_ARCHITECT_LANDED_EDITS_RETURN_SENTENCE = (
-    "When your edits land, your return carries no `## ` heading lines"
+    "When your edits land, your return carries no `## ` heading lines — only any finding lines "
+    "and any open decision. The dispatching session reads the file itself."
 )
 _PLAN_ARCHITECT_PLAN_PATH_ON_LINE_2_SENTENCE = (
     "Line 2 of the prompt is the plan file's absolute path."
 )
-
-_PLAN_IT_STEP5_HEADING = "## Step 5 — Architecture design"
 
 # Step 5's Context-hash command, as written in the skill: the one backticked
 # `sed ... | sha256sum` span, with the plan path left as a placeholder.
@@ -203,6 +204,12 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "goes ahead only when that `check` exits 0 and prints a `STAGE` line, and any other "
         "output is handled as a failed `check` below."
     ),
+    # Keeps finding lines and any other architect bookkeeping out of the plan file.
+    "splice_replaces_the_region_from_the_approach_heading_and_leaves_every_byte_above_it": (
+        "replacing it with the return from its `## Approach` heading line on, verbatim. Every byte "
+        "above that heading stays untouched; never use a whole-file `Write`. Relay the return's "
+        "reason line to the engineer."
+    ),
     "check_runs_after_hash_and_splice_and_completes_dispatch_only_on_pass": (
         "**Check.** After every dispatch, once the Context hash and any splice with its own hash "
         "are done, run `python3 ~/.claude/scripts/plan-shape.py check '<plan path>'`, passing the "
@@ -232,21 +239,79 @@ _PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES: dict[str, str] = {
         "`check`, above `## Approach`. It describes review surface (file count, domain spread, "
         "risk concentration), never hours or days."
     ),
-    "failed_check_with_stage_line_redispatches_bullet": (
-        "A failed `check` that prints a `STAGE` line, as above."
-    ),
-    # Both bullets in one clause: the right-bound helper accepts a following line only when it starts with `-` or `#`,
-    # and the indented second bullet does not.
+    # Starts at the lead-in's last words and spans both bullets, so a bullet added before, between or after them fails the pin.
     "no_return_redispatch_bullets": (
-        "At first authoring, re-dispatch when `check` then fails with a `STAGE` line. - On a "
+        "as follows: - At first authoring, re-dispatch when `check` then fails with a `STAGE` line. - On a "
         "revision, re-dispatch when `check` then passes or fails with a `STAGE` line, because a "
         "revision that died partway can pass it."
+    ),
+    "review_findings_lead_paragraph": (
+        "**Review findings.** Only `plan-architect` edits a plan from its `## Approach` heading "
+        "down in answer to a `/plan-review` or `/code-review` finding, and it gets a review "
+        "round's findings together in one revision re-dispatch. After line 2, that prompt carries "
+        "the findings in place of the Context and Step 3 evidence bullets, with each mark and "
+        "answer on a prompt line outside every quoted finding:"
+    ),
+    # Starts at the lead-in's last words and spans every bullet, so a bullet added before, between or after them fails the pin.
+    "review_findings_prompt_bullets": (
+        "outside every quoted finding: - Number the findings, each as the review rendered it, under a "
+        "lead-in naming the review and round, with the findings-file path of each reviewer that wrote "
+        "one. - Mark a finding `blocking` when it made a `/plan-review` verdict **Request changes** or "
+        "`/code-review`'s enforcement-invariant rule covers it. - Mark the plan `approved` for a "
+        "`/code-review` round, a plan with a commit on this branch, or a plan the engineer approved this "
+        "session. A commit is the observable `/plan-review` Step 4 uses for a plan the engineer has "
+        "already approved. - When you cannot "
+        "tell whether a finding is `blocking` or the plan is `approved`, mark the finding `blocking` "
+        "and the plan `approved`. - Carry each engineer answer on its own prompt line, in a block that "
+        "precedes every quoted finding body: the number of the finding it settles, the question it "
+        "answered, and the selected label or typed text, with any option description marked as your "
+        "own proposal."
+    ),
+    # Starts at the Step 5 paragraph that follows the prompt bullets and spans the return bullets,
+    # so a bullet added before the first return bullet fails the pin.
+    "review_findings_return_bullets": (
+        "Step 5's **Before every dispatch.**, **Context hash.** and **Check.** apply to this "
+        "re-dispatch. After the dispatch, check each `[engineer-verified: \"<quote>\"]` quote it "
+        "added or changed as the **Quote provenance.** paragraph of `plan-review/SKILL.md` § "
+        "\"Step 4 — Design-fitness gate\" says, and ask the engineer about any you cannot find. "
+        "Also keep each ledger row carrying `[engineer-verified`, from its number through its "
+        "`anchors:` list, as it stood before the round's first review-findings dispatch. After the "
+        "round's last return, ask the engineer about any such row removed or changed since then "
+        "that no answer-block line settles, and about any added `[engineer-verified` tag with no "
+        "quote to check. "
+        "On the return: - Relay each `decline` line to the engineer with its reason. - Ask each `open` line as an "
+        "open decision above. - Re-dispatch once more with only the findings the return gave no "
+        "line, and ask any still without one as an open decision."
+    ),
+    "engineer_answers_lead_paragraph": (
+        "**Engineer answers.** The one exception is the session recording an answer it asked the "
+        "engineer for: a `/plan-review` Step 4 answer, or an after-approval addition under "
+        "**Critical files** below. Append one row per answer after the ledger's last row, with "
+        "the next row number, `anchors: root`, the claim the asking step gives, and the answer "
+        "quoted byte for byte in the `[engineer-verified: \"<quote>\"]` tag. Its limits:"
+    ),
+    # Starts at the lead-in's last words, so a bullet added before the first one fails the pin.
+    "engineer_answers_limit_bullets": (
+        "Its limits: - Never edit or renumber an existing row, and change nothing else from `## Approach` down "
+        "except an added Critical file's path. - Send every follow-on edit the answer needs to "
+        "`plan-architect`. - An answer to an open decision `plan-architect` returned is not this "
+        "exception, so re-dispatch with it as above."
     ),
     "code_fence_never_shares_a_line_with_a_list_marker": (
         "Start each code fence on a line of its own, never on the same line as a list marker "
         "such as `-` or `1.`, because `plan-shape.py` does not model list items."
     ),
 }
+
+# Clauses that pin a whole list, so a bullet appended after them must fail the pin.
+_PINNED_PLAN_IT_STEP5_BULLET_RUN_CLAUSE_KEYS = frozenset(
+    {
+        "no_return_redispatch_bullets",
+        "review_findings_prompt_bullets",
+        "review_findings_return_bullets",
+        "engineer_answers_limit_bullets",
+    }
+)
 
 _EMPTY_INPUT_SHA256_PREFIX = "e3b0c442"
 
@@ -304,6 +369,7 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
                 f"plan-it/SKILL.md: Step 5's {clause_key!r} clause no longer "
                 "matches its pinned clause."
             ),
+            closes_bullet_run=clause_key in _PINNED_PLAN_IT_STEP5_BULLET_RUN_CLAUSE_KEYS,
         )
 
     def test_consult_charter_never_calls_edit_sentence_matches_live_text(self) -> None:
@@ -316,13 +382,17 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
         )
 
     def test_plan_sections_charter_return_carries_no_headings_when_edits_land(self) -> None:
-        plan_sections_section = _heading_section_text(
+        raw_section = _raw_heading_section_text(
             _PLAN_ARCHITECT_PATH, _PLAN_ARCHITECT_PLAN_SECTIONS_HEADING
         )
-        assert _PLAN_ARCHITECT_LANDED_EDITS_RETURN_SENTENCE in plan_sections_section, (
-            "plan-architect.md's MODE=plan-sections charter no longer says the return "
-            "carries no `## ` heading lines once edits land, which Step 5's splice "
-            "relies on to avoid overwriting landed edits."
+        _assert_pinned_clause_right_bounded(
+            " ".join(_PLAN_ARCHITECT_LANDED_EDITS_RETURN_SENTENCE.split()),
+            raw_section,
+            context=(
+                "plan-architect.md's MODE=plan-sections charter no longer says the return "
+                "carries no `## ` heading lines, only any finding lines and any open decision, "
+                "once edits land. Step 5's splice relies on that to avoid overwriting landed edits."
+            ),
         )
 
     def test_plan_sections_charter_names_line_2_as_the_plan_path(self) -> None:
@@ -368,6 +438,30 @@ class TestPlanItStep5ContextCheckAndGrammarLiterals:
         # must reach stderr while the pipeline still exits 0 on sha256sum's status.
         assert result.returncode == 0
         assert result.stderr.strip()
+
+
+_SEEDED_PLAN_IT_STEP5_BULLET = "- Apply each declined finding yourself."
+
+
+@pytest.mark.parametrize(
+    "clause_key",
+    [
+        pytest.param("no_return_redispatch_bullets", id="no-return-redispatch"),
+        pytest.param("review_findings_return_bullets", id="review-findings-return"),
+        pytest.param("engineer_answers_limit_bullets", id="engineer-answers-limits"),
+    ],
+)
+def test_plan_it_step5_bullet_run_pin_fails_when_a_bullet_is_inserted_before_the_first(clause_key: str) -> None:
+    """The text a pin holds before its first bullet is its lead-in, so a bullet prepended to the list fails it."""
+    pinned_run = " ".join(_PINNED_PLAN_IT_STEP5_SCRIPT_CLAUSES[clause_key].split())
+    lead_in, *bullet_texts = pinned_run.split(" - ")
+    bullet_lines = [f"- {bullet_text}" for bullet_text in bullet_texts]
+    unmodified_section = "\n".join([lead_in, *bullet_lines]) + "\n\nNext paragraph.\n"
+    seeded_section = "\n".join([lead_in, _SEEDED_PLAN_IT_STEP5_BULLET, *bullet_lines]) + "\n\nNext paragraph.\n"
+
+    _assert_pinned_clause_right_bounded(pinned_run, unmodified_section, context="seeded", closes_bullet_run=True)
+    with pytest.raises(AssertionError):
+        _assert_pinned_clause_right_bounded(pinned_run, seeded_section, context="seeded", closes_bullet_run=True)
 
 
 def _step4_tripwire_names() -> set[str]:

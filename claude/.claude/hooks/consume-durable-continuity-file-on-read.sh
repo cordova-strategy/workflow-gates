@@ -28,13 +28,11 @@
 # message emits nothing and falls through to `exit 0`.
 # The `systemMessage` puts the reload command alone on its second line in single backticks, for the reason recorded in announce-resume-command.sh's header.
 #
-# Kill-switch: touching ~/.claude/.consume-durable-continuity-disabled
-# suppresses this hook entirely, mirroring
-# nudge-handoff-near-context-cap.sh's ~/.claude/.handoff-nudge-disabled
-# convention. On-by-default; this is the local opt-out lever, since the
-# hook (unlike its plugin-scoped precedent, consume-migration-token.sh)
-# ships in the globally-stowed claude/.claude/hooks/ and fires for every
-# stow user unconditionally.
+# Kill switch: the consume_durable_continuity config key, on by default.
+# It is the local opt-out lever, since the hook (unlike its plugin-scoped
+# precedent, consume-migration-token.sh) ships in the globally-stowed
+# claude/.claude/hooks/ and fires for every stow user unconditionally.
+# docs/hooks.md's entry for this hook has the config-set.sh command.
 #
 # Timeout: the move, and record_consumed_destination's index append, run
 # synchronously inside this PostToolUse call. If $HOME is network-backed

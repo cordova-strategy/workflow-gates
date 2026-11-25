@@ -49,7 +49,7 @@ before the next model call," vs. `PostToolUse`'s exit 2 which only "shows
 stderr to Claude; the tool already ran"). I checked whether `PostToolBatch`
 would also cut the fire-rate problem by counting this repo's own transcript
 corpus directly (1,421 session files, 239,944 records under
-`~/.claude/projects/-Users-jared-MyCode-claude-config`): 25,711 individual
+`~/.claude/projects/-Users-<user>-MyCode-claude-config`): 25,711 individual
 `tool_use` blocks vs. 25,709 tool-bearing assistant turns — parallel tool-call batching is close to
 nonexistent in this workflow, so `PostToolBatch` and `PostToolUse` fire at
 statistically the same rate here. `PostToolBatch`'s advantage is entirely its

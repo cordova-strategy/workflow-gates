@@ -112,7 +112,7 @@ Row 7 [verified-with-limit]: "the checklist was never reached" is ruled out
   in its strong form — 9 of 10 prior sessions whose transcripts touch
   advance-past-commit-stall.sh contain the literal string "Non-durable
   comment" [verified: grep -c over
-  ~/.claude/projects/-Users-jared-MyCode-claude-config/*.jsonl]. LIMIT:
+  ~/.claude/projects/-Users-<user>-MyCode-claude-config/*.jsonl]. LIMIT:
   loading is not executing, and #536's authoring session ran in a worktree
   with no transcript directory. A third branch remains open and is NOT ruled
   out: the reviewer applied Step 1.5 and correctly cleared the block, since
