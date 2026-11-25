@@ -17,7 +17,7 @@ from review_bench.runner import EnvironmentMismatchError, EnvironmentReference, 
 from replay_bench import checks, tasks
 from replay_bench.account import Account
 from replay_bench.arms import ARMS
-from replay_bench.attempt import NO_RETRY_REASONS, AttemptResult, BlockContext, RunSettings, run_attempt
+from replay_bench.attempt import AttemptResult, BlockContext, RunSettings, run_attempt
 from replay_bench.records import ReplayRunRecord
 from replay_bench.spend import SpendAppendError
 
@@ -82,7 +82,7 @@ def execute_run(settings: RunSettings, block: BlockContext, arm_name: str, run_i
     for attempt_number in range(1, review_runner.ATTEMPTS_PER_RUN + 1):
         result = run_attempt(settings, block, arm, run_index, attempt_number)
         results.append(result)
-        if result.ok or result.reason in NO_RETRY_REASONS:
+        if result.ok or result.reason in settings.no_retry_reasons:
             break
     final = results[-1]
     return RunOutcome(
