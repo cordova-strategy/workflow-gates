@@ -87,7 +87,7 @@ The default differs by subcommand: `skill-invocation` defaults to the repo-scope
 
 **`review-trace` output is not publish-safe at its default scope** — each event line's branch string can carry a ticket ID or project name. The timeline reads the active account's projects by default and every declared account under `--this-repo` or `--all-accounts`, and `--deny-summary` pools every declared account by default (see "Corpus scope: the declared-roots file" below). `--this-repo` does not guarantee single-account output: once `~/.claude/transcript-config-dirs` declares more than one root, it unions across every resolved root the same way `--all-accounts` does. The default timeline still covers every project in the active account, so bound it with `--this-repo`, and name one account with an explicit single top-level `--config-dir PATH`, before quoting output anywhere public. This applies to a zero-match run too: its scope header echoes an explicit `--projects` glob verbatim, so a glob naming a private project reaches the output even when no session matched.
 
-The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.claude/worktrees/` among them, reach anything a subcommand prints per session, and every transcript read through `sessions --paths`. The classes known today:
+The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.claude/worktrees/` among them, reach anything a subcommand prints or writes per session, and every transcript read through `sessions --paths`. The classes known today:
 
 - branch strings
 - project-directory names
@@ -95,6 +95,7 @@ The over-inclusions under "Over-inclusions" below, a repo cloned under `<main>/.
 - skill names, from `skill-invocation` and `review-trace`
 - reviewer types, from `review-trace`
 - review and user text, from `judgment-pair`
+- typed prompts, question exchanges and agent text, from `correction-candidates`, whose `family` field cannot set an unlisted directory's lines apart from this repo's
 - per-round dated dollar series and spawn counts, from `review-round-cost`
 - raw transcript paths, from `sessions --paths`, and the one absolute path per session that `review-trace` prints
 
@@ -718,7 +719,7 @@ Good catch. I'll add IP-range validation before trusting that header.
 **Purpose.** Extract the exchanges where the engineer may have corrected the main agent or could not answer its question, as structured records a model can classify. It writes each answered, declined or errored main-session `AskUserQuestion` exchange and each typed prompt in the window (see Terms), the words typed after a slash command included, each with the agent text around it, as JSON Lines to one new owner-only file. It classifies nothing and matches no phrase list. A single-level glob never reads a subagent file (see "Choosing the glob" for nested globs).
 
 **Flags.**
-- `--projects GLOB` / `--this-repo` — the scope. One of them is required: a run with neither, or with an empty `--projects`, exits 2. An explicit `--projects '*'` is allowed and reads every project on this machine. `--this-repo` has gaps (see "What `--this-repo` does not cover" above).
+- `--projects GLOB` / `--this-repo` — the scope. One of them is required: a run with neither, or with an empty `--projects`, exits 2. An explicit `--projects '*'` is allowed and reads every project on this machine. `--this-repo` has gaps (see "What `--this-repo` does not cover" above) and also admits the over-inclusions under "Over-inclusions" above, which reach this file's raw message text.
 - `--since DATE` / `--until DATE` — inclusive zero-padded `YYYY-MM-DD` window on the timestamp of each prompt-shaped record and each asking record, in UTC.
   - A date that does not exist exits 2 through argparse.
   - A date with an unpadded month or day, such as `2026-5-09`, exits 2 with one line naming the flag and never echoing the value, because it would otherwise apply no bound.
