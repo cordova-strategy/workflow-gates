@@ -1,0 +1,9 @@
+diff --git a/claude/.claude/scripts/probe_synthetic/ctl_keep_report_client.py b/claude/.claude/scripts/probe_synthetic/ctl_keep_report_client.py
+--- a/claude/.claude/scripts/probe_synthetic/ctl_keep_report_client.py
++++ b/claude/.claude/scripts/probe_synthetic/ctl_keep_report_client.py
+@@ -2,4 +2,5 @@
+ 
+ 
+ def fetch_report(client, report_id):
++    """The id is truncated to 40 characters because the Acme Reports API v2 reference caps `id` at 40 and answers 400 for longer ids. Requests use the v1 path because v2 does not serve archived reports, per the vendor's migration notes."""
+     return client.get(f"/v1/reports/{report_id[:40]}")

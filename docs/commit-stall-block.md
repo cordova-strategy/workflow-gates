@@ -21,7 +21,7 @@ Under a relative or nonexistent `CLAUDE_CONFIG_DIR` the hook is silently inert a
 - Work is actually pending: a dirty tree, HEAD ahead of its configured upstream, or any failed upstream comparison. A failed comparison counts as pending when there is no upstream configured (the common state before a branch's first push), when the configured upstream's remote-tracking ref is gone (after a merge plus `fetch --prune`), and when the capped `git rev-list` call is killed.
 - HEAD is on a non-default branch, per `_lib_head_detached_or_default` in `_lib.sh`. The default branch and a detached HEAD stay silent, because the forced continuation would ship from them. A failed HEAD read also stays silent.
 
-The `reason` text tells the agent not to ask permission to continue at a natural stopping point, unless CLAUDE.md, the skill the agent is following, or a hold the engineer stated requires the question. When one does, the reason tells the agent to end its turn. Otherwise it tells the agent to continue with the task's next step, say the task is complete, or say what is blocked. It ends with the disable command. `claude/.claude/CLAUDE.md`'s Shipping bullet carries the push scope, the staging limit and the in-session hold, and Agent Core carries the rule that a fork or subagent returns its work.
+The `reason` text tells the agent not to ask permission to continue at a natural stopping point, unless CLAUDE.md, the skill the agent is following, or a hold the engineer stated requires the question. When one does, the reason tells the agent to end its turn. Otherwise it tells the agent to continue with the task's next step, say the task is complete, or say what is blocked. When `_config.sh` defines the qualifier, it ends with the disable command, `~/.claude/scripts/config-set.sh commit_stall_block false`, behind a qualifier that tells the agent to run it only when the engineer's own message in the conversation says to. The command acts on the config dir the agent's own shell resolves, which can differ from the hook's, so the reason names the hook's config dir first. See `docs/config-file.md` § "Writing a value". `claude/.claude/CLAUDE.md`'s Shipping bullet carries the push scope, the staging limit and the in-session hold, and Agent Core carries the rule that a fork or subagent returns its work.
 
 The reason leaves two gaps:
 
@@ -33,14 +33,16 @@ The reason leaves two gaps:
 **Mid-session:** press `Esc` to interrupt the current turn before the hook fires, or set `commit_stall_block = false` via the `!` shell escape — this kill switch needs no repo change and is honored except under the degraded-schema limitation below:
 
 ```bash
-! printf '\ncommit_stall_block = false\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+! ~/.claude/scripts/config-set.sh commit_stall_block false
 ```
 
-Set it back to `true` to re-enable — see [`docs/config-file.md`](config-file.md) for the file's hand-edit contract:
+Set it back to `true` to re-enable:
 
 ```bash
-! printf '\ncommit_stall_block = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+! ~/.claude/scripts/config-set.sh commit_stall_block true
 ```
+
+If either command exits 1, see [`docs/config-file.md`](config-file.md) § "Writing a value".
 
 The `commit_stall_block` switch and `.commit-stall-block-disabled` silence only this Stop hook, for the config dir the session resolves (one per account). The legacy file counts only while `claude-config.toml` has no `commit_stall_block` row, so on a machine whose config file has the row, touching the file changes nothing. No setting turns off CLAUDE.md's Shipping rule, which keeps telling the agent not to pause.
 

@@ -81,13 +81,18 @@ need no re-verification.
 ## §1 Goal
 One sentence: what was being attempted.
 
+## §1.5 Goal quotes and decisions
+The engineer's own words, carried from handoff to handoff. When this session resumed from a handoff, copy every entry of its §1.5 here unchanged, then add this session's. Quote each entry exactly, tag it `[engineer-confirmed]`, and give the question it answered when it answered one. Keep each entry on one line, joining a quote's line breaks with spaces, so no entry starts a heading line; that join is the one change allowed to an inherited entry. If none, write "None."
+- **Goal:** words stating what the work must achieve or cover.
+- **Decisions:** words on how to do it. A decision may narrow how, never the goal. List a quote added after the goal was first stated under Goal only when it changes the goal by the rule in `plan-it/SKILL.md` § "Step 2 — Discovery", ask-when-unsure step included.
+
 ## §2 Status
 done / in-flight / blocked.
 **Handoff reason:** phase-complete | context-limit
 
-## §2.5 Incomplete prerequisites
+## §2.5 Incomplete plan phases and mid-flight work
 
-If this session executed one phase of a multi-phase plan, name the plan and the current phase. Enumerate prerequisite phases that were defined earlier and their completion status. If any are incomplete or unverified, list them here explicitly — do not omit them. Note what was mid-flight, whatever the handoff reason: open tool calls — including any background subagent dispatch this session spawned, named by its `agent-<agentId>` (never its full transcript path, which embeds this session's own id) — and pending verifications (see §2.6 for task-list state). Record each named dispatch as **collected** (its output was folded into this handoff before writing — see "Before writing: collect in-flight background dispatches" above) or **stranded** (not collected before this file was written, so the resuming session must re-dispatch the work from scratch rather than try to reach it).
+If this session executed one phase of a multi-phase plan, name the plan and the current phase. Enumerate prerequisite phases that were defined earlier and their completion status. If any are incomplete or unverified, list them here explicitly — do not omit them. Only phases of that plan, if any, are prerequisites: a problem found along the way is a §2.7 finding, never listed here. Note what was mid-flight, whatever the handoff reason: open tool calls — including any background subagent dispatch this session spawned, named by its `agent-<agentId>` (never its full transcript path, which embeds this session's own id) — and pending verifications (see §2.6 for task-list state). Record each named dispatch as **collected** (its output was folded into this handoff before writing — see "Before writing: collect in-flight background dispatches" above) or **stranded** (not collected before this file was written, so the resuming session must re-dispatch the work from scratch rather than try to reach it).
 
 If none: write "None."
 
@@ -98,6 +103,9 @@ Read the current task list — from your session's task-list tool if it exposes 
 **Resume directive:** §2.6 is the authoritative source of remaining task state on resume — do not reconstruct the task list from the plan file or from memory. As you resume, track the `pending` and `in_progress` items below, preserving order and their `blockedBy`/`blocks` relationships (map the serialized ordinals to the items in that position); completed items are listed for context only — do not re-add them. If your session exposes a task-list tool (e.g. `TaskCreate`/`TaskUpdate`), mirror the items into it — an `in_progress` item may take two calls (create, then set status) if creation can't set it directly. If it does not — common for resumed sessions — track them inline. Tracking these items is a safe, reversible action, not gated by the artifact preamble's re-confirm-before-executing rule (which is scoped to irreversible/shared-state actions); a missing task-list tool is not a blocker.
 
 If none: write "None."
+
+## §2.7 Findings
+Problems or facts found along the way that no plan phase and no engineer decision has made part of the work. A finding is never a prerequisite and never moves into §2.5. When one makes §3's next step unsafe, §3 names a safe step instead. When one needs the engineer's call, also ask it in §6. If none, write "None."
 
 ## §3 Next concrete step (safe to execute autonomously)
 The exact command, file edit, or question to resume on. No vague "continue the work." Limit this section to reversible steps the resuming agent can execute without re-confirming with the engineer. Move irreversible or shared-state actions to §3.5. When the next step implements an approved plan, write it as the dispatch, not the work: name `code-writer`, the plan path, the phase, and its verification command, per `subagent-delegation`'s default. 'Implement Phase 2' reads to the resuming session as work to do inline.
@@ -168,6 +176,8 @@ The script cannot check these — verify them yourself before writing:
 - You are not claiming "done" for any step whose verification is still pending
 - §2.5 is populated; if any prerequisite phases are incomplete or unverified, they are listed there, not silently omitted
 - §2.5 names what was mid-flight at the time of the handoff, regardless of handoff reason — including any background subagent dispatch this session spawned, by its `agent-<agentId>`, marked collected or stranded
+- §1.5 carries every entry of the resumed-from handoff's §1.5 unchanged, plus this session's own quotes, each on one line and placed under Goal or Decisions by §1.5's rule
+- No §2.5 item waits on the engineer deciding whether it is part of the work: that is a §6 question until they make it part of the plan. A plan phase that waits only on §3.5 authorization stays in §2.5 and §3.5
 - §2.6 is populated — a faithful task-list serialization with per-item ordinal, status, and blocking edges, or "None." — and carries the resume directive
 - §5's script output shows no unresolved reconciliation flag; where one fired, §3 names the review skill the resuming session must re-run to commit the covered work first
 - If this session pushed commits to a branch with an open PR and `/ready-for-review` did not complete this session, run the `pr-description` skill before writing this file, unless this handoff is itself `/ready-for-review` Step 1's context-budget deferral — that gate's own step 5 re-runs `pr-description` in the resuming session once the gate restarts from step 0, so running it again here would spend exactly what the deferral exists to avoid

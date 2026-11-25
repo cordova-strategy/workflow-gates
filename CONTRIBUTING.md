@@ -20,13 +20,7 @@ See [Worktree enforcement in the README](./README.md#worktree-enforcement) for t
 
 ## Optional nudges
 
-A few advisory hooks are opt-in and dormant until a contributor explicitly arms them. `nudge-error-mode-analysis.sh` watches for accumulated in-session friction (hook denials, failed test runs, corrections) and suggests running `/error-mode-analysis` once a backtested threshold is crossed:
-
-```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.error-mode-nudge-enabled"
-```
-
-See [`docs/error-mode-nudge.md`](./docs/error-mode-nudge.md) for what it does, how to disable it again, and known limitations.
+A few advisory hooks are opt-in and dormant until a contributor explicitly arms them. `nudge-error-mode-analysis.sh` watches for accumulated in-session friction (hook denials, failed test runs, corrections) and suggests running `/error-mode-analysis` once a backtested threshold is crossed. See [`docs/error-mode-nudge.md`](./docs/error-mode-nudge.md) for how to enable and disable it, what it does, and known limitations.
 
 ## AI agents don't merge their own PRs
 

@@ -274,18 +274,24 @@ def cmd_turn_shape_samples(args: argparse.Namespace) -> None:
     _TURN_SHAPE_SAMPLES_MIN_STREAK_LEN) as plain text, for manual calibration
     of the batching and delegation rules against cmd_turn_shape's aggregate.
 
+    cmd_turn_shape pools every declared account by default, while this command
+    reads the active account.
+
     Plain text, not JSON, unlike audit-routing-samples: this output is
     stamped with _DO_NOT_PUBLISH_BANNER, and prepending a banner line would
-    corrupt a JSON stream. (audit-routing-samples never stamps this banner at
-    all — a pre-existing gap in that subcommand, not addressed here.)
+    corrupt a JSON stream. (audit-routing-samples prints the banner on stderr
+    only, above one root.)
     """
     since_ts, _since_raw = scope._parse_since_nd_arg(args, "turn-shape-samples")
     sample_n: int = getattr(args, "sample", 30) or 30
     seed: int | None = getattr(args, "seed", None)
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "turn-shape-samples", roots=roots)
     # stderr, not stdout: stdout is this subcommand's plain-text data stream.
-    scope.print_resolved_scope("turn-shape-samples", scope_label, roots, file=sys.stderr)
+    scope.print_resolved_scope(
+        "turn-shape-samples", scope_label, roots, file=sys.stderr, active_account_only=active_account_only,
+    )
 
     candidates: list[dict] = []
     for jsonl, records in session_iter:
@@ -342,10 +348,13 @@ def cmd_turn_shape_holdout_samples(args: argparse.Namespace) -> None:
         )
         sys.exit(2)
 
-    roots = scope.resolve_scan_roots(args)
+    active_account_only = scope._narrows_to_active_account(args)
+    roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
     session_iter, scope_label = scope._resolve_project_scope(args, "turn-shape-holdout-samples", roots=roots)
     # stderr, not stdout: stdout is this subcommand's plain-text data stream.
-    scope.print_resolved_scope("turn-shape-holdout-samples", scope_label, roots, file=sys.stderr)
+    scope.print_resolved_scope(
+        "turn-shape-holdout-samples", scope_label, roots, file=sys.stderr, active_account_only=active_account_only,
+    )
 
     candidates: list[dict] = []
     for jsonl, records in session_iter:
@@ -417,7 +426,8 @@ def _add_turn_shape_samples_subparser(subparsers: argparse._SubParsersAction) ->
             " for manual calibration of the batching and delegation rules."
         ),
     )
-    scope._add_project_scope_args(p_turn_shape_samples)
+    scope._add_project_scope_args(p_turn_shape_samples, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_turn_shape_samples)
     p_turn_shape_samples.add_argument(
         "--since", metavar="Nd",
         help="Limit to turns with timestamp in the last N days (e.g. 35d).",
@@ -444,7 +454,8 @@ def _add_turn_shape_holdout_samples_subparser(subparsers: argparse._SubParsersAc
             " text, for manual recall calibration of the batching and delegation rules."
         ),
     )
-    scope._add_project_scope_args(p_turn_shape_holdout_samples)
+    scope._add_project_scope_args(p_turn_shape_holdout_samples, this_repo_help=scope._POOLED_THIS_REPO_HELP)
+    scope._add_all_accounts_arg(p_turn_shape_holdout_samples)
     p_turn_shape_holdout_samples.add_argument(
         "--since", metavar="Nd",
         help="Limit to turns with timestamp in the last N days (e.g. 35d).",

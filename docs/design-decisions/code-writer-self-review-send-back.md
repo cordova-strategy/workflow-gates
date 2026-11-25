@@ -137,3 +137,4 @@ These notes apply to the log as a whole.
 - A dispatch whose report is very long in auto mode is an open observation. A missing send-back or prefix there belongs here once seen.
 - An agent defined elsewhere that is also named `code-writer` inherits the send-back, with one extra round trip in both modes. The send-back reason cites `code-writer.md` and its ledger format, which that agent may lack.
 - Reviewer-Read credit is a path-suffix match on a path the writer chooses, so a successful Read of any path ending in `/agents/<name>.md`, or in `/skills/ai-instruction-and-memory-files/SKILL.md` for that skill, credits that reviewer.
+- A file `code-writer` changes through Bash never enters the evaluator's changed-path set, so R1, R2, R4 and R5 do not cover it. `code-writer.md` § "Charter" names the one case it allows.

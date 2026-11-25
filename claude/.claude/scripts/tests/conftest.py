@@ -44,7 +44,7 @@ from helpers import (
     install_unwarmed_stub_guard,
 )
 from helpers import TASK_NOTIFICATION_TEXT as _TASK_NOTIFICATION_TEXT
-from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, pricing, redaction, scope
+from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, pricing, publication_scope, redaction, scope
 from transcript_analysis.corpus import SUBAGENT_SUBDIR
 
 # claude/.claude/ itself, so `hooks.tests...` below resolves, as in _cursor_shim_helpers.py.
@@ -941,11 +941,35 @@ def _api_request_blob_rec(
     return rec
 
 
-def _read_result(tool_id: str, content, *, is_error: bool = False) -> dict:
+_NO_TOOL_USE_RESULT = object()
+
+
+def _read_result(tool_id: str, content, *, is_error: bool = False, tool_use_result=_NO_TOOL_USE_RESULT) -> dict:
     """A user-record tool_result for a Read call, shared by the read-scope and read-cost tests. `content` is
     either a plain string (a real Read's text output) or a content-block list (e.g. an image result); the
-    string-versus-list split is how an image result is told apart from text."""
-    return _user_msg([{"type": "tool_result", "tool_use_id": tool_id, "content": content, "is_error": is_error}])
+    string-versus-list split is how an image result is told apart from text. `tool_use_result`, when given
+    (None included), is the record's top-level `toolUseResult`; it is absent otherwise."""
+    record = _user_msg([{"type": "tool_result", "tool_use_id": tool_id, "content": content, "is_error": is_error}])
+    if tool_use_result is not _NO_TOOL_USE_RESULT:
+        record["toolUseResult"] = tool_use_result
+    return record
+
+
+def _read_truncation_notice(tool_id: str) -> dict:
+    """The attachment record the harness writes beside a Read result it truncated at the token cap.
+
+    The call id sits inside the `attachment` object, not on the record's top level.
+    That shape matches the harness's records as observed in transcripts. The banner value here is synthetic.
+    If a reviewer-reads report's "no read_truncation_notice" count nears its whole token-cap partial count,
+    the harness shape has drifted from this one."""
+    return {
+        "type": "attachment",
+        "attachment": {
+            "type": "read_truncation_notice",
+            "banner": "synthetic truncation banner",
+            "toolUseID": tool_id,
+        },
+    }
 
 
 def _agent_use(tool_id: str, subagent_type: str, *, tool_name: str = "Agent", prompt: str = "y") -> dict:
@@ -969,6 +993,10 @@ def _ledger_row(
     schema_version: int = 2,
     event_time: object = "2026-08-01T10:00:00Z",
     session_id: str | None = None,
+    id: str | None = None,
+    ref: str | None = None,
+    decided_by: str | None = None,
+    reviewers: list[str] | None = None,
 ) -> dict:
     """One review-narrative-ledger row, review-ledger.sh's own row shape.
     round=None omits the `round` key entirely rather than setting it null,
@@ -976,6 +1004,7 @@ def _ledger_row(
     writes a null round. session_id=None omits the `session_id` key, the
     shape of a row written before rows carried one (schema v2). Pass
     schema_version=3 alongside a session_id for a row that carries one.
+    id, ref, decided_by and reviewers omit their key when None, as session_id does.
     review-ledger.sh's _LEDGER_SCHEMA_VERSION is the writer's own version, and
     the readers read no version field."""
     row = {
@@ -992,6 +1021,9 @@ def _ledger_row(
         row["round"] = round
     if session_id is not None:
         row["session_id"] = session_id
+    for key, value in (("id", id), ("ref", ref), ("decided_by", decided_by), ("reviewers", reviewers)):
+        if value is not None:
+            row[key] = value
     return row
 
 
@@ -1011,7 +1043,7 @@ def _write_ledger_file(
     """Write one session-keyed review-narrative-ledger file for a synthetic
     session, mirroring review-ledger.sh's own
     $LEDGER_DIR/$REPO_HASH.$SESSION_ID.jsonl naming under
-    <config_dir_root>/review-narrative-ledger/. author_outcome.py attributes
+    <config_dir_root>/review-narrative-ledger/. review_ledger.py attributes
     a row without a `session_id` to the session in this filename, so a
     legacy-shaped row needs no session_id here. The repo-hash prefix is
     irrelevant to that attribution, so a fixed placeholder is fine.
@@ -1026,6 +1058,24 @@ def _write_branch_ledger_file(
     $LEDGER_DIR/$REPO_HASH.$BRANCH_HASH.jsonl. Its rows must carry their own
     `session_id`: nothing in the filename says which session wrote them."""
     return _write_named_ledger_file(config_dir_root, repo_hash, branch_hash, rows)
+
+
+def _write_this_repo_ledger_file(config_dir_root: Path, worktree_path: str | Path, slot: str, rows: list[dict]) -> Path:
+    """Write one ledger file named for `worktree_path`, as review-ledger.sh names a file for the path it ran in."""
+    return _write_named_ledger_file(config_dir_root, publication_scope._ledger_repo_hash(str(worktree_path)), slot, rows)
+
+
+# One edge matrix for a `--since 2026-08-10 --until 2026-08-12` window, shared by the ledger and transcript window tests.
+# Each triple is (timestamp, ledger expectation, transcript expectation). The ledger expectation is "in", "out" or
+# "event_time" (left out under that field): the ledger accepts only the writer's `Z` form, so an offset is left out there,
+# while transcripts convert it through corpus._parse_ts. The transcript expectation is "in" or "out".
+_WINDOW_EDGE_TIMESTAMPS = (
+    ("2026-08-10T00:00:00Z", "in", "in"),
+    ("2026-08-12T23:59:59Z", "in", "in"),
+    ("2026-08-13T00:00:00Z", "out", "out"),
+    ("2026-08-13T00:30:00+02:00", "event_time", "in"),
+    ("not-a-timestamp", "event_time", "out"),
+)
 
 
 def _opus(
@@ -1531,13 +1581,18 @@ def _attr_ts(minute: int) -> str:
     return f"2026-05-12T12:{minute:02d}:00.000Z"
 
 
-def _read_use(tool_id: str, file_path: str, *, offset: int | None = None, limit: int | None = None) -> dict:
-    """Build a Read tool_use block with the given file_path."""
+def _read_use(
+    tool_id: str, file_path: str, *, offset: int | None = None, limit: int | None = None,
+    allow_large: bool | None = None,
+) -> dict:
+    """Build a Read tool_use block with the given file_path. `allow_large` is absent from the input unless given."""
     tool_input: dict = {"file_path": file_path}
     if offset is not None:
         tool_input["offset"] = offset
     if limit is not None:
         tool_input["limit"] = limit
+    if allow_large is not None:
+        tool_input["allow_large"] = allow_large
     return {"type": "tool_use", "id": tool_id, "name": "Read", "input": tool_input}
 
 
@@ -1589,6 +1644,17 @@ def stub_repo_tracked_agent_types(monkeypatch):
         tracked = redaction._BUILT_IN_AGENT_TYPES | frozenset(extra_names)
         monkeypatch.setattr(redaction, "_repo_tracked_agent_type_names", lambda: tracked)
     return _stub
+
+
+@pytest.fixture
+def default_int_str_digit_limit():
+    """Pins the interpreter's default 4300-digit limit so a contributor's PYTHONINTMAXSTRDIGITS cannot change the outcome."""
+    previous_limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(4300)
+    try:
+        yield
+    finally:
+        sys.set_int_max_str_digits(previous_limit)
 
 
 @pytest.fixture()

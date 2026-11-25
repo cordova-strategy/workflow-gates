@@ -1,0 +1,23 @@
+{
+ "packet_id": "p023",
+ "a": {
+  "pass": false,
+  "evidence": "Deleting the docstring outright is also acceptable, because the caller's docstring already holds the decision and its reason."
+ },
+ "b": {
+  "pass": true,
+  "evidence": "\"\"\"Re-raise form of `exc` that omits the offending path; see `_dedup_new_project_dirs` for why.\"\"\""
+ },
+ "c": {
+  "pass": true,
+  "evidence": "\"\"\"Re-raise form of `exc` that omits the offending path; see `_dedup_new_project_dirs` for why.\"\"\""
+ },
+ "d": {
+  "pass": true,
+  "evidence": "`_dedup_new_project_dirs` docstring (`scope.py:254-257`): this level has no per-account ordinal to label the path with."
+ },
+ "e": {
+  "pass": true,
+  "evidence": "\"\"\"Re-raise form of `exc` that omits the offending path; see `_dedup_new_project_dirs` for why.\"\"\""
+ }
+}

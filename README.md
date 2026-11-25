@@ -79,7 +79,7 @@ The README below is organized by feature surface (hooks, skills, plugins, script
 - **Post-crash session recovery** — `post-crash-sessions` cross-references five session-liveness sources, including a never-swept lookup corpus that survives a same-day crash with no reboot, to find and resume crash-orphaned sessions, with a versioned `--json` mode for programmatic consumers. See [`docs/scripts.md`](docs/scripts.md).
 - **Project-layer composition by glob + Skill-tool dispatch** — `/plan-it`, `/plan-review`, `/code-review`, and `/test-conventions` glob for `.claude/skills/<parent>-<project>/SKILL.md` at runtime; consuming repos extend the base skill without forking. Description-based auto-trigger was empirically tested and rejected (it doesn't fire from inside a running skill). Add-on skills on the project side should set `disable-model-invocation: true` — the parent invokes them via the Skill tool, so their description doesn't need to be in the always-loaded skill-listing budget. See [docs/skills.md](docs/skills.md) and [`docs/design-decisions/project-layer-composition.md`](docs/design-decisions/project-layer-composition.md).
 - **Three-tier redaction** — tracker-ID regex (always on in a gated repo), opt-in user-local blocklist, reviewer discipline for structural fingerprints and private-corpus provenance. See [Private-project redaction](#private-project-redaction).
-- **Multi-account transcript corpus scope** — `transcript-analysis.py`, `post-crash-sessions`, `analyze-context.py`, and `token-analyzer.py` default to the union of every root in `~/.claude/transcript-config-dirs`, except a few subcommands that read the active account only, among them `cost --summary` (this repository on the active account only) and `period-cost` (the active account's whole projects directory). A subcommand that prints a resolved-scope header states the root count there. See [`docs/transcript-analysis.md`](docs/transcript-analysis.md) for the per-subcommand mechanics.
+- **Multi-account transcript corpus scope** — `transcript-analysis.py`, `post-crash-sessions`, `analyze-context.py`, and `token-analyzer.py` default to the union of every root in `~/.claude/transcript-config-dirs`, except the subcommands that read the active account only. A subcommand that prints a resolved-scope header states the root count there. See `docs/transcript-analysis.md` § "Corpus scope: the declared-roots file" for which subcommands those are and the per-subcommand mechanics.
 - **Leaf-module decomposition over a monolithic CLI script** — corpus read, scope resolution, redaction, pricing, and rendering logic live in an importable package so other scripts can reuse it directly instead of exec-loading the CLI module. See [`docs/transcript-analysis-architecture.md`](docs/transcript-analysis-architecture.md).
 - **Round-3-triggered architect consult, re-armed every three reviewed states by a content-free latch** — `require-architect-consult.sh` denies a reviewer-persona spawn once a branch's distinct `(HEAD sha, staged-diff sha256)` states hit a cap of two, interrupting a non-converging review loop before the round-3 fan-out it exists to prevent gets paid for. Each consult restarts the count, so the gate asks again after every three more reviewed states, `/ready-for-review` passes included. Unlike this repo's content-addressed markers described above (decision 2), the latch is presence-only and does not track state changes, since the diff changing is exactly what rounds 3+ look like. See [`docs/hooks.md`](docs/hooks.md) (`require-architect-consult.sh`, `log-reviewer-round.sh`), [`docs/design-decisions/round-cap-consult-rearm.md`](docs/design-decisions/round-cap-consult-rearm.md) for the re-arm interval and its reset, and `docs/design-decisions.md` §45.
 
@@ -344,7 +344,7 @@ To opt out, delete `.claude/worktree-required`.
 If you work across many repos and want enforcement everywhere without adding a marker to each, set the `worktree_required` config key:
 
 ```bash
-printf '\nworktree_required = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh worktree_required true
 ```
 
 See [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract. This activates enforcement for every git repo on your machine. Any repo that already has a committed `.claude/worktree-required` is unaffected (it was already enforcing). To exempt a specific repo from machine-level enforcement:
@@ -381,7 +381,7 @@ If the agent ends its turn asking whether you want to review the diff before it 
 `pr-description` can embed the PR body's cost block — branch-scoped session count, token volume, and list-price dollars from `transcript-analysis.py cost --summary`. Off by default; gated by the `pr_cost_disclosure` config key, scoped to the Claude account, not to the repo.
 
 ```bash
-printf '\npr_cost_disclosure = "dollars"\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh pr_cost_disclosure dollars
 ```
 
 The key resolves to exactly one config dir (`$CLAUDE_CONFIG_DIR` if set and absolute, else `$HOME/.claude`) and its value (`dollars` vs. anything else) toggles the mode account-wide, so one account's opt-in never activates disclosure under another — see [`docs/config-file.md`](docs/config-file.md) for the file format and resolution precedence.
@@ -390,20 +390,20 @@ The disclosed fields are not a safe-by-default aggregate — see the "The disclo
 
 ### Prose tightening pass
 
-`pr-description` runs a `tighten-prose` pass over the drafted body before its checks. On by default, unlike PR cost disclosure above — opt out per account by touching a sentinel scoped the same way.
+`pr-description` runs a `tighten-prose` pass over the drafted body before its checks. On by default, unlike PR cost disclosure above — opt out per account by setting the `pr_description_tighten_prose` config key to `false`, scoped the same way.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/pr-description-tighten-prose-optout"
+~/.claude/scripts/config-set.sh pr_description_tighten_prose false
 ```
 
 See [`docs/hooks.md`](docs/hooks.md)'s "Prose tightening opt-out" for the full mechanics.
 
 ### Permission-prompt tracking
 
-If you're running in `auto` permission mode and want to know which commands still trigger an interactive approval dialog — and how often — this opt-in hook captures it. `track-permission-prompts.sh` (a `Notification` hook, matcher `permission_prompt`) appends the redacted payload to a local, gitignored log whenever the sentinel below exists on this machine.
+If you're running in `auto` permission mode and want to know which commands still trigger an interactive approval dialog — and how often — this opt-in hook captures it. `track-permission-prompts.sh` (a `Notification` hook, matcher `permission_prompt`) appends the redacted payload to a local, gitignored log whenever the `permission_prompt_tracking` config key resolves true for the config dir the session resolves.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/track-permission-prompts"
+~/.claude/scripts/config-set.sh permission_prompt_tracking true
 ```
 
 See [`docs/permission-prompt-tracking.md`](docs/permission-prompt-tracking.md) for the log location/format, redaction coverage, and known limitations.
@@ -415,7 +415,7 @@ See [`docs/permission-prompt-tracking.md`](docs/permission-prompt-tracking.md) f
 `./install.sh` now offers this interactively on every run — the snippet below is the non-interactive/scripted alternative, not the only path.
 
 ```bash
-touch "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.error-mode-nudge-enabled"
+~/.claude/scripts/config-set.sh error_mode_nudge true
 ```
 
 See [`docs/error-mode-nudge.md`](docs/error-mode-nudge.md) for the fire predicate, log location, and known limitations.
@@ -427,7 +427,7 @@ See [`docs/error-mode-nudge.md`](docs/error-mode-nudge.md) for the fire predicat
 `./install.sh` now offers this interactively on every run — the snippet below is the non-interactive/scripted alternative, not the only path.
 
 ```bash
-printf '\ncost_ledger_recording = true\n' >> "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/claude-config.toml"
+~/.claude/scripts/config-set.sh cost_ledger_recording true
 ```
 
 See [`docs/cost-ledger.md`](docs/cost-ledger.md) for the ledger's default location, schema, and recording mechanics, and [`docs/config-file.md`](docs/config-file.md) for the file's hand-edit contract.
@@ -444,17 +444,36 @@ Moving or renaming this checkout (`mv ~/current-location/claude-config ~/somewhe
    relocate-claude-config --repair <new-path> # repo already moved outside a Claude Code session
    ```
 
-   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation). It quarantines every dangling symlink directly under `~/.claude` or `~/.local/bin`, plus a dangling tree-folded `~/.claude`. It never deletes a file or directory. Names that start with a dot are skipped. Same-named links from the two directories share one backup name, so the later move replaces the earlier backup. It then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
+   The primary form unstows the current checkout, moves it, and re-stows at the new location — do not run it while other Claude Code sessions are active, since every hook under `~/.claude/hooks/` is briefly absent between the unstow and re-stow steps, and a concurrent session's tool call in that window gets a hard deny. `--repair` is for when the checkout was already moved outside any Claude Code session (a manual `mv`, a Finder drag, a sync-tool restore, or a crash mid-relocation). It quarantines every dangling symlink directly under `~/.claude` or `~/.local/bin`, plus a dangling tree-folded `~/.claude`. It never deletes a file or directory. Names that start with a dot are skipped. It then re-stows at the location you give it. Both modes canonicalize the destination and refuse one outside `$HOME` unless you pass `--allow-outside-home`.
 
    - Run `./install.sh` after pulling and before relocating, because the installed copy is the one that runs.
-   - Both modes also re-link the `claude-skills` package at `~/.claude/skills`, with a stow that passes no `--adopt`. A link at one of its top-level paths that no longer resolves moves to `~/.claude-config-relocate-backup/<name>.<pid>` first, and the output names each move. A real directory at `~/.claude/skills` is left alone and reported, as `install.sh` does.
-   - Exit 3 means the checkout has already moved, or `--repair` already linked the `claude` package, and re-linking a package named on stderr failed.
+   - Both modes also re-link the `claude-skills` package at `~/.claude/skills`, with a stow that passes no `--adopt`. A link at one of its top-level paths that no longer resolves moves to `~/.claude-config-relocate-backup/<name>.<suffix>` first, a name unique to each move, and the output names each move. A real directory at `~/.claude/skills` is left alone and reported, as `install.sh` does.
+   - Both modes also re-point links in each config dir listed in `~/.claude/transcript-config-dirs`, other than `~/.claude` and any dir inside the checkout. With no such file in `~/.claude` when this step runs, it does nothing.
+     - A link at one of this repo's package paths in that dir, nested ones included, now points to that path in the new checkout when it no longer resolves and its text ends in `/claude/.claude/<path>` or `/claude-skills/<path>` for its own `<path>`. The new text is relative, as Stow writes it.
+     - This holds whichever checkout the old text named, one on a volume not mounted during the run included. The backup copy keeps the old link text.
+     - A copy of each old link goes to `~/.claude-config-relocate-backup/<name>.L<line>.<suffix>` first. A failed replacement leaves the old link in place. One that fails because it changed during the run, or at its rename, also leaves its backup copy, and each retry before the fix can add another.
+     - Nothing else in the dir changes, so an entry tracked since that account was last installed stays unlinked until its own installer runs.
+     - Output names a listed dir only by its line number. One line per dir gives how many links it re-pointed, could not re-point, and left alone, and how many directories it could not search. Each link left alone is named on its own line. This command did not touch it, so re-link or remove it yourself.
+     - This step runs after the relocation's own steps. Interrupting a run that blocks on a listed dir, such as one on an unreachable mount, leaves those steps done. An error printed earlier for a package that failed is not repeated in a closing line.
+     - The run prints `checking line <N> of ~/.claude/transcript-config-dirs` before it first probes a listed dir, and `walking the dir on line <N> …` before it walks one. The last such line an interrupted run printed names the line to take out of the list or make reachable.
+     - After an interrupted run, run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when the first run passed it. When it succeeds it prints `Done.` and the manual steps.
+       - An interrupted run prints no closing text: no `Done.` line, reminders, manual steps or retry line.
+       - After an interrupted primary-form run, reopen open shells and Claude Code sessions, because the retry does not print the primary form's reminder that they still hold the old path.
+     - An interrupted run can leave a `.<name>.relocate-claude-config.<pid>` link beside the link it was replacing. It is safe to delete. It can also leave an empty file in `~/.claude-config-relocate-backup`, which is safe to delete too.
+     - `--repair <new-path>` re-points every listed account's matching links into `<new-path>`, so that destination is trusted for every listed account, not only `~/.claude`.
+     - Listing a dir in the file gives this command write access to its links. Taking it out of the list keeps the command away from it, and also drops it from the transcript tools' scan (`docs/transcript-analysis.md` § "Corpus scope: the declared-roots file"). This command accepts any existing absolute directory in the file, including one the transcript tools skip.
+   - Exit 3 means the checkout has already moved, or `--repair` already linked the `claude` package, and re-linking a package, or re-pointing a listed config dir, named on stderr failed.
      - The common causes are:
        - Something in the way at `~/.claude/skills`, such as a real file or directory, or a live symlink that is not this checkout's `claude-skills` link. Move it aside.
        - A checkout with no `claude-skills/` directory. Update the checkout to a commit that has it, then run `./install.sh` from it. The failed run already replaced the installed script with the checkout's own, so a retry before then links nothing.
        - `--repair` run while `~/.claude` is a live symlink into the checkout. Replace the symlink as the output describes.
+       - A listed config dir, shown as `transcript-config-dirs:line-<N>`. The error lines above name the step that failed, which points to one of these:
+         - a dir this command cannot search;
+         - an unwritable listed dir, or an unwritable dir under it, when one of its links needs re-pointing there (a dir with nothing to re-point is not written);
+         - an unwritable backup dir, when some listed dir holds a link that needs re-pointing;
+         - a link it cannot re-point for another reason.
      - The output names the cause and, for the symlinked `~/.claude`, the fix.
-     - Fix the cause, then run the `--repair` command the output ends with. That run moves every dangling entry `--repair` finds, as described above, not only those the move broke. The primary form must not be re-run.
+     - Fix the cause, then run the `--repair` command the output ends with. That run moves every dangling entry `--repair` finds, as described above, not only those the move broke. The primary form must not be re-run. For a listed dir, the other way out is to delete its line from `~/.claude/transcript-config-dirs`.
    - Exit 1 from the primary form depends on the last of the `unstowing <old>`, `moving <old> -> <new>` and `mv failed` lines it printed, since an error line or Stow's own output always follows one:
      - With none of them, a precondition failed and nothing changed.
      - With `unstowing <old>` and no `moving <old> -> <new>`, the unstow itself failed, so some `claude` links may be absent. The exit status is Stow's own, which can be 2. Fix the error and re-run the primary form.
@@ -469,7 +488,8 @@ Moving or renaming this checkout (`mv ~/current-location/claude-config ~/somewhe
      - Neither code is defined by this script or documented by Stow, whose error is a bare die.
    - Both modes exit 1 before changing anything when `~/.claude-config-relocate-backup` exists and is a symlink or is not a directory, a symlink made on purpose to another volume included.
    - The script does not do the following, which stay manual:
-     - Other accounts' config dirs, including any listed in `~/.claude/transcript-config-dirs`, keep their links into the old location. Until one is re-linked, a session under that account loads none of this repo's settings, hooks or skills. `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points its marketplace registration. `register-marketplace` takes effect only once that account's `settings.json` resolves, and exits 0 with "nothing to register" otherwise.
+     - Config dirs not listed in `~/.claude/transcript-config-dirs`, or listed there and reported as not re-linked, keep their links into the old location. Until one is re-linked, a session under that account loads none of this repo's settings, hooks or skills. To have this command re-link one, list its absolute path in that file, or correct the line a warning names, or make its dir reachable, then run `relocate-claude-config --repair [--allow-outside-home] <new-path>`, with the flag when the first run passed it. Listing a dir there also adds it to the transcript tools' scan when it holds `projects/`. A link reported as left alone is not touched, so re-link or remove it yourself.
+     - Any other account that registered this repo's marketplace, listed or not, still records it at the old location. `CLAUDE_CONFIG_DIR=<dir> register-marketplace` re-points its marketplace registration. `register-marketplace` takes effect only once that account's `settings.json` resolves, and exits 0 with "nothing to register" otherwise.
      - Every linked worktree, wherever it lives, still records the old location. Run `git worktree repair <path>…` in the moved checkout, naming each linked worktree's current path. One that lived under the checkout is now at the same relative path under `<new-path>`, usually `<new-path>/.claude/worktrees/<name>`, which is where this repo's worktree convention puts it.
      - Anything outside this repo that names the old path, such as a scheduled job or a shell startup file, still names it.
 
@@ -592,7 +612,7 @@ Test trees under `claude/.claude/` that carry their own `conftest.py` are Python
   - Checks ahead of xdist's own core-count detection.
   - Applies to both a direct `scripts/venv-run.sh pytest` run and `select-tests.py`.
   - Wins over `select-tests.py`'s own sizing, which defers whenever the variable is already set.
-- Or pass `-n <N>` on the command line for a single run. It wins over both. `select-tests.py` forwards it through to pytest.
+- Or pass `-n <N>` on the command line for a single run. It wins over both. In a `select-tests.py` split run, only the parallel pass honors it (see the split-run list below).
 - When running several suites at once, size it as logical cores divided by the number of concurrent runs you expect (e.g. a 16-core machine expecting four concurrent runs → `-n 4`). Check xdist's startup banner to confirm a run picked up the value.
 - Agents' Bash-tool subprocesses inherit the environment `claude` had at launch rather than reading the shell live, so export it before starting that session — setting it afterward in a running session's terminal won't reach that session's test runs.
 
@@ -605,6 +625,35 @@ scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py
 ```
 
 This is the required local command for agents, including in `/ready-for-review`. CI still runs the whole suite on every PR and main push — a deliberate choice, see [`docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md`](docs/design-decisions/ci-stays-an-unconditional-full-suite-backstop.md).
+
+`select-tests.py` splits a run into two pytest passes, as CI does:
+
+- It runs a parallel pass for everything not marked `timing`, then a serial `-n0` pass for the `timing` tests.
+- The serial pass leaves out tests marked `saturates_cpu`, each of which starts one busy process per CPU core. CI's serial step runs them.
+  - A split run never runs them, so `-m saturates_cpu` selects nothing in a split run.
+  - To run them locally, pass `-n 0 -m saturates_cpu`, which runs one unsplit pass, or run `scripts/venv-run.sh pytest <file> -m timing -n0`. `-n 1 -m saturates_cpu` runs nothing, because the test skips itself inside an xdist worker.
+  - A plain `-n 0` run of a selection that includes `claude/.claude/scripts/tests` runs that test.
+- The serial pass collects the whole selection and filters it with `-m`.
+- Whether a selection holds `timing` tests is read from file text, so the mark must sit in the file pytest collects the test from. `test_pytest_collection_config.py` fails CI when it does not.
+- With `--collect-only`/`--co`, a split run prints each pass's share, and the two shares together omit `saturates_cpu` tests. Add `-n 0` for one complete listing.
+- A split run adds one more collection of the whole selection plus the serial pass's wall time.
+- It skips the serial pass when the parallel pass exits 3 or 4 or is killed by a signal.
+- It runs one unsplit pass instead when:
+  - your `-n` is 1 or less, since one worker has no sibling workers for the serial pass to protect;
+  - `PYTEST_XDIST_AUTO_NUM_WORKERS` is 1 or less, and your `-n`, if any, is `auto` or `logical`;
+    - When it is unset and the 1-minute load average is readable, `select-tests.py` sizes it from the CPU count and load, so a one-CPU machine runs one pass too.
+  - an argument starts with `@`;
+  - an argument is a bare `--`;
+  - neither a selected file nor a path you pass contains `mark.timing`.
+- Your arguments reach both passes, and the serial pass's `-n0` overrides your `-n`.
+- A `-m` you pass combines as `(<expr>) and not timing` and `(<expr>) and timing and not saturates_cpu`. A `-m` inside a flag cluster such as `-vm`, or in `PYTEST_ADDOPTS`, is not recognized, and each pass's own `-m` overrides it.
+- It does not read `PYTEST_ADDOPTS` or `--pdb` when it decides whether to split.
+- It exits with the first non-zero code, the parallel pass's first. A pass that collected no tests, exit 5, defers to the other unless both did.
+- Each pass writes report files such as `--junitxml` once, so the serial pass's file replaces the parallel pass's.
+- `--lf` in a split run reads the cache the parallel pass just wrote. Once that pass clears the recorded failures, the serial pass runs every selected timing test. Pass `-n 0` for an exact rerun.
+- A run where both passes fail may lose the parallel pass's `tmp_path` directories.
+- The serial pass removes only this run's own sibling-worker load, not load from other processes on the machine.
+- The interpreter that runs it must be able to import pytest.
 
 Set `test_selection_tracking = true` in `<config-dir>/claude-config.toml` (off by default) to log every `select-tests.py` invocation's selection outcome to `<config-dir>/.test-selection-log.jsonl`, one JSON line per invocation. Each line always records the selection reason. For a full-suite fallback, it also records which changed path triggered it. When that invocation computed a load-aware worker count, it also records the worker count and the 1-minute load average. This makes fallback-to-full-suite frequency measurable instead of a stderr line that scrolls away. Like [`.permission-prompt-log.jsonl`](docs/permission-prompt-tracking.md#known-limitations), the log is append-only with no automatic rotation; trim it manually if disk space or data age is a concern. Its invocation frequency is structurally higher than that log's, since it appends on every `select-tests.py` run rather than only on an interactive permission dialog.
 

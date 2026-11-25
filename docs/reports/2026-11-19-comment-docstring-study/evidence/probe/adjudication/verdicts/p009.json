@@ -1,0 +1,23 @@
+{
+ "packet_id": "p009",
+ "a": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/; the scheme is external, so don't change it here.\"\"\"`"
+ },
+ "b": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/; the scheme is external, so don't change it here.\"\"\"`"
+ },
+ "c": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/; the scheme is external, so don't change it here.\"\"\"`"
+ },
+ "d": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/; the scheme is external, so don't change it here.\"\"\"`"
+ },
+ "e": {
+  "pass": true,
+  "evidence": "`\"\"\"Mirror Claude Code's naming of project dirs under ~/.claude/projects/; the scheme is external, so don't change it here.\"\"\"`"
+ }
+}

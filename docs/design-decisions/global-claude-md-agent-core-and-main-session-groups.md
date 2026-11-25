@@ -22,6 +22,7 @@ Claude Code's `omitClaudeMd` subagent frontmatter, together with `skills:` prelo
 - A rule addressed to subagents goes to Agent Core: the "Dispatching cannot clear a denial your child inherits" bullet and the "any fork or subagent returns its work to its dispatcher rather than shipping on its own" clause.
 - The MEMORY.md-index bullet sits in Agent Core because every subagent probed (`plan-architect`, `general-purpose`, `code-writer`, `staff-sdet`) reported the index in its own context.
 - The marker `clear-stale` bullet stays in Main session: `clear-stale` cannot clear a subagent's own leftovers.
+- The "Take the next step you name" bullet sits in Main session, an exception to the tool-capability test above. A dispatched agent's final message is its return, where naming follow-ups for its dispatcher is expected, so in Agent Core the rule could push a subagent past its brief. A non-fork subagent that names its own next step and ends its run without taking it is not covered.
 
 Whether subagents comply with the grouping is unmeasured at the time of writing. A post-merge compliance spot-check on this repo's own sessions follows `docs/private-project-redaction.md` § "Publishing a tooling measurement", and GH-1085 records the result.
 
@@ -57,7 +58,7 @@ Four readings of the clause still let a fork or subagent ship:
 - "On its own" can read as "on its own initiative".
 - The audience partition is self-declared: a non-fork subagent told, or injected with text saying, "you are a fork" inherits Main session's Shipping autonomy text. The existing review-state gates bound this.
 
-Closing the first three readings needs an edit that fits under the 30,720-byte limit. The fourth reading is not closable by wording. The post-merge fork spot-check is the control.
+Closing the first three readings needs an edit that fits under the 31,744-byte limit. The fourth reading is not closable by wording. The post-merge fork spot-check is the control.
 
 ## Accepted risk: duplicate headings
 
@@ -138,7 +139,7 @@ Follow-ups for dangling phrases left by verbatim moves:
 
 ## Byte margin
 
-CLAUDE.md is gated by 200 lines and a 30,720-byte limit (GH-1267), and the byte ratchet compares each commit to HEAD. Wording growth must fit under the limit.
+CLAUDE.md is gated by 200 lines and a 31,744-byte limit, and the byte ratchet compares each commit to its base (`docs/hooks.md` § "Gate hooks"). Wording growth must fit under the limit.
 
 Standing constraints:
 
@@ -161,7 +162,7 @@ Procedure:
 
 - Confer with the repo owner before choosing the approach.
 - Revert the whole squash commit, never individual paths, so this record and the "Partially superseded" line do not describe a contract that no longer exists.
-- A hand-restored tree committed through `git commit` grows CLAUDE.md, and the length ratchet denies it only once the committed file passes the 30,720-byte limit.
+- A hand-restored tree committed through `git commit` grows CLAUDE.md, and the length ratchet denies it only once the committed file passes the 31,744-byte limit.
 - Plain `git revert <sha>` is not intercepted by the length gate or the code-review gate, both of which match only the `commit` subcommand.
 - `git revert -n` followed by `git commit` passes the length gate but needs a `/code-review` marker on the reverse diff.
 - Expect a `CHANGELOG.md` conflict.

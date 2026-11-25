@@ -251,7 +251,13 @@ WRITTEN_PROMPT_ID=$(cat "$STATE_FILE" 2>/dev/null)
 
 printf 'fired session=%s prompt=%s\n' "$SESSION_ID" "$PROMPT_ID" >> "$LOG_FILE" 2>/dev/null || true
 
-REASON="Do not ask the engineer for permission to continue at a natural stopping point, unless CLAUDE.md, the skill you are following, or a hold the engineer stated requires the question. If one does, end your turn. Otherwise continue with your task's next step, say the task is complete, or say what is blocked. To disable this on this machine: printf '\ncommit_stall_block = false\n' >> \"$CONFIG_DIR/claude-config.toml\""
+REASON="Do not ask the engineer for permission to continue at a natural stopping point, unless CLAUDE.md, the skill you are following, or a hold the engineer stated requires the question. If one does, end your turn. Otherwise continue with your task's next step, say the task is complete, or say what is blocked."
+# The command is named only beside its engineer-only qualifier. A stale
+# _config.sh lacking the qualifier leaves the variable empty, so the reason
+# then carries no config-set.sh text.
+if [ -n "${_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER:-}" ]; then
+  REASON="${REASON} ${_CONFIG_SETTER_ENGINEER_ONLY_QUALIFIER} To disable this for the config dir ${CONFIG_DIR} (the command acts on the config dir its own shell resolves; if its \`wrote\` line names a different directory, report that to the engineer): ~/.claude/scripts/config-set.sh commit_stall_block false"
+fi
 
 # Mirrors _lib_emit_allow_with_context's gated-encode shape:
 # an empty REASON_JSON exits before printing, avoiding the malformed

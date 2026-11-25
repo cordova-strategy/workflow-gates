@@ -1,0 +1,11 @@
+diff --git a/claude/.claude/scripts/compaction-context.py b/claude/.claude/scripts/compaction-context.py
+--- a/claude/.claude/scripts/compaction-context.py
++++ b/claude/.claude/scripts/compaction-context.py
+@@ -108,6 +108,7 @@
+ 
+ 
+ def _prompt_text(rec: dict) -> str:
++    """The record's text with NUL removed, so the closer and emptiness checks judge the text the block emits."""
+     return _record_text(rec).replace("\x00", "")
+ 
+ 

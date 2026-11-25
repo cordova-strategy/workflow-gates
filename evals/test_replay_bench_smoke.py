@@ -77,6 +77,49 @@ class TestAPassingSmoke:
         assert exit_code == 0 and smoke_pass_exists(world)
         assert checks.EXCLUDE_NOTE_NOT_EXERCISED in output
 
+    def test_a_run_that_ends_with_no_text_passes_and_the_printout_names_it_for_each_arm(self, world, capsys):
+        """An empty final text sets a flag on the record and fails no smoke condition."""
+        exit_code, _stub = run_smoke(world, by_call=lambda call: Scenario(final_text=""))
+
+        output = capsys.readouterr().out
+        assert exit_code == 0 and smoke_pass_exists(world)
+        assert output.count("empty final text: the run ended with no text") == 2
+        assert "no deliverable" not in output, "each run changed a file, so it has a deliverable"
+
+    def test_a_run_that_ends_with_no_text_and_no_change_is_named_before_the_verdict_but_still_passes(self, world, capsys):
+        """Print-only visibility: the run is `ok`, so smoke passes, but a line before the verdict names the silent arm."""
+        silent_no_op = Scenario(final_text="", edit=lambda _fixture_dir: None)
+
+        exit_code, _stub = run_smoke(world, by_call=agent_scenarios(bare=silent_no_op))
+
+        output = capsys.readouterr().out
+        assert exit_code == 0 and smoke_pass_exists(world)
+        assert "no deliverable: the bare run ended with no text and no captured change" in output
+        assert "no deliverable: the toolkit run" not in output
+        assert output.strip().splitlines()[-1] == "instrument: ok"
+
+    def test_a_run_that_ends_with_text_prints_no_empty_final_text_line(self, world, capsys):
+        run_smoke(world)
+
+        assert "empty final text" not in capsys.readouterr().out
+
+    def test_a_denied_call_is_named_by_tool_and_a_bash_one_by_its_command(self, world, capsys):
+        denied_calls = Scenario(tool_calls=[
+            # The allowed Read exercises the toolkit's read grant, so the smoke passes. It must stay out of the denied list.
+            ("Read", {"file_path": str(world.config_dir / "agents" / "reviewer.md")}, False),
+            ("Edit", {"file_path": "src/app.py"}, True),
+            ("Bash", {"command": "git diff --stat"}, True),
+            ("Bash", {"command": "echo a\necho b"}, True),
+        ])
+
+        exit_code, _stub = run_smoke(world, by_call=agent_scenarios(toolkit=denied_calls))
+
+        output = capsys.readouterr().out
+        toolkit_report, bare_report = output.split("[bare] status:")
+        assert exit_code == 0
+        assert "denied tool calls: ['Edit', 'Bash: git diff --stat', 'Bash: echo a\\necho b']" in toolkit_report
+        assert "denied tool calls: []" in bare_report
+
     def test_the_first_printed_line_names_the_cost_ceiling_for_one_block(self, world, capsys):
         run_smoke(world)
 
