@@ -36,8 +36,8 @@ having computed the underlying facts.
   `~/.config/claude-accounts/<account>/` by default) stays out of scope for
   this repo. Already decided in the merged plan behind PR #582
   (`fix-stow-adoption-and-config-dir-gaps.md`), which explicitly assigned
-  account-name-to-config-dir resolution to `<private-setup-repo>` (private,
-  owns `accounts.tsv`) rather than this public repo — reach genuinely stops
+  account-name-to-config-dir resolution to `<private-setup-repo>` (private)
+  rather than this public repo — reach genuinely stops
   here, since this plan cannot unilaterally move that ownership boundary
   from inside `claude-config`. `[verified: claude-config git history, PR #582]`
 

@@ -241,8 +241,7 @@ redundant line on ~20 correct subcommands.
 
 **Deferred, pending engineer approval (assumption 7):**
 
-- `<private-setup-repo>/claude-local/CLAUDE.local.md:17-22` — replace the
-  stale paragraph. Separate repo, separate worktree, separate PR. Machine-level
+- The stale paragraph in the `CLAUDE.local.md` that `<private-setup-repo>` holds — replace it. Separate repo, separate worktree, separate PR. Machine-level
   `~/.claude/worktree-required` applies there too.
 
 **Do not touch:** any other subcommand's header behavior. `cmd_user_input` and
