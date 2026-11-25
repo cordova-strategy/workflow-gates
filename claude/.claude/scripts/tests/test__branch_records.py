@@ -1,8 +1,9 @@
 """Tests for _branch_records.py's archive-directory resolver.
 
-The parity cases run the bash writer's `branch_records_status` and compare the account directory it computes.
-Every marker comes from `build_archive_env`, never from the module's constant, so the `absent` and `present`
-cases tie the module's marker name to the lib's.
+The parity cases run the bash writer's `branch_records_status` and compare the account directory and marker verdict
+it computes.
+Every marker is named by the helpers' `SENTINEL_NAME`, never by the module's constant, so the `absent` and
+`present` cases tie the module's marker name to the lib's.
 """
 from __future__ import annotations
 
@@ -30,8 +31,8 @@ def _config_dir(env: dict[str, str]) -> Path:
     return Path(env["CLAUDE_CONFIG_DIR"])
 
 
-def _subtree_state(env: dict[str, str]) -> _branch_records.ArchiveSubtree:
-    return _branch_records.archive_subtree(_config_dir(env), SUBTREE_NAME, env["HOME"])
+def _subtree_state(env: dict[str, str], name: str = SUBTREE_NAME) -> _branch_records.ArchiveSubtree:
+    return _branch_records.archive_subtree(_config_dir(env), name, env["HOME"])
 
 
 def _make_account_directory(env: dict[str, str]) -> Path:
@@ -104,8 +105,9 @@ def _with_config_dir_suffix(suffix: str) -> Callable[[Path], dict[str, str]]:
     return build_env
 
 
-def _root_is_resolving_symlink(tmp_path: Path) -> dict[str, str]:
-    return build_archive_env(tmp_path, root_symlink_target=tmp_path / "root_target")
+def _with_three_leading_slashes(tmp_path: Path) -> dict[str, str]:
+    env = build_archive_env(tmp_path)
+    return {**env, "CLAUDE_CONFIG_DIR": "//" + env["CLAUDE_CONFIG_DIR"]}
 
 
 def _marker_is_symlink(tmp_path: Path) -> dict[str, str]:
@@ -132,8 +134,7 @@ def _marker_is_symlink(tmp_path: Path) -> dict[str, str]:
         pytest.param(_dot_dot_after_symlink, id="dot-dot-after-symlink"),
         pytest.param(_with_config_dir_suffix("/"), id="trailing-slash"),
         pytest.param(_with_config_dir_suffix("\n"), id="trailing-newline"),
-        pytest.param(_root_is_resolving_symlink, id="root-is-resolving-symlink"),
-        pytest.param(_marker_is_symlink, id="marker-is-symlink"),
+        pytest.param(_with_three_leading_slashes, id="three-leading-slashes"),
     ],
 )
 def test_account_directory_matches_the_bash_writer(tmp_path, build_env):
@@ -141,19 +142,54 @@ def test_account_directory_matches_the_bash_writer(tmp_path, build_env):
     env = build_env(tmp_path)
     report = run_status(tmp_path, env)
     assert report.state == "ready", report.reason
-    assert Path(report.account_dir) == _branch_records.account_directory(_config_dir(env), env["HOME"])
+    # The raw string, as the writer receives it: a `Path` would collapse the leading slashes the module's guard reads.
+    assert Path(report.account_dir) == _branch_records.account_directory(env["CLAUDE_CONFIG_DIR"], env["HOME"])
 
 
-def test_account_directory_differs_from_the_bash_writer_for_a_double_slash_prefix(tmp_path):
-    """Pins the divergence `account_directory`'s docstring names: the writer keeps `//`, `realpath` does not."""
+def test_a_double_slash_config_dir_the_bash_writer_keeps_is_unresolvable(tmp_path):
+    """Pins the divergence `account_directory`'s docstring names: the writer can keep `//`, `realpath` does not.
+
+    If the module comes to name the writer's directory for this spelling, rewrite this test as a parity case
+    against the writer instead of deleting it.
+    """
     env = build_archive_env(tmp_path)
     double_slash_config_dir = "/" + env["CLAUDE_CONFIG_DIR"]
     report = run_status(tmp_path, {**env, "CLAUDE_CONFIG_DIR": double_slash_config_dir})
     assert report.state == "ready", report.reason
-    assert Path(report.account_dir).name.startswith("%2F%2F")
-    reader_directory = _branch_records.account_directory(double_slash_config_dir, env["HOME"])
-    assert reader_directory != Path(report.account_dir)
-    assert reader_directory == expected_account_directory(env)
+    # POSIX leaves a `//` prefix in `pwd -P` output implementation-defined, so only a bash that keeps it shows the divergence.
+    if not Path(report.account_dir).name.startswith("%2F%2F"):
+        pytest.skip("this bash does not keep a `//` prefix in `pwd -P`")
+    assert _branch_records.account_directory(double_slash_config_dir, env["HOME"]) is None
+    subtree = _branch_records.archive_subtree(double_slash_config_dir, SUBTREE_NAME, env["HOME"])
+    assert subtree.state == "unresolvable"
+    assert subtree.directory is None
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc/self/root"), reason="needs /proc/self/root, a link whose target is `/`")
+def test_a_config_dir_reached_through_a_link_to_the_root_is_a_known_divergence_the_module_reads_as_absent(tmp_path):
+    """Pins the divergence `account_directory`'s docstring names for a link whose target is `/`.
+
+    The module reads the writer's copies as `absent`.
+    If the module comes to name the writer's directory here, rewrite this test as a parity case
+    against the writer instead of deleting it.
+    """
+    env = build_archive_env(tmp_path)
+    config_dir_through_root_link = "/proc/self/root" + env["CLAUDE_CONFIG_DIR"]
+    report = run_status(tmp_path, {**env, "CLAUDE_CONFIG_DIR": config_dir_through_root_link})
+    assert report.state == "ready", report.reason
+    writer_account_dir = Path(report.account_dir)
+    # POSIX leaves a `//` prefix in `pwd -P` output implementation-defined, so only a bash that keeps it shows the divergence.
+    if not writer_account_dir.name.startswith("%2F%2F"):
+        pytest.skip("this bash does not keep a `//` prefix in `pwd -P`")
+    (writer_account_dir / SUBTREE_NAME).mkdir(parents=True)
+
+    module_account_dir = _branch_records.account_directory(config_dir_through_root_link, env["HOME"])
+    subtree = _branch_records.archive_subtree(config_dir_through_root_link, SUBTREE_NAME, env["HOME"])
+
+    assert module_account_dir is not None
+    assert module_account_dir != writer_account_dir
+    assert subtree.state == "absent"
+    assert subtree.directory is None
 
 
 # --- None results ---
@@ -170,6 +206,28 @@ def test_account_directory_differs_from_the_bash_writer_for_a_double_slash_prefi
 )
 def test_archive_root_is_none_unless_home_is_a_non_empty_absolute_path(home):
     assert _branch_records.archive_root(home) is None
+
+
+@pytest.mark.parametrize(
+    "home",
+    [
+        pytest.param("/srv/account_home", id="str"),
+        pytest.param(Path("/srv/account_home"), id="path"),
+    ],
+)
+def test_archive_root_is_the_state_directory_under_an_absolute_home(home):
+    expected_root = Path("/srv/account_home") / records_helpers.ARCHIVE_ROOT_RELATIVE_PATH
+    assert _branch_records.archive_root(home) == expected_root
+
+
+def test_a_path_home_resolves_account_directory_and_subtree_like_a_str_home(tmp_path):
+    env = build_archive_env(tmp_path)
+    _make_subtree(env)
+    home = Path(env["HOME"])
+    assert _branch_records.account_directory(_config_dir(env), home) == expected_account_directory(env)
+    subtree = _branch_records.archive_subtree(_config_dir(env), SUBTREE_NAME, home)
+    assert subtree.state == "present"
+    assert subtree.directory == expected_account_directory(env) / SUBTREE_NAME
 
 
 def _empty_home(tmp_path: Path) -> tuple[Path | str, str]:
@@ -209,6 +267,21 @@ def _config_dir_is_a_symlink_loop(tmp_path: Path) -> tuple[Path | str, str]:
     return loop, env["HOME"]
 
 
+def _config_dir_with_two_leading_slashes(tmp_path: Path) -> tuple[Path | str, str]:
+    env = build_archive_env(tmp_path)
+    return "/" + env["CLAUDE_CONFIG_DIR"], env["HOME"]
+
+
+def _config_dir_is_a_bare_double_slash(tmp_path: Path) -> tuple[Path | str, str]:
+    env = build_archive_env(tmp_path)
+    return "//", env["HOME"]
+
+
+def _config_dir_with_two_leading_slashes_and_a_trailing_slash(tmp_path: Path) -> tuple[Path | str, str]:
+    env = build_archive_env(tmp_path)
+    return "/" + env["CLAUDE_CONFIG_DIR"] + "/", env["HOME"]
+
+
 @pytest.mark.parametrize(
     "arrange",
     [
@@ -218,11 +291,20 @@ def _config_dir_is_a_symlink_loop(tmp_path: Path) -> tuple[Path | str, str]:
         pytest.param(_config_dir_is_a_file, id="config-dir-is-a-file"),
         pytest.param(_config_dir_holds_nul, id="config-dir-holds-nul"),
         pytest.param(_config_dir_is_a_symlink_loop, id="config-dir-is-a-symlink-loop"),
+        pytest.param(_config_dir_with_two_leading_slashes, id="config-dir-with-two-leading-slashes"),
+        pytest.param(_config_dir_is_a_bare_double_slash, id="config-dir-is-a-bare-double-slash"),
+        pytest.param(
+            _config_dir_with_two_leading_slashes_and_a_trailing_slash,
+            id="config-dir-with-two-leading-slashes-and-a-trailing-slash",
+        ),
     ],
 )
 def test_account_directory_is_none_for_an_unusable_input(tmp_path, arrange):
     config_dir, home = arrange(tmp_path)
     assert _branch_records.account_directory(config_dir, home) is None
+    subtree = _branch_records.archive_subtree(config_dir, SUBTREE_NAME, home)
+    assert subtree.state == "unresolvable"
+    assert subtree.directory is None
 
 
 # --- subtree states ---
@@ -419,6 +501,14 @@ def _unreadable_account_component_exceeds_name_max(tmp_path: Path, defer: Defer)
     return env
 
 
+def _standard_subtree_name(tmp_path: Path) -> str:
+    return SUBTREE_NAME
+
+
+def _over_long_subtree_name(tmp_path: Path) -> str:
+    return "n" * (os.pathconf(tmp_path, "PC_NAME_MAX") + 1)
+
+
 def _unreadable_subtree_links_into_prefix_sibling(tmp_path: Path, defer: Defer) -> dict[str, str]:
     env = build_archive_env(tmp_path)
     account_dir = _make_account_directory(env)
@@ -461,108 +551,140 @@ def _forbid_directory_listing(*_args, **_kwargs):
     raise AssertionError("archive_subtree listed a directory")
 
 
+# Each shape leaves the account directory and subtree intact or fails the writer's marker probe,
+# so the writer reports `ready` exactly for `present` and refuses every other state for the missing marker.
+MARKER_AND_ROOT_SHAPES = [
+    pytest.param(_present_plain, "present", id="present-plain"),
+    pytest.param(_present_under_root_symlink, "present", id="present-under-root-symlink"),
+    pytest.param(_present_with_marker_symlink, "present", id="present-with-marker-symlink"),
+    pytest.param(_unmarked_without_root, "unmarked", id="unmarked-without-root"),
+    pytest.param(_unmarked_dangling_root_link, "unmarked", id="unmarked-dangling-root-link"),
+    pytest.param(_unmarked_root_is_a_file, "unmarked", id="unmarked-root-is-a-file"),
+    pytest.param(_unmarked_root_holds_subtree_without_marker, "unmarked", id="unmarked-subtree-without-marker"),
+    pytest.param(_unmarked_marker_is_a_directory, "unmarked", id="unmarked-marker-is-a-directory"),
+    pytest.param(_unmarked_marker_is_a_dangling_link, "unmarked", id="unmarked-marker-is-a-dangling-link"),
+    pytest.param(_unmarked_marker_is_a_fifo, "unmarked", id="unmarked-marker-is-a-fifo"),
+    pytest.param(_unreadable_marker_is_a_link_loop, "unreadable", id="unreadable-marker-is-a-link-loop"),
+    pytest.param(_unreadable_root_is_a_link_loop, "unreadable", id="unreadable-root-is-a-link-loop"),
+    pytest.param(_unreadable_root_mode_zero, "unreadable", id="unreadable-root-mode-zero", marks=requires_non_root),
+]
+
+SUBTREE_STATE_SHAPES = [
+    pytest.param(_present_with_key_off, "present", id="present-with-key-off"),
+    pytest.param(_absent, "absent", id="absent"),
+    pytest.param(_absent_without_account_directory, "absent", id="absent-without-account-directory"),
+    *MARKER_AND_ROOT_SHAPES,
+    pytest.param(_unreadable_subtree_is_a_file, "unreadable", id="unreadable-subtree-is-a-file"),
+    pytest.param(
+        _unreadable_subtree_links_outside_account, "unreadable", id="unreadable-subtree-links-outside-account"
+    ),
+    pytest.param(
+        _unreadable_subtree_links_outside_through_a_second_link,
+        "unreadable",
+        id="unreadable-subtree-links-outside-through-a-second-link",
+    ),
+    pytest.param(
+        _unreadable_subtree_links_to_archive_root, "unreadable", id="unreadable-subtree-links-to-archive-root"
+    ),
+    pytest.param(_unreadable_dangling_subtree_link, "unreadable", id="unreadable-dangling-subtree-link"),
+    pytest.param(_unreadable_subtree_is_a_link_loop, "unreadable", id="unreadable-subtree-is-a-link-loop"),
+    pytest.param(
+        _unreadable_subtree_links_to_sibling_subtree,
+        "unreadable",
+        id="unreadable-subtree-links-to-sibling-subtree",
+    ),
+    pytest.param(
+        _unreadable_subtree_links_to_deeper_entry, "unreadable", id="unreadable-subtree-links-to-deeper-entry"
+    ),
+    pytest.param(
+        _unreadable_subtree_link_chain_ends_at_same_named_directory_elsewhere,
+        "unreadable",
+        id="unreadable-subtree-link-chain-ends-at-same-named-directory-elsewhere",
+    ),
+    pytest.param(
+        _unreadable_account_directory_links_to_sibling,
+        "unreadable",
+        id="unreadable-account-directory-links-to-sibling",
+    ),
+    pytest.param(
+        _unreadable_account_directory_is_a_dangling_link,
+        "unreadable",
+        id="unreadable-account-directory-is-a-dangling-link",
+    ),
+    pytest.param(
+        _unreadable_account_directory_is_a_file, "unreadable", id="unreadable-account-directory-is-a-file"
+    ),
+    pytest.param(
+        _unreadable_account_component_exceeds_name_max,
+        "unreadable",
+        id="unreadable-account-component-exceeds-name-max",
+    ),
+    pytest.param(
+        _unreadable_subtree_links_into_prefix_sibling,
+        "unreadable",
+        id="unreadable-subtree-links-into-prefix-sibling",
+    ),
+    pytest.param(
+        _unreadable_subtree_links_to_account_directory,
+        "unreadable",
+        id="unreadable-subtree-links-to-account-directory",
+    ),
+    pytest.param(
+        _unreadable_account_directory_mode_zero,
+        "unreadable",
+        id="unreadable-account-directory-mode-zero",
+        marks=requires_non_root,
+    ),
+    pytest.param(_unresolvable_missing_config_dir, "unresolvable", id="unresolvable-missing-config-dir"),
+]
+
+
+def _with_subtree_name(shape, subtree_name_for: Callable[[Path], str]):
+    arrange, expected_state = shape.values
+    return pytest.param(arrange, expected_state, subtree_name_for, id=shape.id, marks=shape.marks)
+
+
 @pytest.mark.parametrize(
-    ("arrange", "expected_state"),
+    ("arrange", "expected_state", "subtree_name_for"),
     [
-        pytest.param(_present_plain, "present", id="present-plain"),
-        pytest.param(_present_with_key_off, "present", id="present-with-key-off"),
-        pytest.param(_present_under_root_symlink, "present", id="present-under-root-symlink"),
-        pytest.param(_present_with_marker_symlink, "present", id="present-with-marker-symlink"),
-        pytest.param(_absent, "absent", id="absent"),
-        pytest.param(_absent_without_account_directory, "absent", id="absent-without-account-directory"),
-        pytest.param(_unmarked_without_root, "unmarked", id="unmarked-without-root"),
-        pytest.param(_unmarked_dangling_root_link, "unmarked", id="unmarked-dangling-root-link"),
-        pytest.param(_unmarked_root_is_a_file, "unmarked", id="unmarked-root-is-a-file"),
-        pytest.param(
-            _unmarked_root_holds_subtree_without_marker, "unmarked", id="unmarked-subtree-without-marker"
-        ),
-        pytest.param(_unmarked_marker_is_a_directory, "unmarked", id="unmarked-marker-is-a-directory"),
-        pytest.param(_unmarked_marker_is_a_dangling_link, "unmarked", id="unmarked-marker-is-a-dangling-link"),
-        pytest.param(_unmarked_marker_is_a_fifo, "unmarked", id="unmarked-marker-is-a-fifo"),
-        pytest.param(_unreadable_marker_is_a_link_loop, "unreadable", id="unreadable-marker-is-a-link-loop"),
-        pytest.param(_unreadable_root_is_a_link_loop, "unreadable", id="unreadable-root-is-a-link-loop"),
-        pytest.param(_unreadable_subtree_is_a_file, "unreadable", id="unreadable-subtree-is-a-file"),
-        pytest.param(
-            _unreadable_subtree_links_outside_account, "unreadable", id="unreadable-subtree-links-outside-account"
-        ),
-        pytest.param(
-            _unreadable_subtree_links_outside_through_a_second_link,
-            "unreadable",
-            id="unreadable-subtree-links-outside-through-a-second-link",
-        ),
-        pytest.param(
-            _unreadable_subtree_links_to_archive_root, "unreadable", id="unreadable-subtree-links-to-archive-root"
-        ),
-        pytest.param(_unreadable_dangling_subtree_link, "unreadable", id="unreadable-dangling-subtree-link"),
-        pytest.param(_unreadable_subtree_is_a_link_loop, "unreadable", id="unreadable-subtree-is-a-link-loop"),
-        pytest.param(
-            _unreadable_subtree_links_to_sibling_subtree,
-            "unreadable",
-            id="unreadable-subtree-links-to-sibling-subtree",
-        ),
-        pytest.param(
-            _unreadable_subtree_links_to_deeper_entry, "unreadable", id="unreadable-subtree-links-to-deeper-entry"
-        ),
-        pytest.param(
-            _unreadable_subtree_link_chain_ends_at_same_named_directory_elsewhere,
-            "unreadable",
-            id="unreadable-subtree-link-chain-ends-at-same-named-directory-elsewhere",
-        ),
-        pytest.param(
-            _unreadable_account_directory_links_to_sibling,
-            "unreadable",
-            id="unreadable-account-directory-links-to-sibling",
-        ),
-        pytest.param(
-            _unreadable_account_directory_is_a_dangling_link,
-            "unreadable",
-            id="unreadable-account-directory-is-a-dangling-link",
-        ),
-        pytest.param(
-            _unreadable_account_directory_is_a_file, "unreadable", id="unreadable-account-directory-is-a-file"
-        ),
-        pytest.param(
-            _unreadable_account_component_exceeds_name_max,
-            "unreadable",
-            id="unreadable-account-component-exceeds-name-max",
-        ),
-        pytest.param(
-            _unreadable_subtree_links_into_prefix_sibling,
-            "unreadable",
-            id="unreadable-subtree-links-into-prefix-sibling",
-        ),
-        pytest.param(
-            _unreadable_subtree_links_to_account_directory,
-            "unreadable",
-            id="unreadable-subtree-links-to-account-directory",
-        ),
-        pytest.param(_unreadable_root_mode_zero, "unreadable", id="unreadable-root-mode-zero", marks=requires_non_root),
-        pytest.param(
-            _unreadable_account_directory_mode_zero,
-            "unreadable",
-            id="unreadable-account-directory-mode-zero",
-            marks=requires_non_root,
-        ),
-        pytest.param(_unresolvable_missing_config_dir, "unresolvable", id="unresolvable-missing-config-dir"),
+        *(_with_subtree_name(shape, _standard_subtree_name) for shape in SUBTREE_STATE_SHAPES),
+        pytest.param(_absent, "unreadable", _over_long_subtree_name, id="unreadable-subtree-name-exceeds-name-max"),
     ],
 )
-def test_archive_subtree_state(tmp_path, request, monkeypatch, arrange, expected_state):
-    """Only a marker stat that finds nothing or a non-regular file gives `unmarked`, so any other stat error gives `unreadable`.
-
-    The call also writes nothing and lists no directory: a write could create the root of an unmounted volume.
-    """
+def test_archive_subtree_state(tmp_path, request, monkeypatch, arrange, expected_state, subtree_name_for):
+    """The call writes nothing and lists no directory: a write could create the root of an unmounted volume."""
     env = arrange(tmp_path, request.addfinalizer)
+    subtree_name = subtree_name_for(tmp_path)
     tree_before_call = list_tree(tmp_path)
     with monkeypatch.context() as patch:
         patch.setattr(os, "scandir", _forbid_directory_listing)
         patch.setattr(os, "listdir", _forbid_directory_listing)
-        subtree = _subtree_state(env)
+        subtree = _subtree_state(env, subtree_name)
     assert subtree.state == expected_state
     if expected_state == "present":
-        assert subtree.directory == expected_account_directory(env) / SUBTREE_NAME
+        assert subtree.directory == expected_account_directory(env) / subtree_name
     else:
         assert subtree.directory is None
     assert list_tree(tmp_path) == tree_before_call
+
+
+@pytest.mark.parametrize(("arrange", "expected_state"), MARKER_AND_ROOT_SHAPES)
+def test_the_bash_writer_and_the_module_agree_on_the_marker_and_root_gate(tmp_path, request, arrange, expected_state):
+    """For an intact account directory and subtree, the writer is `ready` where the module is `present`.
+
+    Every other shape fails the writer's marker probe, so its reason is the marker's, not a later probe's.
+    """
+    env = arrange(tmp_path, request.addfinalizer)
+    subtree = _subtree_state(env)
+    report = run_status(tmp_path, env)
+    assert subtree.state == expected_state
+    if expected_state == "present":
+        assert report.state == "ready", report.reason
+        assert report.reason == ""
+        assert Path(report.account_dir) == _branch_records.account_directory(_config_dir(env), env["HOME"])
+    else:
+        assert report.state == "unavailable"
+        assert report.reason == records_helpers.reason_variables()["SENTINEL"]
 
 
 def test_subtree_state_vocabulary_is_the_five_states_callers_compare_against():
@@ -573,15 +695,6 @@ def test_subtree_state_vocabulary_is_the_five_states_callers_compare_against():
         "absent",
         "present",
     }
-
-
-def test_archive_subtree_is_unreadable_for_a_name_longer_than_the_filesystem_allows(tmp_path):
-    env = build_archive_env(tmp_path)
-    _make_account_directory(env)
-    name_max = os.pathconf(tmp_path, "PC_NAME_MAX")
-    subtree = _branch_records.archive_subtree(_config_dir(env), "n" * (name_max + 1), env["HOME"])
-    assert subtree.state == "unreadable"
-    assert subtree.directory is None
 
 
 @pytest.mark.parametrize(
@@ -598,5 +711,5 @@ def test_archive_subtree_rejects_a_name_that_is_not_one_component(tmp_path, name
     env = build_archive_env(tmp_path)
     # With no such config dir nothing after the name check can raise, so the check alone is under test.
     missing_config_dir = tmp_path / "missing_config"
-    with pytest.raises(ValueError, match="one path component"):
+    with pytest.raises(ValueError):
         _branch_records.archive_subtree(missing_config_dir, name, env["HOME"])

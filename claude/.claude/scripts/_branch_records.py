@@ -6,8 +6,12 @@ to the lib. This module never reads `claude-config.toml` or the `agent_branch_re
 reader serves archived data whether or not the key is still on. No function reads HOME or the environment,
 and none writes, lists or globs the archive root.
 
-Only `archive_subtree` attests anything about a path, and only for the instant of the call. A caller
-reads the archive through it and re-validates each entry it opens, because the archive's contents are untrusted.
+Only `archive_subtree` attests anything about a path, and only for the instant of the call. A caller reads the
+archive through it and re-validates each entry it opens, because the archive's contents are untrusted. A no-follow
+`lstat` of an entry still follows a link above the entry, so it does not detect an account directory or subtree
+swapped for a link after the call. That gives a same-user process nothing it could not get by writing into the
+subtree directly, because account directories are not an access boundary
+(`docs/agent-branch-records.md` § "Snapshots").
 """
 from __future__ import annotations
 
@@ -31,10 +35,10 @@ class SubtreeState(enum.StrEnum):
 
 @dataclass(frozen=True)
 class ArchiveSubtree:
-    """`directory` is set only when `state` is `present`.
+    """`directory` is set only when `state` is `present`. Only `archive_subtree` upholds that: the constructor does not check it.
 
-    `present` is a verdict valid at the instant of the call. `directory` is the unresolved path, and its contents
-    are untrusted: a caller re-validates each entry at use time with a no-follow `lstat`.
+    `present` holds only at the instant of the call, within the limits the module docstring states.
+    `directory` is the unresolved path.
     """
 
     state: SubtreeState
@@ -50,7 +54,7 @@ def archive_root(home: str | os.PathLike[str] | None) -> Path | None:
     """The archive root under `home`, or None unless `home` is a non-empty absolute path.
 
     The writer reads an empty HOME as the root `/.local/state/agent-branch-records`, which this refuses to resolve.
-    The returned path attests nothing: it is not checked for a marker, a link or containment. Read through `archive_subtree`.
+    Not checked; read through `archive_subtree`.
     """
     if home is None:
         return None
@@ -64,14 +68,20 @@ def account_directory(config_dir: str | os.PathLike[str], home: str | os.PathLik
     """The account's archive directory, or None when `home` or `config_dir` is unusable or `config_dir` is no directory.
 
     The writer canonicalizes `config_dir` with `cd -P` and `pwd -P` inside command substitutions, which drop trailing
-    newlines. This drops them from `config_dir` and from its canonical path too.
-    The one known divergence is any `//` prefix bash's `pwd -P` prints, which `os.path.realpath` never keeps.
-    The writer's directory then differs from this one, so a reader misses what the writer archived.
-    The returned path attests nothing: it is not checked for a marker, a link or containment. Read through `archive_subtree`.
+    newlines. This drops them from `config_dir` and from its canonical path too, so config dirs that differ only by
+    trailing newlines map to one account directory, as they do for the writer.
+    Bash's `pwd -P` can print a leading `//`, which `os.path.realpath` never does, and this then names a different
+    directory than the writer does.
+    A `config_dir` spelled with exactly two leading slashes gives None, even where bash would print one slash.
+    Any other route to that prefix, such as a link whose target is `/` or starts with `//`,
+    can read as `absent` while the writer's copies exist.
+    Not checked; read through `archive_subtree`.
     """
     root = archive_root(home)
     config_dir_text = os.fspath(config_dir).rstrip("\n")
     if root is None or not os.path.isabs(config_dir_text):
+        return None
+    if config_dir_text.startswith("//") and not config_dir_text.startswith("///"):
         return None
     try:
         canonical_config_dir = os.path.realpath(config_dir_text, strict=True)
