@@ -31,7 +31,7 @@ from ._pr_cost_helpers import (
     _PRIOR_ROW_MARKER,
     _UPGRADE_NOTICE_FRAGMENT,
     _UPGRADE_NOTICE_STEM,
-    _current_line_with_cell,
+    _current_ledger_text_with_cell,
     _enable_pr_cost,
     _fake_pr_cost_subprocess_run,
     _first_round,
@@ -239,10 +239,7 @@ class TestParsePrCostLedgerFileTextMalformed:
         is a uniform contract of _parse_pr_cost_ledger_row_cells, not
         special-cased to any column: every validation branch omits the raw
         cell and names only the column and line number."""
-        text = (
-            pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n"
-            + _current_line_with_cell(column, malformed_value) + "\n"
-        )
+        text = _current_ledger_text_with_cell(column, malformed_value)
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
             pr_cost_ledger._parse_pr_cost_ledger_file_text(text)
         message = str(exc_info.value)
@@ -312,7 +309,8 @@ class TestPrCostLedgerLegacyHostColumnMigration:
         """A subsequent --record write against an older-header file rewrites the whole ledger under the
         current header -- no separate migration script needed. Each prior row keeps its original cells in
         its original order, gaining only the cells its header lacked (host, then the empty model_breakdown,
-        zero invalid_usage_records and empty review_rounds defaults)."""
+        zero invalid_usage_records, and the empty review_rounds, review_rounds_absence,
+        earliest_surviving_activity_at and capture_scope defaults)."""
         header_line, make_row_line = case.header_line, case.make_row_line
         expect_host_prefix, expected_tail = bool(case.host_prefix), case.upgraded_tail
         _enable_pr_cost(tmp_path)
@@ -356,13 +354,16 @@ class TestPrCostLedgerLegacyHostColumnMigration:
         assert len(written_lines) == 1 + len(seeded_lines) + 1
         new_row = pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())[-1]
         assert new_row["pr_number"] == 1
+        assert new_row["capture_scope"] == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_GLOB, "the args pass projects='*'"
         assert new_row["model_breakdown"], "the check below returns early on a None cell"
         pr_cost._check_model_breakdown_cell(new_row["model_breakdown"], new_row)  # must not raise
 
 
 class TestPrCostLedgerFrozenHeaders:
     def test_production_older_headers_equal_the_hand_written_frozen_lines(self):
-        pre_host_line, pre_model_line, pre_invalid_usage_line, pre_review_rounds_line = _FROZEN_PR_COST_HEADER_LINES
+        (
+            pre_host_line, pre_model_line, pre_invalid_usage_line, pre_review_rounds_line, pre_capture_scope_line,
+        ) = _FROZEN_PR_COST_HEADER_LINES
         assert pre_host_line == pr_cost_ledger._PR_COST_LEDGER_LEGACY_HEADER_LINE, (
             "the pre-host header is frozen; never re-derive from the live tuple"
         )
@@ -375,9 +376,13 @@ class TestPrCostLedgerFrozenHeaders:
         assert "\t".join(pr_cost_ledger._PR_COST_LEDGER_PRE_REVIEW_ROUNDS_COLUMNS) == pre_review_rounds_line, (
             "the pre-review_rounds header is frozen; never re-derive from the live tuple"
         )
+        assert "\t".join(pr_cost_ledger._PR_COST_LEDGER_PRE_CAPTURE_SCOPE_COLUMNS) == pre_capture_scope_line, (
+            "the pre-capture_scope header is frozen; never re-derive from the live tuple"
+        )
 
-    def test_current_header_is_the_newest_frozen_header_plus_review_rounds(self):
-        assert _FROZEN_PR_COST_HEADER_LINES[-1] + "\treview_rounds" == pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE, (
+    def test_current_header_is_the_newest_frozen_header_plus_the_three_capture_scope_columns(self):
+        three_columns = "\treview_rounds_absence\tearliest_surviving_activity_at\tcapture_scope"
+        assert _FROZEN_PR_COST_HEADER_LINES[-1] + three_columns == pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE, (
             "the newest frozen header is frozen; never re-derive from the live tuple. The next column addition"
             " appends the outgoing header to _FROZEN_PR_COST_HEADER_LINES"
         )
@@ -405,7 +410,7 @@ class TestPrCostLedgerFrozenHeaders:
         parsed_rows = pr_cost_ledger._parse_pr_cost_ledger_file_text(case.header_line + "\n" + case.literal_row_line + "\n")
 
         assert parsed_rows == [case.literal_row_parsed]
-        assert parsed_rows[0]["review_rounds"] is None
+        assert parsed_rows[0]["review_rounds"] == case.literal_row_parsed["review_rounds"]
 
     @pytest.mark.parametrize("case", _FROZEN_HEADER_CASES, ids=lambda case: case.case_id)
     def test_literal_row_survives_the_real_upgrading_write_as_its_original_cells_plus_the_defaulted_ones(
@@ -477,10 +482,6 @@ def _single_group_cell(model="claude-sonnet-5", variant="standard", token_class=
     return json.dumps({model: {variant: {token_class: leaf if leaf is not None else {"tokens": 1, "usd_micros": 1}}}})
 
 
-def _current_ledger_text_with_cell(cell: str, column: str = "model_breakdown") -> str:
-    return pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + _current_line_with_cell(column, cell) + "\n"
-
-
 # Hostile primitives shared by the model_breakdown and review_rounds codec suites: a bad integer and a bad key.
 _PRIMITIVE_INTEGER_VALUES = {
     "float": 1.5, "bool": True, "negative": -1, "nan": float("nan"), "infinity": float("inf"), "above-int64": 2**63,
@@ -545,7 +546,7 @@ class TestDecodeModelBreakdownCell:
     @pytest.mark.parametrize("cell", _CODEC_REJECT_CASES)
     def test_malformed_cell_raises_naming_line_and_column_without_echoing_cell_text(self, cell):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(cell))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("model_breakdown", cell))
 
         message = str(exc_info.value)
         assert "line 2" in message
@@ -606,7 +607,7 @@ class TestDecodeModelBreakdownCell:
             ' "cache_write_1h": {"usd_micros": 100000, "tokens": 100}, "cache_read": {"usd_micros": 1500000,' \
             ' "tokens": 1000} } } }'
         for cell in (spaced_cell, unsorted_cell):
-            text = _current_ledger_text_with_cell(cell)
+            text = _current_ledger_text_with_cell("model_breakdown", cell)
 
             row = pr_cost_ledger._parse_pr_cost_ledger_file_text(text)[0]
 
@@ -701,7 +702,7 @@ class TestFormatModelBreakdownCell:
 
     def test_not_recorded_cell_renders_empty(self):
         rendered_line = pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row())
-        assert rendered_line.endswith("\tfalse\t\t0\t")
+        assert rendered_line.endswith("\tfalse\t\t0\t\t\t\t")
 
     def test_empty_object_cell_renders_as_two_characters_and_round_trips_distinct_from_not_recorded(self):
         row = _sample_pr_cost_row(model_breakdown={})
@@ -731,9 +732,9 @@ class TestFormatModelBreakdownCell:
         line = pr_cost_ledger._format_pr_cost_ledger_row(row)
         assert pr_cost_ledger._parse_pr_cost_ledger_row_cells(line.split("\t"), 2) == row
 
-    def test_pre_model_line_formats_as_its_original_cells_plus_the_two_defaulted_ones(self):
+    def test_pre_model_line_formats_as_its_original_cells_plus_the_defaulted_ones(self):
         overrides = {"pr_number": 5, "additions": 99}
-        assert _pre_model_row_line(**overrides) + "\t\t0\t" == pr_cost_ledger._format_pr_cost_ledger_row(
+        assert _pre_model_row_line(**overrides) + "\t\t0\t\t\t\t" == pr_cost_ledger._format_pr_cost_ledger_row(
             _sample_pr_cost_row(**overrides)
         )
 
@@ -1550,14 +1551,17 @@ class TestFormatPrCostLedgerRowColumnsParameterRegression:
             "\t2026-01-02T00:00:00Z\thigh\t\tok\t1.500000\t0.250000\t0.100000\t2.000000\t0.500000"
             "\t1000\t200\t100\t500\t300\t0\t0\t5\t2\t0.000000\t0.000000\t1500\t300.000000"
             "\t42\t10\t3\t4\t1\t2\t3\ttrue\ttrue\tfalse"
-            "\t\t0\t"
+            "\t\t0\t\t\t\t"
         )
         assert pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row()) == golden
 
 
 class TestReviewRoundsColumnRegistration:
-    def test_review_rounds_is_the_last_column_with_an_empty_default(self):
-        assert pr_cost_ledger._PR_COST_LEDGER_COLUMNS[-1] == "review_rounds"
+    def test_the_three_trailing_columns_are_in_order_with_empty_defaults(self):
+        trailing_columns = ("review_rounds_absence", "earliest_surviving_activity_at", "capture_scope")
+        assert pr_cost_ledger._PR_COST_LEDGER_COLUMNS[-3:] == trailing_columns
+        assert pr_cost_ledger._PR_COST_LEDGER_COLUMNS[-4] == "review_rounds"
+        assert [pr_cost_ledger._PR_COST_LEDGER_COLUMN_DEFAULTS[column] for column in trailing_columns] == ["", "", ""]
         assert pr_cost_ledger._PR_COST_LEDGER_COLUMN_DEFAULTS["review_rounds"] == ""
 
     def test_field_tuples_are_the_hand_written_literals(self):
@@ -1572,7 +1576,7 @@ class TestReviewRoundsColumnRegistration:
 class TestDecodeReviewRoundsCellAccepts:
     def test_canonical_sample_decodes_to_its_value_and_reformats_to_the_same_bytes(self):
         row = pr_cost_ledger._parse_pr_cost_ledger_file_text(
-            _current_ledger_text_with_cell(_CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL, "review_rounds")
+            _current_ledger_text_with_cell("review_rounds", _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL)
         )[0]
 
         assert row["review_rounds"] == _sample_review_rounds()
@@ -1624,7 +1628,7 @@ class TestDecodeReviewRoundsCellAccepts:
         # A raw newline would split the line; collapse it to spaces, which JSON also accepts between tokens.
         spaced_cell = indented_cell.replace("\n", " ")
 
-        row = pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(spaced_cell, "review_rounds"))[0]
+        row = pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", spaced_cell))[0]
 
         assert row["review_rounds"] == _sample_review_rounds()
         rendered_cell = pr_cost_ledger._format_pr_cost_ledger_row(row).split("\t")[_ledger_cell_index("review_rounds")]
@@ -1869,7 +1873,7 @@ class TestDecodeReviewRoundsCellRefuses:
         self, pinned_int_max_str_digits, cell, expected_rule,
     ):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError) as exc_info:
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell(cell, "review_rounds"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", cell))
 
         assert str(exc_info.value) == f"line 2: malformed review_rounds ({expected_rule})"
         assert _CELL_MARKER not in str(exc_info.value).lower()
@@ -1924,8 +1928,9 @@ class TestDecodeReviewRoundsCellRefuses:
         assert table_rules == set(pr_cost_ledger._REVIEW_ROUNDS_DECODE_RULES) - rules_with_their_own_tests
         assert len(pr_cost_ledger._REVIEW_ROUNDS_DECODE_RULES) == len(set(pr_cost_ledger._REVIEW_ROUNDS_DECODE_RULES))
 
-    def test_a_blank_review_rounds_cell_with_its_trailing_tab_stripped_is_refused_with_the_append_a_tab_hint(self):
+    def test_a_blank_capture_scope_cell_with_its_trailing_tab_stripped_is_refused_with_the_append_a_tab_hint(self):
         line = pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row())
+        # capture_scope is the last cell and is blank in the sample row, so the stripped tab is its own.
         assert line.endswith("\t")
         text = pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + line[:-1] + "\n"
 
@@ -1963,8 +1968,8 @@ class TestFormatReviewRoundsCell:
         rendered_cell = pr_cost_ledger._format_pr_cost_ledger_row(row).split("\t")[_ledger_cell_index("review_rounds")]
         assert rendered_cell == _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL
 
-    def test_not_captured_cell_renders_empty_as_the_lines_last_character(self):
-        assert pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row()).endswith("\t0\t")
+    def test_not_captured_cell_renders_empty_ahead_of_the_three_empty_capture_scope_cells(self):
+        assert pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row()).endswith("\t0\t\t\t\t")
 
     def test_all_empty_lists_round_trip_distinct_from_not_captured(self):
         zero_rounds = {"rule": 1, "rounds": {"code-review": [], "plan-review": [], "ready-for-review": []}}
@@ -1989,6 +1994,6 @@ class TestFormatReviewRoundsCell:
 
     def test_each_json_column_names_itself_in_its_decode_error(self):
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError, match="malformed model_breakdown"):
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("not json", "model_breakdown"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("model_breakdown", "not json"))
         with pytest.raises(pr_cost_ledger._PrCostLedgerParseError, match="malformed review_rounds"):
-            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("not json", "review_rounds"))
+            pr_cost_ledger._parse_pr_cost_ledger_file_text(_current_ledger_text_with_cell("review_rounds", "not json"))

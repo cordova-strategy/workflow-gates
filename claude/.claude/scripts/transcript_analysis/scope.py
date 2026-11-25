@@ -89,6 +89,9 @@ def _path_to_project_slug(path: str) -> str:
     session's cwd and replacing every '/' and '.' with '-'. Verified against real
     dirs: /home/<user>/repo -> -home-<user>-repo;
     /home/<user>/repo/.claude/worktrees/b -> -home-<user>-repo--claude-worktrees-b.
+    This holds for a path made of ASCII letters, digits, '/', '.' and '-'.
+    For any other path see the "Nothing read" bullet in docs/pr-cost.md
+    § "Capture scope, rounds absence and earliest activity".
     """
     return re.sub(r"[/.]", "-", path)
 
@@ -112,6 +115,8 @@ def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[
     does not cover: its project dir is slugged from that subdirectory path and
     is string-unequal to every worktree-root slug, so it is silently excluded —
     the documented prefix-glob fallback covers that case instead.
+    A caller that passes include_removed_worktrees to _resolve_project_scope adds a name-prefix match on
+    top of this list through _with_removed_worktree_slugs.
 
     Fails closed (SystemExit) rather than returning a machine-wide scope whenever
     the environment is not a recognizable git worktree of this repo — a silent
@@ -207,6 +212,20 @@ def _repo_worktree_paths(command_label: str) -> list[str]:
         sys.exit(1)
 
     return worktree_paths
+
+
+# The slug segment Claude Code produces for a path's `/.claude/worktrees/` component.
+_WORKTREE_SLUG_INFIX = "--claude-worktrees-"
+
+
+def _with_removed_worktree_slugs(live_slugs: Sequence[str], project_dir_names: Iterable[str]) -> list[str]:
+    """This checkout's worktree slugs plus every name under its main worktree's .claude/worktrees/ slug prefix,
+    so a removed worktree's sessions stay in scope. A foreign checkout under that directory matches too, and so
+    does a path whose slug collides with the prefix.
+    """
+    removed_prefix = live_slugs[0] + _WORKTREE_SLUG_INFIX
+    removed_slugs = [name for name in project_dir_names if name.startswith(removed_prefix) and name != removed_prefix]
+    return list(dict.fromkeys([*live_slugs, *removed_slugs]))
 
 
 def _path_stripped_scan_error(exc: OSError) -> OSError:
@@ -550,15 +569,24 @@ def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool 
     return roots
 
 
-def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: str | None = None) -> None:
+def _add_project_scope_args(
+    parser: argparse.ArgumentParser, *, this_repo_help: str | None = None,
+    repo_scope_default: bool = False, projects_help: str | None = None,
+) -> None:
     """Add the shared --projects/--this-repo scope flags to a subparser.
 
     The flags are mutually exclusive. _resolve_project_scope routes --this-repo through
     _repo_scoped_project_slugs(), an identity-based minimization control. --projects defaults to the
-    glob "*", which matches every project directory under each scanned root.
+    glob "*", which matches every project directory under each scanned root, unless repo_scope_default is set.
+
+    With repo_scope_default set, args.projects is None when no flag is given.
+    _resolve_project_scope reads None as the glob "*".
+    The caller must therefore set args.this_repo before resolving, or the run scans every project directory.
     """
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--projects", default="*", metavar="GLOB")
+    group.add_argument(
+        "--projects", default=None if repo_scope_default else "*", metavar="GLOB", help=projects_help,
+    )
     group.add_argument(
         "--this-repo", action="store_true",
         help=this_repo_help or "Scope to this repo's own worktrees only (see docs/transcript-analysis.md).",
@@ -594,6 +622,7 @@ def _resolve_project_scope(
     roots: Sequence[Path] | None = None,
     *,
     scan_gaps: Counter[str] | None = None,
+    include_removed_worktrees: bool = False,
 ) -> tuple[Iterator[tuple[Path, list[dict]]], str]:
     """Resolve --projects/--this-repo into a fresh session iterator and a scope label.
 
@@ -652,6 +681,13 @@ def _resolve_project_scope(
     cannot record gaps, so it raises ValueError rather than ignore the
     counter. See _iter_project_dir_sessions's own docstring for the
     subagent-level drops this counter cannot see even off that branch.
+
+    `include_removed_worktrees` widens the --this-repo arm per root with
+    _with_removed_worktree_slugs, so a removed worktree's sessions stay in
+    scope; the cached `args._this_repo_slugs` keeps the live list. It has no
+    effect on the glob arm. Under an explicit top-level --config-dir the
+    zero-match refusal above still tests the live slugs only, so a root holding
+    only removed-worktree directories exits 1 before the widening.
     """
     if roots is None:
         roots = (_projects_dir(),)
@@ -670,6 +706,18 @@ def _resolve_project_scope(
                 file=sys.stderr,
             )
             sys.exit(1)
+        if include_removed_worktrees:
+            # No scan_gaps here: _iter_scoped_sessions lists each root again and reports an unreadable one itself.
+            root_listings = [_list_dir_recording_gaps(root, None, _SCAN_GAP_ROOT) for root in roots]
+            scoped_slugs = _with_removed_worktree_slugs(
+                slugs, (entry.name for listing in root_listings for entry in listing),
+            )
+            wanted = set(scoped_slugs)
+            found_dir_count = sum(1 for listing in root_listings for entry in listing if entry.name in wanted)
+            return (
+                _iter_scoped_sessions(scoped_slugs, include_subagents, roots=roots, scan_gaps=scan_gaps),
+                f"this repo, removed worktrees included ({found_dir_count} project dirs found)",
+            )
         return (
             _iter_scoped_sessions(slugs, include_subagents, roots=roots, scan_gaps=scan_gaps),
             f"this repo ({len(slugs)} project dirs)",
@@ -1100,6 +1148,11 @@ def _names_no_pr_branch(branch: str) -> bool:
     """True for a gitBranch no PR can be opened from: a detached checkout or
     a harness `worktree-agent-*` isolation branch."""
     return branch == _DETACHED_HEAD_BRANCH or branch.startswith(_WORKTREE_AGENT_BRANCH_PREFIX)
+
+
+def _branch_never_joins_a_pr(branch: str) -> bool:
+    """True for a head branch name that no branch-to-PR join may use."""
+    return branch in _DEFAULT_BRANCH_CANDIDATES or _names_no_pr_branch(branch)
 
 
 def _pre_branch_run(branch_index: Sequence[tuple[float, str]]) -> _PreBranchRun | None:

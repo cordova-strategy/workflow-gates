@@ -1,4 +1,4 @@
-"""scope.py's scan-traversal, scan-gap and glob-selection classes."""
+"""scope.py's scan-traversal, scan-gap, glob-selection and removed-worktree-slug classes."""
 import argparse
 import errno
 import os
@@ -8,7 +8,7 @@ from collections import Counter
 import pytest
 from transcript_analysis import corpus, scope
 
-from .conftest import _asst, _write_jsonl
+from .conftest import _asst, _write_cost_root, _write_jsonl, _write_subagent_jsonl
 
 
 class TestScanRootTranscripts:
@@ -771,3 +771,195 @@ class TestGlobScopedSessionsSelection:
             assert yielded_paths < every_project_paths
         assert backup_copy not in every_project_paths
         assert non_transcript not in every_project_paths
+
+
+class TestRemovedWorktreeSlugs:
+    """_with_removed_worktree_slugs and _resolve_project_scope's include_removed_worktrees keyword. Worktree slugs are
+    built with scope._path_to_project_slug so no test hand-types the worktree infix. The sibling-fork and unrelated
+    names are hand-built because no worktree path produces them."""
+
+    _MAIN_SLUG = scope._path_to_project_slug("/home/user/repo")
+    # A live worktree outside the main checkout's .claude/worktrees/ directory.
+    _LIVE_ELSEWHERE_SLUG = scope._path_to_project_slug("/home/user/elsewhere/feature")
+    _REMOVED_SLUG = scope._path_to_project_slug("/home/user/repo/.claude/worktrees/gone")
+    _OTHER_REMOVED_SLUG = scope._path_to_project_slug("/home/user/repo/.claude/worktrees/also-gone")
+    # A live worktree under the main checkout's .claude/worktrees/ directory.
+    _LIVE_UNDER_PREFIX_SLUG = scope._path_to_project_slug("/home/user/repo/.claude/worktrees/live")
+    _LIVE_SLUGS = [_MAIN_SLUG, _LIVE_UNDER_PREFIX_SLUG, _LIVE_ELSEWHERE_SLUG]
+
+    _SESSION_RECORDS = [_asst("claude-sonnet-4-6", branch="feat")]
+
+    def _repo_args(self, monkeypatch):
+        def stub_repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[str]:
+            return list(self._LIVE_SLUGS)
+
+        monkeypatch.setattr(scope, "_repo_scoped_project_slugs", stub_repo_scoped_project_slugs)
+        return argparse.Namespace(this_repo=True, projects=None)
+
+    def _scoped_dir_names(self, sessions):
+        return {jsonl.parent.name for jsonl, _records in sessions}
+
+    def test_live_slugs_stay_first_and_only_prefixed_names_are_added_without_duplicates(self):
+        bare_prefix = scope._path_to_project_slug("/home/user/repo/.claude/worktrees/")
+        sibling_fork = self._MAIN_SLUG + "-fork"
+        # Nested under a live worktree that is not the main checkout: only the main worktree's prefix widens the scope.
+        under_non_main_live = scope._path_to_project_slug("/home/user/elsewhere/feature/.claude/worktrees/nested")
+        names = [
+            self._MAIN_SLUG, self._LIVE_UNDER_PREFIX_SLUG, self._LIVE_ELSEWHERE_SLUG,
+            self._REMOVED_SLUG, self._REMOVED_SLUG, bare_prefix, sibling_fork, under_non_main_live,
+        ]
+
+        slugs = scope._with_removed_worktree_slugs(self._LIVE_SLUGS, names)
+
+        assert slugs == [*self._LIVE_SLUGS, self._REMOVED_SLUG]
+
+    def test_include_removed_worktrees_reads_only_the_root_it_is_given(
+        self, tmp_path, monkeypatch,
+    ):
+        for slug in (*self._LIVE_SLUGS, self._REMOVED_SLUG, "-home-user-unrelated"):
+            first_root = _write_cost_root(tmp_path, "first/projects", slug, "sess", self._SESSION_RECORDS)
+        second_root = _write_cost_root(
+            tmp_path, "second/projects", self._OTHER_REMOVED_SLUG, "sess", self._SESSION_RECORDS,
+        )
+        args = self._repo_args(monkeypatch)
+
+        first_sessions, first_label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[first_root], include_removed_worktrees=True,
+        )
+        first_paths = sorted(jsonl for jsonl, _records in first_sessions)
+        live_slugs_after_first = list(args._this_repo_slugs)
+        second_sessions, second_label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[second_root], include_removed_worktrees=True,
+        )
+        second_dir_names = self._scoped_dir_names(second_sessions)
+
+        assert first_paths == sorted(
+            first_root / slug / "sess.jsonl" for slug in (*self._LIVE_SLUGS, self._REMOVED_SLUG)
+        )
+        assert live_slugs_after_first == self._LIVE_SLUGS
+        assert first_label == "this repo, removed worktrees included (4 project dirs found)"
+        assert second_dir_names == {self._OTHER_REMOVED_SLUG}
+        assert second_label == "this repo, removed worktrees included (1 project dirs found)"
+
+    def test_without_the_keyword_only_the_live_directories_are_read(self, tmp_path, monkeypatch):
+        for slug in (*self._LIVE_SLUGS, self._REMOVED_SLUG):
+            root = _write_cost_root(tmp_path, "projects", slug, "sess", self._SESSION_RECORDS)
+        args = self._repo_args(monkeypatch)
+
+        sessions, label = scope._resolve_project_scope(args, "pr-cost", roots=[root])
+
+        assert self._scoped_dir_names(sessions) == set(self._LIVE_SLUGS)
+        assert label == "this repo (3 project dirs)"
+
+    @pytest.mark.parametrize("include_subagents", [True, False])
+    def test_include_removed_worktrees_forwards_include_subagents_to_live_and_removed_directories(
+        self, tmp_path, monkeypatch, include_subagents,
+    ):
+        for slug in (self._MAIN_SLUG, self._REMOVED_SLUG):
+            root = _write_cost_root(tmp_path, "projects", slug, "sess", self._SESSION_RECORDS)
+            _write_subagent_jsonl(root / slug, "sess", "agent", [_asst("claude-haiku-4-5", sidechain=True)])
+        args = self._repo_args(monkeypatch)
+
+        sessions, _label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[root], include_subagents=include_subagents, include_removed_worktrees=True,
+        )
+
+        dir_names_with_subagent_records = {
+            jsonl.parent.name for jsonl, records in sessions if any(record["isSidechain"] for record in records)
+        }
+        assert dir_names_with_subagent_records == ({self._MAIN_SLUG, self._REMOVED_SLUG} if include_subagents else set())
+
+    def test_include_removed_worktrees_unions_every_root_and_counts_root_directory_pairs(
+        self, tmp_path, monkeypatch,
+    ):
+        first_root = _write_cost_root(tmp_path, "first/projects", self._MAIN_SLUG, "sess", self._SESSION_RECORDS)
+        _write_cost_root(tmp_path, "second/projects", self._MAIN_SLUG, "sess", self._SESSION_RECORDS)
+        second_root = _write_cost_root(
+            tmp_path, "second/projects", self._REMOVED_SLUG, "sess", self._SESSION_RECORDS,
+        )
+        args = self._repo_args(monkeypatch)
+
+        sessions, label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[first_root, second_root], include_removed_worktrees=True,
+        )
+
+        assert {jsonl for jsonl, _records in sessions} == {
+            first_root / self._MAIN_SLUG / "sess.jsonl",
+            second_root / self._MAIN_SLUG / "sess.jsonl",
+            second_root / self._REMOVED_SLUG / "sess.jsonl",
+        }
+        assert label == "this repo, removed worktrees included (3 project dirs found)"
+
+    @pytest.mark.parametrize(
+        ("projects_glob", "expected_dir_names"),
+        [("*", {_MAIN_SLUG, _REMOVED_SLUG, "-home-user-unrelated"}), (_MAIN_SLUG, {_MAIN_SLUG})],
+    )
+    def test_the_keyword_does_not_change_the_glob_arm(self, tmp_path, projects_glob, expected_dir_names):
+        for slug in (self._MAIN_SLUG, self._REMOVED_SLUG, "-home-user-unrelated"):
+            root = _write_cost_root(tmp_path, "projects", slug, "sess", self._SESSION_RECORDS)
+        args = argparse.Namespace(this_repo=False, projects=projects_glob)
+
+        plain_sessions, plain_label = scope._resolve_project_scope(args, "pr-cost", roots=[root])
+        keyword_sessions, keyword_label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[root], include_removed_worktrees=True,
+        )
+
+        keyword_paths = [jsonl for jsonl, _records in keyword_sessions]
+        assert keyword_paths == [jsonl for jsonl, _records in plain_sessions]
+        assert {path.parent.name for path in keyword_paths} == expected_dir_names
+        assert keyword_label == plain_label == projects_glob
+
+    @pytest.fixture
+    def readable_and_sealed_roots(self, tmp_path):
+        for slug in (self._MAIN_SLUG, self._REMOVED_SLUG):
+            readable_root = _write_cost_root(tmp_path, "acct-a", slug, "sess", self._SESSION_RECORDS)
+        sealed_root = tmp_path / "acct-b"
+        sealed_root.mkdir()
+        os.chmod(sealed_root, 0o000)
+        try:
+            yield readable_root, sealed_root
+        finally:
+            os.chmod(sealed_root, 0o755)  # restore before tmp_path teardown
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_an_unreadable_root_is_skipped_without_crash_or_path_leak(
+        self, readable_and_sealed_roots, monkeypatch, capsys,
+    ):
+        readable_root, sealed_root = readable_and_sealed_roots
+        args = self._repo_args(monkeypatch)
+
+        sessions, label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[readable_root, sealed_root], include_removed_worktrees=True,
+        )
+        dir_names = self._scoped_dir_names(sessions)
+
+        assert dir_names == {self._MAIN_SLUG, self._REMOVED_SLUG}
+        assert label == "this repo, removed worktrees included (2 project dirs found)"
+        err = capsys.readouterr().err
+        assert "cannot scan" in err
+        assert "skipping" in err
+        assert str(sealed_root) not in err
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_an_unreadable_root_records_one_root_level_gap(self, readable_and_sealed_roots, monkeypatch):
+        readable_root, sealed_root = readable_and_sealed_roots
+        args = self._repo_args(monkeypatch)
+        scan_gaps = Counter()
+
+        sessions, _label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[readable_root, sealed_root], scan_gaps=scan_gaps,
+            include_removed_worktrees=True,
+        )
+        list(sessions)
+
+        assert scan_gaps == Counter({scope._SCAN_GAP_ROOT: 1})
+
+    def test_a_missing_root_yields_nothing_without_raising(self, tmp_path, monkeypatch):
+        args = self._repo_args(monkeypatch)
+
+        sessions, label = scope._resolve_project_scope(
+            args, "pr-cost", roots=[tmp_path / "absent"], include_removed_worktrees=True,
+        )
+
+        assert list(sessions) == []
+        assert label == "this repo, removed worktrees included (0 project dirs found)"

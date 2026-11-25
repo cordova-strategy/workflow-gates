@@ -882,7 +882,7 @@ class TestGhHostQualifiedRepo:
 # Exact-output characterization of gh_cli.py: full gh argv, every stderr message site, and
 # empty/non-list stdout handling.
 # ---------------------------------------------------------------------------
-_MERGED_PR_LIST_FIELDS = "number,headRefName,additions,deletions,changedFiles,mergedAt"
+_MERGED_PR_LIST_FIELDS = "number,headRefName,additions,deletions,changedFiles,mergedAt,isCrossRepository"
 _AUTH_FAILURE_STDERR = "not logged into any GitHub hosts\n"
 _HOST_MISMATCH_FAILURE_STDERR = (
     "none of the git remotes configured for this repository correspond to the"

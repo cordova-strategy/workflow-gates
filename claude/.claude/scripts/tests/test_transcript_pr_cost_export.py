@@ -22,6 +22,7 @@ from ._pr_cost_helpers import (
     _cell_with,
     _dropped_keys_line,
     _enable_pr_cost,
+    _export_ledger_rows,
     _fake_pr_cost_subprocess_run,
     _first_round,
     _parse_pr_cost_export_provenance_line,
@@ -201,10 +202,10 @@ class TestRedactPrCostRowForExportColumnShape:
         export unredacted: every column must already be triaged below as
         tokenized, date-truncated, or an explicitly-approved passthrough."""
         tokenized = {"host", "repo", "pr_number", "head_branch", "machine"}
-        date_truncated = {"merged_at", "captured_at"}
+        date_truncated = {"merged_at", "captured_at", "earliest_surviving_activity_at"}
         renamed_to_correction_count = {"supersedes"}
         approved_passthrough = {
-            "rate_stamp", "join_confidence", "status",
+            "rate_stamp", "join_confidence", "status", "capture_scope",
             "cache_read_usd", "cache_write_5m_usd", "cache_write_1h_usd", "output_usd", "input_usd",
             "cache_read_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens", "output_tokens", "input_tokens",
             "unpriced_turns", "unpriced_tokens", "invalid_usage_records", "turn_count", "session_count",
@@ -215,8 +216,9 @@ class TestRedactPrCostRowForExportColumnShape:
         }
         # Documentation only: model_breakdown passes through un-tokenized (TestPrCostExportModelBreakdown pins that
         # decision) and review_rounds passes through vocabulary-filtered (TestPrCostExportReviewRounds). Both stay
-        # DO-NOT-PUBLISH because they ride an export row.
-        model_bearing_row_level = {"model_breakdown", "review_rounds"}
+        # DO-NOT-PUBLISH because they ride an export row. review_rounds_absence is vocabulary-filtered beside
+        # review_rounds (TestPrCostExportCaptureScopeColumns).
+        model_bearing_row_level = {"model_breakdown", "review_rounds", "review_rounds_absence"}
         triaged = (
             tokenized | date_truncated | renamed_to_correction_count | approved_passthrough | model_bearing_row_level
         )
@@ -283,21 +285,6 @@ def _export_one_row(tmp_path, monkeypatch, cell) -> tuple[dict, dict, str]:
     """Exports a one-row ledger holding `cell`. Returns (the exported row's cells, the provenance key=value dict,
     the file's text)."""
     return _export_ledger_rows(tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds=cell)])
-
-
-def _export_ledger_rows(tmp_path, monkeypatch, ledger_rows: list[dict]) -> tuple[dict, dict, str]:
-    """Exports a ledger holding `ledger_rows`. Returns (the first exported row's cells, the provenance key=value
-    dict, the file's text)."""
-    _enable_pr_cost(tmp_path)
-    ledger_path = tmp_path / "pr-cost-ledger.tsv"
-    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
-    pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, ledger_rows)
-    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
-    out_path = tmp_path / "export.tsv"
-    pr_cost_export.cmd_pr_cost_export(_pr_cost_export_args(out=str(out_path)))
-    text = out_path.read_text()
-    lines = text.splitlines()
-    return _parse_pr_cost_export_row(lines[2]), _parse_pr_cost_export_provenance_line(lines[0]), text
 
 
 def _plant_sentinel_at(position: str, token_field: str):

@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import tempfile
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import NamedTuple
 
-from transcript_analysis import ledger_common, pr_cost_export, pr_cost_ledger, pricing, review_rounds, scope
+from transcript_analysis import ledger_common, pr_cost, pr_cost_export, pr_cost_ledger, pricing, review_rounds, scope
+
+from .conftest import _priced, _write_jsonl
 
 # Frozen ledger header lines, oldest first, hand-written: the single test-side source for every older header.
 # Never derive an entry from the live column tuple. When a column is added, append the outgoing header
@@ -35,8 +39,10 @@ _PRE_MODEL_HEADER_LINE = "\t".join((
 ))
 _PRE_INVALID_USAGE_HEADER_LINE = _PRE_MODEL_HEADER_LINE + "\tmodel_breakdown"
 _PRE_REVIEW_ROUNDS_HEADER_LINE = _PRE_INVALID_USAGE_HEADER_LINE + "\tinvalid_usage_records"
+_PRE_CAPTURE_SCOPE_HEADER_LINE = _PRE_REVIEW_ROUNDS_HEADER_LINE + "\treview_rounds"
 _FROZEN_PR_COST_HEADER_LINES: tuple[str, ...] = (
     _PRE_HOST_HEADER_LINE, _PRE_MODEL_HEADER_LINE, _PRE_INVALID_USAGE_HEADER_LINE, _PRE_REVIEW_ROUNDS_HEADER_LINE,
+    _PRE_CAPTURE_SCOPE_HEADER_LINE,
 )
 
 # Hand-written data rows under each frozen header. Cells are pairwise distinct within a row and from the other row's,
@@ -106,6 +112,7 @@ _PRE_HOST_ROW_PARSED = {
     "model_breakdown": None,
     "invalid_usage_records": 0,
     "review_rounds": None,
+    "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
 }
 _PRE_MODEL_ROW_PARSED = {
     "host": "ghe.example.com", "repo": "other-org/other-repo", "pr_number": 21, "machine": "ef56ab78",
@@ -123,6 +130,7 @@ _PRE_MODEL_ROW_PARSED = {
     "model_breakdown": None,
     "invalid_usage_records": 0,
     "review_rounds": None,
+    "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
 }
 _PRE_INVALID_USAGE_ROW_PARSED = {
     "host": "gh-enterprise.example.com", "repo": "third-org/third-repo", "pr_number": 33, "machine": "gh55hi66",
@@ -141,6 +149,7 @@ _PRE_INVALID_USAGE_ROW_PARSED = {
     "model_breakdown": {"claude-sonnet-5": {"standard": {"input": {"tokens": 1, "usd_micros": 1}}}},
     "invalid_usage_records": 0,
     "review_rounds": None,
+    "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
 }
 _PRE_REVIEW_ROUNDS_ROW_PARSED = {
     "host": "ghe.example.net", "repo": "fourth-org/fourth-repo", "pr_number": 44, "machine": "ij77kl88",
@@ -159,8 +168,74 @@ _PRE_REVIEW_ROUNDS_ROW_PARSED = {
     "model_breakdown": {"claude-sonnet-5": {"standard": {"input": {"tokens": 2, "usd_micros": 2}}}},
     "invalid_usage_records": 9,
     "review_rounds": None,
+    "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
 }
 
+
+def _sample_review_round() -> dict:
+    """One review_rounds round with every field populated and distinct small values."""
+    return {
+        "main_usd_micros": 1_500_000, "agent_usd_micros": 250_000,
+        "agents": 2, "dangling": 1, "unpriced_turns": 3, "unpriced_tokens": 4, "invalid_usage_records": 5,
+        "after_merge": 0,
+        "main_tokens": {"claude-sonnet-5": {"standard": {
+            "cache_read": 10, "cache_write_5m": 11, "cache_write_1h": 12, "output": 13, "input": 14,
+        }}},
+        "agent_tokens": {"claude-sonnet-5": {"fast": {
+            "cache_read": 20, "cache_write_5m": 21, "cache_write_1h": 22, "output": 23, "input": 24,
+        }}},
+    }
+
+
+def _sample_review_rounds() -> dict:
+    """A review_rounds cell value: rule 1, one code-review round, the other two skills tracked with zero rounds.
+    Written as a literal, not computed through pr_cost._build_review_rounds_cell."""
+    return {"rule": 1, "rounds": {"code-review": [_sample_review_round()], "plan-review": [], "ready-for-review": []}}
+
+
+# _sample_review_rounds() in its canonical encoding: sorted keys, compact separators.
+_CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL = (
+    '{"rounds":{"code-review":[{"after_merge":0,"agent_tokens":{"claude-sonnet-5":{"fast":{"cache_read":20,'
+    '"cache_write_1h":22,"cache_write_5m":21,"input":24,"output":23}}},"agent_usd_micros":250000,"agents":2,'
+    '"dangling":1,"invalid_usage_records":5,"main_tokens":{"claude-sonnet-5":{"standard":{"cache_read":10,'
+    '"cache_write_1h":12,"cache_write_5m":11,"input":14,"output":13}}},"main_usd_micros":1500000,'
+    '"unpriced_tokens":4,"unpriced_turns":3}],"plan-review":[],"ready-for-review":[]},"rule":1}'
+)
+
+
+_PRE_CAPTURE_SCOPE_ROW_LINE = "\t".join((
+    "ghe.example.org", "fifth-org/fifth-repo", "55", "mn99op00",
+    "account-5/branch-8", "2026-05-01T00:00:00Z", "2026-08-25", "2026-05-09T00:00:00Z", "low",
+    "", "ok",
+    "4.100000", "4.200000", "4.300000", "4.400000", "4.500000",
+    "401", "502", "603", "704", "805",
+    "46", "47", "48", "43",
+    "4.567890", "52.500000", "49000", "5225.000000",
+    "111", "112", "113", "114", "115",
+    "44", "45", "false", "true", "false",
+    '{"claude-sonnet-5":{"standard":{"input":{"tokens":3,"usd_micros":3}}}}',
+    "7",
+    _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL,
+))
+_PRE_CAPTURE_SCOPE_ROW_PARSED = {
+    "host": "ghe.example.org", "repo": "fifth-org/fifth-repo", "pr_number": 55, "machine": "mn99op00",
+    "head_branch": "account-5/branch-8", "merged_at": "2026-05-01T00:00:00Z", "rate_stamp": "2026-08-25",
+    "captured_at": "2026-05-09T00:00:00Z", "join_confidence": "low", "supersedes": "",
+    "status": "ok",
+    "cache_read_usd": 4.1, "cache_write_5m_usd": 4.2, "cache_write_1h_usd": 4.3, "output_usd": 4.4, "input_usd": 4.5,
+    "cache_read_tokens": 401, "cache_write_5m_tokens": 502, "cache_write_1h_tokens": 603, "output_tokens": 704,
+    "input_tokens": 805,
+    "unpriced_turns": 46, "unpriced_tokens": 47, "turn_count": 48, "session_count": 43,
+    "opus_dollars": 4.56789, "opus_dollar_share_pct": 52.5, "sum_context_at_turn": 49000,
+    "mean_context_at_turn": 5225.0,
+    "additions": 111, "deletions": 112, "changed_files": 113, "commit_count": 114, "review_comment_count": 115,
+    "distinct_top_level_dirs": 44, "distinct_file_extensions": 45,
+    "tests_changed": False, "plan_file_added": True, "risk_surface_flag": False,
+    "model_breakdown": {"claude-sonnet-5": {"standard": {"input": {"tokens": 3, "usd_micros": 3}}}},
+    "invalid_usage_records": 7,
+    "review_rounds": _sample_review_rounds(),
+    "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
+}
 
 _LEDGER_DIR_MARKER = "zzledgerdirmarkerzz"  # names the ledger's directory; must never reach captured output
 _PRIOR_ROW_MARKER = "zzpriorrowmarkerzz"  # sits in a prior row's head_branch cell; must never reach captured output
@@ -213,6 +288,16 @@ def _already_captured_line(pr_number: int, machine: str = _SEEDED_MACHINE_IDENTI
     )
 
 
+_NO_ACTIVITY_ACCOUNT_SKIP_STEM = "account-2 has no local corpus activity in this run's scope for this branch"
+_GLOB_RESCOPE_HINT = (
+    "; a bare --force re-scopes the row to this repo, so pass the same --projects glob to keep its scope"
+)
+_EMPTY_SCOPE_RESCOPE_HINT = (
+    "; this row predates capture scope and was read machine-wide by default, a bare --force re-scopes it"
+    " to this repo, and --projects '*' keeps the machine-wide reading"
+)
+
+
 def _upgrade_notice_line(ledger_label: str) -> str:
     """The stderr line announcing an upgraded ledger; ledger_label is "the ledger", or "account-N's ledger"
     under --all-accounts."""
@@ -222,7 +307,7 @@ def _upgrade_notice_line(ledger_label: str) -> str:
 def _merged_pr(number: int, branch: str) -> dict:
     return {
         "number": number, "headRefName": branch, "additions": 1, "deletions": 1,
-        "changedFiles": 1, "mergedAt": "2026-01-01T00:00:00Z",
+        "changedFiles": 1, "mergedAt": "2026-01-01T00:00:00Z", "isCrossRepository": False,
     }
 
 
@@ -275,7 +360,7 @@ def _assert_one_temp_file_in_directory_with_command_prefix_and_removed(
 
 def _pr_cost_args(
     *,
-    projects: str = "*",
+    projects: str | None = "*",
     this_repo: bool = False,
     extra_config_dirs: list[str] | None = None,
     record: bool = False,
@@ -287,6 +372,7 @@ def _pr_cost_args(
     risk_surface_globs: list[str] | None = None,
     all_accounts: bool = False,
 ) -> object:
+    """projects defaults to "*", the glob arm; pass None for the parser's bare default."""
     return type("A", (), {
         "projects": projects,
         "this_repo": this_repo,
@@ -324,6 +410,7 @@ def _fake_pr_cost_subprocess_run(
     call_log: list[list[str]] | None = None,
     enforce_repo_pin: str | None = None,
     git_tracked: bool = False,
+    withheld_fields: frozenset[str] = frozenset(),
 ):
     """Build a subprocess.run double covering every local git/gh call
     _pr_cost_report's full orchestration makes: origin-remote resolution
@@ -348,7 +435,9 @@ def _fake_pr_cost_subprocess_run(
     AssertionError on any post-resolution `gh pr list`/`gh pr view` call
     whose argv doesn't carry `--repo <enforce_repo_pin>` contiguously;
     git_tracked, when True, makes the git-tracked-ledger check answer as if
-    the ledger path sits inside a tracked git working tree.
+    the ledger path sits inside a tracked git working tree; withheld_fields
+    drops those fields from every PR `gh pr list` returns, which models a
+    payload lacking them, whatever the cause.
     """
     merged_prs = merged_prs if merged_prs is not None else []
     enrichment_by_pr = enrichment_by_pr or {}
@@ -404,7 +493,16 @@ def _fake_pr_cost_subprocess_run(
         elif cmd[:3] == ["gh", "pr", "list"]:
             if enforce_repo_pin is not None and not _argv_carries_repo_pin(cmd, enforce_repo_pin):
                 raise AssertionError(f"gh pr list call missing --repo {enforce_repo_pin!r} pin: {cmd}")
-            proc.stdout = json.dumps(merged_prs)
+            requested_fields = set(cmd[cmd.index("--json") + 1].split(",")) if "--json" in cmd else set()
+            listed_prs = []
+            for merged_pr in merged_prs:
+                listed_pr = dict(merged_pr)
+                if "isCrossRepository" in requested_fields:
+                    listed_pr.setdefault("isCrossRepository", False)
+                for withheld_field in withheld_fields:
+                    listed_pr.pop(withheld_field, None)
+                listed_prs.append(listed_pr)
+            proc.stdout = json.dumps(listed_prs)
         elif cmd[:3] == ["gh", "pr", "view"]:
             if enforce_repo_pin is not None and not _argv_carries_repo_pin(cmd, enforce_repo_pin):
                 raise AssertionError(f"gh pr view call missing --repo {enforce_repo_pin!r} pin: {cmd}")
@@ -456,6 +554,7 @@ def _sample_pr_cost_row(**overrides) -> dict:
         "model_breakdown": None,
         "invalid_usage_records": 0,
         "review_rounds": None,
+        "review_rounds_absence": "", "earliest_surviving_activity_at": "", "capture_scope": "",
     }
     row.update(overrides)
     assert set(row) == set(pr_cost_ledger._PR_COST_LEDGER_COLUMNS), "sample row must cover every ledger column exactly"
@@ -469,6 +568,10 @@ def _current_line_with_cell(column: str, cell: str, **row_overrides) -> str:
     cells = pr_cost_ledger._format_pr_cost_ledger_row(_sample_pr_cost_row(**row_overrides)).split("\t")
     cells[pr_cost_ledger._PR_COST_LEDGER_COLUMNS.index(column)] = cell
     return "\t".join(cells)
+
+
+def _current_ledger_text_with_cell(column: str, cell: str) -> str:
+    return pr_cost_ledger._PR_COST_LEDGER_HEADER_LINE + "\n" + _current_line_with_cell(column, cell) + "\n"
 
 
 def _legacy_row_line(**overrides) -> str:
@@ -503,6 +606,14 @@ def _pre_review_rounds_row_line(**overrides) -> str:
     )
 
 
+def _pre_capture_scope_row_line(**overrides) -> str:
+    """Returns a _sample_pr_cost_row(**overrides) rendered under the frozen pre-capture_scope
+    header's columns -- no review_rounds_absence, earliest_surviving_activity_at or capture_scope cell."""
+    return pr_cost_ledger._format_pr_cost_ledger_row(
+        _sample_pr_cost_row(**overrides), columns=_PRE_CAPTURE_SCOPE_HEADER_LINE.split("\t"),
+    )
+
+
 class _FrozenHeaderCase(NamedTuple):
     """One frozen ledger header with everything a per-header test needs, all hand-written."""
     case_id: str
@@ -526,50 +637,26 @@ _FROZEN_HEADER_CASES: tuple[_FrozenHeaderCase, ...] = tuple(
     for header_line, (case_id, make_row_line, row_line, parsed_row, hint, host_prefix, tail) in zip(
         _FROZEN_PR_COST_HEADER_LINES,
         (
-            ("pre-host", _legacy_row_line, _PRE_HOST_ROW_LINE, _PRE_HOST_ROW_PARSED, "", "github.com\t", "\t\t0\t"),
-            ("pre-model", _pre_model_row_line, _PRE_MODEL_ROW_LINE, _PRE_MODEL_ROW_PARSED, "", "", "\t\t0\t"),
+            (
+                "pre-host", _legacy_row_line, _PRE_HOST_ROW_LINE, _PRE_HOST_ROW_PARSED, "", "github.com\t",
+                "\t\t0\t\t\t\t",
+            ),
+            ("pre-model", _pre_model_row_line, _PRE_MODEL_ROW_LINE, _PRE_MODEL_ROW_PARSED, "", "", "\t\t0\t\t\t\t"),
             (
                 "pre-invalid-usage", _pre_invalid_usage_row_line, _PRE_INVALID_USAGE_ROW_LINE,
-                _PRE_INVALID_USAGE_ROW_PARSED, _APPEND_TAB_HINT, "", "\t0\t",
+                _PRE_INVALID_USAGE_ROW_PARSED, _APPEND_TAB_HINT, "", "\t0\t\t\t\t",
             ),
             (
                 "pre-review-rounds", _pre_review_rounds_row_line, _PRE_REVIEW_ROUNDS_ROW_LINE,
-                _PRE_REVIEW_ROUNDS_ROW_PARSED, _RESTORE_VALUE_HINT, "", "\t",
+                _PRE_REVIEW_ROUNDS_ROW_PARSED, _RESTORE_VALUE_HINT, "", "\t\t\t\t",
+            ),
+            (
+                "pre-capture-scope", _pre_capture_scope_row_line, _PRE_CAPTURE_SCOPE_ROW_LINE,
+                _PRE_CAPTURE_SCOPE_ROW_PARSED, _APPEND_TAB_HINT, "", "\t\t\t",
             ),
         ),
         strict=True,
     )
-)
-
-
-def _sample_review_round() -> dict:
-    """One review_rounds round with every field populated and distinct small values."""
-    return {
-        "main_usd_micros": 1_500_000, "agent_usd_micros": 250_000,
-        "agents": 2, "dangling": 1, "unpriced_turns": 3, "unpriced_tokens": 4, "invalid_usage_records": 5,
-        "after_merge": 0,
-        "main_tokens": {"claude-sonnet-5": {"standard": {
-            "cache_read": 10, "cache_write_5m": 11, "cache_write_1h": 12, "output": 13, "input": 14,
-        }}},
-        "agent_tokens": {"claude-sonnet-5": {"fast": {
-            "cache_read": 20, "cache_write_5m": 21, "cache_write_1h": 22, "output": 23, "input": 24,
-        }}},
-    }
-
-
-def _sample_review_rounds() -> dict:
-    """A review_rounds cell value: rule 1, one code-review round, the other two skills tracked with zero rounds.
-    Written as a literal, not computed through pr_cost._build_review_rounds_cell."""
-    return {"rule": 1, "rounds": {"code-review": [_sample_review_round()], "plan-review": [], "ready-for-review": []}}
-
-
-# _sample_review_rounds() in its canonical encoding: sorted keys, compact separators.
-_CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL = (
-    '{"rounds":{"code-review":[{"after_merge":0,"agent_tokens":{"claude-sonnet-5":{"fast":{"cache_read":20,'
-    '"cache_write_1h":22,"cache_write_5m":21,"input":24,"output":23}}},"agent_usd_micros":250000,"agents":2,'
-    '"dangling":1,"invalid_usage_records":5,"main_tokens":{"claude-sonnet-5":{"standard":{"cache_read":10,'
-    '"cache_write_1h":12,"cache_write_5m":11,"input":14,"output":13}}},"main_usd_micros":1500000,'
-    '"unpriced_tokens":4,"unpriced_turns":3}],"plan-review":[],"ready-for-review":[]},"rule":1}'
 )
 
 
@@ -687,8 +774,24 @@ def _parse_pr_cost_export_row(line: str) -> dict:
     return dict(zip(pr_cost_export._PR_COST_EXPORT_COLUMNS, line.split("\t"), strict=True))
 
 
+def _export_ledger_rows(tmp_path, monkeypatch, ledger_rows: list[dict]) -> tuple[dict, dict, str]:
+    """Exports a ledger holding `ledger_rows`. Returns (the first exported row's cells, the provenance key=value
+    dict, the file's text)."""
+    _enable_pr_cost(tmp_path)
+    ledger_path = tmp_path / "pr-cost-ledger.tsv"
+    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
+    pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, ledger_rows)
+    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
+    out_path = tmp_path / "export.tsv"
+    pr_cost_export.cmd_pr_cost_export(_pr_cost_export_args(out=str(out_path)))
+    text = out_path.read_text()
+    lines = text.splitlines()
+    return _parse_pr_cost_export_row(lines[2]), _parse_pr_cost_export_provenance_line(lines[0]), text
+
+
 class _ScanSpy:
-    """Wraps (does not replace) the two calls a --record run's transcript passes make."""
+    """Wraps (does not replace) the two calls a --record run's transcript passes make. Each scope call records the
+    keyword arguments it received and the `this_repo` its args held when it resolved."""
 
     def __init__(self) -> None:
         self.scope_calls: list[dict] = []
@@ -709,7 +812,7 @@ def _spy_on_scans(monkeypatch) -> _ScanSpy:
     real_compute = review_rounds.compute_review_round_costs
 
     def resolving(args, command, **kwargs):
-        spy.scope_calls.append(kwargs)
+        spy.scope_calls.append({**kwargs, "this_repo": args.this_repo})
         return real_resolve(args, command, **kwargs)
 
     def computing(session_iter, **kwargs):
@@ -735,3 +838,42 @@ def _write_ledger_row_on_lock_acquire(monkeypatch, ledger_path: Path, row: dict,
         real_acquire(lock_f)
 
     monkeypatch.setattr(pr_cost_ledger, "_acquire_pr_cost_ledger_lock", acquiring_after_a_concurrent_record)
+
+
+_NOW = datetime(2026, 8, 10, tzinfo=UTC)
+
+
+def _arrange_record_run(fake_projects, tmp_path, monkeypatch, branches=("feature-a", "feature-b")) -> Path:
+    """Opt the account in, give each branch one priced sonnet turn and one merged PR (numbered 1..N in branch
+    order), and fake git/gh. Returns the (not yet existing) ledger path, which sits in a marker-named directory."""
+    _enable_pr_cost(tmp_path)
+    ledger_dir = tmp_path / _LEDGER_DIR_MARKER
+    ledger_dir.mkdir()
+    ledger_path = ledger_dir / "pr-cost-ledger.tsv"
+    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
+    for index, branch in enumerate(branches):
+        _write_jsonl(fake_projects / f"sess-{index}.jsonl", [_priced("claude-sonnet-5", input=1_000_000, branch=branch)])
+    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+        merged_prs=[_merged_pr(index + 1, branch) for index, branch in enumerate(branches)],
+    ))
+    return ledger_path
+
+
+def _ledger_rows(ledger_path: Path) -> list[dict]:
+    return pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())
+
+
+def _run_record(fake_projects, **arg_overrides) -> None:
+    pr_cost._pr_cost_report(_pr_cost_args(record=True, **arg_overrides), _NOW, [fake_projects.parent])
+
+
+def _cell_of(rule: int, **agents_by_skill: list[int]) -> dict:
+    """A review_rounds cell whose skill holds one round per listed `agents` value (`code_review` is the skill
+    code-review)."""
+    return {
+        "rule": rule,
+        "rounds": {
+            skill.replace("_", "-"): [{**_sample_review_round(), "agents": agents} for agents in agents_list]
+            for skill, agents_list in agents_by_skill.items()
+        },
+    }

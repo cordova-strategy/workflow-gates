@@ -34,9 +34,9 @@ _HEADER_EVERY_ACCOUNT = (
     "REVIEW COST BY SIZE SOURCES (pr-cost ledger rows for this checkout's origin; every declared account)"
 )
 _NOTICE_TEXT = (
-    "Scope unverified -- a pr-cost ledger row does not record which project directories its --record run read, so a"
-    " PR's rounds can include another repository's session on a same-named branch; see docs/transcript-analysis.md"
-    " § \"review-cost-by-size\"."
+    "Scope unverified -- this report selects pr-cost ledger rows by this checkout's origin repository and does not"
+    " filter on the capture scope a row records. A PR's rounds can include another repository's session on a"
+    " same-named branch; see docs/transcript-analysis.md § \"review-cost-by-size\"."
 )
 _POINTER_TEXT = (
     "LEDGER VIEW -- publishable only under docs/private-project-redaction.md § \"The owner can authorize one figure,"
@@ -890,6 +890,17 @@ class TestWording:
         assert review_cost_by_size._LEDGER_PUBLICATION_POINTER == _POINTER_TEXT
         assert review_cost_by_size._NO_PR_REPORTED_MESSAGE == _NO_PR_REPORTED_TEXT
         assert review_cost_by_size._NO_PR_RECORDED_MESSAGE == _NO_PR_RECORDED_TEXT
+
+    def test_a_row_is_selected_whatever_capture_scope_it_records_as_the_scope_unverified_notice_states(self):
+        """The notice says the report does not filter on the capture scope a row records, and a legacy row's scope is
+        the empty string, so a filter on scope would drop every row in an existing ledger."""
+        rows = [
+            _kept_row(pr_number, capture_scope=capture_scope)
+            for pr_number, capture_scope in ((41, "repo"), (42, "glob"), (43, ""))
+        ]
+        read = ledger_rounds.select_ledger_prs([rows], _ORIGIN_HOST, _ORIGIN_REPO)
+        assert [pr.number for pr in read.prs] == [41, 42, 43]
+        assert read.excluded == dict.fromkeys(ledger_rounds.EXCLUSION_REASONS, 0)
 
     @pytest.mark.parametrize(
         ("message_name", "cited_doc"),

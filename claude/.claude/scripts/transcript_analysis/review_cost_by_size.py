@@ -38,9 +38,9 @@ _MEASURE_LABELS: dict[str, str] = {
 _NOT_AVAILABLE = "n/a"
 
 _SCOPE_UNVERIFIED_NOTICE = (
-    "Scope unverified -- a pr-cost ledger row does not record which project directories its --record run read, so a"
-    " PR's rounds can include another repository's session on a same-named branch; see docs/transcript-analysis.md"
-    " § \"review-cost-by-size\"."
+    "Scope unverified -- this report selects pr-cost ledger rows by this checkout's origin repository and does not"
+    " filter on the capture scope a row records. A PR's rounds can include another repository's session on a"
+    " same-named branch; see docs/transcript-analysis.md § \"review-cost-by-size\"."
 )
 _LEDGER_PUBLICATION_POINTER = (
     "LEDGER VIEW -- publishable only under docs/private-project-redaction.md § \"The owner can authorize one figure,"

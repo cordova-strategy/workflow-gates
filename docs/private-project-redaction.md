@@ -136,9 +136,10 @@ re-run and check.
     its repository itself.
   - Its `--all-accounts` output is never proposed for publication — see
     the next section.
-  - The reason: it reads pr-cost ledger rows, which do not record the
-    project scope their rounds were read from, so it refuses no wider
-    corpus.
+  - The reason: it selects ledger rows by this checkout's origin
+    repository, applies no filter on the capture scope a row records,
+    and refuses no wider project-directory scope
+    for the reads behind its rows.
 - `transcript-analysis.py read-cost --this-repo`, run from this
   repository's checkout, refuses `--projects` and a top-level
   `--config-dir` and reads the active config directory alone, without

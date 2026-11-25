@@ -14,6 +14,7 @@ import pytest
 from transcript_analysis import ledger_common, pr_cost, pr_cost_ledger, scope
 
 from ._pr_cost_helpers import (
+    _NO_ACTIVITY_ACCOUNT_SKIP_STEM,
     _SEEDED_MACHINE_IDENTITY,
     _already_captured_line,
     _argv_carries_repo_pin,
@@ -648,7 +649,7 @@ class TestPrCostAllAccounts:
         assert not (acct_b / "pr-cost-ledger.tsv").exists()
 
         captured = capsys.readouterr()
-        assert "account-2 has no local corpus activity for this branch" in captured.err
+        assert _NO_ACTIVITY_ACCOUNT_SKIP_STEM in captured.err
         assert "recorded 1 of 2 declared accounts (0 not opted in, 1 skipped)" in captured.out
 
     def test_all_accounts_renamed_branch_mismatch_hits_the_skip_not_the_new_warning(
@@ -688,7 +689,7 @@ class TestPrCostAllAccounts:
         assert rows_a[0]["turn_count"] > 0
         assert not (acct_b / "pr-cost-ledger.tsv").exists()  # skipped, not zero-recorded
         err = capsys.readouterr().err
-        assert "account-2 has no local corpus activity for this branch" in err  # the pre-existing skip fires
+        assert _NO_ACTIVITY_ACCOUNT_SKIP_STEM in err  # the pre-existing skip fires
         assert "has no matching local corpus activity" not in err  # the new warning must not also fire
         assert "old-name" not in err
         assert "new-name" not in err
@@ -751,7 +752,9 @@ class TestPrCostAllAccounts:
         monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=merged_prs))
         _write_ledger_row_on_lock_acquire(
             monkeypatch, acct_a / "pr-cost-ledger.tsv",
-            _sample_pr_cost_row(pr_number=1, machine=_SEEDED_MACHINE_IDENTITY),
+            _sample_pr_cost_row(
+                pr_number=1, machine=_SEEDED_MACHINE_IDENTITY, capture_scope=pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO,
+            ),
         )
         spy = _spy_on_scans(monkeypatch)
         args = _pr_cost_args(record=True, pr=1, all_accounts=True)
@@ -994,6 +997,10 @@ class TestCmdPrCostEndToEndViaRealArgparse:
         }]
         monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(merged_prs=merged_prs))
 
+        # A bare run takes the repo scope, which resolves this checkout's worktrees through git.
+        monkeypatch.setattr(
+            scope, "_repo_scoped_project_slugs", lambda command_label="skill-invocation": [fake_projects.name],
+        )
         parser = _mod.build_parser()
         args = parser.parse_args(["pr-cost", "--all-accounts", "--record"])
         assert args.all_accounts is True
@@ -1003,5 +1010,6 @@ class TestCmdPrCostEndToEndViaRealArgparse:
 
         rows = pr_cost_ledger._parse_pr_cost_ledger_file_text(ledger_path.read_text())
         assert len(rows) == 1
+        assert rows[0]["capture_scope"] == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO
         out = capsys.readouterr().out
         assert "recorded 1 of 1 declared accounts (0 not opted in, 0 skipped)" in out

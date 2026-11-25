@@ -15,7 +15,7 @@ import json
 import re
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path, PurePosixPath
@@ -155,6 +155,25 @@ def _direct_headref_matches(branch: str, merged_prs: Sequence[dict]) -> list[dic
     resolved by _resolve_branch_pr.
     """
     return [pr for pr in merged_prs if pr.get("headRefName") == branch]
+
+
+def _require_well_formed_merged_prs(merged_prs: object) -> None:
+    """Exits 1, as gh_cli's unparseable-JSON exit does, because discovery has no per-row result to degrade into."""
+    if not isinstance(merged_prs, list) or not all(
+        isinstance(pr, dict) and isinstance(pr.get("isCrossRepository"), bool) for pr in merged_prs
+    ):
+        print(
+            "pr-cost: gh pr list returned merged PRs this checkout cannot join (not a list of objects, each with a"
+            " boolean isCrossRepository) -- refusing to join any PR; update gh, and report it if it repeats"
+            " (see docs/pr-cost.md)",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _pr_is_joinable(pr: dict) -> bool:
+    """Fails closed: a missing or non-boolean isCrossRepository counts as not joinable."""
+    return pr.get("isCrossRepository") is False and not scope._branch_never_joins_a_pr(pr["headRefName"])
 
 
 def _pr_cost_join_corroborated(branch: str, enrichment: dict | None, plan_glob: str) -> bool:
@@ -437,7 +456,7 @@ def _review_rounds_cell_outcome(
 
 _FORCE_REFUSAL_REASON_BY_ABSENCE: dict[str, str] = {
     _ABSENCE_PASS_FAILED: "the review-round pass failed",
-    _ABSENCE_NO_LOCAL_ACTIVITY: "this branch has no local transcript activity",
+    _ABSENCE_NO_LOCAL_ACTIVITY: "this branch has no local transcript activity in this run's scope",
     _ABSENCE_NOT_BUILT: "this checkout does not record review rounds",
 }
 
@@ -452,6 +471,7 @@ def _review_rounds_check_cause(rule: str, build_error_class: str | None) -> str:
 
 def _review_rounds_force_refusal(
     prior_cell: dict | None, new_cell: dict | None, new_absence: str | None, build_error_class: str | None,
+    *, prior_capture_scope: str, new_capture_scope: str,
 ) -> str | None:
     if prior_cell is None:
         return None
@@ -463,6 +483,14 @@ def _review_rounds_force_refusal(
         return _FORCE_REFUSAL_REASON_BY_ABSENCE[new_absence]
     if new_cell["rule"] < prior_cell["rule"]:
         return "this checkout's round rule is older than the captured row's"
+    # A move to the repo class may shrink the series, because the prior row's rounds can hold another repository's
+    # sessions. The guard cannot tell that cause from aged-out transcripts or from main-checkout subdirectory
+    # sessions the repo scope does not read, so it passes all of them.
+    if (
+        prior_capture_scope != pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO
+        and new_capture_scope == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO
+    ):
+        return None
     # A higher-rule --force re-record over partly aged transcripts can shrink the captured series. That is deliberately
     # unguarded; see docs/pr-cost.md.
     if new_cell["rule"] == prior_cell["rule"]:
@@ -488,9 +516,18 @@ def _failed_cells_count_entry(pr_number: int, failed_columns: Sequence[str], acc
     return f"{prefix}PR #{pr_number} ({' and '.join(failed_columns)})"
 
 
+def _resolve_pr_cost_scope(
+    args: argparse.Namespace, root: Path, *, include_subagents: bool,
+) -> tuple[Iterator[tuple[Path, list[dict]]], str]:
+    """The one scope resolution both transcript passes use, so a row's capture_scope describes each."""
+    return scope._resolve_project_scope(
+        args, "pr-cost", include_subagents=include_subagents, roots=[root], include_removed_worktrees=True,
+    )
+
+
 def _scan_review_rounds_by_branch(args: argparse.Namespace, root: Path) -> dict[str, list[dict]]:
     """Prints no scope line."""
-    session_iter, _scope_label = scope._resolve_project_scope(args, "pr-cost", include_subagents=False, roots=[root])
+    session_iter, _scope_label = _resolve_pr_cost_scope(args, root, include_subagents=False)
     result = review_rounds.compute_review_round_costs(session_iter, resolved_roots=None, rounds_only=True)
     rounds_by_branch: dict[str, list[dict]] = {}
     for review_round in result["rounds"]:
@@ -530,10 +567,25 @@ class _AccountReviewRoundScan:
             )
 
 
+def _iso_utc_seconds(moment: datetime) -> str:
+    """A UTC datetime as YYYY-MM-DDTHH:MM:SSZ, truncating any fractional second."""
+    return moment.isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _earliest_surviving_activity_at(agg: dict) -> str:
+    """The earliest first valid-usage turn among the branch's sessions, or "" when the scan found none."""
+    session_starts = agg["session_starts"]
+    if not session_starts:
+        return ""
+    earliest_epoch = min(epoch for epoch, _session_id in session_starts)
+    return _iso_utc_seconds(datetime.fromtimestamp(earliest_epoch, UTC))
+
+
 def _new_pr_cost_row(
     *, host: str, pinned_repo: str, pr: dict, branch: str, agg: dict, enrichment: dict | None,
     join_confidence: str, status: str, machine: str, captured_at: str, supersedes: str,
     plan_glob: str, risk_globs: Sequence[str], ordinal: int, branch_map: dict, review_rounds_cell: dict | None,
+    review_rounds_absence: str | None, capture_scope: str,
 ) -> dict:
     """Assemble one ledger row dict from every piece the main loop resolved.
     head_branch is the SCRUBBED form (_assign_root_scoped_redact_label) --
@@ -588,6 +640,9 @@ def _new_pr_cost_row(
         "risk_surface_flag": proxies["risk_surface_flag"],
         "model_breakdown": _build_model_breakdown_cell(agg["by_model"]),
         "review_rounds": review_rounds_cell,
+        "review_rounds_absence": review_rounds_absence or "",
+        "earliest_surviving_activity_at": _earliest_surviving_activity_at(agg),
+        "capture_scope": capture_scope,
     }
 
 
@@ -635,8 +690,8 @@ def _print_pr_cost_uncaptured(
     corpus_host: str, pinned_repo: str, machine_label: str | None, ordinal: int, branch_map: dict,
 ) -> None:
     """Read mode's gap listing: merged PRs with local corpus activity not
-    yet captured in the ledger. Restricted to an unambiguous direct
-    headRefName match (a branch with zero or more-than-one match is a
+    yet captured in the ledger. Restricted to exactly one joinable direct
+    headRefName match (a branch with none, or more than one, is a
     separate manual audit's territory, not this quick gap check) --
     deliberately makes no extra gh calls beyond the bulk discovery this run
     already made, so read mode stays cheap enough to run often, closing the
@@ -645,7 +700,7 @@ def _print_pr_cost_uncaptured(
     print("\nMerged PRs with local corpus activity not yet captured:")
     any_uncaptured = False
     for branch in sorted(branch_totals):
-        matches = _direct_headref_matches(branch, merged_prs)
+        matches = [pr for pr in _direct_headref_matches(branch, merged_prs) if _pr_is_joinable(pr)]
         if len(matches) != 1:
             continue
         pr = matches[0]
@@ -658,10 +713,11 @@ def _print_pr_cost_uncaptured(
         print("  (none)")
 
 
-def _print_already_captured(pr_number: int, machine_identity: str) -> None:
+def _print_already_captured(pr_number: int, machine_identity: str, captured_scope: str) -> None:
+    rescope_hint = pr_cost_ledger._rescope_hint_for_captured_scope(captured_scope)
     print(
         f"pr-cost:   PR #{pr_number} for machine={machine_identity} is already"
-        " captured -- pass --force (with --pr) to append a correcting row",
+        f" captured -- pass --force (with --pr) to append a correcting row{rescope_hint}",
         file=sys.stderr,
     )
 
@@ -705,13 +761,25 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
     A --force re-capture that would replace captured review rounds with none,
     fewer or less complete ones is refused before any write: a single-account
     --pr run exits 1 at once, and --all-accounts skips that account and exits
-    1 after its summary.
+    1 after its summary. A re-capture that moves a row into the repo capture
+    scope may carry fewer or less complete rounds (see _review_rounds_force_refusal).
+
+    A run with neither --projects nor --this-repo reads the repo scope and
+    records capture_scope "repo"; an explicit --projects records "glob".
+    A merged-PR payload the join guard cannot read exits 1 before any account work.
 
     Every stdout/stderr path below routes branch/repo values through
     _assign_root_scoped_redact_label -- no raw branch name or repo value is
     ever printed. There is deliberately no --no-redact escape hatch for this
     subcommand, unlike cost/subagents.
     """
+    if not args.this_repo and args.projects is None:
+        args.this_repo = True
+    # _resolve_project_scope picks its repo arm by this same field.
+    capture_scope = (
+        pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO if args.this_repo else pr_cost_ledger._PR_COST_CAPTURE_SCOPE_GLOB
+    )
+
     all_accounts: bool = bool(getattr(args, "all_accounts", False))
     if len(roots) > 1 and not all_accounts:
         # Refuses genuine multi-root ambiguity only, not a claude-config-only
@@ -781,6 +849,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
     redact_ordinals = scope._redaction_ordinals(roots)
     pinned_repo, repo_map = gh_cli._resolve_pinned_gh_repo(corpus_host, corpus_repo, ordinal=redact_ordinals[roots[0].resolve()])
     merged_prs = gh_cli._gh_discover_merged_prs(corpus_host, pinned_repo)
+    _require_well_formed_merged_prs(merged_prs)
     branch_map: dict[tuple[int, str], str] = {}  # shared across accounts; key already includes ordinal
 
     recorded = skipped_no_sentinel = skipped_other = 0
@@ -790,9 +859,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
         account_config_dir = root.parent
         ordinal = redact_ordinals[root.resolve()]
 
-        session_iter, scope_label = scope._resolve_project_scope(
-            args, "pr-cost", include_subagents=True, roots=[root]
-        )
+        session_iter, scope_label = _resolve_pr_cost_scope(args, root, include_subagents=True)
         scope.print_resolved_scope("pr-cost", scope_label, [root])
         branch_totals, unbranched_agg = cost._compute_pr_cost_branch_totals(session_iter)
         print(
@@ -802,6 +869,13 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
             f" {unbranched_agg['invalid_usage_records']:,} further turns excluded for malformed usage",
             file=sys.stderr,
         )
+        scope_found_no_priced_turn = not branch_totals and not unbranched_agg["turn_count"]
+        if capture_scope == pr_cost_ledger._PR_COST_CAPTURE_SCOPE_REPO and scope_found_no_priced_turn:
+            for_account = f" in account-{ordinal}" if all_accounts else ""
+            print(
+                f"pr-cost: the repo scope found no priced turn{for_account} -- see docs/pr-cost.md",
+                file=sys.stderr,
+            )
 
         ledger_path = pr_cost_ledger._pr_cost_ledger_path_or_exit("pr-cost", ordinal, account_config_dir)
 
@@ -971,6 +1045,20 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
             if target_pr_data is None:
                 print(f"pr-cost: PR #{target_pr} was not found among this repo's merged PRs", file=sys.stderr)
                 sys.exit(1)
+            if scope._branch_never_joins_a_pr(target_pr_data["headRefName"]):
+                print(
+                    f"pr-cost: PR #{target_pr}'s head branch is a default-branch candidate, a detached HEAD or a"
+                    " worktree-agent branch, which the ledger never joins -- refusing; see docs/pr-cost.md",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if not _pr_is_joinable(target_pr_data):
+                print(
+                    f"pr-cost: PR #{target_pr} is cross-repository, which the ledger never records -- refusing;"
+                    " see docs/pr-cost.md",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             target_branches = [target_pr_data["headRefName"]]
         else:
             target_branches = sorted(branch_totals)
@@ -980,14 +1068,29 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
         for branch in target_branches:
             branch_label = redaction._assign_root_scoped_redact_label("branch", ordinal, branch, branch_map)
             print(f"pr-cost: resolving branch {branch_label}...", file=sys.stderr)
+            if scope._branch_never_joins_a_pr(branch):
+                print(
+                    "pr-cost:   this branch is a default-branch candidate, a detached HEAD or a worktree-agent"
+                    " branch, which the ledger never joins -- skipped",
+                    file=sys.stderr,
+                )
+                continue
             matches = _direct_headref_matches(branch, merged_prs)
             if not matches:
                 print("pr-cost:   no merged PR found for this branch -- skipped", file=sys.stderr)
                 continue
+            joinable_matches = [pr for pr in matches if _pr_is_joinable(pr)]
+            if not joinable_matches:
+                print(
+                    "pr-cost:   every merged PR for this branch is cross-repository, which the ledger never"
+                    " records -- skipped",
+                    file=sys.stderr,
+                )
+                continue
 
             enrichment_by_pr_number: dict[int, dict] = {}
             degraded_status_by_pr_number: dict[int, str] = {}
-            for pr in matches:
+            for pr in joinable_matches:
                 print(f"pr-cost:   enriching PR #{pr['number']}...", file=sys.stderr)
                 payload, degraded = _gh_pr_view_enrichment(corpus_host, pinned_repo, pr["number"])
                 if payload is not None:
@@ -999,7 +1102,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                         else degraded
                     )
 
-            resolved_pr, join_confidence = _resolve_branch_pr(branch, matches, enrichment_by_pr_number, plan_glob)
+            resolved_pr, join_confidence = _resolve_branch_pr(branch, joinable_matches, enrichment_by_pr_number, plan_glob)
             if resolved_pr is None:
                 print(
                     "pr-cost:   ambiguous branch-to-PR match (ties unresolved after SHA-overlap"
@@ -1007,6 +1110,9 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     file=sys.stderr,
                 )
                 continue
+            if len(matches) > 1:
+                # A cross-repository PR used this head name too, so the name was reused and the join stays low.
+                join_confidence = pr_cost_ledger._PR_COST_JOIN_CONFIDENCE_LOW
 
             enrichment = enrichment_by_pr_number.get(resolved_pr["number"])
             row_status = pr_cost_ledger._PR_COST_STATUS_OK if enrichment is not None else degraded_status_by_pr_number.get(
@@ -1026,10 +1132,11 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
 
             # A hint only: the locked check below stays authoritative, so a row a concurrent --record appended since is
             # still caught.
-            if not force and pr_cost_ledger._latest_pr_cost_row(
+            captured_row = pr_cost_ledger._latest_pr_cost_row(
                 existing_rows, corpus_host, pinned_repo, resolved_pr["number"], machine_identity
-            ) is not None:
-                _print_already_captured(resolved_pr["number"], machine_identity)
+            )
+            if not force and captured_row is not None:
+                _print_already_captured(resolved_pr["number"], machine_identity, captured_row["capture_scope"])
                 if target_pr is not None and not all_accounts:
                     sys.exit(1)
                 continue
@@ -1054,7 +1161,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                         current_rows, corpus_host, pinned_repo, resolved_pr["number"], machine_identity
                     )
                     if already is not None and not force:
-                        _print_already_captured(resolved_pr["number"], machine_identity)
+                        _print_already_captured(resolved_pr["number"], machine_identity, already["capture_scope"])
                         if target_pr is not None and not all_accounts:
                             sys.exit(1)
                         continue
@@ -1067,7 +1174,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     # that row -- there is no other account to fall back to).
                     if all_accounts and target_pr is not None and branch not in branch_totals:
                         print(
-                            f"pr-cost:   account-{ordinal} has no local corpus activity for this"
+                            f"pr-cost:   account-{ordinal} has no local corpus activity in this run's scope for this"
                             " branch -- skipped",
                             file=sys.stderr,
                         )
@@ -1082,12 +1189,12 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                             f"pr-cost:   PR #{resolved_pr['number']}'s branch has no matching"
                             " local corpus activity, but this account's scan attributed activity"
                             f" to {len(branch_totals)} other branch(es) -- this row may"
-                            " under-report if the branch was renamed; investigate locally with"
-                            " `cost --branches <branch>`",
+                            " under-report if the branch was renamed or its sessions sit outside this run's scope;"
+                            " investigate locally with `cost --branches <branch>`",
                             file=sys.stderr,
                         )
                     agg = branch_totals.get(branch) or cost._new_pr_cost_agg()
-                    captured_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
+                    captured_at = _iso_utc_seconds(datetime.now(UTC))
                     if branch not in branch_totals:
                         rounds_absence: str | None = _ABSENCE_NO_LOCAL_ACTIVITY
                     elif round_scan.failed:
@@ -1104,7 +1211,8 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                         machine=machine_identity, captured_at=captured_at,
                         supersedes=(already["captured_at"] if already else ""),
                         plan_glob=plan_glob, risk_globs=risk_globs, ordinal=ordinal, branch_map=branch_map,
-                        review_rounds_cell=review_rounds_cell,
+                        review_rounds_cell=review_rounds_cell, review_rounds_absence=rounds_absence,
+                        capture_scope=capture_scope,
                     )
                     # A failed check degrades this row to an empty cell instead of costing its scalars or the run's
                     # remaining branches; the loop reports it after the write.
@@ -1117,6 +1225,7 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                     if force and already is not None:
                         refusal_reason = _review_rounds_force_refusal(
                             already["review_rounds"], review_rounds_cell, rounds_absence, rounds_build_error_class,
+                            prior_capture_scope=already["capture_scope"], new_capture_scope=capture_scope,
                         )
                         if refusal_reason is not None:
                             print(
@@ -1192,8 +1301,8 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
         print(
             f"pr-cost: {len(rows_with_failed_cells)} row(s) recorded with failed cells"
             f" ({', '.join(rows_with_failed_cells)}); those rows are valid -- once the cause is fixed, re-capture each"
-            " with --record --force --pr N and this run's account flags, only while every session of that PR is still"
-            " inside cleanupPeriodDays (see docs/pr-cost.md)",
+            " with --record --force --pr N and this run's scope and account flags, only while every session of that PR"
+            " is still inside cleanupPeriodDays (see docs/pr-cost.md)",
             file=sys.stderr,
         )
     if rows_with_failed_cells or force_refused:
@@ -1205,12 +1314,23 @@ def _add_pr_cost_subparser(subparsers: argparse._SubParsersAction) -> None:
         "pr-cost",
         help=(
             "Per-PR AI-tooling dollar cost, joined against PR size/rework/review-surface via"
-            " gh. Default: list uncaptured merged PRs still in the local transcript window."
+            " gh. Default: list uncaptured merged PRs with activity in this repo's worktrees, removed ones included."
             " --record durably appends one row per captured PR to the pr-cost ledger (see"
             " PR_COST_LEDGER_PATH). Always redacted -- no --no-redact escape hatch. Requires gh."
         ),
     )
-    scope._add_project_scope_args(p_pr_cost)
+    scope._add_project_scope_args(
+        p_pr_cost,
+        this_repo_help=(
+            "Scope to this repo's own worktrees, removed ones included -- pr-cost's default (see docs/pr-cost.md)."
+        ),
+        repo_scope_default=True,
+        projects_help=(
+            "Project-dir glob. Default: this repo's own worktrees, removed ones included. An explicit glob, *"
+            " included, reads every project directory it matches, and the rows it records carry capture_scope=glob"
+            " (see docs/pr-cost.md)."
+        ),
+    )
     scope._add_extra_config_dirs_arg(
         p_pr_cost,
         "Additional Claude Code config directory to scan (repeatable). pr-cost refuses"
@@ -1246,7 +1366,11 @@ def _add_pr_cost_subparser(subparsers: argparse._SubParsersAction) -> None:
     )
     p_pr_cost.add_argument(
         "--force", action="store_true",
-        help="With --record and --pr, append a correcting row for an already-captured PR instead of refusing.",
+        help=(
+            "With --record and --pr, append a correcting row for an already-captured PR instead of refusing."
+            " A row captured with --projects, or before capture scope was recorded, needs the same --projects"
+            " (--projects '*' for the latter), or the new row is scoped to this repo."
+        ),
     )
     p_pr_cost.add_argument(
         "--asof-window-days", type=float, metavar="DAYS",
