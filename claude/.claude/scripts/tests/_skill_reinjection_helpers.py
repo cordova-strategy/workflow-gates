@@ -2,6 +2,9 @@
 stub."""
 from transcript_analysis import redaction, skill_reinjection
 
+from ._compaction_context_helpers import compact_boundary, invoked_skills_attachment
+from ._compaction_context_helpers import sidechain as mark_sidechain
+
 # A name this repo tracks as a bare directory name, and one it tracks as a plugin skill.
 TRACKED_SKILL = "sentinel-tracked-skill"
 TRACKED_PLUGIN_SKILL = "sentinel-plugin:sentinel-plugin-skill"
@@ -19,13 +22,11 @@ UNSET = object()
 
 
 def boundary(uuid: object = "boundary-1", timestamp: object = "2026-01-02T03:04:05.000Z", *, sidechain: bool = False) -> dict:
-    """A `compact_boundary` record. `uuid=UNSET` leaves the key out."""
-    record: dict = {"type": "system", "subtype": "compact_boundary", "timestamp": timestamp}
+    """A `compact_boundary` record in the recorded shape, with a `timestamp` and a `uuid`. `uuid=UNSET` leaves the key out."""
+    record: dict = {**compact_boundary(), "timestamp": timestamp}
     if uuid is not UNSET:
         record["uuid"] = uuid
-    if sidechain:
-        record["isSidechain"] = True
-    return record
+    return mark_sidechain(record) if sidechain else record
 
 
 def skill_entry(name: str, content: str = "1. First step.", path: str = PATH_CANARY) -> dict:
@@ -34,10 +35,8 @@ def skill_entry(name: str, content: str = "1. First step.", path: str = PATH_CAN
 
 def attachment(*skills: object, sidechain: bool = False) -> dict:
     """An `invoked_skills` attachment record holding `skills`."""
-    record: dict = {"type": "attachment", "attachment": {"type": "invoked_skills", "skills": list(skills)}}
-    if sidechain:
-        record["isSidechain"] = True
-    return record
+    record = invoked_skills_attachment(list(skills))
+    return mark_sidechain(record) if sidechain else record
 
 
 def cut_content(total_code_points: int = CUT_LENGTH) -> str:

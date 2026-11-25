@@ -1867,6 +1867,12 @@ def init_repository_tracking_canary_skill(repository_root: Path) -> Path:
     )
 
 
+def first_skill_directory_on_disk() -> str:
+    """The first skill directory name under `claude-skills/skills/`, read from disk and not from the git index the
+    allowlist reads, so the expected name comes from a source the code under test does not read."""
+    return min(path.parent.name for path in SKILLS_DIR.glob("*/SKILL.md"))
+
+
 def _commit(repo: Path, message: str = "commit") -> None:
     (repo / "file.txt").write_text(message + "\n")
     subprocess.run(["git", "add", "file.txt"], cwd=repo, check=True)

@@ -170,27 +170,29 @@ re-run and check.
   repository's checkout, refuses `--projects` and a top-level
   `--config-dir` and reads the active config directory alone, without
   consulting `~/.claude/transcript-config-dirs`. It prints aggregates
-  only, and names a skill only when this repository tracks it.
+  only, and names a skill only when this repository tracks it. It never
+  reads subagent files.
+  - Publish figures only from a run in this repository's own checkout.
+    The citation states the parsed `origin` owner/name (never a raw
+    remote URL) of both the working directory the command ran in and
+    the checkout whose `transcript-analysis.py` ran, as the
+    `review-cost-by-size` bullet above requires. Both must be this
+    repository, because the printed names are the invoked checkout's
+    tracked names.
   - A run from another repository counts that repository's sessions
     under this repository's tracked skill names. Its session and
     compaction totals and its first and last compaction dates then
     belong to that repository too, as do the counts and cut-length
-    extremes of a name both repositories track. Figures publish only
-    from a run in this repository's own checkout, and the citation
-    states the parsed `origin` owner/name (never a raw remote URL) of
-    both the working directory the command ran in and the checkout
-    whose `transcript-analysis.py` ran, as the `review-cost-by-size`
-    bullet above requires. Both must be this repository, because the
-    printed names are the invoked checkout's tracked names.
+    extremes of a name both repositories track.
   - Its cut-length range spans only copies under names this repository
     tracks.
   - Its transcript scope rests on path identity, not repository
-    identity. It does not exclude a live worktree path of this checkout
-    that another repository's checkout occupied earlier (that
-    checkout's sessions then match as this repository's), or a checkout
-    of any repository whose path maps to the same project-directory
-    slug as one of this checkout's worktrees. It never reads subagent
-    files.
+    identity, so it does not exclude:
+    - a live worktree path of this checkout that another repository's
+      checkout occupied earlier, whose sessions then match as this
+      repository's
+    - a checkout of any repository whose path maps to the same
+      project-directory slug as one of this checkout's worktrees
   - A new figure from it still takes the check under "New figures
     against the grandfathered set" below.
 - A subcommand with no scope refusal of its own is not a publication

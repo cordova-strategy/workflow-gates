@@ -69,8 +69,11 @@ def test_cost_ledger_fixtures_patch_their_targets_without_a_shim(
 
 
 class TestScrubbedGitEnvironment:
-    """The class-scoped fixture sets every locating variable before, and tears down after, the function-scoped
-    monkeypatch the fixture under test uses, so its teardown check sees the state once that monkeypatch has undone."""
+    """The class-scoped fixture sets every locating variable before the function-scoped monkeypatch the fixture under
+    test uses, and tears down after it.
+
+    Its teardown asserts each variable is back to the value it set, which only holds once that monkeypatch has undone.
+    """
 
     @pytest.fixture(scope="class", autouse=True)
     def _locating_variables_set_around_the_fixture(self):

@@ -7,8 +7,10 @@ count. The docs section for this command states what the counts do and do not co
 
 Every printed figure is an aggregate: nothing printed carries a path, session identifier, project name, skill content
 or skill name this repository does not track. The printed cut-length range spans only copies under names this
-repository tracks, so an untracked name's content, which is a copy's character mix, cannot set an extreme. A run from
-another repository takes a shared name's copies from that repository.
+repository tracks. A copy's code-point, UTF-16 and byte lengths differ by its multi-byte and astral characters. The
+three lengths together give its exact astral-character count and a weighted sum of its other multi-byte characters.
+Both describe the skill's content, so an untracked skill's copy sets no extreme. A run from another repository takes a
+shared name's copies from that repository.
 
 `TRUNCATION_MARKER`, `CopyLengths`, `CutRange`, `copy_lengths`, `copy_is_truncated`, `ReinjectionTotals` and
 `count_session` are public so a caller outside the package can reuse the marker, the length units and the
@@ -90,7 +92,7 @@ def copy_lengths(text: str) -> CopyLengths:
 
 
 def copy_is_truncated(content: str) -> bool:
-    """True when the copy ends in the marker. A marker elsewhere in the body is skill text, not a cut."""
+    """A marker elsewhere in the body is skill text, not a cut."""
     return content.rstrip().endswith(TRUNCATION_MARKER)
 
 
@@ -298,7 +300,9 @@ def _print_report(report: _Report) -> None:
         f" without_attachment={report.compactions - report.compactions_with_attachment:,}"
     )
     print(f"first_compaction={_fmt_date(report.first_compaction)} last_compaction={_fmt_date(report.last_compaction)}")
-    if report.tracked_cut_range is None:
+    if not report.tracked_names_available:
+        print("truncated copies of tracked skills: unavailable")
+    elif report.tracked_cut_range is None:
         print("truncated copies of tracked skills: none")
     else:
         print(f"truncated copy of a tracked skill, shortest: {_fmt_cut_lengths(report.tracked_cut_range.shortest)}")

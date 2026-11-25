@@ -97,7 +97,8 @@ Also owns the `--this-repo` subagent_type disclosure allowlist:
 - `_repo_tracked_agent_type_names` — the stems of every `agents/*.md` file that directory
   git-tracks, unioned with `_BUILT_IN_AGENT_TYPES`.
 
-`subagent_mix.py`'s `cmd_subagent_mix` and `cmd_cost_counts` call
+`subagent_mix.py`'s `cmd_subagent_mix` and `cmd_cost_counts`, `read_cost.py`'s `_read_cost_report` and
+`reviewer_reads.py`'s `_reviewer_reads_report` call
 `redaction._repo_tracked_agent_type_names` (attribute access) to gate which raw `subagent_type`
 values a `--this-repo` report may disclose versus fold into a withheld row. `reviewer_yield.py`'s
 `cmd_reviewer_yield` calls `redaction._untracked_agent_type_labels` (attribute access) under `--redact`,

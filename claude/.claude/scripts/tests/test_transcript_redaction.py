@@ -16,6 +16,7 @@ from .conftest import (
     _user_msg,
     _write_jsonl,
     _write_subagent_jsonl,
+    first_skill_directory_on_disk,
     init_repository_tracking,
     init_repository_tracking_canary_skill,
 )
@@ -109,16 +110,11 @@ class TestRepoTrackedAgentTypeNames:
         redaction._repo_tracked_agent_type_names.cache_clear()
 
     def _init_agents_repo(self, tmp_path: Path, *, tracked: list[str], untracked: list[str] = ()) -> Path:
-        agents_dir = tmp_path / "agents"
-        agents_dir.mkdir()
-        subprocess.run(["git", "init", "-q"], cwd=agents_dir, check=True)
-        for name in tracked:
-            (agents_dir / f"{name}.md").write_text("---\nname: x\n---\n")
-        if tracked:
-            subprocess.run(["git", "add", "--", *(f"{n}.md" for n in tracked)], cwd=agents_dir, check=True)
-        for name in untracked:
-            (agents_dir / f"{name}.md").write_text("---\nname: x\n---\n")
-        return agents_dir
+        return init_repository_tracking(
+            tmp_path / "agents",
+            tracked=[f"{name}.md" for name in tracked],
+            untracked=[f"{name}.md" for name in untracked],
+        )
 
     def _patch_dir(self, monkeypatch, agents_dir: Path) -> None:
         monkeypatch.setattr(redaction, "_REPO_AGENT_DEFINITIONS_DIR", agents_dir)
@@ -321,6 +317,43 @@ class TestCheckoutRoot:
         assert module_copy._repo_tracked_skill_names() == frozenset()
 
 
+class TestTrackedSkillAttachmentName:
+    """_tracked_skill_attachment_name -- the path-shape rule, with no git involved."""
+
+    @pytest.mark.parametrize(
+        ("tracked_path", "attachment_name"),
+        [
+            ("claude-skills/skills/bare-skill/SKILL.md", "bare-skill"),
+            (".claude/skills/project-skill/SKILL.md", "project-skill"),
+            ("plugins/some-plugin/skills/plugin-skill/SKILL.md", "some-plugin:plugin-skill"),
+        ],
+    )
+    def test_each_of_the_three_kept_shapes_yields_the_name_an_attachment_gives_the_skill(
+        self, tracked_path, attachment_name,
+    ):
+        assert redaction._tracked_skill_attachment_name(tracked_path) == attachment_name
+
+    @pytest.mark.parametrize(
+        "tracked_path",
+        [
+            "claude-skills/skills/skill/nested/SKILL.md",
+            "plugins/some-plugin/skills/skill/nested/SKILL.md",
+            ".claude/skills/skill/nested/SKILL.md",
+            "claude-skills/skills/skill/REFERENCES.md",
+            "claude-skills/other/skill/SKILL.md",
+            "other/skills/skill/SKILL.md",
+            "plugins/some-plugin/commands/skill/SKILL.md",
+            "plugins/some-plugin/skills/skill/REFERENCES.md",
+            "other-dir/some-plugin/skills/skill/SKILL.md",
+            "SKILL.md",
+            "Claude-Skills/skills/skill/SKILL.md",
+            "claude-skills/skills/skill/skill.md",
+        ],
+    )
+    def test_path_outside_the_three_kept_shapes_yields_no_name(self, tracked_path):
+        assert redaction._tracked_skill_attachment_name(tracked_path) is None
+
+
 @pytest.mark.usefixtures("scrubbed_git_environment")
 class TestRepoTrackedSkillNames:
     """_repo_tracked_skill_names -- the skill-reinjection name allowlist accessor."""
@@ -336,8 +369,7 @@ class TestRepoTrackedSkillNames:
         assert locating_variables_git_lists <= redaction._REPOSITORY_LOCATING_GIT_VARIABLES
 
     def test_no_git_config_variable_is_stripped(self):
-        """`GIT_CONFIG_COUNT` and its siblings carry settings such as `safe.directory`, so stripping one makes
-        `git -C <checkout>` refuse a checkout it does not trust."""
+        """The `GIT_CONFIG*` variables set configuration, not the repository, so none of them is stripped."""
         assert not {name for name in redaction._REPOSITORY_LOCATING_GIT_VARIABLES if name.startswith("GIT_CONFIG")}
 
     @pytest.fixture(autouse=True)
@@ -366,25 +398,15 @@ class TestRepoTrackedSkillNames:
             {"bare-skill", "project-skill", "some-plugin:plugin-skill"}
         )
 
-    @pytest.mark.parametrize(
-        "nested_path",
-        [
-            "claude-skills/skills/skill/nested/SKILL.md",
-            "plugins/some-plugin/skills/skill/nested/SKILL.md",
-            ".claude/skills/skill/nested/SKILL.md",
-            "claude-skills/skills/skill/REFERENCES.md",
-            "claude-skills/other/skill/SKILL.md",
-            "other/skills/skill/SKILL.md",
-            "plugins/some-plugin/commands/skill/SKILL.md",
-            "plugins/some-plugin/skills/skill/REFERENCES.md",
-            "other-dir/some-plugin/skills/skill/SKILL.md",
-            "SKILL.md",
-        ],
-    )
-    def test_path_outside_the_three_kept_shapes_yields_no_name(self, tmp_path, monkeypatch, nested_path):
-        monkeypatch.setattr(redaction, "_REPO_ROOT", init_repository_tracking(tmp_path / "repo", tracked=[nested_path]))
+    def test_skill_staged_in_the_index_and_never_committed_is_in_because_the_index_is_what_is_read(
+        self, tmp_path, monkeypatch,
+    ):
+        repo_root = init_repository_tracking(tmp_path / "repo", tracked=[".claude/skills/staged-skill/SKILL.md"])
+        monkeypatch.setattr(redaction, "_REPO_ROOT", repo_root)
+        has_commit = subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD"], cwd=repo_root).returncode == 0
+        assert not has_commit, "the repository holds a commit, so the skill would not be staged-only"
 
-        assert redaction._repo_tracked_skill_names() == frozenset()
+        assert redaction._repo_tracked_skill_names() == frozenset({"staged-skill"})
 
     def test_tracked_path_that_is_not_utf8_does_not_raise_and_the_other_skill_names_come_back(
         self, tmp_path, monkeypatch,
@@ -446,7 +468,7 @@ class TestRepoTrackedSkillNames:
 
         assert names, "git could not list this checkout's tracked files (ownership, or a checkout without .git)"
         assert OTHER_REPOSITORY_CANARY_SKILL not in names
-        assert "code-review" in names
+        assert first_skill_directory_on_disk() in names
 
     @pytest.mark.parametrize(
         ("variable", "foreign_git_path"), [("GIT_DIR", ".git"), ("GIT_INDEX_FILE", ".git/index")],

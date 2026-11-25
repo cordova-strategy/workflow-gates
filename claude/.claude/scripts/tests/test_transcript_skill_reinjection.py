@@ -9,6 +9,14 @@ import time
 import pytest
 from transcript_analysis import redaction, scope, skill_reinjection
 
+from ._compaction_context_helpers import automatic_compaction_records, manual_compaction_records
+from ._publication_scope_helpers import (
+    labelled_counts,
+    refusal_with_several_roots,
+    refusal_without_this_repo,
+    scope_header,
+    unreadable,
+)
 from ._skill_reinjection_helpers import (
     CONTENT_CANARY,
     CUT_LENGTH,
@@ -31,6 +39,7 @@ from .conftest import (
     _this_repo_args,
     _write_jsonl,
     _write_subagent_jsonl,
+    first_skill_directory_on_disk,
     init_repository_tracking_canary_skill,
 )
 
@@ -41,12 +50,6 @@ _NO_GAPS = {
 }
 _NO_SKIPPED_INPUT = {"unreadable_roots": 0, "unreadable_project_dirs": 0, "unreadable_main_files": 0}
 _HOOK_CONTEXT_ATTACHMENT = {"type": "attachment", "attachment": {"type": "hook_additional_context", "content": "x"}}
-
-
-def _labelled_counts(report: str, line_prefix: str) -> dict[str, int]:
-    line = next(line for line in report.splitlines() if line.startswith(line_prefix))
-    tokens = line.removeprefix(line_prefix).split()
-    return {key: int(value.replace(",", "")) for key, value in (token.split("=") for token in tokens)}
 
 
 def _count(*session_files: list) -> skill_reinjection.ReinjectionTotals:
@@ -127,6 +130,20 @@ class TestPairing:
         assert totals.compactions == 1
         assert totals.compactions_with_attachment == 1
         assert totals.reattached == {}
+        assert totals.scan_gaps == {}
+
+    @pytest.mark.parametrize(
+        "recorded_sequence", [manual_compaction_records(), automatic_compaction_records()], ids=["manual", "automatic"],
+    )
+    def test_recorded_compaction_sequence_pairs_its_one_boundary_with_its_one_skill_copy(self, recorded_sequence):
+        recorded_boundary, *records_after_it = recorded_sequence
+        identified_boundary = {**recorded_boundary, "uuid": "b1", "timestamp": "2026-01-02T03:04:05.000Z"}
+
+        totals = _count([identified_boundary, *records_after_it])
+
+        assert totals.compactions == 1
+        assert totals.compactions_with_attachment == 1
+        assert sum(totals.reattached.values()) == 1
         assert totals.scan_gaps == {}
 
     def test_window_spans_records_between_a_boundary_and_its_attachment(self):
@@ -442,15 +459,17 @@ class TestNames:
         assert foreign_spelling not in out
         assert UNTRACKED_SKILL not in out
 
-    def test_empty_tracked_set_prints_the_unavailable_line_the_withheld_row_and_the_totals_and_no_name(
+    def test_empty_tracked_set_prints_the_unavailable_lines_the_withheld_row_and_the_totals_and_no_name(
         self, fake_projects, capsys, monkeypatch,
     ):
-        records = [boundary("b1"), attachment(skill_entry(TRACKED_SKILL), skill_entry(UNTRACKED_SKILL))]
+        records = [boundary("b1"), attachment(skill_entry(TRACKED_SKILL, cut_content()), skill_entry(UNTRACKED_SKILL))]
 
         out = _run_report(fake_projects, capsys, records, tracked=(), monkeypatch=monkeypatch).out
 
         assert "Every skill name is withheld because the list of skills this repository tracks is unavailable." in out
-        assert "(withheld — untracked skill): reattached=2 truncated=0" in out
+        assert "\ntruncated copies of tracked skills: unavailable\n" in out
+        assert "truncated copies of tracked skills: none" not in out
+        assert "(withheld — untracked skill): reattached=2 truncated=1" in out
         assert "sessions=1 compactions=1 with_attachment=1" in out
         assert TRACKED_SKILL not in out
         assert UNTRACKED_SKILL not in out
@@ -625,8 +644,8 @@ class TestReportLines:
         out = _run_report(fake_projects, capsys, records, monkeypatch=monkeypatch).out
 
         assert "first_compaction=2026-04-05 last_compaction=2026-04-05" in out
-        assert _labelled_counts(out, "scan gaps:") == _NO_GAPS
-        assert _labelled_counts(out, "skipped input:") == _NO_SKIPPED_INPUT
+        assert labelled_counts(out, "scan gaps:") == _NO_GAPS
+        assert labelled_counts(out, "skipped input:") == _NO_SKIPPED_INPUT
 
     def test_report_prints_the_compactions_without_an_attachment_and_the_earliest_and_latest_compaction_dates(
         self, fake_projects, capsys, monkeypatch,
@@ -725,36 +744,29 @@ class TestReportLines:
 
         out = _run_report(fake_projects, capsys, records, monkeypatch=monkeypatch).out
 
-        assert _labelled_counts(out, "scan gaps:") == {
+        assert labelled_counts(out, "scan gaps:") == {
             "unpaired_attachments": 1, "boundaries_without_uuid": 2, "unmarked_long_copies": 3,
             "non_object_records": 4, "non_object_attachments": 5, "bad_skills_lists": 6,
             "non_object_skill_entries": 7, "bad_skill_fields": 8, "unconvertible_timestamps": 9,
         }
-        assert _labelled_counts(out, "skipped input:") == _NO_SKIPPED_INPUT
+        assert labelled_counts(out, "skipped input:") == _NO_SKIPPED_INPUT
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
     def test_unreadable_projects_directory_prints_as_one_unreadable_root(self, fake_projects, capsys, monkeypatch):
         stub_tracked_skill_names(monkeypatch, TRACKED_SKILL)
-        projects_dir = fake_projects.parent
-        os.chmod(projects_dir, 0o000)
-        try:
+        with unreadable(fake_projects.parent):
             skill_reinjection.cmd_skill_reinjection(_this_repo_args())
-        finally:
-            os.chmod(projects_dir, 0o755)  # restore before tmp_path teardown
 
-        counts = _labelled_counts(capsys.readouterr().out, "skipped input:")
+        counts = labelled_counts(capsys.readouterr().out, "skipped input:")
         assert counts == {**_NO_SKIPPED_INPUT, "unreadable_roots": 1}
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
     def test_unreadable_project_directory_prints_as_one_unreadable_project_dir(self, fake_projects, capsys, monkeypatch):
         stub_tracked_skill_names(monkeypatch, TRACKED_SKILL)
-        os.chmod(fake_projects, 0o000)
-        try:
+        with unreadable(fake_projects):
             skill_reinjection.cmd_skill_reinjection(_this_repo_args())
-        finally:
-            os.chmod(fake_projects, 0o755)
 
-        counts = _labelled_counts(capsys.readouterr().out, "skipped input:")
+        counts = labelled_counts(capsys.readouterr().out, "skipped input:")
         assert counts == {**_NO_SKIPPED_INPUT, "unreadable_project_dirs": 1}
 
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
@@ -762,14 +774,11 @@ class TestReportLines:
         stub_tracked_skill_names(monkeypatch, TRACKED_SKILL)
         main_transcript = fake_projects / "sess.jsonl"
         _write_jsonl(main_transcript, [boundary("b1")])
-        os.chmod(main_transcript, 0o000)
-        try:
+        with unreadable(main_transcript):
             skill_reinjection.cmd_skill_reinjection(_this_repo_args())
-        finally:
-            os.chmod(main_transcript, 0o644)
 
         out = capsys.readouterr().out
-        assert _labelled_counts(out, "skipped input:") == {**_NO_SKIPPED_INPUT, "unreadable_main_files": 1}
+        assert labelled_counts(out, "skipped input:") == {**_NO_SKIPPED_INPUT, "unreadable_main_files": 1}
         assert "sessions=0 " in out
 
 
@@ -824,9 +833,13 @@ class TestTrackedNamesFromRealGit:
             "git could not list this checkout's tracked files (ownership, or a checkout without .git)"
         )
 
-        captured = self._report_run_from(redaction._REPO_ROOT, fake_projects, monkeypatch, capsys, "code-review")
+        tracked_skill_on_disk = first_skill_directory_on_disk()
 
-        assert "\ncode-review: reattached=1 truncated=0\n" in captured.out
+        captured = self._report_run_from(
+            redaction._REPO_ROOT, fake_projects, monkeypatch, capsys, tracked_skill_on_disk,
+        )
+
+        assert f"\n{tracked_skill_on_disk}: reattached=1 truncated=0\n" in captured.out
 
 
 class TestScopeRefusal:
@@ -835,9 +848,7 @@ class TestScopeRefusal:
             skill_reinjection._skill_reinjection_report(_this_repo_args(this_repo=False), [fake_projects.parent])
         assert raised.value.code == 2
         captured = capsys.readouterr()
-        assert captured.err == (
-            "skill-reinjection: requires --this-repo and refuses any --projects scope -- see docs/transcript-analysis.md\n"
-        )
+        assert captured.err == refusal_without_this_repo("skill-reinjection")
         assert captured.out == ""
 
     def test_refusal_with_a_projects_glob_exits_2_with_exactly_one_stderr_line_and_nothing_else(
@@ -852,9 +863,7 @@ class TestScopeRefusal:
             )
         assert raised.value.code == 2
         captured = capsys.readouterr()
-        assert captured.err == (
-            "skill-reinjection: requires --this-repo and refuses any --projects scope -- see docs/transcript-analysis.md\n"
-        )
+        assert captured.err == refusal_without_this_repo("skill-reinjection")
         assert captured.out == ""
 
     def test_refusal_with_two_roots_exits_2_with_exactly_one_stderr_line_and_nothing_else(
@@ -866,9 +875,7 @@ class TestScopeRefusal:
             skill_reinjection._skill_reinjection_report(_this_repo_args(), [fake_projects.parent, other_root])
         assert raised.value.code == 2
         captured = capsys.readouterr()
-        assert captured.err == (
-            "skill-reinjection: resolved to more than one root -- refusing to report a multi-account figure\n"
-        )
+        assert captured.err == refusal_with_several_roots("skill-reinjection")
         assert captured.out == ""
 
     def test_cmd_scans_the_active_account_alone_even_when_other_roots_are_declared(
@@ -908,8 +915,5 @@ class TestScopeRefusal:
 
         skill_reinjection.cmd_skill_reinjection(_this_repo_args())
 
-        assert capsys.readouterr().out.splitlines()[0] == (
-            "SKILL REINJECTION SOURCES (this repo (1 project dirs); reads one account (the active account),"
-            " the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)"
-        )
+        assert capsys.readouterr().out.splitlines()[0] == scope_header("skill-reinjection", "this repo (1 project dirs)")
 

@@ -375,9 +375,10 @@ def _tracked_skill_attachment_name(tracked_path: str) -> str | None:
 def _repo_tracked_skill_names() -> frozenset[str]:
     """Attachment names of every skill this repo git-tracks -- the skill-reinjection name allowlist.
 
-    - Tracked state, not on-disk presence (`git ls-files` reads the index), so an untracked scratch skill never
-      allowlists its own name.
-    - `-z` avoids git's path quoting corrupting a name; `errors="replace"` keeps a non-UTF-8 path from raising.
+    - Tracked state, not on-disk presence: `git ls-files` reads the index, so a staged skill counts before its commit
+      and an untracked scratch skill never allowlists its own name.
+    - `-z` keeps git's path quoting from corrupting a name.
+    - `errors="replace"` keeps a non-UTF-8 path from raising.
     - Failure, or no `_REPO_ROOT`, returns the empty set, so every name is withheld. Same exception set and timeout as
       `_repo_tracked_agent_type_names`, which also documents why `check=True` is needed.
     - _REPO_ROOT is read fresh on every call so a test can monkeypatch it and call .cache_clear().

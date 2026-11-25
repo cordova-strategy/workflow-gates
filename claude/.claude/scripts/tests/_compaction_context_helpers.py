@@ -161,10 +161,14 @@ def skill_tool_use() -> dict:
     return {"type": "assistant", "message": {"role": "assistant", "content": [tool_use]}}
 
 
-def invoked_skills_attachment() -> dict:
-    """The attachment the harness writes after a compaction: skill content cut at a limit, a path naming no file on disk."""
-    skill = {"name": "scratch", "path": "/nonexistent/skills/scratch/SKILL.md", "content": "1. First step."}
-    return {"type": "attachment", "attachment": {"type": "invoked_skills", "skills": [skill]}}
+def invoked_skills_attachment(skills: list | None = None) -> dict:
+    """The attachment the harness writes after a compaction: skill content cut at a limit, a path naming no file on disk.
+
+    `skills` replaces the one default skill entry.
+    """
+    if skills is None:
+        skills = [{"name": "scratch", "path": "/nonexistent/skills/scratch/SKILL.md", "content": "1. First step."}]
+    return {"type": "attachment", "attachment": {"type": "invoked_skills", "skills": skills}}
 
 
 def attachment_record(text="hook output") -> dict:
