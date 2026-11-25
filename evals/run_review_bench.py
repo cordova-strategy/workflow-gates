@@ -304,7 +304,7 @@ def _path_at_base_flag(candidate) -> str:
     from review_bench import defects
     from review_bench.local_git import isolated_git_environment
 
-    # The base commit is not resolved here: an absent one reads `no`, and `_commit_subjects_or_none` rejects it before display.
+    # The base commit is not resolved here, because `_commit_subjects_or_none` rejects an absent one before display.
     try:
         path_is_present = defects.path_exists_at_commit(
             REPO_ROOT, candidate.base_commit, candidate.evidence["path"], env=isolated_git_environment(),
@@ -408,8 +408,7 @@ def _print_candidate_for_approval(
     last, beside the prompt. A miner that hard-codes a field as a guess it
     never checked has that field labeled. `same_location_candidates` are the
     other-source candidates that share this one's head, fix, and path, each
-    with its status. `path_at_base` prints on its own line after the path, and
-    `None` prints no such line."""
+    with its status."""
     escape = _escape_control_characters
     path = escape(str(candidate.evidence.get("path", "(none recorded)")))
     if candidate.source in _SOURCES_LABELING_HEAD_BRANCH:

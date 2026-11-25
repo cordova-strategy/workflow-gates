@@ -4711,10 +4711,13 @@ def _confirm_workspace(
     return repo, local_dir, tmp_path / "defects.json", fix_sha
 
 
-def _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path: Path) -> tuple[Path, str, str, dict[str, list[str]]]:
-    """Returns (repo, base_sha, introducing_sha, paths_by_flag). The introducing commit adds `added.py`, modifies
-    `modified.py`, and renames `renamed_from.txt` to `renamed_to.txt` with edits. `paths_by_flag` maps the
-    `at base:` value `confirm` shows ("yes" or "no") to the paths that read it against `base_sha`."""
+def _repo_whose_introducing_commit_adds_modifies_and_renames(
+    tmp_path: Path,
+) -> tuple[Path, str, str, dict[str, list[str]], dict[str, str]]:
+    """Returns (repo, base_sha, introducing_sha, paths_by_flag, path_by_kind). The introducing commit adds
+    `added.py`, modifies `modified.py`, and renames `renamed_from.txt` to `renamed_to.txt` with edits.
+    `paths_by_flag` maps the `at base:` value `confirm` shows ("yes" or "no") to the paths that read it against
+    `base_sha`. `path_by_kind` maps "added", "modified", and "renamed" to the path the commit leaves in that state."""
     repo = _init_repo(tmp_path / "repo")
     _write(repo, "modified.py", "value = 1\n")
     _write(repo, "renamed_from.txt", "line one\nline two\nline three\nline four\n")
@@ -4724,7 +4727,9 @@ def _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path: Path) -> 
     (repo / "renamed_from.txt").rename(repo / "renamed_to.txt")
     _write(repo, "renamed_to.txt", "line one\nline two edited\nline three\nline four\n")
     introducing_sha = _commit(repo, "add a file, modify one, and rename one with edits")
-    return repo, base_sha, introducing_sha, {"yes": ["modified.py"], "no": ["added.py", "renamed_to.txt"]}
+    path_by_kind = {"added": "added.py", "modified": "modified.py", "renamed": "renamed_to.txt"}
+    paths_by_flag = {"yes": [path_by_kind["modified"]], "no": [path_by_kind["added"], path_by_kind["renamed"]]}
+    return repo, base_sha, introducing_sha, paths_by_flag, path_by_kind
 
 
 def _confirm_workspace_by_flag(
@@ -4732,7 +4737,9 @@ def _confirm_workspace_by_flag(
 ) -> tuple[Path, Path, Path]:
     """Returns (repo, local_dir, defects_path) for one `szz_candidates.json` holding a candidate `c-<position>` per
     flag ("yes" or "no"), each at a path that reads that flag against its base commit. Each passes every check."""
-    repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+    repo, base_sha, introducing_sha, paths_by_flag, _path_by_kind = (
+        _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+    )
     monkeypatch.setattr(run_review_bench, "REPO_ROOT", repo)
     local_dir = tmp_path / "local"
     defects.save_candidates(local_dir / "szz_candidates.json", [
@@ -5441,7 +5448,7 @@ class TestConfirmCli:
         assert capsys.readouterr().err.count("promote this candidate? [y/n/q] ") == 2
         assert not defects_path.exists()
         assert _pin_refs(repo) == []
-        assert not (local_dir / run_review_bench._CONFIRM_DECLINED_IDS_FILENAME).exists()
+        assert not _declined_ids_path(local_dir).exists()
         assert [c.id for c in defects.load_candidates(local_dir / "szz_candidates.json")] == ["c-1"]
 
     def test_an_n_records_the_candidate_as_declined_and_leaves_it_in_local(self, tmp_path, monkeypatch):
@@ -5453,8 +5460,7 @@ class TestConfirmCli:
         assert exit_code == 0
         assert not defects_path.exists()
         assert _pin_refs(repo) == []
-        declined_ids_path = local_dir / run_review_bench._CONFIRM_DECLINED_IDS_FILENAME
-        assert json.loads(declined_ids_path.read_text()) == ["c-1"]
+        assert json.loads(_declined_ids_path(local_dir).read_text()) == ["c-1"]
         assert [c.id for c in defects.load_candidates(local_dir / "szz_candidates.json")] == ["c-1"]
 
     def test_y_promotes_and_a_later_n_skips(self, tmp_path, monkeypatch, capsys):
@@ -6319,49 +6325,59 @@ class TestConfirmCli:
         return run_review_bench._path_at_base_flag(candidate)
 
     def test_a_modified_path_reads_yes_and_an_added_path_reads_no(self, tmp_path, monkeypatch):
-        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
-        (modified_path,) = paths_by_flag["yes"]
-        added_path = paths_by_flag["no"][0]
+        repo, base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
 
-        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, modified_path) == "yes"
-        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, added_path) == "no"
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, path_by_kind["modified"]) == "yes"
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, path_by_kind["added"]) == "no"
 
     def test_a_renamed_path_with_edits_reads_no_though_its_diff_has_hunks(self, tmp_path, monkeypatch):
-        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
-        renamed_path = paths_by_flag["no"][1]
+        repo, base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
+        renamed_path = path_by_kind["renamed"]
         name_status_lines = _git(repo, "diff", "--find-renames", "--name-status", base_sha, introducing_sha).splitlines()
-        assert [line for line in name_status_lines if line.startswith("R")] != []  # git itself reads it as a rename
+        # git itself reads the path as the target of a rename; name-status rename lines read `R<score>\t<from>\t<to>`
+        assert [line for line in name_status_lines if line.startswith("R") and line.endswith(f"\t{renamed_path}")] != []
 
         assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, renamed_path) == "no"
 
     def test_an_absent_base_commit_reads_no(self, tmp_path, monkeypatch):
-        repo, _base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        repo, _base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
 
-        assert self._flag_of_path(monkeypatch, repo, _SHA_A, introducing_sha, paths_by_flag["yes"][0]) == "no"
+        assert self._flag_of_path(monkeypatch, repo, _SHA_A, introducing_sha, path_by_kind["modified"]) == "no"
 
     def test_a_path_that_exists_when_the_base_equals_the_head_reads_yes(self, tmp_path, monkeypatch):
-        repo, _base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
-        added_path = paths_by_flag["no"][0]
+        repo, _base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
 
-        assert self._flag_of_path(monkeypatch, repo, introducing_sha, introducing_sha, added_path) == "yes"
+        assert self._flag_of_path(monkeypatch, repo, introducing_sha, introducing_sha, path_by_kind["added"]) == "yes"
 
     def test_a_git_timeout_reads_unknown(self, tmp_path, monkeypatch):
-        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        repo, base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
 
         def path_check_timing_out(repo_dir, commit, path, **kwargs):
             raise subprocess.TimeoutExpired(["git", "cat-file"], 10.0)
 
         monkeypatch.setattr(defects, "path_exists_at_commit", path_check_timing_out)
 
-        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, paths_by_flag["yes"][0]) == "unknown"
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, path_by_kind["modified"]) == "unknown"
 
     def test_the_check_runs_under_an_isolated_git_environment(self, tmp_path, monkeypatch):
         """A `GIT_DIR` in the ambient environment redirects git to another repository, so a `yes` path reading `no`
         shows the helper passed the ambient environment through."""
-        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        repo, base_sha, introducing_sha, _paths_by_flag, path_by_kind = (
+            _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        )
         monkeypatch.setenv("GIT_DIR", str(tmp_path / "decoy_git_dir"))
 
-        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, paths_by_flag["yes"][0]) == "yes"
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, path_by_kind["modified"]) == "yes"
 
     def test_the_prompt_prints_the_flag_on_the_line_after_the_path(self, tmp_path, monkeypatch, capsys):
         _repo, local_dir, defects_path = _confirm_workspace_by_flag(tmp_path, monkeypatch, "no", "yes")
