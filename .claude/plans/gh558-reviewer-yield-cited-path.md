@@ -736,7 +736,7 @@ scope-header follow-up issue number.
 - **Case sensitivity.** The lexical key is case-sensitive; macOS APFS defaults to
   case-insensitive, so two citations differing only in case are one file but two
   keys. Symmetric across both arms, so it cannot fake a spread.
-- **The `/home/jared/…` fixture paths** in
+- **The `/home/<user>/…` fixture paths** in
   `claude/.claude/hooks/tests/test_enforce_marker_script_shape.py` — home-rooted
   path with a real username in a public repo, pre-existing on `main`, unrelated to
   GH-558. Follow-up issue filed separately `[engineer-verified]`.

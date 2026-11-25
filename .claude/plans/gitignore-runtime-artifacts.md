@@ -121,7 +121,7 @@ harder to place correctly.
   ls-files -- plugins/ claude/.claude/skills/` unchanged).
   Note: `git status` inside *this* worktree will show none of this state (it's a
   fresh checkout with no runtime history yet) — verification must run against the
-  main tree at `/Users/jared/MyCode/claude-config`.
+  main tree at `<main-checkout>`.
 - `git check-ignore -v claude/.claude/history.jsonl claude/.claude/.claude.json
   claude/.claude/projects/ claude/.claude/plugins/` — confirm each resolves to the
   newly-added `.gitignore` line, not a false match from an unrelated existing rule.

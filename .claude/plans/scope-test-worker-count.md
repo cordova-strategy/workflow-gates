@@ -68,7 +68,7 @@ behavior change for other contributors or CI.
   existing `PYTEST_XDIST_AUTO_NUM_WORKERS` env var and `-n <N>` CLI
   override in README so the engineer can set a personal default
   outside this repo (their own shell profile or per-worktree direnv
-  config, per their own workstation-setup conventions) rather than
+  config, per their own `<private-setup-repo>` conventions) rather than
   changing the repo-wide default for every contributor.
 - **Concurrency target:** 4 concurrent full-suite sessions on this
   16-logical-core machine → a recommended per-session cap of 4 workers

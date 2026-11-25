@@ -3743,7 +3743,7 @@ class TestDenyPrivateProjectRefs:
         assert (
             run_hook(
                 DENY_PRIVATE_PROJECT_REFS_HOOK,
-                bash_input("git commit -m 'My home directory is /Users/jared, nothing else'"),
+                bash_input("git commit -m 'My home directory is /Users/testuser, nothing else'"),
                 cwd=claude_config_repo,
             )
             == "deny"

@@ -6,18 +6,17 @@
 session's carried context crosses 60% of the resolved model's context
 window, but it only checks on `UserPromptSubmit` — so a session that crosses
 the threshold on its own final assistant turn, with no further user prompt,
-gets no warning at all. An ad-hoc query over this machine's 307 main-session
-transcripts (`~/.claude/projects/*/*.jsonl`, script left at
-`/private/tmp/claude-501/-Users-jared-MyCode-claude-config/138b05bb-6f1f-4354-aef9-a70fe273da92/scratchpad/nudge_trigger_gap.py`,
-reusing the hook's own model-window table from commit `d9bd16e`) found 18 of
-299 usage-bearing sessions crossed the threshold at some point; of those, 2
-(11.1%) crossed on their final turn with no subsequent prompt — sessions the
-current design structurally cannot reach. The other 16 (88.9%) had a later
-prompt and so had a chance to fire, possibly delayed by one turn. This is a
-small sample (n=18 crossers); the plan treats it as directional evidence of
-a real gap, not a precise rate. The intended outcome is closing that
-specific gap: the same nudge, checked at one more point in the turn cycle,
-with no change to its threshold, marker, or message logic.
+gets no warning at all. An ad-hoc query over the author's local main-session
+transcripts (`~/.claude/projects/*/*.jsonl`, reusing the hook's own
+model-window table from commit `d9bd16e`) found that a small minority of
+sessions crossed the threshold at some point, and that a few of those crossed
+on their final turn with no subsequent prompt — sessions the current design
+structurally cannot reach. Most crossers had a later prompt and so had a
+chance to fire, possibly delayed by one turn. The sample of crossers is small;
+the plan treats it as directional evidence of a real gap, not a precise rate.
+The intended outcome is closing that specific gap: the same nudge, checked at
+one more point in the turn cycle, with no change to its threshold, marker, or
+message logic.
 
 ## Approach
 
@@ -89,7 +88,7 @@ subsequent prompt.
 
 | # | Assumption | Tag |
 |---|---|---|
-| root | UserPromptSubmit-only trigger misses final-turn crossings with no next prompt | `[verified: ad-hoc query over 307 transcripts, script path above — 2/18 crossers (11.1%) were final-turn-only misses]` |
+| root | UserPromptSubmit-only trigger misses final-turn crossings with no next prompt | `[verified: ad-hoc query over the author's local transcripts, method in the Context above — final-turn-only misses were a small minority of crossers]` |
 | 1 | `Stop` supports `hookSpecificOutput.additionalContext` as a non-blocking mechanism, same posture as `UserPromptSubmit` — it does NOT force an extra generation cycle the way `decision:"block"` does | `[verified: code.claude.com/docs/en/hooks, fetched this session, verbatim — "Stop hooks can block Claude from finishing the turn, forcing continuation of the agentic loop. They can also inject context for Claude to act on without blocking... The context is added to the conversation and Claude processes it on the next model request."]` |
 | 1b | Registering a second `Stop` hook alongside the existing `advance-past-commit-stall.sh` (a blocking `turn-gate` hook) doesn't prevent either from running — both execute and their outputs compose, rather than one short-circuiting the other | `[verified: code.claude.com/docs/en/hooks, fetched this session — "All matching hooks run in parallel, and identical handlers are deduplicated automatically", corroborated by this repo's own PreToolUse precedent: 19 distinct hooks already run under one `Bash` matcher in claude/.claude/settings.json]` |
 | 2 | `Stop`'s input JSON includes `session_id`, `transcript_path`, `agent_type` (subagent-only), `permission_mode` — the same fields the hook already reads | `[verified: code.claude.com/docs/en/hooks, fetched this session — Stop receives the documented "common input fields" plus Stop-specific `last_assistant_message`]` |
@@ -98,7 +97,7 @@ subsequent prompt.
 | 5 | The output's `hookSpecificOutput.hookEventName` must match the actual firing event (`"Stop"` vs `"UserPromptSubmit"`), not a hardcoded value | `[verified: code.claude.com/docs/en/hooks examples — every event's example payload stamps its own event name in hookEventName]` — the hook currently hardcodes `"UserPromptSubmit"` (nudge-handoff-near-context-cap.sh:138); this must become dynamic, read from the input's `hook_event_name` field |
 | 5b | Every existing test's `_base_payload()` helper omits `hook_event_name` entirely, so once the hook reads it dynamically, all pre-existing test cases exercise the empty-string/missing case, not a real event name — the hook must have defined, deliberate behavior for that case, not an accident of whatever `case`/`if` order gets written | `[verified: claude/.claude/hooks/tests/test_nudge_handoff_near_context_cap.py — `_base_payload()` builds only `session_id` and `transcript_path`, no `hook_event_name` key, in every current test]` |
 | 6 | The two other UserPromptSubmit-only nudges are out of scope for this plan | `[engineer-confirmed]` |
-| 7 | The 11.1% final-turn-miss figure is directional, not a precise population rate, given n=18 crossers | `[verified: script output above — small-sample caveat stated explicitly, not silently generalized]` |
+| 7 | The final-turn-miss share is directional, not a precise population rate, given the small number of crossers | `[verified: the query described in the Context above — small-sample caveat stated explicitly, not silently generalized]` |
 | 8 | `# hook-class: informational` (line 2 of the hook) stays unchanged — adding a `Stop` registration does not make this a `# hook-class: turn-gate` hook, since the script never emits `decision:"block"` on either event; `turn-gate` is reserved for Stop hooks that can block the turn from ending, which this one deliberately never does | `[verified: plugins/claude-hook-review/skills/claude-hook-review/SKILL.md §4 — "turn-gate ... fires on Stop and may block the turn from ending ... not a Stop hook mislabeled 'gate'"; claude/.claude/hooks/tests/test_hook_alignment.py has no rule tying Stop-registration to hook-class, classification is purely about blocking capability]` |
 
 Lighter-primitive check for the "second file" alternative (over-powered

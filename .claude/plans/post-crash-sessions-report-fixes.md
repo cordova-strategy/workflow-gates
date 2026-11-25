@@ -36,8 +36,8 @@ having computed the underlying facts.
   `~/.config/claude-accounts/<account>/` by default) stays out of scope for
   this repo. Already decided in the merged plan behind PR #582
   (`fix-stow-adoption-and-config-dir-gaps.md`), which explicitly assigned
-  account-name-to-config-dir resolution to `workstation-setup` (private,
-  owns `accounts.tsv`) rather than this public repo — reach genuinely stops
+  account-name-to-config-dir resolution to `<private-setup-repo>` (private)
+  rather than this public repo — reach genuinely stops
   here, since this plan cannot unilaterally move that ownership boundary
   from inside `claude-config`. `[verified: claude-config git history, PR #582]`
 
@@ -192,7 +192,7 @@ having computed the underlying facts.
 ## Out of scope
 
 - Multi-account auto-discovery for `post-crash-sessions`/`transcript-analysis`
-  (G1) — belongs in `workstation-setup`, a separate, already-identified task.
+  (G1) — belongs in `<private-setup-repo>`, a separate, already-identified task.
 - Any change to the three-evidence-source architecture or their precedence
   (session registry, scheduled-task lock, transcript corpus, and their trust
   ordering) — this plan touches one fallback threshold and adds one
@@ -206,6 +206,6 @@ having computed the underlying facts.
   this plan/file, deliberately not taken.
 - Tracking the user's personal, gitignored home-directory CLAUDE.md variant
   (loaded via Claude Code's directory-walk-up, since `$HOME` is an ancestor
-  of every project) in `workstation-setup` via a new stow package —
+  of every project) in `<private-setup-repo>` via a new stow package —
   separate, already-briefed task
   (`~/.claude/briefs/claude-local-md-stow-package-task.md`), different repo.
