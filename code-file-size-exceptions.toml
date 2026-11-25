@@ -456,12 +456,12 @@ verdict = "split pending"
 seam = "Review-window detection (`_review_pr_windows`, `_ReviewWindow`), pull-request lookup (`_fetch_pr_lists`, `_validated_pr_list`), group assembly (`_assemble_groups`), Slack rendering (`_render_slack_report`), report notices (`_notice_lines`)"
 
 ["claude/.claude/scripts/transcript_analysis/pr_cost.py"]
-ceiling = 1312
+ceiling = 1313
 verdict = "split pending"
 seam = "Model-breakdown cell (`_build_model_breakdown_cell`, `_check_model_breakdown_cell`), review-rounds cell (`_build_review_rounds_cell`, `_check_review_rounds_cell`), branch-to-PR resolution (`_resolve_branch_pr`, `_gh_pr_view_enrichment`) apart from the report body (`_pr_cost_report`)"
 
 ["claude/.claude/scripts/transcript_analysis/review_rounds.py"]
-ceiling = 1609
+ceiling = 1614
 verdict = "split pending"
 seam = "Round-window detection (`detect_round_windows`), dispatch pricing (`compute_review_round_costs`, `_price_dispatch`), pooled block (`_render_pooled_block`, `_pooled_shares`, `_bootstrap_share_intervals`), subcommand entry (`cmd_review_round_cost`)"
 

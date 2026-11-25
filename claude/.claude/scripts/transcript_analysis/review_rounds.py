@@ -43,12 +43,17 @@ REVIEW_SKILLS: tuple[str, ...] = ("code-review", "plan-review", "ready-for-revie
 
 _REVIEW_SKILL_SET: frozenset[str] = frozenset(REVIEW_SKILLS)
 
-# Stamped into pr-cost ledger review_rounds cells; bump it with any change to which records open a round, where a
-# window ends, which branch a round goes to, or which turns and dispatches it prices. ledger_rounds excludes every
-# cell stamped with another value, so a bump drops every older row from its reports. Changing denials.py's
-# _HOOK_DENIAL_SIGNATURE or _DENIAL_HOOK_NAME_PATTERNS, or removing, renaming or adding a legacy-only
-# _DENIAL_HOOK_LABELS entry, also bumps it, because each changes which calls read as denied. A forced re-capture cannot
-# restore a row whose sessions have all aged out, and restores a partly aged one undercounted.
+# Stamped into pr-cost ledger review_rounds cells. Bump it with any change to:
+# - which records open a round
+# - where a window ends
+# - which branch a round goes to
+# - which turns and dispatches it prices
+# - denials.py's _HOOK_DENIAL_SIGNATURE
+# - denials.py's _DENIAL_HOOK_NAME_PATTERNS
+# - removing, renaming or adding a legacy-only _DENIAL_HOOK_LABELS entry
+# The last three each change which calls read as denied.
+# ledger_rounds excludes every cell stamped with another value, so a bump drops every older row from its reports.
+# A forced re-capture cannot restore a row whose sessions have all aged out, and restores a partly aged one undercounted.
 # See `docs/pr-cost.md` § "The re-record contract".
 REVIEW_ROUND_RULE: int = 2
 

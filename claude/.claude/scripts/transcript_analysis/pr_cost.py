@@ -1079,7 +1079,6 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                         already, branch_totals.get(branch), row_status,
                     )
                     # Reached when another recorder lands this PR's row after the hint read.
-                    # No test pins that this skip moves on to the next PR.
                     if already is not None and not overwrite_captured:
                         _print_already_captured(resolved_pr["number"], machine_identity)
                         if target_pr is not None and not all_accounts:
@@ -1114,6 +1113,8 @@ def _pr_cost_report(args: argparse.Namespace, now: datetime, roots: Sequence[Pat
                             file=sys.stderr,
                         )
                     agg = branch_totals.get(branch) or cost._new_pr_cost_agg()
+                    # A wall clock stepped back past the superseded row's captured_at leaves that row the latest,
+                    # so each plain --record re-appends until the clock passes that stamp.
                     captured_at = datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
                     if branch not in branch_totals:
                         rounds_absence: str | None = _ABSENCE_NO_LOCAL_ACTIVITY
