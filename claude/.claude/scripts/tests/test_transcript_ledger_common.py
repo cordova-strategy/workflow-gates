@@ -14,7 +14,7 @@ import pytest
 from transcript_analysis import cost_ledger, ledger_common, pr_cost, pr_cost_ledger, scope
 
 from ._pr_cost_helpers import _fake_pr_cost_subprocess_run, _pr_cost_args, _sample_pr_cost_row
-from .conftest import _cost_ledger_args, _cost_ledger_row, _priced, _two_declared_roots, _write_jsonl
+from .conftest import _clean_env, _cost_ledger_args, _cost_ledger_row, _priced, _two_declared_roots, _write_jsonl
 
 _SCRIPT = Path(__file__).parent.parent / "transcript-analysis.py"
 # "transcript_analysis" below never touches sys.modules (module_from_spec + exec_module
@@ -608,6 +608,33 @@ class TestLedgerPathIsGitTracked:
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         assert ledger_common._ledger_path_is_git_tracked(tmp_path / "ledger.tsv") is False
+
+    @pytest.mark.parametrize(
+        ("variable", "exported_value", "ledger_location", "expected_tracked"),
+        [
+            # Git skips the named root during discovery from a subdirectory, so the check
+            # would answer "not a git repository" for a path inside the work tree.
+            pytest.param("GIT_CEILING_DIRECTORIES", "repo", "repo/sub", True, id="ceiling-at-work-tree-root"),
+            # A work tree pointing elsewhere puts the probed directory outside the work tree.
+            pytest.param("GIT_WORK_TREE", "elsewhere", "repo/sub", True, id="work-tree-elsewhere"),
+            # A repository selected by GIT_DIR claims a directory that sits in no repository.
+            pytest.param("GIT_DIR", "repo/.git", "plain", False, id="git-dir-names-another-repository"),
+        ],
+    )
+    def test_exported_git_variable_does_not_redirect_the_check(
+        self, tmp_path, monkeypatch, variable, exported_value, ledger_location, expected_tracked,
+    ):
+        """Each exported variable would change git's answer for the probed directory, so the
+        check must drop it. Real git, because the discovery rules are git's own. GIT_INDEX_FILE
+        is also dropped but does not change `rev-parse --is-inside-work-tree`, so it has no case."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], env=_clean_env(), check=True)
+        for directory in ("repo/sub", "elsewhere", "plain"):
+            (tmp_path / directory).mkdir()
+        monkeypatch.setenv(variable, str(tmp_path / exported_value))
+
+        assert ledger_common._ledger_path_is_git_tracked(tmp_path / ledger_location / "x.jsonl") is expected_tracked
 
 
 _PUBLISHED_TEXT = "first line\nsecond line\n"

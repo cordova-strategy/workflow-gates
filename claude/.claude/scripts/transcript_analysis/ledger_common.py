@@ -212,10 +212,13 @@ def _ledger_path_is_git_tracked(ledger_path: Path, subcommand: str = "cost-ledge
     # Explicit env, not the inherited one: a GIT_DIR/GIT_WORK_TREE exported
     # in the caller's shell would otherwise redirect this check to an
     # unrelated repo; removing (not blanking) them restores git's normal
-    # discovery. LC_ALL=C pins the fatal-error text checked below to stable
-    # English regardless of the operator's locale.
+    # discovery. A GIT_CEILING_DIRECTORIES naming the work-tree root stops
+    # discovery below it, so git would report "not a git repository" for a
+    # path inside the work tree; it is removed too. LC_ALL=C pins the
+    # fatal-error text checked below to stable English regardless of the
+    # operator's locale.
     env = os.environ.copy()
-    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES"):
         env.pop(var, None)
     env["LC_ALL"] = "C"
     try:
