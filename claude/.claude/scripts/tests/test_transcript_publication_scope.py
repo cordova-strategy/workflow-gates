@@ -14,6 +14,7 @@ sys.path.insert(0, str(CLAUDE_DIR))
 from hooks.tests._lib_sh_helpers import _run_lib_call  # noqa: E402
 from transcript_analysis import publication_scope, scope  # noqa: E402
 
+from ._publication_scope_helpers import refusal_with_several_roots, refusal_without_this_repo, scope_header  # noqa: E402
 from .conftest import _INHERITED_GIT_VARIABLES, _git, _write_named_ledger_file  # noqa: E402
 
 # review-ledger.sh's directory under the config dir, which _write_named_ledger_file writes into.
@@ -53,18 +54,14 @@ class TestRefuseWiderScope:
             publication_scope._refuse_wider_scope(_args(this_repo=False), [tmp_path], self._COMMAND_LABEL)
         assert raised.value.code == 2
         captured = capsys.readouterr()
-        assert captured.err == (
-            "reviewer-reads: requires --this-repo and refuses any --projects scope -- see docs/transcript-analysis.md\n"
-        )
+        assert captured.err == refusal_without_this_repo(self._COMMAND_LABEL)
         assert captured.out == ""
 
     def test_refused_with_a_projects_glob_under_the_command_label(self, tmp_path, capsys):
         with pytest.raises(SystemExit) as raised:
             publication_scope._refuse_wider_scope(_args(projects="-home-*"), [tmp_path], self._COMMAND_LABEL)
         assert raised.value.code == 2
-        assert capsys.readouterr().err == (
-            "reviewer-reads: requires --this-repo and refuses any --projects scope -- see docs/transcript-analysis.md\n"
-        )
+        assert capsys.readouterr().err == refusal_without_this_repo(self._COMMAND_LABEL)
 
     def test_refused_with_two_roots_under_the_command_label(self, tmp_path, capsys):
         with pytest.raises(SystemExit) as raised:
@@ -72,16 +69,13 @@ class TestRefuseWiderScope:
                 _args(), [tmp_path / "account-a", tmp_path / "account-b"], self._COMMAND_LABEL,
             )
         assert raised.value.code == 2
-        assert capsys.readouterr().err == (
-            "reviewer-reads: resolved to more than one root -- refusing to report a multi-account figure\n"
-        )
+        assert capsys.readouterr().err == refusal_with_several_roots(self._COMMAND_LABEL)
 
 
 class TestScopeHeader:
     def test_header_is_titled_by_the_command_label(self):
-        assert publication_scope._scope_header("this repo (2 project dirs)", "reviewer-reads") == (
-            "REVIEWER READS SOURCES (this repo (2 project dirs); reads one account (the active account),"
-            " the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)"
+        assert publication_scope._scope_header("this repo (2 project dirs)", "reviewer-reads") == scope_header(
+            "reviewer-reads", "this repo (2 project dirs)",
         )
 
 

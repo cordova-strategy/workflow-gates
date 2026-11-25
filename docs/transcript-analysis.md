@@ -1973,7 +1973,7 @@ Skill names are checked against the skills this checkout tracks, wherever the co
 - The shortest and longest truncated copy of a tracked skill in each of the three units, or a line saying there is none. That line says the range is unavailable when this repository's tracked skills cannot be listed. A truncated copy of any other skill counts only in the withheld row.
 - A `skipped input:` line with the count of each unreadable input, and a `scan gaps:` line with the count of each malformed-record kind, zero counts included.
 - One row per skill, sorted by re-attached count and then by name.
-  - A skill prints by name only when this repository tracks it, under the name an attachment gives it: the directory name for a skill under `claude-skills/skills/` or `.claude/skills/`, and `<plugin>:<skill>` for a plugin skill.
+  - A skill prints by name only when this repository tracks it, under the name an attachment gives it: the directory name for a skill under `claude-skills/skills/` or `.claude/skills/`, and `<plugin>:<skill>` for a plugin skill. [unverified: no recorded plugin-skill attachment confirms the plugin spelling. A skill spelled differently is withheld, never printed.]
   - Every other name folds into one `(withheld — untracked skill)` row with summed counts. A foreign plugin's skill that shares a tracked skill's directory name folds there too.
 - When this repository's tracked skills cannot be listed, the report says so and every name folds into the withheld row. The causes are a failed or timed-out `git` call, a copy of the toolkit that is not under `<root>/claude/.claude/scripts/transcript_analysis/` (so it has no checkout to list), and a checkout that tracks no skill.
 
