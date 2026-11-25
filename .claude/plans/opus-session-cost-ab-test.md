@@ -241,7 +241,7 @@ An unrelated, concurrent pilot (PR #934) changes `/code-review` round-count gene
 - Local transcript retention is a rolling ~30-day window (`cleanupPeriodDays`) — harness-owned; nothing here restores an aged-out transcript, and dropping the ledger arm means the window is the study's hard horizon.
 - Treatment was assigned historically by the engineer's own session-by-session choice and cannot be randomized after the fact — the past is not reachable by any design available here.
 - The vendor rate table sets Opus-5 at 2.5× Sonnet-5 per identical token profile — vendor-imposed, and the reason the cost verdict is asymmetric.
-- The corpus is the roots declared in `~/.claude/transcript-config-dirs`, a file managed by `setup-claude-accounts.sh` in a separate repository — changing the account set is outside this plan.
+- The corpus is the roots declared in `~/.claude/transcript-config-dirs`, a file managed by account-provisioning tooling in a separate repository — changing the account set is outside this plan.
 - (Amendment) `cost` accepts only a relative `--since Nd` window and offers no `--until` — a shipped-instrument constraint Delta 4 bounds and discloses rather than removes.
 - (Amendment) Each machine's `~/.claude/transcript-config-dirs` is regenerated locally from that machine's own account roster; two machines produce two independent files with no format-level linkage, which is why per-machine `account-K` ordinals cannot cross machines (Delta 5).
 - (Amendment) The account-slug column naming each machine's own local strata lives in a git-versioned roster in a separate repository; that roster's contents are outside this plan. Nothing cross-machine depends on the two machines' checkouts agreeing (Delta 2).

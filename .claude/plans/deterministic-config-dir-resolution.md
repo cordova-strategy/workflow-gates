@@ -53,7 +53,7 @@ Two open questions from discovery were resolved this session:
    introduced the templated form on the belief that a hardcoded
    `~/.claude/scripts/transcript-analysis.py` "broke under a relocated
    config dir." That belief does not hold on the engineer's own machine.
-   `$HOME` is shared across every `claude_account` row, including
+   `$HOME` is shared across every account, including
    non-`personal` ones — `ls -la ~/.local/state/claude-accounts/*/scripts`
    and `~/.claude/scripts` both resolve to the identical `claude-config`
    checkout symlink target `[verified: ls -la output, this session]`. That

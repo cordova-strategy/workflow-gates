@@ -361,7 +361,7 @@ undocumented on-disk contracts.
 - Modifying `resume-context.sh`, `/handoff`, or `/brief` — those recover deliberately
   authored continuity files; this tool detects an unannounced crash.
 - Loosening the managed-settings or hook rules gating `~/.config/**`.
-- Reading or depending on the account-provisioning repo's `accounts.tsv`.
+- Reading or depending on the account-provisioning repo's account list.
 - Changing any existing `transcript-analysis.py` subcommand's behavior.
 - **The bare-PID leak.** `claude -p` one-shot runs never fire `SessionEnd`, so
   `sessions/<pid>` files accumulate. Real, but separable from this tool and from the

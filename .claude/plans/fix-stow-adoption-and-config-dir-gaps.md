@@ -3,7 +3,7 @@
 ## Context
 
 The user's machine runs a per-account Claude Code config-dir scheme
-(`<private-setup-repo>`'s `accounts.tsv` + `use_claude_account`): the `personal`
+(set up by `<private-setup-repo>`): the `personal`
 account stays at `~/.claude`, every other account resolves to
 `~/.config/claude-accounts/<account>/` via `CLAUDE_CONFIG_DIR`. Sessions
 anchored in a non-personal container reported three symptoms: handoffs/briefs
