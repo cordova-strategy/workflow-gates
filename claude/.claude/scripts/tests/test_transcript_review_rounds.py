@@ -1730,7 +1730,6 @@ class TestGoldenRoundProjections:
         },
     }
 
-    # Rule 2 re-reads no earlier shape; it adds the one a gate-denied call changes.
     _GOLDEN_ROUND_PROJECTIONS_BY_RULE[2] = {
         **_GOLDEN_ROUND_PROJECTIONS_BY_RULE[1],
         "denied_calls_inside_an_open_round": [
