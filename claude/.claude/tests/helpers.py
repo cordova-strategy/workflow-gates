@@ -3122,6 +3122,7 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
     """Write `script` as an executable at `path`, exec it once, and return `path`.
 
     A newly written executable's first exec can outlast a scaled cap, so this pays that cost at write time.
+    Write stubs before a test patches `subprocess`, because the warm exec goes through `subprocess.run`.
     A guard line after the shebang ends that exec before any body line runs.
     The exec's environment holds only PATH and the guard's variable, so no shell startup file or exported function runs first.
     The exec's PATH resolves `bash` the way `link_bash_into` does,
@@ -3138,7 +3139,7 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
             f"write_prewarmed_stub takes only these shebangs: {sorted(_PREWARM_SHEBANGS)}; first line of {path} is {shebang!r}"
         )
     path.unlink(missing_ok=True)
-    path.write_text(f"{shebang}\n{_PREWARM_GUARD_LINE}\n{body}")
+    path.write_text(f"{shebang}\n{_PREWARM_GUARD_LINE}\n{body}", encoding="utf-8")
     path.chmod(0o755)
     exec_path = _PREWARM_EXEC_PATH
     try:
@@ -3307,6 +3308,12 @@ def assert_each_stub_warm_exec_ed_once(recorded_calls: list[tuple[tuple, dict]],
     assert sorted(args[0] for args, _ in recorded_calls) == sorted([str(stub_path)] for stub_path in stub_paths)
     for args, kwargs in recorded_calls:
         assert kwargs["env"][_PREWARM_GUARD_VARIABLE] == args[0][0]
+
+
+def assert_stub_written_warm(recorded_calls: list[tuple[tuple, dict]], stub_path: Path) -> None:
+    """Assert one write left `stub_path` as its only warm-exec'd stub, with the guard line as its second line."""
+    assert_each_stub_warm_exec_ed_once(recorded_calls, [stub_path])
+    assert stub_path.read_text(encoding="utf-8").splitlines()[1] == _PREWARM_GUARD_LINE
 
 
 def write_scaled_timeout_shim(bin_dir: Path) -> bool:

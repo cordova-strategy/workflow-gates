@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from helpers import CLAUDE_DIR, HOOKS_DIR, REPO_ROOT, init_git_repo_with_commit
+from helpers import CLAUDE_DIR, HOOKS_DIR, REPO_ROOT, init_git_repo_with_commit, write_prewarmed_stub
 
 from ._cursor_adapter_namespace import ADAPTER_PACKAGE_NAME, AdapterNamespace
 
@@ -780,16 +780,12 @@ def shim_json(result: subprocess.CompletedProcess) -> dict:
 
 
 def write_hook_script(path: Path, body: str) -> Path:
-    path.write_text("#!/usr/bin/env bash\n" + body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
+    return write_prewarmed_stub(path, "#!/usr/bin/env bash\n" + body)
 
 
 def write_sh_script(path: Path, body: str) -> Path:
     """An executable POSIX `sh` script, for a stand-in tool or interpreter."""
-    path.write_text("#!/bin/sh\n" + body, encoding="utf-8")
-    path.chmod(0o755)
-    return path
+    return write_prewarmed_stub(path, "#!/bin/sh\n" + body)
 
 
 def recording_probe_script(path: Path, record_to: Path, stdout_text: str = "", exit_code: int = 0) -> Path:
