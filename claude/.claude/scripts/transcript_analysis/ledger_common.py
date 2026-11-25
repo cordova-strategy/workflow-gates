@@ -135,6 +135,7 @@ def _publish_new_file(path: Path, text: str, temp_prefix: str, temp_suffix: str)
         return _PublishOutcome.CREATED
     finally:
         if tmp_name is not None:
+            # A failed unlink after a successful link leaves a second name for the file, and nothing reports it.
             with contextlib.suppress(OSError):
                 os.unlink(tmp_name)
 
@@ -211,10 +212,13 @@ def _ledger_path_is_git_tracked(ledger_path: Path, subcommand: str = "cost-ledge
     # Explicit env, not the inherited one: a GIT_DIR/GIT_WORK_TREE exported
     # in the caller's shell would otherwise redirect this check to an
     # unrelated repo; removing (not blanking) them restores git's normal
-    # discovery. LC_ALL=C pins the fatal-error text checked below to stable
-    # English regardless of the operator's locale.
+    # discovery. A GIT_CEILING_DIRECTORIES naming the work-tree root stops
+    # discovery below it, so git would report "not a git repository" for a
+    # path inside the work tree; it is removed too. LC_ALL=C pins the
+    # fatal-error text checked below to stable English regardless of the
+    # operator's locale.
     env = os.environ.copy()
-    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_CEILING_DIRECTORIES"):
         env.pop(var, None)
     env["LC_ALL"] = "C"
     try:
@@ -269,6 +273,15 @@ def _refuse_unusable_out_path(out: str, command: str) -> None:
             file=sys.stderr,
         )
         sys.exit(2)
+    # The publish step creates its temp file in this directory, so a missing one would fail only after the work is done.
+    # Writability is deliberately unchecked, so this refusal covers only a missing directory or a file parent.
+    if not Path(out).parent.resolve().is_dir():
+        print(
+            f"{command}: --out {out!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     # A symlink retargeted between this check and the publish is an accepted
     # TOCTOU window for this tool's single-operator threat model.
     if _ledger_path_is_git_tracked(resolved_out, command):
@@ -289,7 +302,9 @@ def _publish_new_owner_file(out: str, text: str, command: str) -> None:
     # parent is still resolved, so a symlinked parent directory lands inside
     # the same target the git-tree check validated.
     open_path = Path(out).parent.resolve() / Path(out).name
-    outcome = _publish_new_file(open_path, text, f".{command}-", ".tmp")
+    # The temp name keeps the destination's extension so the read guard's extension rule covers both names.
+    # A dotfile-only destination name such as `.jsonl` has no suffix, so its temp name carries none.
+    outcome = _publish_new_file(open_path, text, f".{command}-", open_path.suffix)
     if outcome is _PublishOutcome.CREATED:
         return
     if outcome is _PublishOutcome.EXISTS:
