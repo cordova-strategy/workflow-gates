@@ -481,7 +481,7 @@ def _partition_spawn_counts_by_disclosure(raw_counts: dict[str, int]) -> list[tu
 
 _COST_COUNTS_ROUNDS_CAPTION = (
     "Each invocation of a review skill, and each main-thread `review-orchestrator` dispatch, is one"
-    " round, whether or not it produced findings."
+    " round, whether or not it produced findings, unless a gate denied it."
     " Counts reflect this section's last render; a review round that ran afterward may not"
     " be included yet."
 )

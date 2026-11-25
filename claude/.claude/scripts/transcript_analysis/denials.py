@@ -2,7 +2,7 @@
 label/cause/command-shape classifiers, and toolDenialKind friction
 classification -- no dependency on any cmd_* subcommand.
 
-Imports corpus and render by module (attribute access, not by name) --
+Imports corpus, pricing and render by module (attribute access, not by name) --
 see scope.py's own top-of-file comment for why.
 """
 from __future__ import annotations
@@ -11,8 +11,9 @@ import json
 import os
 import re
 import shlex
+from collections.abc import Iterable
 
-from transcript_analysis import corpus, render
+from transcript_analysis import corpus, pricing, render
 
 # Shared bound for every hook-name/label capture below (detection and
 # extraction alike): a name-shaped character class (word chars, spaces, '.',
@@ -91,6 +92,114 @@ def hook_denial_key(item: dict) -> tuple[str, dict | str] | None:
     return None
 
 
+def hook_denials_in_record(rec: dict) -> Iterable[tuple[str, str, str]]:
+    """(tool_use_id, hook name, message) for each hook denial in `rec`, in both transcript shapes."""
+    if rec.get("type") == "attachment":
+        denial = hook_denial_key(rec)
+        if denial is None:
+            return
+        tool_use_id, attachment = denial
+        normalized = _normalize_blocking_error(attachment.get("blockingError"))
+        if isinstance(normalized, dict):
+            message = normalized.get("blockingError") or normalized.get("message") or str(normalized)
+        else:
+            message = str(normalized) if normalized else ""
+        hook_name = attachment.get("hookName")
+        yield tool_use_id, hook_name if isinstance(hook_name, str) else "", message if isinstance(message, str) else ""
+    elif rec.get("type") == "user":
+        for block in (rec.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict) or block.get("type") != "tool_result":
+                continue
+            denial = hook_denial_key(block)
+            if denial is not None:
+                denial_text = denial[1]
+                yield denial[0], "", denial_text if isinstance(denial_text, str) else ""
+
+
+# Only a PreToolUse hook blocks a call before it launches.
+_LEGACY_DENIAL_HOOK_EVENT = "PreToolUse"
+
+_SKILL_TOOL_NAME = "Skill"
+
+
+def _round_open_candidate_ids(records: list[dict]) -> frozenset[str]:
+    """The ids of the main-thread `Skill` and spawn tool_use blocks, the only calls a review round can open on."""
+    candidate_ids: set[str] = set()
+    for rec in records:
+        if rec.get("isSidechain") or rec.get("type") != "assistant":
+            continue
+        message = rec.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if not isinstance(block, dict) or block.get("type") != "tool_use":
+                continue
+            if block.get("name") != _SKILL_TOOL_NAME and block.get("name") not in pricing._SPAWN_TOOL_NAMES:
+                continue
+            tool_use_id = block.get("id")
+            if isinstance(tool_use_id, str) and tool_use_id:
+                candidate_ids.add(tool_use_id)
+    return frozenset(candidate_ids)
+
+
+def _is_readable_result_content(content) -> bool:
+    """False when a text block holds a non-string `text`, which render._content_text cannot join."""
+    return not isinstance(content, list) or all(
+        isinstance(block.get("text", ""), str)
+        for block in content
+        if isinstance(block, dict) and block.get("type") == "text"
+    )
+
+
+def hook_denied_tool_use_ids(records: list[dict]) -> frozenset[str]:
+    """The ids of the main-thread `Skill` and Agent/Task tool_use blocks one of this repository's gates denied.
+
+    Which attachments and results count is stated under "A call one of this repository's gates denied opens no
+    round" in docs/transcript-analysis.md.
+    A record of an unreadable shape contributes no id, which counts the round.
+    """
+    candidate_ids = _round_open_candidate_ids(records)
+    if not candidate_ids:
+        return frozenset()
+    denied: set[str] = set()
+    for rec in records:
+        if rec.get("isSidechain"):
+            continue
+        rec_type = rec.get("type")
+        if rec_type == "attachment":
+            attachment = rec.get("attachment")
+            if not isinstance(attachment, dict):
+                continue
+            tool_use_id = attachment.get("toolUseID")
+            if not isinstance(tool_use_id, str) or tool_use_id not in candidate_ids:
+                continue
+            if attachment.get("hookEvent", _LEGACY_DENIAL_HOOK_EVENT) != _LEGACY_DENIAL_HOOK_EVENT:
+                continue
+            if hook_denial_key(rec) is not None:
+                denied.add(tool_use_id)
+        elif rec_type == "user":
+            message = rec.get("message")
+            content = message.get("content") if isinstance(message, dict) else None
+            if not isinstance(content, list):
+                continue
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "tool_result":
+                    continue
+                tool_use_id = block.get("tool_use_id")
+                if not isinstance(tool_use_id, str) or tool_use_id not in candidate_ids:
+                    continue
+                if not _is_readable_result_content(block.get("content")):
+                    continue
+                # _HOOK_DENIAL_SIGNATURE can backtrack on a long whitespace run, so classifying one errored
+                # `Skill` or spawn result with thousands of spaces is slow.
+                # The candidate-id gate keeps that cost off every other result.
+                denial = hook_denial_key(block)
+                if denial is not None and _denial_hook_label("", denial[1]) in _DENIAL_HOOK_LABELS:
+                    denied.add(tool_use_id)
+    return frozenset(denied)
+
+
 # Extracts the hook/gate name from a denial message's own "blocked by <name>
 # hook/gate" wording — every hook's emit_deny call already writes this shape
 # (e.g. "Blocked by code-review gate: ..."), so the name is read off the
@@ -124,7 +233,7 @@ _DENIAL_HOOK_NAME_COLON_RE = re.compile(
 # in test_transcript_denials.py drives each hook's real deny-path wording
 # and asserts the label it produces is a member here, so a hook's wording
 # change or a new hook shows up as a test failure rather than a silently
-# stale set.
+# stale set. Editing this set can bump review_rounds.REVIEW_ROUND_RULE; its comment says when.
 _DENIAL_HOOK_LABELS: frozenset[str] = frozenset({
     # "blocked by <name> hook/gate" — one entry per hooks/*.sh DENY_GATE_LABEL.
     "gh-pr-merge",  # block-gh-pr-merge.sh

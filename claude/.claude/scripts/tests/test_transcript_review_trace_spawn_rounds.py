@@ -10,6 +10,7 @@ from transcript_analysis import (
     review_trace,
 )
 
+from ._routing_guard_helpers import _routing_deny_record
 from .conftest import (
     _agent_use,
     _asst,
@@ -112,6 +113,24 @@ class TestReviewerSpawnRoundLabels:
             _skill_use_rec("code-review", "2026-05-19T10:01:00.000Z", tool_id="s2", branch="feat"),
             _spawn_rec("comment-discipline-reviewer", "2026-05-19T10:02:00.000Z"),
         ]) == ["code-review"]
+
+    @pytest.mark.parametrize("records_before_denied_call,expected_round", [
+        pytest.param(
+            [_skill_use_rec("plan-review", "2026-05-19T10:00:00.000Z", tool_id="s0", branch="feat")],
+            "plan-review",
+            id="a-round-is-open",
+        ),
+        pytest.param([], None, id="no-round-is-open"),
+    ])
+    def test_spawn_after_a_gate_denied_code_review_call_reads_the_round_open_before_it(
+        self, records_before_denied_call, expected_round,
+    ):
+        assert _spawn_rounds([
+            *records_before_denied_call,
+            _skill_use_rec("code-review", "2026-05-19T10:01:00.000Z", tool_id="s1", branch="feat"),
+            _routing_deny_record("s1", ts="2026-05-19T10:01:01.000Z"),
+            _spawn_rec("staff-sdet", "2026-05-19T10:02:00.000Z"),
+        ]) == [expected_round]
 
     def test_record_holding_a_skill_block_and_a_spawn_block_reads_its_own_window(self):
         """The record before reads plan-review, so the line_no - 1 lookup picks each record's own window."""

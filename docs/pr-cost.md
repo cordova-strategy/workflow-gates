@@ -252,7 +252,7 @@ With no `--record`, `pr-cost` prints one line for every row currently in the led
 
 The `machine` cell is generated once per config directory, persisted at `<config-dir>/machine-id`, and cannot be chosen or influenced by the operator (see "Machine identity" below). With no `--pr`, it walks every branch with local corpus activity; `--pr N` targets exactly one PR and turns several would-be skips into hard failures (an unmatched or too-recent PR aborts instead of being silently skipped).
 
-A run that reaches a row write for a branch with local transcript activity, a refused `--force` included, reads the transcripts a second time, after a start line, to capture each PR's `review_rounds` cell, pricing only sessions that open a round. A run that reaches no such write does not (see "Write-time check failures"). The pass runs at most once per account, and an unforced run skips it for a PR already captured.
+A run that reaches a row write for a branch with local transcript activity, a refused `--force` included, reads the transcripts a second time, after a start line, to capture each PR's `review_rounds` cell, pricing only sessions that open a round. A run that reaches no such write does not (see "Write-time check failures"). The pass runs at most once per account, and an unforced run skips it for a PR already captured, unless a captured row meets the re-record exception in "The re-record contract".
 
 ### Machine identity
 
@@ -268,15 +268,23 @@ A run that reaches a row write for a branch with local transcript activity, a re
 
 ### The re-record contract
 
-An unforced re-record of an already-captured `(host, repo, pr_number, machine)` refuses and names `--force`. `--force` requires `--pr` (a correction targets exactly one PR) and does not overwrite: it appends a new row carrying the same key, a fresh `captured_at`, and a `supersedes` reference to the prior row's own `captured_at`. Every prior row's existing values are left unchanged; a row predating a column gains it as an empty cell when the file is next rewritten. A forced re-capture recomputes every scalar from the transcripts that survive, so run it only while every session of that PR is still inside `cleanupPeriodDays`; a PR whose early sessions have aged out is understated, and the append is permanent. The tool does not check this: the guard below compares only the new `review_rounds` cell against the captured one, and nothing checks the scalar columns or `model_breakdown`. Judge it by when work on the branch began (its first session, which can come before its first commit), and skip the re-capture when in doubt. Readers take the latest row per key (`_latest_pr_cost_row`, by `captured_at`). This is deliberate: vendor rate tables expire and the local corpus keeps growing, so more than one correction per PR is plausible, and this ledger is the sole surviving record once transcripts age out — a single-slot overwrite would lose everything before the most recent correction.
+An unforced re-record of an already-captured `(host, repo, pr_number, machine)` refuses and names `--force`, unless the row meets the exception in the next paragraph. `--force` requires `--pr` (a correction targets exactly one PR) and does not overwrite: it appends a new row carrying the same key, a fresh `captured_at`, and a `supersedes` reference to the prior row's own `captured_at`. Every prior row's existing values are left unchanged; a row predating a column gains it as an empty cell when the file is next rewritten. A forced re-capture recomputes every scalar from the transcripts that survive, so run it only while every session of that PR is still inside `cleanupPeriodDays`; a PR whose early sessions have aged out is understated, and the append is permanent. The tool does not check this: the guard below compares only the new `review_rounds` cell against the captured one, and nothing checks the scalar columns or `model_breakdown`. Judge it by when work on the branch began (its first session, which can come before its first commit), and skip the re-capture when in doubt. Readers take the latest row per key (`_latest_pr_cost_row`, by `captured_at`). This is deliberate: vendor rate tables expire and the local corpus keeps growing, so more than one correction per PR is plausible, and this ledger is the sole surviving record once transcripts age out — a single-slot overwrite would lose everything before the most recent correction.
+
+An unforced `--record` re-records a captured row whose `review_rounds` cell is below the current round `rule` when all three of its conditions hold:
+- this run reproduces the row's `session_count`, `turn_count` and five `*_tokens` values;
+- the branch has no activity after the row's `captured_at`;
+- the enrichment status is `ok`, or the row's status was already degraded.
+
+A row the exception skips, or refuses because a cell of the new row failed, needs no command: the next plain `--record` retries it. Forcing a row the exception leaves below the rule is the aged-transcript judgment the `cleanupPeriodDays` caveat above warns about.
 
 `--record --force --pr N`, with the run's account flags, also adds a `model_breakdown` to a PR captured before that column existed. The appended row carries the breakdown under the current `rate_stamp`, recomputes every scalar from the transcripts that survive, and becomes the PR's current row. Under `--all-accounts` it does so in every account whose corpus touched the branch. The `cleanupPeriodDays` caveat above applies. A forced re-capture whose breakdown fails its check appends an empty-cell row that supersedes a populated one. The prior row remains in the ledger history, and the fix is to re-force, within the caveat above, after the cause is fixed.
 
-Every `--force` re-capture, per PR:
+Every `--force` re-capture, and every re-record under the exception above, per PR:
 - runs a full scalar scan, plus the review-round scan for a branch with local transcript activity
 - re-stamps `rate_stamp`
 - moves a captured `review_rounds` cell to the current round `rule`
 - adds one to the export's `correction_count`
+- takes `join_confidence`, the mechanical proxy columns and the enrichment columns from this run's `--plan-file-glob` and `--risk-surface-glob` values and the PR's current GitHub state, so a run with other globs than the original capture's can change them
 
 A `--force` re-capture also refills a `review_rounds` cell that a failed pass or a failed check left empty, within the `cleanupPeriodDays` caveat above.
 
@@ -295,9 +303,15 @@ pr-cost:   PR #<a> for machine=<m>: refusing --force -- the new row would lose c
 
 A single-account `--pr` run exits 1 at once. Under `--all-accounts`, that account skips the PR, and an account that records no row counts as skipped in the summary, as other skips do. The run then exits 1 after its summary and any count line.
 
+A refused re-record under the exception, run without `--force`:
+- prints `refusing to re-record (<reason>)` in place of the line above;
+- takes one more `<reason>`, a failed per-model breakdown check;
+- leaves the ledger unchanged;
+- exits as the already-captured skip does: 1 for a single-account `--pr` run, otherwise 0.
+
 The guard has no override, so it also blocks a re-capture meant to heal a degraded `status` whenever that would lose rounds. A higher-rule re-capture over partly aged transcripts passes, leaving the prior series only in the superseded row, and prints no notice.
 
-Each `<reason>` has a next step, and none is a hand edit (see "Data"):
+Each `<reason>` has a next step, and none is a hand edit (see "Data"). The `--force --pr N` steps apply only under `--force`:
 - `the review-round pass failed`: follow the remedy under "Write-time check failures". The captured row stays current, so repeat the same `--force --pr N` once the cause is fixed, inside `cleanupPeriodDays`.
 - `the new cell failed its <rule> check`: the captured row stays current. For `build`, the reason ends with the exception's class name, as the per-PR line does, and never its message. Repeat the re-record once the cause is fixed. The "After an exit 1 for a `review_rounds` check failure" bullets under "Write-time check failures" say which rules are transcript-caused and which are defects to report.
 - `this branch has no local transcript activity`: either the sessions aged out or ran on another machine, so a re-capture here would understate the scalars too and the captured row should stay, or this run's `--projects` or `--this-repo` scope is narrower than the original capture's, so repeat the original scope flags.
@@ -439,7 +453,7 @@ The two JSON columns differ on purpose: `review_rounds` is vocabulary-filtered, 
 
 **The grain: one row per `(host, repo, pr_number, machine)`, current state only.** All four key parts matter — a consumer grouping without `host_token` merges two distinct PRs sharing an `owner/repo` string across a GHE host and github.com. Summing one PR across two physical machines is correct, not a duplicate; that's why `machine` is part of the key rather than being collapsed away. Two `machine` values for one PR in one account's ledger are the exception (see "Upgrading from an operator-chosen `--machine-label`" above). `machine` itself is a tool-generated, opaque identifier (see "Machine identity" above), but it plays the same key role either way.
 
-**`correction_count`** is the number of other rows sharing this row's key in the account's raw ledger, counted regardless of `status` (total captures minus one). `0` means this is the only capture ever recorded under that key. A corrected row is exactly as current and authoritative as an uncorrected one. A nonzero value is **not** on its own a trust or quality signal: the count conflates four unrelated causes with no reason code: rate-table refreshes, data-quality fixes, a re-capture that fills a cell an earlier capture left empty, and unexplained operator iteration.
+**`correction_count`** is the number of other rows sharing this row's key in the account's raw ledger, counted regardless of `status` (total captures minus one). `0` means this is the only capture ever recorded under that key. A corrected row is exactly as current and authoritative as an uncorrected one. A nonzero value is **not** on its own a trust or quality signal: the count conflates five unrelated causes with no reason code: rate-table refreshes, data-quality fixes, a re-capture that fills a cell an earlier capture left empty, a re-record after a review-round rule change, and unexplained operator iteration.
 
 **`head_branch_label` is not a join key.** The ledger's own `head_branch` cell already holds an opaque placeholder assigned during a *prior* `--record` run, under whatever ordinal scheme that run's own account/root ordering produced. This export re-tokenizes it rather than passing it through, because the stored label is stable only within the run that wrote it. The same repo in two different accounts always yields two unrelated tokens. A `pr` token is unique only within `(account)`, never globally.
 

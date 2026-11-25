@@ -8,14 +8,16 @@ import random
 import re
 import stat
 import subprocess
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 import _config
 import pytest
 from transcript_analysis import (
+    corpus,
     cost,
+    ledger_rounds,
     pr_cost,
     pr_cost_export,
     pr_cost_ledger,
@@ -62,6 +64,7 @@ from ._pr_cost_helpers import (
     _sample_review_rounds,
     _spy_on_scans,
     _tokens,
+    _unforced_refusal_line,
     _upgrade_notice_line,
     _write_ledger_row_on_lock_acquire,
 )
@@ -72,6 +75,7 @@ from ._review_round_corpus_helpers import (
     _malformed_usage_turn,
     _write_orchestrator_free_text_corpus,
 )
+from ._routing_guard_helpers import _routing_deny_record
 from .conftest import (
     _agent_use,
     _cost_args,
@@ -2329,8 +2333,17 @@ def _write_four_round_corpus(proj: Path, branch: str = "feature-a") -> None:
     _write_subagent_dispatch(proj, "sess-rounds", "agent-1", "d1", [subagent_turn])
 
 
+def _write_one_round_corpus(proj: Path, branch: str) -> None:
+    """One code-review round on `branch`, in a session file apart from _write_four_round_corpus's."""
+    _write_jsonl(proj / f"sess-one-round-{branch}.jsonl", [
+        _priced(
+            "claude-sonnet-5", input=1_000_000, branch=branch, ts=_PRE_MERGE_TS, content=[_skill_block("s1", "code-review")],
+        ),
+    ])
+
+
 _FOUR_ROUND_CELL = {
-    "rule": 1,
+    "rule": review_rounds.REVIEW_ROUND_RULE,
     "rounds": {
         "code-review": [
             _expected_round(2_000_000, {"claude-sonnet-5": {"standard": _tokens(input=1_000_000)}}, after_merge=0),
@@ -3343,6 +3356,132 @@ class TestReviewRoundsForceRefusal:
         assert pr_cost._review_rounds_force_refusal(prior_cell, new_cell, None, None) == expected_reason
 
 
+def _shift_session_count(agg: dict, delta: int) -> None:
+    agg["sessions"] = {f"session-{index}" for index in range(len(agg["sessions"]) + delta)}
+
+
+def _shift_turn_count(agg: dict, delta: int) -> None:
+    agg["turn_count"] += delta
+
+
+def _shift_token_class(token_class: str):
+    def shift(agg: dict, delta: int) -> None:
+        agg["tokens"][token_class] += delta
+
+    return shift
+
+
+_FIGURE_SHIFTS = [
+    pytest.param(_shift_session_count, id="session_count"),
+    pytest.param(_shift_turn_count, id="turn_count"),
+    *(pytest.param(_shift_token_class(token_class), id=f"{token_class}_tokens") for token_class in pricing._TOKEN_CLASSES),
+]
+
+
+def _prior_row_below_the_rule(**overrides) -> dict:
+    """A captured row whose cell sits one rule below the current one and whose seven figures are distinct."""
+    return _sample_pr_cost_row(**{
+        "session_count": 2, "turn_count": 5, "cache_read_tokens": 11, "cache_write_5m_tokens": 12,
+        "cache_write_1h_tokens": 13, "output_tokens": 14, "input_tokens": 15,
+        "review_rounds": _cell_of(review_rounds.REVIEW_ROUND_RULE - 1, code_review=[1]),
+        **overrides,
+    })
+
+
+def _agg_reproducing(prior_row: dict) -> dict:
+    """An aggregate whose figures equal `prior_row`'s and whose last activity is its capture second."""
+    agg = cost._new_pr_cost_agg()
+    agg["sessions"] = {f"session-{index}" for index in range(prior_row["session_count"])}
+    agg["turn_count"] = prior_row["turn_count"]
+    agg["tokens"] = {token_class: prior_row[f"{token_class}_tokens"] for token_class in pricing._TOKEN_CLASSES}
+    agg["last_activity_ts"] = corpus._parse_ts(prior_row["captured_at"])
+    return agg
+
+
+class TestReproducesOlderRuleRow:
+    def test_a_row_below_the_rule_whose_figures_the_fresh_scan_reproduces_holds(self):
+        prior_row = _prior_row_below_the_rule()
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, _agg_reproducing(prior_row), "ok") is True
+
+    @pytest.mark.parametrize("shift_figure", _FIGURE_SHIFTS)
+    @pytest.mark.parametrize("delta", [-1, 1], ids=["one-lower", "one-higher"])
+    def test_a_fresh_figure_that_differs_by_one_fails(self, shift_figure, delta):
+        prior_row = _prior_row_below_the_rule()
+        agg = _agg_reproducing(prior_row)
+        shift_figure(agg, delta)
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, agg, "ok") is False
+
+    @pytest.mark.parametrize("without_input", [
+        pytest.param(lambda prior_row, agg: (None, agg), id="prior-row"),
+        pytest.param(lambda prior_row, agg: (prior_row, None), id="agg"),
+        pytest.param(lambda prior_row, agg: ({**prior_row, "review_rounds": None}, agg), id="cell"),
+    ])
+    def test_a_missing_prior_row_agg_or_cell_fails(self, without_input):
+        prior_row = _prior_row_below_the_rule()
+        row_argument, agg_argument = without_input(prior_row, _agg_reproducing(prior_row))
+
+        assert pr_cost._reproduces_older_rule_row(row_argument, agg_argument, "ok") is False
+
+    @pytest.mark.parametrize("cell_rule_offset", [0, 1], ids=["at-the-rule", "above-the-rule"])
+    def test_a_cell_at_or_above_the_rule_fails(self, cell_rule_offset):
+        prior_row = _prior_row_below_the_rule(
+            review_rounds=_cell_of(review_rounds.REVIEW_ROUND_RULE + cell_rule_offset, code_review=[1]),
+        )
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, _agg_reproducing(prior_row), "ok") is False
+
+    def test_a_cell_at_the_old_rule_holds_once_the_rule_moves_up_by_one(self, monkeypatch):
+        prior_row = _prior_row_below_the_rule(
+            review_rounds=_cell_of(review_rounds.REVIEW_ROUND_RULE, code_review=[1]),
+        )
+        monkeypatch.setattr(review_rounds, "REVIEW_ROUND_RULE", review_rounds.REVIEW_ROUND_RULE + 1)
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, _agg_reproducing(prior_row), "ok") is True
+
+    def test_activity_one_second_after_the_capture_fails(self):
+        prior_row = _prior_row_below_the_rule()
+        agg = _agg_reproducing(prior_row)
+        agg["last_activity_ts"] += 1
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, agg, "ok") is False
+
+    def test_activity_half_a_second_after_the_whole_second_capture_stamp_fails(self):
+        """captured_at is truncated to whole seconds, so activity inside the capture second reads as later than
+        the capture. The edge errs toward skipping the row."""
+        prior_row = _prior_row_below_the_rule()
+        agg = _agg_reproducing(prior_row)
+        agg["last_activity_ts"] += 0.5
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, agg, "ok") is False
+
+    @pytest.mark.parametrize("prior_status,fresh_status,expected", [
+        pytest.param("ok", "ok", True, id="ok-over-ok"),
+        pytest.param("ok", "degraded_rate_limit", False, id="ok-prior-degraded-rate-limit-fresh"),
+        pytest.param("ok", "degraded_network", False, id="ok-prior-degraded-network-fresh"),
+        pytest.param("degraded_network", "ok", True, id="degraded-prior-ok-fresh"),
+        pytest.param("degraded_network", "degraded_rate_limit", True, id="degraded-prior-degraded-rate-limit-fresh"),
+        pytest.param("degraded_rate_limit", "degraded_network", True, id="degraded-prior-degraded-network-fresh"),
+    ])
+    def test_a_fresh_degraded_status_over_an_ok_prior_fails_and_any_other_pairing_holds(
+        self, prior_status, fresh_status, expected,
+    ):
+        prior_row = _prior_row_below_the_rule(status=prior_status)
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, _agg_reproducing(prior_row), fresh_status) is expected
+
+    def test_the_dollar_context_unpriced_invalid_usage_model_breakdown_and_rate_stamp_columns_are_not_compared(self):
+        prior_row = _prior_row_below_the_rule(
+            cache_read_usd=9.0, cache_write_5m_usd=9.0, cache_write_1h_usd=9.0, output_usd=9.0, input_usd=9.0,
+            opus_dollars=9.0, opus_dollar_share_pct=9.0, sum_context_at_turn=9, mean_context_at_turn=9.0,
+            model_breakdown=_sample_model_breakdown(), rate_stamp="changed-stamp", unpriced_turns=9,
+            unpriced_tokens=9, invalid_usage_records=9,
+        )
+
+        assert pr_cost._reproduces_older_rule_row(prior_row, _agg_reproducing(prior_row), "ok") is True
+
+
 class TestReviewRoundsForceGuardIntegration:
     @staticmethod
     def _seed_captured_rounds(ledger_path: Path, cell: dict) -> None:
@@ -3444,6 +3583,276 @@ class TestReviewRoundsForceGuardIntegration:
         assert prior_row["review_rounds"] == prior_cell
         assert recaptured_row["review_rounds"] == _FOUR_ROUND_CELL
         assert recaptured_row["supersedes"] == _EARLIER_CAPTURED_AT
+
+
+_CAPTURED_AT_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _one_second_after(captured_at: str) -> str:
+    return (datetime.strptime(captured_at, _CAPTURED_AT_FORMAT) + timedelta(seconds=1)).strftime(_CAPTURED_AT_FORMAT)
+
+
+class TestUnforcedReRecordUnderAnOlderRule:
+    @staticmethod
+    def _older_rule_row_of(current_row: dict, row_changes=lambda current_row: {}) -> dict:
+        """A copy of `current_row` whose cell sits one rule below the current one and holds an extra code-review
+        round, so only a re-record can correct it."""
+        current_rounds = current_row["review_rounds"]["rounds"]
+        older_rate_stamp = date.fromisoformat(current_row["rate_stamp"]) - timedelta(days=1)
+        older_captured_at = datetime.strptime(current_row["captured_at"], _CAPTURED_AT_FORMAT) - timedelta(days=1)
+        return {
+            **current_row,
+            "captured_at": older_captured_at.strftime(_CAPTURED_AT_FORMAT),
+            "rate_stamp": older_rate_stamp.isoformat(),
+            "cache_read_usd": current_row["cache_read_usd"] + 1.0,
+            "review_rounds": {
+                "rule": review_rounds.REVIEW_ROUND_RULE - 1,
+                "rounds": {**current_rounds, "code-review": [*current_rounds["code-review"], current_rounds["code-review"][0]]},
+            },
+            **row_changes(current_row),
+        }
+
+    @classmethod
+    def _seed_an_older_rule_row(cls, fake_projects, ledger_path: Path, row_changes=lambda current_row: {}) -> dict:
+        """Records the four-round corpus through a real run, then replaces that row with an older-rule one. The
+        writer refuses to change a row already on disk, so the ledger file is replaced rather than rewritten."""
+        _run_record(fake_projects)
+        (current_row,) = _ledger_rows(ledger_path)
+        seeded_row = cls._older_rule_row_of(current_row, row_changes)
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [seeded_row])
+        return seeded_row
+
+    @classmethod
+    def _seed_two_older_rule_rows(cls, fake_projects, monkeypatch, ledger_path: Path, first_row_changes=lambda current_row: {}):
+        """Records feature-a and feature-b through a real run, then replaces both rows with older-rule ones, the first
+        changed by `first_row_changes`. Returns the recorded rows and the two seeded rows. Leaves the two-PR
+        `subprocess.run` fake (PRs 1 and 2, branches feature-a and feature-b) installed for the record run that follows."""
+        _write_one_round_corpus(fake_projects, "feature-b")
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+            merged_prs=[_merged_pr(1, "feature-a"), _merged_pr(2, "feature-b")]))
+        _run_record(fake_projects)
+        current_rows = _ledger_rows(ledger_path)
+        seeded_rows = [cls._older_rule_row_of(current_rows[0], first_row_changes), cls._older_rule_row_of(current_rows[1])]
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, seeded_rows)
+        return current_rows, seeded_rows
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    @pytest.mark.parametrize("run_flags", [{}, {"pr": 1}], ids=["no-flags", "pr-1"])
+    def test_a_row_the_fresh_scan_reproduces_is_re_recorded_once_and_a_second_run_changes_nothing(
+        self, fake_projects, tmp_path, monkeypatch, capsys, run_flags,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        self._seed_an_older_rule_row(fake_projects, ledger_path)
+        capsys.readouterr()
+        read_before = ledger_rounds.select_ledger_prs([_ledger_rows(ledger_path)], "github.com", "owner/repo")
+
+        _run_record(fake_projects, **run_flags)
+
+        seeded_row, re_recorded_row = _ledger_rows(ledger_path)
+        read_after = ledger_rounds.select_ledger_prs([_ledger_rows(ledger_path)], "github.com", "owner/repo")
+        assert (read_before.prs, read_before.excluded[ledger_rounds.EXCLUDED_RULE]) == ([], 1)
+        assert re_recorded_row["supersedes"] == seeded_row["captured_at"]
+        assert re_recorded_row["review_rounds"] == _FOUR_ROUND_CELL
+        assert [ledger_pr.number for ledger_pr in read_after.prs] == [1]
+        assert set(read_after.excluded.values()) == {0}
+        capsys.readouterr()
+        bytes_after_re_record = ledger_path.read_bytes()
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        assert ledger_path.read_bytes() == bytes_after_re_record
+
+    def test_a_row_whose_figures_the_fresh_scan_does_not_reproduce_is_skipped_before_any_round_scan(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        self._seed_an_older_rule_row(
+            fake_projects, ledger_path, lambda current_row: {"turn_count": current_row["turn_count"] + 1},
+        )
+        capsys.readouterr()
+        bytes_before = ledger_path.read_bytes()
+        spy = _spy_on_scans(monkeypatch)
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        assert ledger_path.read_bytes() == bytes_before
+        assert spy.round_scans == []
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    def test_one_plain_record_skips_a_row_the_scan_does_not_reproduce_and_still_re_records_the_next_row_and_exits_0(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        current_rows, (skipped_row, reproduced_row) = self._seed_two_older_rule_rows(
+            fake_projects, monkeypatch, ledger_path,
+            lambda current_row: {"turn_count": current_row["turn_count"] + 1},
+        )
+        capsys.readouterr()
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        seeded_skipped_row, seeded_reproduced_row, re_recorded_row = _ledger_rows(ledger_path)
+        assert seeded_skipped_row == skipped_row
+        assert seeded_reproduced_row == reproduced_row
+        assert re_recorded_row["pr_number"] == 2
+        assert re_recorded_row["supersedes"] == reproduced_row["captured_at"]
+        assert re_recorded_row["review_rounds"] == current_rows[1]["review_rounds"]
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    def test_one_plain_record_skips_a_row_whose_new_cell_cannot_be_written_and_still_re_records_the_next_row_and_exits_0(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        current_rows, (refused_row, reproduced_row) = self._seed_two_older_rule_rows(
+            fake_projects, monkeypatch, ledger_path,
+        )
+        capsys.readouterr()
+        _fail_check_on_calls(monkeypatch, {1})
+
+        _run_record(fake_projects)
+
+        captured = capsys.readouterr()
+        assert _unforced_refusal_line(
+            1, _SEEDED_MACHINE_IDENTITY, "the per-model breakdown failed its dollars check",
+        ) in captured.err.splitlines()
+        assert _COUNT_LINE_STEM not in captured.err
+        seeded_refused_row, seeded_reproduced_row, re_recorded_row = _ledger_rows(ledger_path)
+        assert seeded_refused_row == refused_row
+        assert seeded_reproduced_row == reproduced_row
+        assert re_recorded_row["pr_number"] == 2
+        assert re_recorded_row["supersedes"] == reproduced_row["captured_at"]
+        assert re_recorded_row["review_rounds"] == current_rows[1]["review_rounds"]
+
+    def test_a_degraded_fresh_status_over_an_ok_row_is_skipped_before_any_round_scan(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        self._seed_an_older_rule_row(fake_projects, ledger_path)
+        capsys.readouterr()
+        bytes_before = ledger_path.read_bytes()
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run(
+            merged_prs=[_merged_pr(1, "feature-a")],
+            gh_pr_view_failure_stderr="You are not logged into any GitHub hosts.\n",
+        ))
+        spy = _spy_on_scans(monkeypatch)
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        assert ledger_path.read_bytes() == bytes_before
+        assert spy.round_scans == []
+
+    def test_a_row_a_concurrent_record_appended_at_the_current_rule_decides_the_write_not_the_hints_row(
+        self, fake_projects, tmp_path, monkeypatch, capsys,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        seeded_row = self._seed_an_older_rule_row(fake_projects, ledger_path)
+        concurrent_row = {
+            **seeded_row,
+            "captured_at": _one_second_after(seeded_row["captured_at"]),
+            "supersedes": seeded_row["captured_at"],
+            "review_rounds": {**seeded_row["review_rounds"], "rule": review_rounds.REVIEW_ROUND_RULE},
+        }
+        capsys.readouterr()
+        _write_ledger_row_on_lock_acquire(monkeypatch, ledger_path, concurrent_row)
+        spy = _spy_on_scans(monkeypatch)
+
+        _run_record(fake_projects)
+
+        assert _already_captured_line(1) in capsys.readouterr().err.splitlines()
+        assert [row["captured_at"] for row in _ledger_rows(ledger_path)] == [
+            seeded_row["captured_at"], concurrent_row["captured_at"],
+        ]
+        assert len(spy.round_scans) == 1
+
+    @pytest.mark.usefixtures("_assume_hand_computed_dollar_rates")
+    @pytest.mark.parametrize("failure,run_flags,expected_exit_code,expected_line", [
+        pytest.param(
+            "pass", {}, None, _unforced_refusal_line(1, _SEEDED_MACHINE_IDENTITY, _REASON_PASS_FAILED),
+            id="failed-pass-without-flags-skips-and-exits-0",
+        ),
+        pytest.param(
+            "pass", {"pr": 1}, 1, _unforced_refusal_line(1, _SEEDED_MACHINE_IDENTITY, _REASON_PASS_FAILED),
+            id="failed-pass-with-pr-exits-1",
+        ),
+        pytest.param(
+            "pass", {"pr": 1, "force": True}, 1, _force_refusal_line(1, _SEEDED_MACHINE_IDENTITY, _REASON_PASS_FAILED),
+            id="failed-pass-with-force-keeps-its-refusing-force-line-and-exits-1",
+        ),
+        pytest.param(
+            "breakdown", {}, None,
+            _unforced_refusal_line(1, _SEEDED_MACHINE_IDENTITY, "the per-model breakdown failed its dollars check"),
+            id="failed-breakdown-check-without-flags-skips-and-exits-0",
+        ),
+    ])
+    def test_a_re_record_whose_new_cell_would_be_empty_leaves_the_ledger_unchanged(
+        self, fake_projects, tmp_path, monkeypatch, capsys, failure, run_flags, expected_exit_code, expected_line,
+    ):
+        ledger_path = _arrange_round_run(fake_projects, tmp_path, monkeypatch)
+        self._seed_an_older_rule_row(fake_projects, ledger_path)
+        capsys.readouterr()
+        bytes_before = ledger_path.read_bytes()
+        if failure == "pass":
+            _fail_the_pass(monkeypatch)
+        else:
+            _fail_check_on_calls(monkeypatch, {1})
+
+        if expected_exit_code is None:
+            _run_record(fake_projects, **run_flags)
+        else:
+            with pytest.raises(SystemExit) as exc_info:
+                _run_record(fake_projects, **run_flags)
+            assert exc_info.value.code == expected_exit_code
+
+        captured = capsys.readouterr()
+        assert expected_line in captured.err.splitlines()
+        assert _COUNT_LINE_STEM not in captured.err
+        assert "recorded PR" not in captured.out
+        assert ledger_path.read_bytes() == bytes_before
+
+    @staticmethod
+    def _write_gate_denied_review_corpus(proj: Path, branch: str = "feature-a") -> None:
+        """One Skill(code-review) call the routing gate denied, so the corrected cell holds no round."""
+        _write_jsonl(proj / "sess-denied.jsonl", [
+            _priced(
+                "claude-sonnet-5", input=1_000_000, branch=branch, ts=_PRE_MERGE_TS,
+                content=[_skill_block("s1", "code-review")],
+            ),
+            _routing_deny_record("s1", shape="current", branch=branch, ts=_PRE_MERGE_TS),
+        ])
+
+    def test_a_row_whose_only_review_call_was_gate_denied_is_re_recorded_with_an_empty_cell(
+        self, fake_projects, tmp_path, monkeypatch,
+    ):
+        ledger_path = _arrange_round_run(
+            fake_projects, tmp_path, monkeypatch, write_corpus=self._write_gate_denied_review_corpus,
+        )
+        _run_record(fake_projects)
+        (current_row,) = _ledger_rows(ledger_path)
+        seeded_row = {
+            **current_row,
+            "captured_at": _EARLIER_CAPTURED_AT,
+            "review_rounds": _cell_of(review_rounds.REVIEW_ROUND_RULE - 1, code_review=[1]),
+        }
+        ledger_path.unlink()
+        pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, [seeded_row])
+        read_before = ledger_rounds.select_ledger_prs([_ledger_rows(ledger_path)], "github.com", "owner/repo")
+
+        _run_record(fake_projects)
+
+        _seeded_row, re_recorded_row = _ledger_rows(ledger_path)
+        read_after = ledger_rounds.select_ledger_prs([_ledger_rows(ledger_path)], "github.com", "owner/repo")
+        assert read_before.excluded[ledger_rounds.EXCLUDED_RULE] == 1
+        assert re_recorded_row["review_rounds"] == {
+            "rule": review_rounds.REVIEW_ROUND_RULE,
+            "rounds": {"code-review": [], "plan-review": [], "ready-for-review": []},
+        }
+        assert read_after.excluded[ledger_rounds.EXCLUDED_RULE] == 0
 
 
 class TestReviewRoundsCrossAccountCapture:

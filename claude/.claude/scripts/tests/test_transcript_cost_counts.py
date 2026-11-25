@@ -287,7 +287,7 @@ class TestCostCounts:
         assert "(withheld" not in out
         assert (
             "Each invocation of a review skill, and each main-thread `review-orchestrator` dispatch,"
-            " is one round, whether or not it produced findings."
+            " is one round, whether or not it produced findings, unless a gate denied it."
             " Counts reflect this section's last render; a review round that ran afterward may not"
             " be included yet."
         ) in out

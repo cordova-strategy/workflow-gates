@@ -27,6 +27,7 @@ from ._review_round_corpus_helpers import (
     _write_orchestrator_free_text_corpus,
     _write_orchestrator_subagent_tree,
 )
+from ._routing_guard_helpers import _routing_deny_record
 from .conftest import (
     _agent_use,
     _priced,
@@ -1108,6 +1109,32 @@ def _corpus_records_the_detection_gates_reject(fake_projects) -> None:
     ])
 
 
+def _denied_calls_inside_an_open_round_records() -> list[dict]:
+    """Each turn carries a distinct input count."""
+    return [
+        _priced("claude-sonnet-5", input=100_000, branch="feat", content=[_skill_block("s1", "code-review")]),
+        _priced(
+            "claude-sonnet-5", input=200_000, branch="feat", content=[_agent_use("o-denied", _ORCHESTRATOR_AGENT_TYPE)],
+        ),
+        _routing_deny_record("o-denied", shape="legacy", branch="feat"),
+        _priced("claude-sonnet-5", input=300_000, branch="feat", content=[_skill_block("s-denied", "code-review")]),
+        _routing_deny_record("s-denied", shape="current", branch="feat"),
+        _priced(
+            "claude-sonnet-5", input=400_000, branch="feat", content=[_agent_use("o-launched", _ORCHESTRATOR_AGENT_TYPE)],
+        ),
+        _user_msg("thanks", branch="feat"),
+    ]
+
+
+def _corpus_denied_calls_inside_an_open_round(fake_projects) -> None:
+    """Denied calls inside an open round neither open nor end one; the denied spawn has no launch record."""
+    _write_jsonl(fake_projects / "sess-1.jsonl", _denied_calls_inside_an_open_round_records())
+    _write_subagent_dispatch(
+        fake_projects, "sess-1", "agent-launched", "o-launched",
+        [_priced("claude-sonnet-5", input=500_000, branch="feat")],
+    )
+
+
 # Every distinct round shape TestComputeReviewRoundCosts already exercises
 # elsewhere in this file, reused for the bidirectional agreement guard below
 # rather than one new hand-picked corpus.
@@ -1128,6 +1155,7 @@ _ROUND_SHAPE_CORPUS_BUILDERS = [
         _corpus_sibling_reviewers_across_a_task_notification, id="sibling_reviewers_across_a_task_notification",
     ),
     pytest.param(_corpus_records_the_detection_gates_reject, id="records_the_detection_gates_reject"),
+    pytest.param(_corpus_denied_calls_inside_an_open_round, id="denied_calls_inside_an_open_round"),
 ]
 
 
@@ -1701,6 +1729,18 @@ class TestGoldenRoundProjections:
         },
     }
 
+    _GOLDEN_ROUND_PROJECTIONS_BY_RULE[2] = {
+        **_GOLDEN_ROUND_PROJECTIONS_BY_RULE[1],
+        "denied_calls_inside_an_open_round": [
+            # The first round holds the denied spawn's turn and the denied skill's turn, and the denied spawn has no launch.
+            _golden_round("code-review", dangling=1, main_tokens=_standard_input("claude-sonnet-5", 600_000)),
+            _golden_round(
+                "code-review", agents=1, main_tokens=_standard_input("claude-sonnet-5", 400_000),
+                agent_tokens=_standard_input("claude-sonnet-5", 500_000),
+            ),
+        ],
+    }
+
     @staticmethod
     def _nonzero_token_classes(tokens: dict) -> dict:
         return {
@@ -1743,6 +1783,7 @@ class TestGoldenRoundProjections:
         "sibling_reviewers_in_one_record": ["code-review"],
         "sibling_reviewers_across_a_task_notification": ["code-review"],
         "records_the_detection_gates_reject": ["code-review"],
+        "denied_calls_inside_an_open_round": ["code-review", "code-review"],
     }
 
     def test_every_shape_has_a_hand_written_skill_sequence(self):
@@ -2049,7 +2090,7 @@ class TestSkillBlockRoundOpen:
         windows = review_rounds.detect_round_windows([malformed_beside_spawn])
 
         assert windows == [(0, 1, "code-review")]
-        assert review_rounds.round_opened_by_spawn(malformed_beside_spawn) is True
+        assert review_rounds.round_opened_by_spawn(malformed_beside_spawn, denied_tool_use_ids=frozenset()) is True
 
 
 class TestSlashRoundOpenRecordClass:
@@ -2184,30 +2225,59 @@ class TestRoundOpenedBySpawn:
 
     def test_spawn_only_record_is_opened_by_spawn(self):
         rec = _orchestrator_spawn_record("o1", ts="2026-08-01T10:00:00.000Z")
-        assert review_rounds.round_opened_by_spawn(rec) is True
+        assert review_rounds.round_opened_by_spawn(rec, denied_tool_use_ids=frozenset()) is True
 
     def test_record_whose_skill_block_opens_a_round_is_not_opened_by_spawn(self):
         rec = _orchestrator_spawn_record(
             "o1", ts="2026-08-01T10:00:00.000Z", extra_blocks=(_skill_block("s1", "plan-review"),),
         )
-        assert review_rounds.round_opened_by_spawn(rec) is False
+        assert review_rounds.round_opened_by_spawn(rec, denied_tool_use_ids=frozenset()) is False
 
     def test_record_holding_a_non_review_skill_and_a_spawn_is_opened_by_spawn(self):
         rec = _orchestrator_spawn_record(
             "o1", ts="2026-08-01T10:00:00.000Z", extra_blocks=(_skill_block("s1", "handoff"),),
         )
-        assert review_rounds.round_opened_by_spawn(rec) is True
+        assert review_rounds.round_opened_by_spawn(rec, denied_tool_use_ids=frozenset()) is True
 
     def test_sidechain_spawn_record_is_not_opened_by_spawn(self):
         rec = _as_sidechain(_orchestrator_spawn_record("o1", ts="2026-08-01T10:00:00.000Z"))
-        assert review_rounds.round_opened_by_spawn(rec) is False
+        assert review_rounds.round_opened_by_spawn(rec, denied_tool_use_ids=frozenset()) is False
 
     def test_unrelated_dispatch_and_user_records_are_not_opened_by_spawn(self):
         dispatch_of_unmapped_type = _priced(
             "claude-sonnet-5", input=1, branch="feat", content=[_agent_use("a1", "staff-sdet")],
         )
-        assert review_rounds.round_opened_by_spawn(dispatch_of_unmapped_type) is False
-        assert review_rounds.round_opened_by_spawn(_user_msg("hi")) is False
+        assert review_rounds.round_opened_by_spawn(dispatch_of_unmapped_type, denied_tool_use_ids=frozenset()) is False
+        assert review_rounds.round_opened_by_spawn(_user_msg("hi"), denied_tool_use_ids=frozenset()) is False
+
+
+class TestGateDeniedCallsOpenNoRound:
+    """A `Skill` or spawn call a gate denied neither opens a round nor ends the window before it."""
+
+    def test_denied_calls_of_either_shape_leave_one_window_open_until_the_launched_spawn_opens_the_next(self):
+        records = _denied_calls_inside_an_open_round_records()
+
+        windows = review_rounds.detect_round_windows(records)
+
+        assert windows == [(0, 5, "code-review"), (5, 6, "code-review")]
+
+    def test_an_empty_denied_set_opens_a_round_per_call_as_before(self):
+        records = _denied_calls_inside_an_open_round_records()
+
+        windows = review_rounds.detect_round_windows(records, denied_tool_use_ids=frozenset())
+
+        assert windows == [(0, 1, "code-review"), (1, 3, "code-review"), (3, 5, "code-review"), (5, 6, "code-review")]
+
+    def test_a_denied_plan_review_skill_beside_an_undenied_spawn_opens_one_code_review_round_by_the_spawn(self):
+        record = _priced(
+            "claude-sonnet-5", input=1, branch="feat",
+            content=[_skill_block("s-denied", "plan-review"), _agent_use("o-launched", _ORCHESTRATOR_AGENT_TYPE)],
+        )
+        denied = frozenset({"s-denied"})
+
+        assert review_rounds.detect_round_windows([record], denied_tool_use_ids=denied) == [(0, 1, "code-review")]
+        assert review_rounds.round_opened_by_spawn(record, denied_tool_use_ids=denied) is True
+        assert review_rounds.round_opened_by_spawn(record, denied_tool_use_ids=frozenset()) is False
 
 
 class TestOrchestratorDispatchOpensCodeReviewRound:
