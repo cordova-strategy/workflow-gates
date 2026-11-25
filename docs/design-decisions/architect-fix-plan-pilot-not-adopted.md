@@ -2,6 +2,8 @@
 
 *2026-10-25.*
 
+**Superseded in part (2026-11-24):** the separate decision this record awaits removed the pilot's `code-review` region and pin tests, so its code no longer stays dormant and the region the Sources list names no longer exists. The key stays in the schema, inert at `false`.
+
 The pilot in [A default-off pilot has `plan-architect` author each `/code-review` round's fix plan](architect-authored-fix-plan-pilot.md) is not adopted. The `architect_fix_plan_pilot` key stays `false` by default, its code stays dormant behind that key until a separate decision removes it, and any account that enabled it sets it back to `false`.
 
 The decision rests on absence of benefit and a failed guardrail, not on proof of harm.

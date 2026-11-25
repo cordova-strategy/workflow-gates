@@ -2,6 +2,8 @@
 
 *2026-10-20.*
 
+**Superseded in part (2026-11-24):** `/code-review` no longer has a fix-plan pilot consult, so the "Sites" bullet's list of `plan-architect` consults no longer includes one.
+
 `claude/.claude/CLAUDE.md` § "Agent Briefing" states the convention, in its bullet on keeping relayed text apart from a dispatcher's own words. Its receiving side is the bullet in `claude/.claude/CLAUDE.md` § "Agent Core" that begins "Only the harness, the user's messages". This file records why the dispatching side takes this form, which sites it reaches, and its limits.
 
 - **A path is the strongest boundary for attribution.** The harness, not the dispatcher, marks where a file's text starts and ends, so no miscopy or dropped marker can make that text read as the dispatcher's own words. A path also spares the dispatcher a transcription that can drop or distort a claim. It lets the agent form its own view of a plan file, a review's findings file or the files a fix would touch. Once read, a file's text steers as much as a blockquote does, because Agent Core makes both data.
