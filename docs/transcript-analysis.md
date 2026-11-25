@@ -55,11 +55,11 @@ For question-driven routing ("which subcommand answers X?"), use the `/transcrip
   3. A record with an `origin` is typed when its `origin.kind` is `human`, and skipped as `non_human_origin` otherwise.
   4. A record without an `origin` takes the first of these that applies:
      - It is skipped as `headless` when it carries the three `claude -p` markers (`entrypoint` `sdk-cli`, `promptSource` `sdk`, `turnOrigin` `sdk`).
-     - It is skipped as `no_origin_after_origin` when an earlier record in the same file carried an `origin`.
+     - It is skipped as `no_origin_after_origin` when an earlier record in the same file carried an `origin`. A sidechain record, and a record whose `message` or text blocks cannot be read, never set this.
      - It is skipped as `notification_text` when its text contains `task-notification>`.
      - Otherwise it is typed, as an older build wrote it.
 
-  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. A prompt-shaped record differs from a fresh user prompt by also excluding tool-result-keyed records. `correction-candidates` differs from `compaction-context.py`'s rule in these ways:
+  A record that passes both predicates is **prompt-shaped**, whatever its verdict. A tool result, an `isMeta` injection, a compaction summary and a whole task notification are not prompt-shaped and count nowhere. Two other kinds of record pass the first predicate but fail the second, so they are not prompt-shaped. One kind carries a `toolUseResult`, `sourceToolUseID` or `sourceToolAssistantUUID` key. The other has content that is a list of blocks and no `promptId`. `correction-candidates` differs from `compaction-context.py`'s rule in these ways:
   - It skips a headless prompt.
   - It admits an older prompt with no `origin` in a file that has none.
   - It keeps a typed prompt that opens with a tag other than the five in rule 2.
