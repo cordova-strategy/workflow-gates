@@ -135,6 +135,7 @@ TEST_FILES = (
     "test_transcript_ledger_common.py",
     "test_transcript_pr_cost_gh.py",
     "test_transcript_pr_cost_export.py",
+    "test_transcript_pr_cost_export_capture_scope.py",
     "test_transcript_cache_rebuild.py",
     "test_transcript_review_cost_by_size.py",
     "test_transcript_review_cost_by_size_aggregates.py",

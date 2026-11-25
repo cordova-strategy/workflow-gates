@@ -774,6 +774,21 @@ def _parse_pr_cost_export_row(line: str) -> dict:
     return dict(zip(pr_cost_export._PR_COST_EXPORT_COLUMNS, line.split("\t"), strict=True))
 
 
+def _export_ledger_rows(tmp_path, monkeypatch, ledger_rows: list[dict]) -> tuple[dict, dict, str]:
+    """Exports a ledger holding `ledger_rows`. Returns (the first exported row's cells, the provenance key=value
+    dict, the file's text)."""
+    _enable_pr_cost(tmp_path)
+    ledger_path = tmp_path / "pr-cost-ledger.tsv"
+    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
+    pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, ledger_rows)
+    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
+    out_path = tmp_path / "export.tsv"
+    pr_cost_export.cmd_pr_cost_export(_pr_cost_export_args(out=str(out_path)))
+    text = out_path.read_text()
+    lines = text.splitlines()
+    return _parse_pr_cost_export_row(lines[2]), _parse_pr_cost_export_provenance_line(lines[0]), text
+
+
 class _ScanSpy:
     """Wraps (does not replace) the two calls a --record run's transcript passes make. Each scope call records the
     keyword arguments it received and the `this_repo` its args held when it resolved."""

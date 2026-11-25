@@ -12,7 +12,7 @@ from pathlib import Path
 
 import _config
 import pytest
-from transcript_analysis import pr_cost, pr_cost_export, pr_cost_ledger
+from transcript_analysis import pr_cost_export, pr_cost_ledger
 
 from ._pr_cost_helpers import (
     _CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL,
@@ -22,6 +22,7 @@ from ._pr_cost_helpers import (
     _cell_with,
     _dropped_keys_line,
     _enable_pr_cost,
+    _export_ledger_rows,
     _fake_pr_cost_subprocess_run,
     _first_round,
     _parse_pr_cost_export_provenance_line,
@@ -286,21 +287,6 @@ def _export_one_row(tmp_path, monkeypatch, cell) -> tuple[dict, dict, str]:
     return _export_ledger_rows(tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds=cell)])
 
 
-def _export_ledger_rows(tmp_path, monkeypatch, ledger_rows: list[dict]) -> tuple[dict, dict, str]:
-    """Exports a ledger holding `ledger_rows`. Returns (the first exported row's cells, the provenance key=value
-    dict, the file's text)."""
-    _enable_pr_cost(tmp_path)
-    ledger_path = tmp_path / "pr-cost-ledger.tsv"
-    monkeypatch.setenv("PR_COST_LEDGER_PATH", str(ledger_path))
-    pr_cost_ledger._write_pr_cost_ledger_file(ledger_path, ledger_rows)
-    monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
-    out_path = tmp_path / "export.tsv"
-    pr_cost_export.cmd_pr_cost_export(_pr_cost_export_args(out=str(out_path)))
-    text = out_path.read_text()
-    lines = text.splitlines()
-    return _parse_pr_cost_export_row(lines[2]), _parse_pr_cost_export_provenance_line(lines[0]), text
-
-
 def _plant_sentinel_at(position: str, token_field: str):
     """A cell mutation planting _VOCABULARY_SENTINEL as a model, variant or class key under `token_field` of the first
     round, beside the keys already there."""
@@ -522,48 +508,6 @@ class TestPrCostExportTimestamps:
         assert exported["merged_at"] == "2026-03-04"
         assert exported["captured_at"] == "2026-03-08"
         assert exported["rate_stamp"] == "2026-08-02"
-
-
-class TestPrCostExportCaptureScopeColumns:
-    @pytest.mark.parametrize("cell,expected_export", [
-        pytest.param("2026-03-04T05:06:07Z", "2026-03-04", id="writer-form-truncated-to-its-date"),
-        pytest.param("", "", id="empty-stays-empty"),
-    ])
-    def test_earliest_surviving_activity_at_exports_as_its_date(
-        self, tmp_path, fake_projects, monkeypatch, cell, expected_export,
-    ):
-        row, _provenance, _text = _export_ledger_rows(
-            tmp_path, monkeypatch, [_sample_pr_cost_row(earliest_surviving_activity_at=cell)],
-        )
-
-        assert row["earliest_surviving_activity_at"] == expected_export
-
-    @pytest.mark.parametrize("capture_scope", ["repo", "glob", ""])
-    def test_capture_scope_exports_unchanged(self, tmp_path, fake_projects, monkeypatch, capture_scope):
-        row, _provenance, _text = _export_ledger_rows(
-            tmp_path, monkeypatch, [_sample_pr_cost_row(capture_scope=capture_scope)],
-        )
-
-        assert row["capture_scope"] == capture_scope
-
-    @pytest.mark.parametrize("absence", ["", *sorted(pr_cost._ROUNDS_ABSENCES)])
-    def test_a_known_review_rounds_absence_exports_unchanged(self, tmp_path, fake_projects, monkeypatch, absence):
-        row, _provenance, _text = _export_ledger_rows(
-            tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds_absence=absence)],
-        )
-
-        assert row["review_rounds_absence"] == absence
-
-    def test_an_unknown_shape_valid_review_rounds_absence_exports_as_unrecognized_without_its_raw_text(
-        self, tmp_path, fake_projects, monkeypatch,
-    ):
-        unknown_absence = "zzfuturereasonzz"
-        row, _provenance, text = _export_ledger_rows(
-            tmp_path, monkeypatch, [_sample_pr_cost_row(review_rounds_absence=unknown_absence)],
-        )
-
-        assert row["review_rounds_absence"] == "unrecognized"
-        assert unknown_absence not in text
 
 
 class TestPrCostExportRefusals:

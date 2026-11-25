@@ -532,6 +532,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - seven unit calls pass it four positional arguments [verified: Grep of `tests/test_transcript_pr_cost.py` for `_resolve_branch_pr(`, `:412-527`];
     - discovery lists merged PRs only, so a never-merged fork PR never enters the count [verified: `gh_cli.py:483`].
 64. [engineer-verified: "Raise rows, split the scope test (Recommended)"] After the sync with `origin/main`, the code-file size check fails on this branch. The raised row ceilings and the split of `tests/test_transcript_scope.py` stay in this PR. [engineer-verified: "Yes, record them in the plan (Recommended)"] This fix adds two entries to Critical files, `code-file-size-exceptions.toml` and `tests/test_transcript_scope_repo_scope.py`. The projected-diff line grows past row 49's about 1,350 lines, and the option the engineer selected named that growth.
+65. [engineer-verified: "Yes, add them to the plan (Recommended)"] A second sync with `origin/main` took `tests/test_transcript_pr_cost_export.py` to 1,021 lines. This branch's export tests move to a new `tests/test_transcript_pr_cost_export_capture_scope.py`, and the helper `_export_ledger_rows` moves to `tests/_pr_cost_helpers.py`. Critical files names both, and the pr-cost test-family paragraph of `docs/transcript-analysis-architecture.md` names the new file.
 
 **Mechanisms.**
 - M1. Repo default through the `repo_scope_default` and `projects_help` keywords, with the default applied inline in `_pr_cost_report`. anchors: row4, row11, row12, row28, row41, row46. Lighter options set aside: (a) a pr-cost-only scope group, as skill-invocation has, which copies the group a third time; (b) `set_defaults(this_repo=True)`, which keeps the repo arm under an explicit `--projects`.
@@ -682,6 +683,7 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
 - `code-file-size-exceptions.toml`: the `ceiling` of each file this branch grew set to its current line count, and `routing_guard.py`'s lowered to its current count. No other row changes.
 - `tests/test_transcript_scope.py` and the new `tests/test_transcript_scope_repo_scope.py`: the two classes this PR added move to the new file, unchanged, so the old file stays under the line limit with no row.
 - `tests/test_transcript_package_module_prefixes.py`: `TEST_FILES` lists the new file.
+- `tests/test_transcript_pr_cost_export.py`, the new `tests/test_transcript_pr_cost_export_capture_scope.py` and `tests/_pr_cost_helpers.py` (row 65): the export tests this PR added move to the new file, and `_export_ledger_rows` moves to the shared helper module so neither file copies it. The pr-cost test-family paragraph of `docs/transcript-analysis-architecture.md` (near `:946`) names the new file.
 - `docs/transcript-analysis-architecture.md` (`:894-896`): the sentence naming each `scope.py` test file names the new file.
 - Verification: `tests/test_code_file_size.py`, plus steps 1 to 3 below.
 

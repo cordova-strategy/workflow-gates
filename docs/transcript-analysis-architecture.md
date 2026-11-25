@@ -943,8 +943,10 @@ in `tests/test_transcript_gh_cli.py`; `pr_cost.py`'s local-mechanics coverage li
 `tests/test_transcript_pr_cost.py`, its gh-integration coverage (exercised end to end through
 `cmd_pr_cost`) in `tests/test_transcript_pr_cost_gh.py`, its read-mode table (including the per-skill
 round-count columns) in `tests/test_transcript_pr_cost_read_mode.py`, its repo-scope default, recorded
-`capture_scope` and branch-join guard in `tests/test_transcript_pr_cost_capture_scope.py`; and `pr_cost_export.py`'s remaining
-coverage (redaction, timestamps, refusals) lives in `tests/test_transcript_pr_cost_export.py`. Every
+`capture_scope` and branch-join guard in `tests/test_transcript_pr_cost_capture_scope.py`; `pr_cost_export.py`'s export of the `capture_scope`,
+`earliest_surviving_activity_at` and `review_rounds_absence` columns in
+`tests/test_transcript_pr_cost_export_capture_scope.py`; and its remaining coverage (redaction,
+timestamps, refusals) lives in `tests/test_transcript_pr_cost_export.py`. Every
 pr-cost-family test file named above, plus `tests/_pr_cost_helpers.py` (a plain module, not a test file
 itself — see `.claude/rules/test-tree-packaging.md` for why its own consumers import it as
 `from ._pr_cost_helpers import ...`), share the family-only fixtures the legacy pr-cost tests used:
