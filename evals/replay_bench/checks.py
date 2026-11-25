@@ -81,7 +81,9 @@ NEVER_EXECUTED_DENIAL_KINDS = frozenset({
 _TOOL_NAME_BASH = "Bash"
 _TOOL_NAME_READ = "Read"
 _TOOL_NAME_NOTEBOOK_EDIT = "NotebookEdit"
-_WRITE_TOOL_NAMES = frozenset({"Edit", "MultiEdit", "Write", _TOOL_NAME_NOTEBOOK_EDIT})
+# Ordered so a message can name them in a fixed order.
+WRITE_TOOL_NAMES = ("Edit", "MultiEdit", "Write", _TOOL_NAME_NOTEBOOK_EDIT)
+_WRITE_TOOL_NAMES = frozenset(WRITE_TOOL_NAMES)
 
 # Characters a path word can be glued to.
 _SHELL_SEPARATOR_RE = re.compile(r"""\$\(|[;|&<>()=`'"]""")
@@ -646,10 +648,45 @@ def _bash_candidates(call: ToolCall, call_number: int, unparsed: list[str]) -> l
     return list(candidates)
 
 
-def _write_target(call: ToolCall) -> str | None:
+def _file_target(call: ToolCall) -> str | None:
     key = "notebook_path" if call.name == _TOOL_NAME_NOTEBOOK_EDIT else "file_path"
     target = call.tool_input.get(key)
     return target if isinstance(target, str) else None
+
+
+FILE_CALL_DENIED = "denied"
+FILE_CALL_UNANSWERED = "unanswered"
+FILE_CALL_RAN = "ran"
+
+
+def file_tool_calls(transcript: SubagentTranscript) -> list[dict]:
+    """One `{"tool", "path", "status"}` per Read or write-tool call, in transcript order. `path` is None when the
+    call's target is missing or not a string. `status` is `FILE_CALL_DENIED`, `FILE_CALL_UNANSWERED` for a call with
+    no result, or `FILE_CALL_RAN`, which means answered with no recorded permission denial, not that the call took
+    effect."""
+    calls: list[dict] = []
+    for call in transcript.tool_calls:
+        if call.name != _TOOL_NAME_READ and call.name not in _WRITE_TOOL_NAMES:
+            continue
+        status = FILE_CALL_DENIED if call.denied else FILE_CALL_RAN if call.answered else FILE_CALL_UNANSWERED
+        calls.append({"tool": call.name, "path": _file_target(call), "status": status})
+    return calls
+
+
+def made_write_call_that_ran(transcript: SubagentTranscript) -> bool:
+    return any(call["tool"] != _TOOL_NAME_READ and call["status"] == FILE_CALL_RAN for call in file_tool_calls(transcript))
+
+
+def transcript_incompleteness_signals(transcript: SubagentTranscript) -> list[str]:
+    """Names each reason the transcript may be missing calls, as `SubagentTranscript` describes."""
+    signals = []
+    if transcript.unreadable_detail is not None:
+        signals.append(f"unreadable: {transcript.unreadable_detail}")
+    if transcript.last_line_torn:
+        signals.append("last line torn")
+    if transcript.skipped_lines:
+        signals.append(f"{transcript.skipped_lines} skipped lines")
+    return signals
 
 
 @dataclass(frozen=True)
@@ -693,7 +730,7 @@ def check_tool_call_paths(
         if call.name in _WRITE_TOOL_NAMES:
             if call.denied:
                 continue
-            target = _write_target(call)
+            target = _file_target(call)
             if target is None:
                 unparsed.append(f"{call.name} call {call_number}: target path is missing or not a string")
                 continue
@@ -737,7 +774,7 @@ def check_tool_call_paths(
                     other_tokens.append(token)
 
     reasons = []
-    if transcript.unreadable_detail is not None or transcript.last_line_torn or transcript.skipped_lines:
+    if transcript_incompleteness_signals(transcript):
         reasons.append(REASON_TRANSCRIPT_UNREADABLE)
     if writes:
         reasons.append(REASON_OUT_OF_FIXTURE_WRITE)

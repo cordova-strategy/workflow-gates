@@ -1,11 +1,14 @@
 """Tests for `smoke`: one block of one run per arm, its calibration, its printout and its smoke-pass record."""
 from __future__ import annotations
 
+import dataclasses
+import os
+
 import pytest
 from replay_bench import checks, diffing, smoke, smoke_pass
 from replay_bench import tasks as tasks_mod
 from review_bench import runner as review_runner
-from test_replay_bench_checks_support import _line
+from test_replay_bench_checks_support import _assistant, _line, _tool_use, _transcript
 from test_replay_bench_runner_support import (
     AGENT_ID,
     CLAUDE_MD_TEXT,
@@ -13,7 +16,9 @@ from test_replay_bench_runner_support import (
     READING,
     RULE_TEXT,
     Scenario,
+    build_replay_world,
     leaking_log_lines,
+    stub_session_store,
 )
 
 CAP = 2.0
@@ -129,6 +134,158 @@ class TestAPassingSmoke:
         assert f"nominal ceiling ${ceiling:.2f}" in first_line
 
 
+@pytest.fixture(scope="module")
+def smoke_outcomes(tmp_path_factory):
+    """One real smoke run's outcome per arm, for report tests that change one field of an outcome instead of
+    launching a smoke of their own."""
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(review_runner, "read_environment_record", lambda *, checkout_root=None: READING)
+        # The function-scoped isolation fixtures in conftest.py are not yet active when a module-scoped fixture builds.
+        monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+        monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+        world = build_replay_world(tmp_path_factory.mktemp("shared-smoke"), monkeypatch)
+        outcomes = {}
+        real_format = smoke.format_run_report
+
+        def recording_format(arm_name, outcome):
+            outcomes[arm_name] = outcome
+            return real_format(arm_name, outcome)
+
+        monkeypatch.setattr(smoke, "format_run_report", recording_format)
+        run_smoke(world)
+    return outcomes
+
+
+def delete_sidecar_transcript(call):
+    sidecar_dir = stub_session_store(call.config_dir / "projects", call.session_id) / call.session_id / "subagents"
+    (sidecar_dir / "agent-1.jsonl").unlink()
+
+
+class TestTheRunReportShowsWhatTheRunDid:
+    @pytest.fixture
+    def reports(self, world, capsys, monkeypatch):
+        """Runs a smoke and returns each arm's printed report and its outcome."""
+        outcomes = {}
+        real_format = smoke.format_run_report
+
+        def recording_format(arm_name, outcome):
+            outcomes[arm_name] = outcome
+            return real_format(arm_name, outcome)
+
+        monkeypatch.setattr(smoke, "format_run_report", recording_format)
+
+        def run(by_call=None):
+            run_smoke(world, by_call=by_call)
+            toolkit_report, bare_report = capsys.readouterr().out.split("[bare] status:")
+            return {"toolkit": toolkit_report, "bare": bare_report}, outcomes
+
+        return run
+
+    def test_file_tool_calls_print_in_order_with_their_status_and_leave_out_other_tools(self, world, reports):
+        reviewer = str(world.config_dir / "agents" / "reviewer.md")
+        toolkit = Scenario(tool_calls=[
+            ("Read", {"file_path": reviewer}, False),
+            ("Edit", {"file_path": "src/app.py"}, True),
+            ("Bash", {"command": "ls"}, False),
+            ("Write", {"file_path": "src/extra.py"}, False),
+        ])
+
+        printed, _outcomes = reports(agent_scenarios(toolkit=toolkit))
+
+        assert (
+            f"  file tool calls: ['Read {reviewer} (ran)', 'Edit src/app.py (denied)', 'Write src/extra.py (ran)']"
+            in printed["toolkit"].splitlines()
+        )
+
+    def test_a_run_with_no_file_tool_calls_prints_an_empty_list(self, reports):
+        printed, _outcomes = reports(agent_scenarios(bare=Scenario(tool_calls=[("Bash", {"command": "ls"}, False)])))
+
+        assert "  file tool calls: []" in printed["bare"].splitlines()
+
+    def test_changed_paths_print_for_a_run_that_changed_a_file(self, reports):
+        printed, _outcomes = reports()
+
+        assert "  changed paths: ['src/new_module.py']" in printed["toolkit"].splitlines()
+
+    def test_changed_paths_print_empty_for_a_run_that_changed_nothing(self, reports):
+        printed, _outcomes = reports(agent_scenarios(bare=Scenario(edit=lambda _fixture_dir: None)))
+
+        assert "  changed paths: []" in printed["bare"].splitlines()
+        assert "  changed paths: ['src/new_module.py']" in printed["toolkit"].splitlines()
+
+    def test_the_metrics_line_reports_test_scope_code_lines_beside_the_non_test_figure(self, reports):
+        def write_only_a_test(fixture_dir):
+            (fixture_dir / "tests").mkdir()
+            (fixture_dir / "tests" / "test_new.py").write_text("first = 1\nsecond = 2\nthird = 3\n")
+
+        def write_only_non_test_code(fixture_dir):
+            (fixture_dir / "src" / "other_module.py").write_text('"""Two words."""\n# three more words\nvalue = 1\nother = 2\n')
+
+        printed, _outcomes = reports(agent_scenarios(
+            toolkit=Scenario(edit=write_only_non_test_code), bare=Scenario(edit=write_only_a_test),
+        ))
+
+        assert "  changed paths: ['tests/test_new.py']" in printed["bare"].splitlines()
+        assert "  metrics: non-test code lines 0, test code lines 3, comment-plus-docstring words 0" in printed["bare"]
+        assert "  changed paths: ['src/other_module.py']" in printed["toolkit"].splitlines()
+        assert "  metrics: non-test code lines 2, test code lines 0, comment-plus-docstring words 5" in printed["toolkit"]
+
+    def test_a_run_with_no_transcript_says_so_in_one_line_and_lists_no_calls(self, smoke_outcomes):
+        outcome = smoke_outcomes["toolkit"]
+        without_transcript = dataclasses.replace(outcome, final=dataclasses.replace(outcome.final, transcript=None))
+
+        lines = smoke.format_run_report("toolkit", without_transcript)
+
+        assert [line for line in lines if "file tool calls" in line] == [
+            "  file tool calls: not shown, the transcript is not available",
+        ]
+        assert "  changed paths: ['src/new_module.py']" in lines
+
+    def test_a_call_with_no_result_prints_as_unanswered(self, smoke_outcomes, tmp_path):
+        outcome = smoke_outcomes["toolkit"]
+        pending_write = [_assistant([_tool_use("toolu_1", "Write", {"file_path": "src/pending.py"})])]
+        with_unanswered_call = dataclasses.replace(
+            outcome, final=dataclasses.replace(outcome.final, transcript=_transcript(tmp_path, pending_write)),
+        )
+
+        lines = smoke.format_run_report("toolkit", with_unanswered_call)
+
+        assert "  file tool calls: ['Write src/pending.py (unanswered)']" in lines
+
+    def test_an_unreadable_transcript_says_the_list_may_be_incomplete_and_gives_the_reason(self, smoke_outcomes, tmp_path):
+        outcome = smoke_outcomes["toolkit"]
+        unreadable = checks.read_subagent_transcript(tmp_path / "absent.jsonl")
+        with_unreadable_transcript = dataclasses.replace(
+            outcome, final=dataclasses.replace(outcome.final, transcript=unreadable),
+        )
+
+        lines = smoke.format_run_report("toolkit", with_unreadable_transcript)
+
+        assert [line for line in lines if "file tool calls" in line] == [
+            f"  file tool calls (list may be incomplete: unreadable: {unreadable.unreadable_detail}): []",
+        ]
+
+    @pytest.mark.parametrize(
+        ("damage", "named_signals"),
+        [("torn", "last line torn; 1 skipped lines"), ("skip", "1 skipped lines")],
+        ids=["torn-last-line", "skipped-line"],
+    )
+    def test_a_missing_run_with_a_damaged_sidecar_prints_what_it_could_read_and_no_captured_change(
+        self, reports, damage, named_signals,
+    ):
+        damaged = Scenario(tool_calls=[("Read", {"file_path": "src/app.py"}, False)], damage_sidecar=damage)
+
+        printed, _outcomes = reports(agent_scenarios(toolkit=damaged))
+
+        toolkit_lines = printed["toolkit"].splitlines()
+        assert "[toolkit] status: missing (transcript-unreadable)" in toolkit_lines
+        assert (
+            f"  file tool calls (list may be incomplete: {named_signals}): ['Read src/app.py (ran)']" in toolkit_lines
+        )
+        assert "  changed paths: not captured" in toolkit_lines
+        assert not any(line.startswith("  metrics:") for line in toolkit_lines)
+
+
 class TestFailedConditions:
     def failing(self, world, capsys, by_call):
         exit_code, _stub = run_smoke(world, by_call=by_call)
@@ -142,6 +299,55 @@ class TestFailedConditions:
 
         assert exit_code == 2 and final.startswith("instrument: read-grant-unexercised")
         assert not smoke_pass_exists(world)
+
+    @pytest.mark.parametrize(
+        "toolkit_tool_calls",
+        [
+            [("Read", {"file_path": "src/app.py"}, False)],
+            [("Read", {"file_path": "src/app.py"}, False), ("Edit", {"file_path": "src/app.py"}, True)],
+        ],
+        ids=["reads-only", "its-edit-was-denied"],
+    )
+    def test_the_unexercised_detail_says_no_edit_ran_when_the_toolkit_transcript_has_no_write_call_that_ran(
+        self, world, capsys, toolkit_tool_calls,
+    ):
+        exit_code, output, _final = self.failing(
+            world, capsys, agent_scenarios(toolkit=Scenario(tool_calls=toolkit_tool_calls)),
+        )
+
+        assert exit_code == 2
+        assert (
+            "failed: read-grant-unexercised: no toolkit Read of an allow-list path ran; the toolkit run made no Edit, "
+            "MultiEdit, Write or NotebookEdit call that ran, so the reviewer-file Reads the self-review requires after "
+            "an edit may not have been triggered"
+        ) in output.splitlines()
+
+    def test_the_unexercised_detail_is_unchanged_when_the_toolkit_transcript_has_an_edit_that_ran(self, world, capsys):
+        edited = Scenario(tool_calls=[
+            ("Read", {"file_path": "src/app.py"}, False), ("Edit", {"file_path": "src/app.py"}, False),
+        ])
+
+        _exit_code, output, _final = self.failing(world, capsys, agent_scenarios(toolkit=edited))
+
+        assert "failed: read-grant-unexercised: no toolkit Read of an allow-list path ran" in output.splitlines()
+
+    def test_a_completed_toolkit_run_with_no_transcript_gets_the_plain_detail(self, world, capsys):
+        no_sidecar = Scenario(after_write=delete_sidecar_transcript)
+
+        _exit_code, output, _final = self.failing(world, capsys, agent_scenarios(toolkit=no_sidecar))
+
+        assert "failed: read-grant-unexercised: no toolkit Read of an allow-list path ran" in output.splitlines()
+
+    @pytest.mark.parametrize("damage", ["skip", "torn"])
+    def test_a_missing_toolkit_run_with_an_unclean_transcript_and_no_listed_read_gets_the_plain_detail(
+        self, world, capsys, damage,
+    ):
+        damaged = Scenario(tool_calls=[("Read", {"file_path": "src/app.py"}, False)], damage_sidecar=damage)
+
+        _exit_code, output, _final = self.failing(world, capsys, agent_scenarios(toolkit=damaged))
+
+        assert "failed: transcript-unreadable: toolkit run missing" in output.splitlines()
+        assert "failed: read-grant-unexercised: no toolkit Read of an allow-list path ran" in output.splitlines()
 
     def test_a_failed_smoke_removes_the_accounts_existing_smoke_pass_and_keeps_another_accounts(self, world, capsys):
         smoke_pass.write_smoke_pass(world.local_dir, world.account.key, READING, MODEL_ID, ("toolkit", "bare"))
