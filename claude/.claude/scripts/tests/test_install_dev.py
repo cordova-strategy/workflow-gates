@@ -57,6 +57,9 @@ Tests exercise the critical branches:
     - a pinned interpreter that builds a venv on another minor → the
       verification failure, with no `Done.` line
     - a healthy .venv on the pinned minor needs no python<X.Y> on PATH
+11. The stub writers (`_write_stub`, `_make_claude_shim`): one write leaves
+    one warm exec of the stub and the prewarm guard line, and the `claude`
+    shim's call log stays absent.
 
 PATH stubs replace the pinned python<X.Y> interpreter so tests run in isolation
 without mutating the real .venv. The repo_root_stub fixture writes a tests.yml
@@ -82,7 +85,13 @@ import textwrap
 from pathlib import Path
 
 import pytest
-from helpers import build_path_without, link_bash_into
+from helpers import (
+    assert_stub_written_warm,
+    build_path_without,
+    link_bash_into,
+    record_subprocess_runs,
+    write_prewarmed_stub,
+)
 
 # install-dev.sh lives at the repo root: climb from scripts/tests/ (parents[0])
 # → scripts/ (parents[1]) → claude/.claude/ (parents[2]) → claude/ (parents[3])
@@ -104,10 +113,7 @@ BUILT_VENV_MARKER = Path("lib") / "built_by_pinned_interpreter_marker"
 def _write_stub(bin_dir: Path, name: str, body: str) -> Path:
     """Write an executable bash stub at bin_dir/name."""
     bin_dir.mkdir(parents=True, exist_ok=True)
-    stub = bin_dir / name
-    stub.write_text("#!/bin/bash\n" + body)
-    stub.chmod(0o755)
-    return stub
+    return write_prewarmed_stub(bin_dir / name, "#!/bin/bash\n" + body)
 
 
 def _script_env(
@@ -413,8 +419,7 @@ def _make_claude_shim(
     plugin_json = "[]" if plugins is None else json.dumps(
         [{"id": pid, "scope": scope, "projectPath": project_path} for pid, scope, project_path in plugins]
     )
-    stub = bin_dir / "claude"
-    stub.write_text(textwrap.dedent(f"""\
+    return write_prewarmed_stub(bin_dir / "claude", textwrap.dedent(f"""\
         #!/bin/bash
         printf '%s\\n' "$*" >> '{call_log}'
         if [ "$1" = "plugin" ] && [ "$2" = "marketplace" ] && [ "$3" = "list" ]; then
@@ -436,8 +441,6 @@ def _make_claude_shim(
         fi
         exit 1
     """))
-    stub.chmod(0o755)
-    return stub
 
 
 def _link_real_jq(bin_dir: Path) -> None:
@@ -603,9 +606,7 @@ class TestUnhealthyVenvIsRecreated:
         # conjunct fails first and the dependency import is never reached.
         venv_bin = repo_root_stub / ".venv" / "bin"
         venv_bin.mkdir(parents=True)
-        venv_python = venv_bin / "python"
-        venv_python.write_text("#!/bin/bash\nexit 1\n")
-        venv_python.chmod(0o755)
+        _write_stub(venv_bin, "python", "exit 1\n")
 
         # A sentinel file adjacent to .venv — must survive the rm -rf .venv.
         adjacent_file = repo_root_stub / "sentinel.txt"
@@ -1408,3 +1409,25 @@ class TestConfirmPluginInstall:
             f"EOF must not trip set -e; got {result.returncode}, stderr: {result.stderr}"
         )
         assert result.stdout.strip() == "declined", result.stdout
+
+
+class TestStubWritersWarmTheStubTheyWrite:
+    """A writer that skips `write_prewarmed_stub` leaves each stub's first exec to the code under test."""
+
+    def test_write_stub_leaves_one_warm_exec_and_the_guard_line(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        recorded_calls = record_subprocess_runs(monkeypatch)
+
+        stub = _write_stub(tmp_path / "bin", "pip", "exit 0\n")
+
+        assert_stub_written_warm(recorded_calls, stub)
+
+    def test_make_claude_shim_leaves_one_warm_exec_and_the_guard_line_without_a_call_log(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ):
+        recorded_calls = record_subprocess_runs(monkeypatch)
+        call_log = tmp_path / "claude_calls.log"
+
+        shim = _make_claude_shim(tmp_path / "bin", marketplaces=[], plugins=[], call_log=call_log)
+
+        assert_stub_written_warm(recorded_calls, shim)
+        assert not call_log.exists(), "the warm exec must not run the shim's logging line"

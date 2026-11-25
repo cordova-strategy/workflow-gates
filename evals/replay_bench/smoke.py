@@ -18,7 +18,7 @@ from replay_bench import arms as arms_mod
 from replay_bench import checks, smoke_pass
 from replay_bench import tasks as tasks_mod
 from replay_bench.account import Account
-from replay_bench.attempt import Launch, RunSettings
+from replay_bench.attempt import NO_RETRY_REASONS, Launch, RunSettings
 from replay_bench.campaign import ATTEMPTS_DIR_NAME, CAMPAIGNS_DIR_NAME, SPEND_NAME, STORE_DIR_NAME
 from replay_bench.provenance import NO_READING
 from replay_bench.runner import BlockOutcome, RunOutcome, run_block
@@ -27,6 +27,8 @@ from replay_bench.spend import SpendAppendError, SpendFile
 SMOKE_ARM_NAMES = (arms_mod.TOOLKIT.name, arms_mod.BARE.name)
 CONDITION_READ_GRANT_DENIED = "read-grant-denied"
 CONDITION_READ_GRANT_UNEXERCISED = "read-grant-unexercised"
+# The printed nominal ceiling still counts two attempts per run, as an upper bound.
+SMOKE_NO_RETRY_REASONS = NO_RETRY_REASONS | {review_runner.MISSING_REASON_TIMEOUT}
 
 
 @dataclass(frozen=True)
@@ -168,7 +170,7 @@ def run_smoke(
             campaign_id=campaign_id, attempts_root=campaign_dir / ATTEMPTS_DIR_NAME, local_dir=config.local_dir,
             model_id=config.model_id, budget_cap_usd=config.budget_cap_usd, timeout_s=config.timeout_s,
             fixture_git_timeout_s=config.fixture_git_timeout_s, run_store=run_store, spend=spend,
-            runner_environ=runner_environ, launch=launch, runner=NO_READING,
+            runner_environ=runner_environ, launch=launch, runner=NO_READING, no_retry_reasons=SMOKE_NO_RETRY_REASONS,
         )
         try:
             block = run_block(settings, task, account, SMOKE_ARM_NAMES, 1, config.seed, EnvironmentReference())

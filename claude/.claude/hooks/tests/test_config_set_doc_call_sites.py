@@ -104,6 +104,10 @@ EXPECTED_SITES: dict[str, tuple[tuple[str, str], ...]] = {
         ("handoff_nudge", "false"),
         ("handoff_nudge", "true"),
     ),
+    "docs/hooks.md": (
+        ("session_title_from_branch", "false"),
+        ("consume_durable_continuity", "false"),
+    ),
     "docs/memory-audit-nudge.md": (("memory_audit_nudge", "false"), ("memory_audit_nudge", "true")),
     "docs/permission-prompt-tracking.md": (
         ("permission_prompt_tracking", "true"),

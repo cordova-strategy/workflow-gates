@@ -248,6 +248,11 @@ ceiling = 2047
 verdict = "split pending"
 seam = "Liveness probes (`_ps_lstart`, `_entry_liveness`, `_boot_time`), evidence readers (`_read_registry`, `_read_lock`, `_scan_transcripts`, `_read_session_end_records`), classification (`_classify_session`), rendering (`render_report`, `render_json`)"
 
+["claude/.claude/scripts/relocate-claude-config.sh"]
+ceiling = 1100
+verdict = "structural exception"
+reason = "install.sh installs it as a standalone real-file copy at ~/.local/bin/relocate-claude-config that must run while ~/.claude is broken, so it sources no sibling file and every split would change how it is installed (the script's header; install.sh's real-file-copy step)."
+
 ["claude/.claude/scripts/select-tests.py"]
 ceiling = 1557
 verdict = "split pending"
@@ -285,7 +290,7 @@ verdict = "split pending"
 seam = "Test-class families by translation: output table (`TestOutputTable`), coverage guards (`TestHookOutputKeyCoverage`, `TestFieldTableCoverage`, `TestRequiredKeyPaths`), repo resolution (`TestRepoResolution`), tool translation (`TestDeleteTranslation`, `TestWriteTranslation`, `TestToolResponseTranslation`)"
 
 ["claude/.claude/scripts/tests/test_install_dev.py"]
-ceiling = 1410
+ceiling = 1433
 verdict = "split pending"
 seam = "Test-class families by install step: venv creation and recovery (`TestUnhealthyVenvIsRecreated`, `TestIdempotency`, `TestEnsurepipMissingDebian`), pinned interpreter (`TestPinnedInterpreter`, `TestPinnedInterpreterFailsToStart`), opt-in gate (`TestPrivateProjectsGate`), plugin step (`TestPyrightLspStep`, `TestConfirmPluginInstall`)"
 
@@ -471,7 +476,7 @@ verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 
 ["claude/.claude/tests/helpers.py"]
-ceiling = 4193
+ceiling = 4200
 verdict = "structural exception"
 reason = "#1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file. A helper used by one test tree goes in that tree's local module, not in helpers.py."
 

@@ -138,6 +138,12 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - Backups now get a unique `<name>.<suffix>` name, with or without the file, so two same-named links in one run no longer replace each other's backup.
   - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
   - **Migration:** after a relocation that left a listed account's links pointing at the old location, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.
+- **`relocate-claude-config` now runs `git worktree repair` in both modes for the linked worktrees under `<checkout>/.claude/worktrees/`, one ticket directory deep included.** The same run reaches every other existing linked worktree the checkout records.
+  - A `--repair` destination's worktree records choose which existing directories `git worktree repair` may write a `.git` file in. The run names each one it does not pass to git before the repair.
+  - A record whose path does not exist is reported, and the run still exits 0. Nothing is pruned or deleted.
+  - A run that exited 0 before can exit 3 now, and `--repair` is the retry. That happens when git reports an error for a linked worktree or listing the checkout's worktrees fails.
+  - **Migration:** run `./install.sh` before your next relocation, because `git pull` does not refresh the installed copy.
+  - **Migration:** for linked worktrees a past relocation left unlinked, run `./install.sh` from the checkout, then `relocate-claude-config --repair [--allow-outside-home] <checkout path>` with the flag when the first run passed it.
 - **Eval instruments that launch `claude -p` no longer score a prompt a hook blocked as a model miss, except a plain-text block from a hook that prints no `main-session-rules: prompt blocked` line.**
   - `run_skill_evals.py`, the subagent model resolution experiment and the explore recall gate raise `BlockedPromptError`, and review bench records the run missing with reason `blocked-prompt`.
   - `run_skill_evals.py`'s plain-text calls recognize only stdout carrying `main-session-rules: prompt blocked`.

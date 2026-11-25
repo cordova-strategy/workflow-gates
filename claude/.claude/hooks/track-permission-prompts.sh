@@ -3,7 +3,7 @@
 # Notification hook (matcher permission_prompt): appends the raw hook
 # payload -- redacted for credential-shaped strings, with one added
 # `logged_at` field -- to a local, gitignored JSONL log, when the
-# per-developer sentinel file ~/.claude/track-permission-prompts exists.
+# permission_prompt_tracking config key resolves true.
 # This hook only logs: it gates nothing, blocks nothing, and has no deny
 # primitive.
 #
@@ -28,8 +28,10 @@
 #   atomic, so a symlink planted in the narrow window between them would
 #   still be followed -- requires local write access to $CONFIG_DIR already.
 #
-# Kill switch: absence of ~/.claude/track-permission-prompts. Opt-in, not
-# on-by-default -- `touch ~/.claude/track-permission-prompts` to enable.
+# Opt-in: off by default until the permission_prompt_tracking config key
+# resolves true.
+# docs/permission-prompt-tracking.md "Activation" and "How to disable" have
+# the config-set.sh commands.
 set -uo pipefail
 
 # Fail-open on malformed stdin: exiting non-zero would break the

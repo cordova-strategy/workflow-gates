@@ -348,7 +348,7 @@ VALID_EFFORT_LEVELS = {"low", "medium", "high", "xhigh", "max"}
   repo) and wasn't part of this request.
 - Changing the session-level default itself, or the `CLAUDE_EFFORT` /
   `claude-auto` launcher env var discovered earlier this session — that's
-  personal-machine tooling (`workstation-setup`), outside this repo.
+  personal-machine tooling (`<private-setup-repo>`), outside this repo.
 - Cross-checking each agent's pinned `model:` against a per-model valid-
   effort-levels table, so a future `model:` change can't silently desync
   from an incompatible `effort:` tier (flagged during this plan's own
