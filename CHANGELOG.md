@@ -760,6 +760,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Removed
 
+- **The default-off `/code-review` fix-plan pilot is removed.** Every stow consumer's `code-review/SKILL.md` loses the `DISPOSITION_RULE` region that ran `config-get.sh architect_fix_plan_pilot` on each round with a reviewer-spawned finding, so those rounds no longer make that call. No skill reads the key, and its row stays in `config-keys.psv` at `false`. The row stays because the session config-keys recorder logs it, the routing guard reads that log, and a scaffolded `claude-config.toml` that holds it reads without a warning. Set the key `false` on any account that enabled it. A leftover `true` changes no behavior, but the routing guard still labels it `on`. See `docs/session-config-keys-log.md`, `docs/transcript-analysis.md` § "routing-guard" and `docs/design-decisions/architect-fix-plan-pilot-not-adopted.md`.
 - **Python older than 3.14 is no longer supported: install Python 3.14 or newer so its `python3` is first on the PATH Claude Code starts with.**
   - 3.14 is the one minor CI tests. `_config.sh` holds the floor, and a test fails when it, `README.md`'s floor or ruff's `target-version` differs from CI's pin.
   - `install.sh` exits before changing anything when `python3` reports a lower version or none it can read.
