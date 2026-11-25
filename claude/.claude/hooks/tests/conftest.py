@@ -51,7 +51,7 @@ def pytest_report_header(config):
     if shutil.which("shfmt") is None:
         return (
             "shfmt: not on PATH; the shell-syntax-tree tests skip without it."
-            ' README.md § "Requirements" gives the install routes.'
+            " Install the build that .github/workflows/tests.yml pins."
         )
     return None
 

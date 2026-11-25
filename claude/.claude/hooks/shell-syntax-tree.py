@@ -41,28 +41,32 @@ The sets follow mvdan.cc/sh/v3: `syntax/nodes.go` for the struct fields, `syntax
 for the operators, and `syntax/typedjson/json.go` for the encoding. The conformance
 corpus in the tests confirms them against the shfmt on PATH.
 The encoder writes a field only when it holds a non-zero value, so a key's absence means
-the zero value. ALWAYS_PRESENT_KEYS lists the keys that real shfmt writes on every node of
-a struct, less four exceptions that hold no command and that no check reads: CaseItem.Op,
-ForClause.DoPos, ForClause.DonePos and IfClause.FiPos.
-A key that a valid command can leave at zero is not listed, so a shfmt that drops one,
-such as Stmt.Cmd, CallExpr.Args or CmdSubst.Stmts, from a node holding commands is not detected.
-The Lit.Value caveat: Lit.Value is listed, although shfmt omits it for an empty `Lit`. That breaks
-the rule that a listed key is on every node, and the rule that a key a valid command can leave at
-zero is not listed. A valid command that makes an empty `Lit` exits 5, as when an unquoted heredoc line
-ends in a backslash directly before an expansion, or an extglob holds only a continuation.
-That refusal fails closed and is accepted by shape.
+the zero value. ALWAYS_PRESENT_KEYS records the keys it lists and the limits of that list.
 
-A quoted heredoc body and a comment hold no command nodes. A `#` placed directly after the end of
-a word part, with no blank between, is a comment to shfmt and part of the word to bash, so it can
-hide what follows it on its line. Quotes, expansions, extglob patterns and array literals end word
-parts this way. It hides inside parentheses, a substitution, backticks or a `case` arm, and after
-an array literal's closing `)` anywhere. The walker descends every
-list and object value of every node, so it reaches a command nested in an assignment
-value, a declaration argument, a redirect target, an unquoted heredoc body, a process
-substitution, a `for` word list, `[[ ]]`, `(( ))`, a parameter default or an array
-element. The walker keeps its own stack, so tree depth cannot reach the recursion limit.
+A quoted heredoc body and a comment hold no command nodes.
+
+A `#` placed directly after the end of a word part, with no blank between, is a comment to shfmt and
+part of the word to bash, so it can hide what follows it on its line. This is an accepted gap: the
+`flush-comment-` entries in UNGUARDED_DIVERGENCE_FIXTURES, in tests/_shell_syntax_tree_runners.py,
+pin it. Quotes, expansions, extglob patterns and array literals end word parts this way.
+It hides inside parentheses, a substitution, backticks or a `case` arm, and after an array
+literal's closing `)` anywhere.
+
+The walker descends every list and object value of every node, so it reaches a command in any of
+these positions:
+  - an assignment value
+  - a declaration argument
+  - a redirect target
+  - an unquoted heredoc body
+  - a process substitution
+  - a `for` word list
+  - `[[ ]]` and `(( ))`
+  - a parameter default
+  - an array element
+The walker keeps its own stack, so tree depth cannot reach the recursion limit.
+
 An `ExtGlob` pattern is one raw `Lit`, so the walker cannot reach a command inside it.
-The check does not recognize a pattern that holds a substitution marker, for that reason.
+The check exits 5 on a pattern that holds a substitution marker, because the walker cannot reach one.
 
 A word's non-literal parts become a fixed placeholder that begins with `$`, with the
 literal text on both sides kept. `--body-file="$F"` therefore yields the one word
@@ -86,7 +90,7 @@ EXPANSION_PLACEHOLDER = "$(expansion)"
 KNOWN_BINARY_OPERATORS = frozenset({"&&", "||", "|", "|&"})
 
 # Dialect-only node types that `-ln bash` rejects with exit 1, so they never reach this
-# module from the gates. `TestDecl` is `@test` in bats and `FlagsArithm` is a zsh subscript flag such as `${a[(r)x]}`.
+# module. `TestDecl` is `@test` in bats and `FlagsArithm` is a zsh subscript flag such as `${a[(r)x]}`.
 # A tree that holds one is not a bash tree and is not recognized.
 BASH_REJECTED_NODE_TYPES = frozenset({"TestDecl", "FlagsArithm"})
 
@@ -215,7 +219,9 @@ NODE_FIELDS = {
 # Four keys hold no command and no check reads them, so they stay unlisted by name:
 # CaseItem.Op, ForClause.DoPos, ForClause.DonePos and IfClause.FiPos.
 # A dropped key that a valid command can omit, such as Stmt.Cmd or CallExpr.Args, is not detected.
-# The Lit.Value caveat: Lit.Value is listed although shfmt omits it for an empty `Lit`, so a valid command that makes one exits 5.
+# The Lit.Value caveat: Lit.Value is listed although shfmt omits it for an empty `Lit`, so a valid command that makes one exits 5,
+# as when an unquoted heredoc line ends in a backslash directly before an expansion, or an extglob holds only a continuation.
+# That refusal fails closed.
 # `Pos` and `End` are not listed because an empty `File` carries neither.
 ALWAYS_PRESENT_KEYS = {
     "ArithmCmd": ("Left", "Right", "X"),
@@ -400,8 +406,8 @@ def flatten_word(word):
     """The text bash would see for `word`, with each run-time expansion replaced by EXPANSION_PLACEHOLDER.
 
     A backslash-newline that bash removes before it reads an expansion can leave a word here that differs from bash's.
-    The cut residual in docs/design-decisions/tokenizing-gates-parse-with-shfmt.md lists those placements.
-    A later change adds that file.
+    The `backslash-newline-` entries in UNGUARDED_DIVERGENCE_FIXTURES, in tests/_shell_syntax_tree_runners.py,
+    list those placements.
     """
     pieces = []
     for part in word.get("Parts", ()):

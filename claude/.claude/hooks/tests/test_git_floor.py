@@ -18,20 +18,31 @@ from __future__ import annotations
 import functools
 import os
 import re
-import shutil
 import stat
 import subprocess
 from pathlib import Path
 
 import pytest
-from helpers import REPO_ROOT, ci_test_slice_job
+from helpers import (
+    BASH_PATH,
+    PIN_STEP_LOGGING_STUB,
+    REPO_ROOT,
+    ci_test_slice_step,
+    completed_process_output,
+    pin_step_calls_to,
+    pin_step_sudo_stub,
+    run_pin_step_script,
+    write_prewarmed_stub,
+)
 
 from .test_bash_floor import README_REQUIREMENTS, exact_output_env, readme_requirements_bullet
+
+# test_python_floor.py and test_check_python_floor.py import this name from here.
+_output_of = completed_process_output
 
 _INSTALL_SH = REPO_ROOT / "install.sh"
 _PIN_STEP_ID = "pin-git"
 _CONFIG_SH_REPO_PATH = Path("claude") / ".claude" / "hooks" / "_config.sh"
-_BASH = shutil.which("bash") or "bash"
 
 _FIXTURE_START = "# INSTALL_TEST_FIXTURE: git-floor-check — start\n"
 _FIXTURE_END = "# INSTALL_TEST_FIXTURE: git-floor-check — end"
@@ -65,6 +76,7 @@ def _git_minimum_version() -> str:
     return match.group(1)
 
 
+# Imported by test_python_floor.py and test_check_python_floor.py.
 def _write_executable(path: Path, text: str) -> None:
     path.write_text(text)
     path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -72,7 +84,7 @@ def _write_executable(path: Path, text: str) -> None:
 
 def _write_git_stub(bin_dir: Path, *, version_script: str) -> None:
     """A `git` that runs `version_script` for the argv `--version` and exits 64 silently for any other argv."""
-    _write_executable(
+    write_prewarmed_stub(
         bin_dir / "git",
         "#!/bin/sh\n"
         'if [ "$#" -eq 1 ] && [ "$1" = "--version" ]; then\n'
@@ -96,17 +108,13 @@ def _run_git_floor_check(
     env = {"PATH": str(bin_dir), "HOME": str(tmp_path)}
     script = "set -e\n" + _extract_git_floor_check_block() + f"\necho '{_AFTER_BLOCK_SENTINEL}'\n"
     return subprocess.run(
-        [_BASH, "-c", script],
+        [BASH_PATH, "-c", script],
         capture_output=True,
         text=True,
         check=False,
         env=env,
         timeout=_BASH_RUN_TIMEOUT_SECONDS,
     )
-
-
-def _output_of(result: subprocess.CompletedProcess) -> str:
-    return f"stdout={result.stdout!r} stderr={result.stderr!r}"
 
 
 class TestGitFloorCheckBlock:
@@ -126,9 +134,9 @@ class TestGitFloorCheckBlock:
     ) -> None:
         result = _run_git_floor_check(tmp_path, version_script=f"echo 'git version {reported_version}'")
 
-        assert result.returncode == 0, _output_of(result)
-        assert result.stderr == "", _output_of(result)
-        assert result.stdout == f"{_AFTER_BLOCK_SENTINEL}\n", _output_of(result)
+        assert result.returncode == 0, completed_process_output(result)
+        assert result.stderr == "", completed_process_output(result)
+        assert result.stdout == f"{_AFTER_BLOCK_SENTINEL}\n", completed_process_output(result)
 
     @pytest.mark.parametrize(
         "reported_version",
@@ -145,11 +153,11 @@ class TestGitFloorCheckBlock:
     ) -> None:
         result = _run_git_floor_check(tmp_path, version_script=f"echo 'git version {reported_version}'")
 
-        assert result.returncode == 1, _output_of(result)
-        assert _AFTER_BLOCK_SENTINEL not in result.stdout, _output_of(result)
-        assert reported_version in result.stderr, _output_of(result)
-        assert _git_minimum_version() in result.stderr, _output_of(result)
-        assert README_REQUIREMENTS.text in result.stderr, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert _AFTER_BLOCK_SENTINEL not in result.stdout, completed_process_output(result)
+        assert reported_version in result.stderr, completed_process_output(result)
+        assert _git_minimum_version() in result.stderr, completed_process_output(result)
+        assert README_REQUIREMENTS.text in result.stderr, completed_process_output(result)
 
     @pytest.mark.parametrize(
         "version_script",
@@ -165,10 +173,10 @@ class TestGitFloorCheckBlock:
     ) -> None:
         result = _run_git_floor_check(tmp_path, version_script=version_script)
 
-        assert result.returncode == 1, _output_of(result)
-        assert _AFTER_BLOCK_SENTINEL not in result.stdout, _output_of(result)
-        assert _git_minimum_version() in result.stderr, _output_of(result)
-        assert README_REQUIREMENTS.text in result.stderr, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert _AFTER_BLOCK_SENTINEL not in result.stdout, completed_process_output(result)
+        assert _git_minimum_version() in result.stderr, completed_process_output(result)
+        assert README_REQUIREMENTS.text in result.stderr, completed_process_output(result)
 
 
 class TestGitFloorCheckDiagnostics:
@@ -184,15 +192,15 @@ class TestGitFloorCheckDiagnostics:
     def test_both_failures_name_the_git_that_won_path(self, tmp_path: Path, version_script: str) -> None:
         result = _run_git_floor_check(tmp_path, version_script=version_script)
 
-        assert result.returncode == 1, _output_of(result)
-        assert f"git resolved on PATH: {tmp_path / 'bin' / 'git'}\n" in result.stderr, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert f"git resolved on PATH: {tmp_path / 'bin' / 'git'}\n" in result.stderr, completed_process_output(result)
 
     def test_a_path_with_no_git_says_none_was_found(self, tmp_path: Path) -> None:
         result = _run_git_floor_check(tmp_path, version_script=None)
 
-        assert result.returncode == 1, _output_of(result)
-        assert "git resolved on PATH: none found\n" in result.stderr, _output_of(result)
-        assert _AFTER_BLOCK_SENTINEL not in result.stdout, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert "git resolved on PATH: none found\n" in result.stderr, completed_process_output(result)
+        assert _AFTER_BLOCK_SENTINEL not in result.stdout, completed_process_output(result)
 
     def test_a_warning_line_before_a_valid_version_is_refused_and_quoted(self, tmp_path: Path) -> None:
         """A wrapper that prints a warning ahead of `git version 2.43.0` is refused, and the message shows the warning."""
@@ -200,34 +208,34 @@ class TestGitFloorCheckDiagnostics:
             tmp_path, version_script="echo 'warning: shim fell back to a default'; echo 'git version 2.43.0'"
         )
 
-        assert result.returncode == 1, _output_of(result)
-        assert "warning: shim fell back to a default" in result.stderr, _output_of(result)
-        assert "exited with status 0" in result.stderr, _output_of(result)
-        assert _AFTER_BLOCK_SENTINEL not in result.stdout, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert "warning: shim fell back to a default" in result.stderr, completed_process_output(result)
+        assert "exited with status 0" in result.stderr, completed_process_output(result)
+        assert _AFTER_BLOCK_SENTINEL not in result.stdout, completed_process_output(result)
 
     def test_a_valid_version_with_a_failing_exit_status_is_refused_and_names_the_status(self, tmp_path: Path) -> None:
         """`git version 2.43.0` followed by exit status 1 is refused, and the message names that status."""
         result = _run_git_floor_check(tmp_path, version_script="echo 'git version 2.43.0'; exit 1")
 
-        assert result.returncode == 1, _output_of(result)
-        assert "exited with status 1" in result.stderr, _output_of(result)
-        assert 'printed "git version 2.43.0"' in result.stderr, _output_of(result)
-        assert _AFTER_BLOCK_SENTINEL not in result.stdout, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert "exited with status 1" in result.stderr, completed_process_output(result)
+        assert 'printed "git version 2.43.0"' in result.stderr, completed_process_output(result)
+        assert _AFTER_BLOCK_SENTINEL not in result.stdout, completed_process_output(result)
 
     def test_text_a_failing_git_wrote_to_stderr_reaches_stderr_unaltered(self, tmp_path: Path) -> None:
         """A version-manager shim that explains itself on stderr only is the case the passthrough exists for."""
         shim_explanation = "shim: no version of git is set for this directory"
         result = _run_git_floor_check(tmp_path, version_script=f"echo '{shim_explanation}' >&2; exit 1")
 
-        assert result.returncode == 1, _output_of(result)
-        assert f"{shim_explanation}\n" in result.stderr, _output_of(result)
-        assert result.stderr.count(shim_explanation) == 1, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert f"{shim_explanation}\n" in result.stderr, completed_process_output(result)
+        assert result.stderr.count(shim_explanation) == 1, completed_process_output(result)
 
     def test_silent_output_is_named_as_nothing(self, tmp_path: Path) -> None:
         result = _run_git_floor_check(tmp_path, version_script="exit 1")
 
-        assert result.returncode == 1, _output_of(result)
-        assert 'printed "<nothing>"' in result.stderr, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert 'printed "<nothing>"' in result.stderr, completed_process_output(result)
 
 
 @functools.cache
@@ -235,7 +243,7 @@ def python_floor_fields() -> tuple[str, str]:
     """The Python floor's major and minor as `_config.sh` holds them, read by sourcing it."""
     result = subprocess.run(
         [
-            _BASH,
+            BASH_PATH,
             "-c",
             '. "$1" && printf "%s %s" "$_PYTHON_FLOOR_MAJOR" "$_PYTHON_FLOOR_MINOR"',
             "_",
@@ -248,7 +256,7 @@ def python_floor_fields() -> tuple[str, str]:
     )
     fields = result.stdout.split(" ")
     assert result.returncode == 0 and len(fields) == 2 and all(field.isdigit() for field in fields), (
-        f"_config.sh did not yield the Python floor's two numeric fields: {_output_of(result)}"
+        f"_config.sh did not yield the Python floor's two numeric fields: {completed_process_output(result)}"
     )
     return fields[0], fields[1]
 
@@ -267,9 +275,9 @@ def run_install_sh_in_tmp_repo(
     stub_dir = tmp_path / "stubs"
     stub_dir.mkdir()
     for tool in _TOOLS_THAT_JUST_EXIT_ZERO:
-        _write_executable(stub_dir / tool, "#!/bin/sh\nexit 0\n")
-    _write_executable(stub_dir / "python3", python3_stub)
-    _write_executable(stub_dir / "claude", "#!/bin/sh\necho '2.1.295 (Claude Code)'\n")
+        write_prewarmed_stub(stub_dir / tool, "#!/bin/sh\nexit 0\n")
+    write_prewarmed_stub(stub_dir / "python3", python3_stub)
+    write_prewarmed_stub(stub_dir / "claude", "#!/bin/sh\necho '2.1.295 (Claude Code)'\n")
     _write_git_stub(stub_dir, version_script=git_version_script)
     home = tmp_path / "home"
     home.mkdir()
@@ -278,7 +286,7 @@ def run_install_sh_in_tmp_repo(
     env["PATH"] = f"{stub_dir}:/usr/bin:/bin"
 
     result = subprocess.run(
-        [_BASH, str(tmp_repo / "install.sh")],
+        [BASH_PATH, str(tmp_repo / "install.sh")],
         capture_output=True,
         text=True,
         check=False,
@@ -301,11 +309,11 @@ class TestGitFloorCheckPrecedesEveryMutation:
             git_version_script="echo 'git version 2.42.0'",
         )
 
-        assert result.returncode == 1, _output_of(result)
-        assert _git_minimum_version() in result.stderr, _output_of(result)
+        assert result.returncode == 1, completed_process_output(result)
+        assert _git_minimum_version() in result.stderr, completed_process_output(result)
         left_in_home = list(home.iterdir())
         assert left_in_home == [], (
-            f"install.sh changed HOME before the git floor check ended it: {left_in_home!r} {_output_of(result)}"
+            f"install.sh changed HOME before the git floor check ended it: {left_in_home!r} {completed_process_output(result)}"
         )
 
 
@@ -323,12 +331,7 @@ class TestMinimumVersionMatchesTheDocumentedRequirement:
 
 def _pin_step() -> dict:
     """The `pin-git` step of tests.yml's `test-slice` job, located by id."""
-    steps = ci_test_slice_job()["steps"]
-    pin_steps = [step for step in steps if step.get("id") == _PIN_STEP_ID]
-    assert len(pin_steps) == 1, (
-        f"Expected exactly one step with id: {_PIN_STEP_ID} in tests.yml -- did the step move or get renamed?"
-    )
-    return pin_steps[0]
+    return ci_test_slice_step(_PIN_STEP_ID)
 
 
 def _pin_step_env() -> dict:
@@ -394,30 +397,17 @@ _FIXTURE_PACKAGE_VERSION = "1:9.99.0-1fixture1"
 _APT_POLICY_TABLE_MARKER = "stub apt-cache policy table"
 
 # Stubs for the commands the pin step calls.
-# The logging stubs record `sudo ` ahead of a call that came through `sudo`.
-# Each argument is logged wrapped in `<` `>`, so a space inside one argument stays visible
-# and the log does not depend on the shebang bash's quoting rules.
-_LOGGING_STUB = """#!/bin/bash
-{ printf '%s%s' "${STUB_VIA_SUDO:+sudo }" "${0##*/}"; printf ' <%s>' "$@"; printf '\\n'; } >> "$STUB_LOG"
-"""
 # The `apt-get` stub exits 100 on the subcommand named by STUB_APT_GET_FAILS_ON, after an error line of its own.
 _APT_GET_STUB = (
-    _LOGGING_STUB
+    PIN_STEP_LOGGING_STUB
     + """if [ "$1" = "${STUB_APT_GET_FAILS_ON:-}" ]; then
   echo "E: stub apt-get $1 failed" >&2
   exit 100
 fi
 """
 )
-_APT_CACHE_STUB = _LOGGING_STUB + f"echo '{_APT_POLICY_TABLE_MARKER}'\n"
-# `sudo` accepts only `apt-get` and `apt-mark`, running the sibling stub of that name with STUB_VIA_SUDO set,
-# and exits 2 on any other command or flag form (such as `-n` or `env`).
-_SUDO_STUB = """#!/bin/bash
-case "$1" in
-  apt-get|apt-mark) STUB_VIA_SUDO=1 exec "${0%/*}/$1" "${@:2}" ;;
-  *) echo "sudo stub: unstubbed command $1" >&2; exit 2 ;;
-esac
-"""
+_APT_CACHE_STUB = PIN_STEP_LOGGING_STUB + f"echo '{_APT_POLICY_TABLE_MARKER}'\n"
+_SUDO_STUB = pin_step_sudo_stub("apt-get", "apt-mark")
 _GIT_VERSION_STUB = """#!/bin/bash
 echo 'git version 2.50.0'
 """
@@ -432,40 +422,20 @@ def _run_pin_step(
     """Run the `pin-git` step's `run:` body under bash against stub commands; return the result and the stubs' call log."""
     stub_dir = tmp_path / "stubs"
     stub_dir.mkdir()
-    stub_texts = {
-        "sudo": _SUDO_STUB,
-        "apt-get": _APT_GET_STUB,
-        "apt-mark": _LOGGING_STUB,
-        "apt-cache": _APT_CACHE_STUB,
-        "git": _GIT_VERSION_STUB,
-    }
-    for command, text in stub_texts.items():
-        _write_executable(stub_dir / command, text)
-    call_log = tmp_path / "stub-calls.log"
-    call_log.touch()
-    script_path = tmp_path / "pin-git-step.sh"
-    script_path.write_text(_pin_step()["run"])
-
-    env = {
-        "PATH": str(stub_dir),
-        "HOME": str(tmp_path),
-        "STUB_LOG": str(call_log),
-        "CI_GIT_PACKAGE_VERSION": _FIXTURE_PACKAGE_VERSION,
-        **(env_overrides or {}),
-    }
-    result = subprocess.run(
-        [_BASH, str(script_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-        env=env,
-        timeout=_BASH_RUN_TIMEOUT_SECONDS,
+    return run_pin_step_script(
+        tmp_path,
+        _pin_step()["run"],
+        stub_dir=stub_dir,
+        stub_texts={
+            "sudo": _SUDO_STUB,
+            "apt-get": _APT_GET_STUB,
+            "apt-mark": PIN_STEP_LOGGING_STUB,
+            "apt-cache": _APT_CACHE_STUB,
+            "git": _GIT_VERSION_STUB,
+        },
+        env={"PATH": str(stub_dir), "CI_GIT_PACKAGE_VERSION": _FIXTURE_PACKAGE_VERSION, **(env_overrides or {})},
+        timeout_seconds=_BASH_RUN_TIMEOUT_SECONDS,
     )
-    return result, call_log.read_text().splitlines()
-
-
-def _calls_to(call_log: list[str], command: str) -> list[str]:
-    return [line for line in call_log if line.startswith((f"{command} ", f"sudo {command} "))]
 
 
 class TestPinStepRunBody:
@@ -476,8 +446,8 @@ class TestPinStepRunBody:
     ) -> None:
         result, call_log = _run_pin_step(tmp_path)
 
-        assert result.returncode == 0, _output_of(result)
-        assert _APT_POLICY_TABLE_MARKER in result.stdout, _output_of(result)
+        assert result.returncode == 0, completed_process_output(result)
+        assert _APT_POLICY_TABLE_MARKER in result.stdout, completed_process_output(result)
         assert call_log == [
             "sudo apt-get <update> <--error-on=any>",
             "apt-cache <policy> <git> <git-man>",
@@ -489,26 +459,28 @@ class TestPinStepRunBody:
     def test_a_missing_package_version_exits_non_zero_naming_the_key(self, tmp_path: Path) -> None:
         result, call_log = _run_pin_step(tmp_path, env_overrides={"CI_GIT_PACKAGE_VERSION": ""})
 
-        assert result.returncode != 0, _output_of(result)
-        assert "CI_GIT_PACKAGE_VERSION" in result.stderr, _output_of(result)
+        assert result.returncode != 0, completed_process_output(result)
+        assert "CI_GIT_PACKAGE_VERSION" in result.stderr, completed_process_output(result)
         assert call_log == [], call_log
 
     def test_a_failing_index_refresh_exits_non_zero_and_makes_no_install_call(self, tmp_path: Path) -> None:
         result, call_log = _run_pin_step(tmp_path, env_overrides={"STUB_APT_GET_FAILS_ON": "update"})
 
-        assert result.returncode != 0, _output_of(result)
-        assert "E: stub apt-get update failed" in result.stdout + result.stderr, _output_of(result)
+        assert result.returncode != 0, completed_process_output(result)
+        assert "E: stub apt-get update failed" in result.stdout + result.stderr, completed_process_output(result)
         assert "sudo apt-get <update> <--error-on=any>" in call_log, call_log
-        assert not [line for line in _calls_to(call_log, "apt-get") if " <install> " in line], call_log
-        assert _calls_to(call_log, "apt-mark") == [], call_log
+        assert not [line for line in pin_step_calls_to(call_log, "apt-get") if " <install> " in line], call_log
+        assert pin_step_calls_to(call_log, "apt-mark") == [], call_log
 
     def test_a_failing_install_exits_1_explains_the_failure_and_does_not_hold(self, tmp_path: Path) -> None:
         result, call_log = _run_pin_step(tmp_path, env_overrides={"STUB_APT_GET_FAILS_ON": "install"})
 
-        assert result.returncode == 1, _output_of(result)
-        assert _INSTALL_FAILURE_SENTENCE in result.stderr, _output_of(result)
-        assert _FIXTURE_PACKAGE_VERSION in result.stderr, _output_of(result)
-        assert _APT_POLICY_TABLE_MARKER in result.stdout, _output_of(result)
-        assert "E: stub apt-get install failed" in result.stdout + result.stderr, _output_of(result)
-        assert [line for line in _calls_to(call_log, "apt-get") if line.startswith("sudo apt-get <install> ")], call_log
-        assert _calls_to(call_log, "apt-mark") == [], call_log
+        assert result.returncode == 1, completed_process_output(result)
+        assert _INSTALL_FAILURE_SENTENCE in result.stderr, completed_process_output(result)
+        assert _FIXTURE_PACKAGE_VERSION in result.stderr, completed_process_output(result)
+        assert _APT_POLICY_TABLE_MARKER in result.stdout, completed_process_output(result)
+        assert "E: stub apt-get install failed" in result.stdout + result.stderr, completed_process_output(result)
+        assert [
+            line for line in pin_step_calls_to(call_log, "apt-get") if line.startswith("sudo apt-get <install> ")
+        ], call_log
+        assert pin_step_calls_to(call_log, "apt-mark") == [], call_log

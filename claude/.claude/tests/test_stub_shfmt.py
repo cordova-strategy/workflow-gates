@@ -156,10 +156,10 @@ class TestRequireShfmt:
         monkeypatch.setenv("PATH", str(tmp_path))
         require_shfmt()
 
-    def test_skips_outside_ci_naming_the_requirements_section(self, tmp_path, monkeypatch):
+    def test_skips_outside_ci_naming_the_workflow_that_pins_the_build(self, tmp_path, monkeypatch):
         monkeypatch.setenv("PATH", str(tmp_path))
         monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
-        with pytest.raises(pytest.skip.Exception, match='README.md § "Requirements"'):
+        with pytest.raises(pytest.skip.Exception, match=r"install the build that \.github/workflows/tests\.yml pins"):
             require_shfmt()
 
     def test_fails_under_github_actions(self, tmp_path, monkeypatch):

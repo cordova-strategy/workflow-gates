@@ -3,7 +3,7 @@
 The classes up to `TestKnownSetsAreConsistent` need no shfmt, so a run without shfmt still pins the
 module's behavior on hand-built trees. Only one case there can skip: the locale case, which skips
 when no installed locale gives the interpreter a non-UTF-8 stdio. The classes below that line run real shfmt,
-through the gates' own argv: the conformance corpus that confirms every set in the module against
+with `_LIB_SHFMT_ARGV`: the conformance corpus that confirms every set in the module against
 real output, the dialect-only samples, the dialect pin and the child-position matrix. Each skips
 locally when shfmt is not installed and fails under GITHUB_ACTIONS.
 """
@@ -17,10 +17,12 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
-from helpers import production_shfmt_argv
+from helpers import production_shfmt_argv, write_stub_shfmt
 
+from . import _shell_syntax_tree_runners as shell_syntax_tree_runners
 from . import conftest as hooks_conftest
 from ._shell_syntax_tree_runners import (
     CHILD_POSITION_MATRIX,
@@ -29,9 +31,11 @@ from ._shell_syntax_tree_runners import (
     SUBPROCESS_HANG_GUARD_SECONDS,
     iter_objects,
     project_words,
+    real_shfmt_identity,
     run_module,
     run_shfmt,
     shell_syntax_tree,
+    shfmt_exit_note,
     simple_commands,
 )
 
@@ -158,12 +162,6 @@ class TestWordsOnHandBuiltTrees:
         )
         assert TREE.main(["shell-syntax-tree.py", "words"]) == 0
         assert stdout_buffer.getvalue() == "echo\né日本\n\n".encode()
-
-    def test_multibyte_words_are_utf8_under_the_c_locale(self):
-        """Pins only that the default path is UTF-8: CPython coerces `LC_ALL=C` to UTF-8, so a text-mode module passes it too."""
-        tree = file_tree(stmt(call_expr("echo", "é日本")))
-        result = run_module(tree_json(tree), env={"LC_ALL": "C", "PATH": ""})
-        assert result.stdout == "echo\né日本\n\n".encode()
 
     @pytest.mark.parametrize("ensure_ascii", [True, False], ids=["escaped-json", "raw-utf8-json"])
     def test_multibyte_words_are_utf8_under_a_locale_whose_stdio_is_not_utf8(self, ensure_ascii):
@@ -324,10 +322,10 @@ class TestHandBuiltRejectionsNameTheirCondition:
 
 
 class TestDroppedKeyLimit:
-    """Pins the limit the module header records: a dropped key that a valid command can omit is not detected.
+    """Pins the dropped-key limit stated at ALWAYS_PRESENT_KEYS in shell-syntax-tree.py.
 
     Each case drops such a key from a statement holding a git write, and the module exits 0 with no words.
-    A case flips when the check starts detecting the drop, at which point the header's limit line goes too.
+    A case flips when the check starts detecting the drop.
     """
 
     @pytest.mark.parametrize(
@@ -491,6 +489,60 @@ class TestReportHeaderNamesAMissingShfmt:
         assert hooks_conftest.pytest_report_header(config=None) is None
 
 
+class TestRealShfmtIdentity:
+    """The failure-message helper, run against stub shfmt files first on a PATH that holds nothing else."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_identity_cache(self):
+        real_shfmt_identity.cache_clear()
+        yield
+        real_shfmt_identity.cache_clear()
+
+    @staticmethod
+    def _stub_dir_on_path(monkeypatch, tmp_path) -> Path:
+        stub_dir = tmp_path / "stubs"
+        stub_dir.mkdir()
+        monkeypatch.setenv("PATH", str(stub_dir))
+        return stub_dir
+
+    def test_it_says_so_when_no_shfmt_is_on_path(self, monkeypatch, tmp_path):
+        self._stub_dir_on_path(monkeypatch, tmp_path)
+
+        assert real_shfmt_identity() == "no shfmt on PATH"
+
+    def test_it_names_the_file_and_the_version_line_and_not_the_directory(self, monkeypatch, tmp_path):
+        stub_dir = self._stub_dir_on_path(monkeypatch, tmp_path)
+        write_stub_shfmt(stub_dir / "shfmt", version_line="v9.99.0")
+
+        identity = real_shfmt_identity()
+
+        assert identity == "shfmt: v9.99.0"
+        assert str(tmp_path) not in identity
+
+    def test_it_says_the_build_prints_no_version_when_the_version_line_is_empty(self, monkeypatch, tmp_path):
+        stub_dir = self._stub_dir_on_path(monkeypatch, tmp_path)
+        write_stub_shfmt(stub_dir / "shfmt", version_line="")
+
+        assert real_shfmt_identity() == "shfmt: prints no version"
+
+    def test_it_names_a_probe_that_cannot_launch_and_does_not_raise(self, monkeypatch, tmp_path):
+        stub_dir = self._stub_dir_on_path(monkeypatch, tmp_path)
+        unlaunchable_shfmt = stub_dir / "shfmt"
+        unlaunchable_shfmt.write_text("#!/nonexistent/interpreter\n")
+        unlaunchable_shfmt.chmod(0o755)
+
+        assert real_shfmt_identity() == "shfmt: its --version probe failed with FileNotFoundError"
+
+    def test_it_names_a_probe_that_outlasts_the_hang_guard_and_does_not_raise(self, monkeypatch, tmp_path):
+        stub_dir = self._stub_dir_on_path(monkeypatch, tmp_path)
+        write_stub_shfmt(stub_dir / "shfmt", version_line="v9.99.0", hang_version_seconds=30)
+        monkeypatch.setenv("PATH", os.pathsep.join([str(stub_dir), os.defpath]))
+        # Shortens the guard so the hung probe ends in a second.
+        monkeypatch.setattr(shell_syntax_tree_runners, "SUBPROCESS_HANG_GUARD_SECONDS", 1)
+
+        assert real_shfmt_identity() == "shfmt: its --version probe failed with TimeoutExpired"
+
+
 def test_production_shfmt_argv_selects_the_bash_dialect():
     """Needs only bash, which reads the argv from `_lib.sh`."""
     assert production_shfmt_argv() == ["shfmt", "-ln", "bash", "--to-json"]
@@ -629,8 +681,16 @@ def _types_in(tree) -> set[str]:
 
 def _shfmt_tree(command: str) -> dict:
     parsed = run_shfmt(command)
-    assert parsed.returncode == 0, f"shfmt exited {parsed.returncode} on {command!r}: {parsed.stderr!r}"
+    assert parsed.returncode == 0, f"{shfmt_exit_note(parsed)} on {command!r}"
     return json.loads(parsed.stdout)
+
+
+def _tables_follow_the_pin() -> str:
+    """Names the shfmt that ran and says which build the module's tables follow, for a table-versus-corpus failure."""
+    return (
+        f"{real_shfmt_identity()}; the module's tables follow the build .github/workflows/tests.yml pins,"
+        " so edit them only against that build"
+    )
 
 
 def _tree_without_key(corpus_trees: dict, struct_name: str, key: str) -> dict:
@@ -673,8 +733,12 @@ class TestConformanceCorpus:
 
     def test_known_node_types_equal_the_types_the_corpus_produces(self, corpus_trees):
         observed_types = set().union(*(_types_in(tree) for tree in corpus_trees.values()))
-        assert observed_types - TREE.KNOWN_NODE_TYPES == set(), "a corpus Type is missing from KNOWN_NODE_TYPES"
-        assert TREE.KNOWN_NODE_TYPES - observed_types == set(), "a KNOWN_NODE_TYPES entry has no conformance case"
+        assert observed_types - TREE.KNOWN_NODE_TYPES == set(), (
+            f"a corpus Type is missing from KNOWN_NODE_TYPES: {_tables_follow_the_pin()}"
+        )
+        assert TREE.KNOWN_NODE_TYPES - observed_types == set(), (
+            f"a KNOWN_NODE_TYPES entry has no conformance case: {_tables_follow_the_pin()}"
+        )
 
     def test_known_binary_operators_equal_the_operators_the_corpus_produces(self, corpus_trees):
         operators = {
@@ -683,13 +747,13 @@ class TestConformanceCorpus:
             for node in iter_objects(tree)
             if node.get("Type") == "BinaryCmd"
         }
-        assert operators == TREE.KNOWN_BINARY_OPERATORS
+        assert operators == TREE.KNOWN_BINARY_OPERATORS, _tables_follow_the_pin()
 
     def test_the_field_table_covers_exactly_the_structs_shfmt_encodes_for_bash(self, corpus_trees):
         observed_structs = set().union(*(_structs_in(tree) for tree in corpus_trees.values()))
         never_encoded_for_bash = TREE.BASH_REJECTED_NODE_TYPES | {"BraceExp"}
-        assert observed_structs <= set(TREE.NODE_FIELDS)
-        assert set(TREE.NODE_FIELDS) - observed_structs == never_encoded_for_bash
+        assert observed_structs <= set(TREE.NODE_FIELDS), _tables_follow_the_pin()
+        assert set(TREE.NODE_FIELDS) - observed_structs == never_encoded_for_bash, _tables_follow_the_pin()
 
     def test_every_field_of_an_encoded_struct_is_in_a_corpus_tree_or_the_named_dialect_only_fields(self, corpus_trees):
         """A field name no tree confirms could be misspelled, and the module would then deny valid commands carrying it."""
@@ -706,7 +770,9 @@ class TestConformanceCorpus:
             if struct_name not in never_encoded_for_bash
             for key in fields
         }
-        assert table_fields - corpus_fields == DIALECT_ONLY_FIELDS, "a field has no corpus tree, or a listed one now has"
+        assert table_fields - corpus_fields == DIALECT_ONLY_FIELDS, (
+            f"a field has no corpus tree, or a listed one now has: {_tables_follow_the_pin()}"
+        )
 
     def test_only_if_clause_then_last_has_no_writer(self):
         """A field mapped to None drops out of the writer test below, so a second one must be a deliberate edit."""
@@ -721,13 +787,13 @@ class TestConformanceCorpus:
     def test_each_dialect_only_field_is_written_by_the_dialect_or_file_name_it_names(self, struct_name, key):
         shfmt_arguments, sample = DIALECT_ONLY_FIELD_WRITERS[(struct_name, key)]
         parsed = run_shfmt(sample, argv=["shfmt", *shfmt_arguments, "--to-json"])
-        assert parsed.returncode == 0, parsed.stderr
+        assert parsed.returncode == 0, shfmt_exit_note(parsed)
         tree = json.loads(parsed.stdout)
         assert any(found == struct_name and key in node for found, node in _iter_structs(tree))
 
     def test_every_struct_with_an_always_present_key_set_appears_in_the_corpus(self, corpus_trees):
         observed_structs = set().union(*(_structs_in(tree) for tree in corpus_trees.values()))
-        assert set(TREE.ALWAYS_PRESENT_KEYS) <= observed_structs
+        assert set(TREE.ALWAYS_PRESENT_KEYS) <= observed_structs, _tables_follow_the_pin()
 
     @pytest.mark.parametrize(
         ("struct_name", "key"),
@@ -782,8 +848,7 @@ KEYS_A_VALID_COMMAND_CAN_OMIT = {
     ("Slice", "Offset"): "a ${x::1}",
 }
 
-# Keys that every corpus instance of a struct holds and that ALWAYS_PRESENT_KEYS leaves out by name.
-# Each holds no command and no check reads it, so listing it would add only a deny on shfmt drift that hides nothing.
+# The unlisted exceptions that ALWAYS_PRESENT_KEYS names in shell-syntax-tree.py, which every corpus instance of a struct holds.
 # Adding one to the table moves it out of this set.
 KEYS_PRESENT_ON_EVERY_VALID_INSTANCE_BUT_NOT_LISTED = frozenset({
     ("CaseItem", "Op"), ("ForClause", "DoPos"), ("ForClause", "DonePos"), ("IfClause", "FiPos"),
@@ -825,7 +890,9 @@ class TestAlwaysPresentKeysFollowTheCorpus:
             }
             if listed:
                 expected[struct_name] = listed
-        assert expected == {struct_name: set(keys) for struct_name, keys in TREE.ALWAYS_PRESENT_KEYS.items()}
+        assert expected == {struct_name: set(keys) for struct_name, keys in TREE.ALWAYS_PRESENT_KEYS.items()}, (
+            _tables_follow_the_pin()
+        )
 
     @pytest.mark.parametrize(
         ("struct_name", "key"),
@@ -857,7 +924,9 @@ class TestAlwaysPresentKeysFollowTheCorpus:
     def test_real_shfmt_rejects_the_empty_form_that_would_make_a_listed_key_omittable(self, struct_name, key, empty_form):
         """Pins each form's exit 1 and not shfmt's error text, which differs by build."""
         parsed = run_shfmt(empty_form)
-        assert parsed.returncode == 1, f"{struct_name}.{key} could be omitted: shfmt accepted {empty_form!r}"
+        assert parsed.returncode == 1, (
+            f"{struct_name}.{key} could be omitted: shfmt accepted {empty_form!r}; {shfmt_exit_note(parsed)}"
+        )
         assert parsed.stdout == b""
 
     @pytest.mark.parametrize(
@@ -964,10 +1033,10 @@ class TestBashRejectedNodeTypes:
     def test_bash_rejects_the_sample_and_its_own_dialect_parses_it_to_the_type(self, node_type):
         sample, dialect = BASH_REJECTED_SAMPLES[node_type]
         rejected = run_shfmt(sample)
-        assert rejected.returncode == 1, rejected.stderr
+        assert rejected.returncode == 1, shfmt_exit_note(rejected)
         assert rejected.stdout == b""
         dialect_parse = run_shfmt(sample, argv=["shfmt", "-ln", dialect, "--to-json"])
-        assert dialect_parse.returncode == 0, dialect_parse.stderr
+        assert dialect_parse.returncode == 0, shfmt_exit_note(dialect_parse)
         assert node_type in _types_in(json.loads(dialect_parse.stdout))
 
 
@@ -984,22 +1053,23 @@ class TestDialectIsPinnedToBash:
         return argv[:flag_index] + argv[flag_index + 2 :]
 
     def test_a_bats_shebang_does_not_switch_the_dialect(self):
-        assert run_shfmt(self.BATS_BY_SHEBANG).returncode == 1
+        with_flag = run_shfmt(self.BATS_BY_SHEBANG)
+        assert with_flag.returncode == 1, shfmt_exit_note(with_flag)
         without_flag = run_shfmt(self.BATS_BY_SHEBANG, argv=self._production_argv_without_the_dialect_flag())
-        assert without_flag.returncode == 0, "control: the default dialect follows the shebang"
+        assert without_flag.returncode == 0, f"control: the default dialect follows the shebang; {shfmt_exit_note(without_flag)}"
 
     def test_a_posix_shebang_does_not_narrow_the_dialect(self):
-        assert run_shfmt(self.BASH_UNDER_A_POSIX_SHEBANG).returncode == 0
+        with_flag = run_shfmt(self.BASH_UNDER_A_POSIX_SHEBANG)
+        assert with_flag.returncode == 0, shfmt_exit_note(with_flag)
         without_flag = run_shfmt(self.BASH_UNDER_A_POSIX_SHEBANG, argv=self._production_argv_without_the_dialect_flag())
-        assert without_flag.returncode == 1, "control: the default dialect follows the shebang"
+        assert without_flag.returncode == 1, f"control: the default dialect follows the shebang; {shfmt_exit_note(without_flag)}"
 
 
 class TestEmptyLitOverDeny:
-    """Pins an accepted over-deny: shfmt omits `Lit.Value` for an empty `Lit`, and ALWAYS_PRESENT_KEYS lists it.
+    """Pins the Lit.Value over-deny stated at ALWAYS_PRESENT_KEYS in shell-syntax-tree.py.
 
     Each case flips when a closure of the over-deny lands, or when shfmt starts writing an empty `Value`.
-    Any closure must keep a missing `Value` on a non-empty `Lit` denying with exit 5, as the deletion case below checks:
-    `Lit.Value` carries every literal word, so a shfmt that stopped writing it would otherwise hide every word with exit 0.
+    Any closure must keep a missing `Value` on a non-empty `Lit` denying with exit 5, as the deletion case below checks.
     """
 
     COMMANDS = {
@@ -1009,7 +1079,8 @@ class TestEmptyLitOverDeny:
 
     @pytest.mark.parametrize("command", COMMANDS.values(), ids=COMMANDS.keys())
     def test_a_valid_command_that_leaves_a_lit_empty_exits_5_naming_the_key(self, command):
-        assert run_shfmt(command).returncode == 0, "the command is valid for shfmt"
+        valid_parse = run_shfmt(command)
+        assert valid_parse.returncode == 0, f"the command is valid for shfmt; {shfmt_exit_note(valid_parse)}"
         projected = project_words(command)
         assert projected.returncode == 5, projected.stderr
         assert projected.stdout == b""
@@ -1020,6 +1091,7 @@ class TestLitValueDeletionOnANonEmptyLit:
     """Names the key itself, so it does not shrink with ALWAYS_PRESENT_KEYS: a missing `Value` on a non-empty `Lit` exits 5.
 
     Any closure of the empty-`Lit` over-deny must keep this case green.
+    `Lit.Value` carries every literal word, so a shfmt that stopped writing it would otherwise hide every word with exit 0.
     """
 
     def test_a_real_tree_with_value_deleted_from_a_non_empty_lit_exits_5_naming_the_key(self):
@@ -1061,11 +1133,11 @@ class TestHostileEditorconfigDoesNotChangeTheTree:
 
         production_in_hostile = run_shfmt(self.COMMAND, cwd=hostile_directory)
         production_in_clean = run_shfmt(self.COMMAND, cwd=clean_directory)
-        assert production_in_clean.returncode == 0, production_in_clean.stderr
+        assert production_in_clean.returncode == 0, shfmt_exit_note(production_in_clean)
         assert (production_in_hostile.returncode, production_in_hostile.stdout) == (
             production_in_clean.returncode,
             production_in_clean.stdout,
-        )
+        ), f"in the hostile directory, {shfmt_exit_note(production_in_hostile)}"
 
 
 def _types_above_the_command(tree) -> list[frozenset[str]]:

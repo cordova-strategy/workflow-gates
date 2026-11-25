@@ -2737,13 +2737,119 @@ def run_skill_command(command: str, cwd: Path, isolated_home: Path) -> None:
 CI_TEST_SLICE_JOB_ID = "test-slice"
 
 
+def ci_tests_workflow() -> dict:
+    return yaml.safe_load(_CI_TESTS_WORKFLOW_PATH.read_text())
+
+
 def ci_tests_workflow_jobs() -> dict:
-    return yaml.safe_load(_CI_TESTS_WORKFLOW_PATH.read_text())["jobs"]
+    return ci_tests_workflow()["jobs"]
 
 
 def ci_test_slice_job() -> dict:
     """The parsed `test-slice` job of tests.yml, the job whose matrix legs run the pytest passes."""
     return ci_tests_workflow_jobs()[CI_TEST_SLICE_JOB_ID]
+
+
+def ci_test_slice_step(step_id: str) -> dict:
+    """The step of tests.yml's `test-slice` job with `id: step_id`, located by id."""
+    matching_steps = [step for step in ci_test_slice_job()["steps"] if step.get("id") == step_id]
+    assert len(matching_steps) == 1, (
+        f"Expected exactly one step with id: {step_id} in tests.yml -- did the step move or get renamed?"
+    )
+    return matching_steps[0]
+
+
+# The base of every stub a pin-step run-body test runs: it appends one line per call to the file STUB_LOG names.
+# The line holds `sudo ` when STUB_VIA_SUDO is set, then the command name, then each argument wrapped in `<` `>`,
+# so a space inside one argument stays visible and the log does not depend on the shebang bash's quoting rules.
+PIN_STEP_LOGGING_STUB = """#!/bin/bash
+{ printf '%s%s' "${STUB_VIA_SUDO:+sudo }" "${0##*/}"; printf ' <%s>' "$@"; printf '\\n'; } >> "$STUB_LOG"
+"""
+
+
+def pin_step_sudo_stub(*accepted_commands: str, install_root: Path | None = None) -> str:
+    """A `sudo` stub script that runs the sibling stub of an accepted command with STUB_VIA_SUDO set.
+
+    It exits 2 on any other command or flag form (such as `-n` or `env`), so a `sudo` call the test did not expect fails.
+    The stub runs `install` only when its last argument, the destination, lies under `install_root`.
+    Any other destination is logged like a call and exits 2 with nothing written, so a step that ignores the test's seam
+    cannot write outside the test's temp directory.
+    Accepting `install` without an absolute `install_root` raises ValueError.
+    """
+    install_is_accepted = "install" in accepted_commands
+    if install_is_accepted and (install_root is None or not install_root.is_absolute()):
+        raise ValueError(f"pin_step_sudo_stub accepting `install` needs an absolute install_root, got {install_root!r}")
+    other_commands = [command for command in accepted_commands if command != "install"]
+    install_case = ""
+    if install_is_accepted:
+        quoted_root = shlex.quote(str(install_root))
+        install_case = f"""  install)
+    destination="${{@: -1}}"
+    case "$destination" in
+      */..|*/../*) destination_allowed=no ;;
+      {quoted_root}/*) destination_allowed=yes ;;
+      *) destination_allowed=no ;;
+    esac
+    if [ "$destination_allowed" != yes ]; then
+      {{ printf 'sudo install'; printf ' <%s>' "${{@:2}}"; printf '\\n'; }} >> "$STUB_LOG"
+      echo "sudo stub: refusing to install to $destination, outside "{quoted_root} >&2
+      exit 2
+    fi
+    STUB_VIA_SUDO=1 exec "${{0%/*}}/install" "${{@:2}}" ;;
+"""
+    other_case = (
+        f'  {"|".join(other_commands)}) STUB_VIA_SUDO=1 exec "${{0%/*}}/$1" "${{@:2}}" ;;\n' if other_commands else ""
+    )
+    return f"""#!/bin/bash
+case "$1" in
+{install_case}{other_case}  *) echo "sudo stub: unstubbed command $1" >&2; exit 2 ;;
+esac
+"""
+
+
+def pin_step_calls_to(call_log: list[str], command: str) -> list[str]:
+    """The lines of a pin-step stub log for `command`, whether or not `sudo` ran it."""
+    return [line for line in call_log if line.startswith((f"{command} ", f"sudo {command} "))]
+
+
+# The bash that runs a script a test launches by name.
+BASH_PATH = shutil.which("bash") or "/bin/bash"
+
+
+def completed_process_output(result: subprocess.CompletedProcess) -> str:
+    """A run's stdout and stderr, for an assertion message."""
+    return f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
+def run_pin_step_script(
+    tmp_path: Path,
+    step_run: str,
+    *,
+    stub_dir: Path,
+    stub_texts: dict[str, str],
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> tuple[subprocess.CompletedProcess, list[str]]:
+    """Run a pin step's `run:` body under bash and return the result and the lines the stubs logged.
+
+    Each of `stub_texts` is written into the existing `stub_dir` as a prewarmed stub named for its key.
+    `env` is the whole environment except HOME, which is `tmp_path`, and STUB_LOG, the log the stubs append to.
+    """
+    for command, text in stub_texts.items():
+        write_prewarmed_stub(stub_dir / command, text)
+    call_log = tmp_path / "stub-calls.log"
+    call_log.touch()
+    script_path = tmp_path / "pin-step.sh"
+    script_path.write_text(step_run)
+    result = subprocess.run(
+        [BASH_PATH, str(script_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(tmp_path), "STUB_LOG": str(call_log), **env},
+        timeout=timeout_seconds,
+    )
+    return result, call_log.read_text().splitlines()
 
 
 def extract_ci_detect_step_run_block() -> str:
@@ -3197,7 +3303,7 @@ def require_shfmt() -> None:
         return
     if os.environ.get("GITHUB_ACTIONS"):
         pytest.fail("shfmt missing in CI — .github/workflows/tests.yml must install it")
-    pytest.skip('shfmt not installed; README.md § "Requirements" gives the install routes')
+    pytest.skip("shfmt not installed; install the build that .github/workflows/tests.yml pins")
 
 
 def decode_shfmt_argv(printed_words: bytes) -> list[str]:
@@ -3719,7 +3825,6 @@ def live_process():
 # ---------------------------------------------------------------------------
 
 RECONCILE_SH = SCRIPTS_DIR / "reconcile-project-plugins.sh"
-_BASH = shutil.which("bash") or "/bin/bash"
 
 
 def plugin_registry_file(config_dir: Path) -> Path:
@@ -4110,7 +4215,7 @@ def run_reconciler(
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        [_BASH, str(RECONCILE_SH), str(repo_root)],
+        [BASH_PATH, str(RECONCILE_SH), str(repo_root)],
         capture_output=True,
         text=True,
         cwd=str(cwd) if cwd else None,

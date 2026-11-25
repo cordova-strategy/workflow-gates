@@ -1,7 +1,7 @@
 """Tests for the `words` projection of shell-syntax-tree.py, run on real shfmt.
 
-Each case pipes a Bash command through the gates' own shfmt command
-(`_LIB_SHFMT_ARGV`) and the module, then asserts the words bash itself sees.
+Each case pipes a Bash command through shfmt run with `_LIB_SHFMT_ARGV`
+and the module, then asserts the words bash itself sees.
 `simple_commands` returns one word list per simple command, in the order the
 module writes them: a command's own words come before the commands nested in
 its arguments.
@@ -24,22 +24,26 @@ from helpers import HEREDOC_BODY_WITH_GAP_APOSTROPHE, heredoc_substitution
 from ._shell_syntax_tree_runners import (
     AGREEMENT,
     AGREES,
-    CUT_RESIDUAL_AGREEMENT_CASES,
-    CUT_RESIDUAL_FIXTURES,
-    CUT_RESIDUAL_MEMBERS,
     FLAG_AND_PATH,
+    FLAG_WORD,
     HIDDEN,
     MEMBER,
     MEMBER_OUTCOMES,
+    PATH_WORD,
     RENAMED_FLAG,
     SHOWN,
+    UNGUARDED_DIVERGENCE_AGREEMENT_CASES,
+    UNGUARDED_DIVERGENCE_FIXTURES,
+    UNGUARDED_DIVERGENCE_MEMBERS,
     differences_from_real_bash,
+    holds_flag_and_path,
     iter_objects,
     project_words,
     real_bash_version_line,
     run_real_bash,
     run_shfmt,
     shell_syntax_tree,
+    shfmt_exit_note,
     simple_commands,
 )
 
@@ -195,23 +199,12 @@ class TestWordShapes:
     def test_non_utf8_byte_anywhere_in_the_command_makes_shfmt_reject_it_with_exit_1(self, command):
         """shfmt neither carries a non-UTF-8 byte into its JSON nor replaces it: it exits 1 and prints no tree."""
         parsed = run_shfmt(command)
-        assert parsed.returncode == 1
+        assert parsed.returncode == 1, shfmt_exit_note(parsed)
         assert parsed.stdout == b""
 
     def test_valid_multibyte_utf8_round_trips_through_the_entry_point(self):
         command = "git commit -m “quoted”—dash -F /x/é.md"
         assert flat_words(command) == ["git", "commit", "-m", "“quoted”—dash", "-F", "/x/é.md"]
-
-    def test_multibyte_word_projects_to_the_same_bytes_under_the_c_locale(self):
-        """Pins only that the default path is UTF-8: CPython coerces `LC_ALL=C` to UTF-8, so a text-mode module passes it too.
-
-        The contract tests' latin-1 case is the one that fails on text-mode stdio.
-        """
-        command = "git commit -m “quoted”—dash -F /x/é.md"
-        c_locale_env = {**os.environ, "LC_ALL": "C"}
-        projected = project_words(command, env=c_locale_env)
-        assert projected.returncode == 0
-        assert projected.stdout == "git\ncommit\n-m\n“quoted”—dash\n-F\n/x/é.md\n\n".encode()
 
     def test_replacement_character_in_a_word_projects_to_its_three_utf8_bytes(self):
         """jq writes U+FFFD for a non-UTF-8 byte in a gate's payload, so that is the form a gate's word holds."""
@@ -265,17 +258,17 @@ class TestInvalidBashIsRejectedByShfmt:
     )  # fmt: skip
     def test_exit_1_and_no_tree(self, command):
         parsed = run_shfmt(command)
-        assert parsed.returncode == 1
+        assert parsed.returncode == 1, shfmt_exit_note(parsed)
         assert parsed.stdout == b""
 
 
-class TestDivergencesFromXargs:
-    """Words the old `xargs -n1` fast path and its fallback got wrong, now the words bash sees."""
+class TestBackslashAndQuoteHandling:
+    """Pins the words bash sees for backslash, quote and echo-option handling."""
 
-    def test_backslash_newline_joins_where_xargs_split(self):
+    def test_backslash_newline_joins_the_lines_into_one_word(self):
         assert flat_words("a\\\nb") == ["ab"]
 
-    def test_escaped_double_quote_is_honored_where_xargs_failed(self):
+    def test_escaped_double_quote_inside_double_quotes_is_part_of_the_word(self):
         assert flat_words('echo "say \\"hi\\" now" x') == ["echo", 'say "hi" now', "x"]
 
     def test_backslash_pair_inside_double_quotes_yields_one_backslash(self):
@@ -287,7 +280,7 @@ class TestDivergencesFromXargs:
 
 
 class TestResidualShapes:
-    """Pins the words bash sees for each shape the retired splitter's docstring named as a residual over-deny or miss."""
+    """Pins the words bash sees for each shape that split-command-words.py's docstring lists as a residual over-deny."""
 
     def test_substitution_with_inner_quotes_that_left_flat_quote_parity_open(self):
         command = 'gh pr create --title "$(echo "it\'s")" --body-file /x'
@@ -359,14 +352,14 @@ def _comment_texts(tree) -> list[str]:
 
 
 class TestCarriageReturnBeforeAHash:
-    """The two premises of the gates' carriage-return check: shfmt reads the carriage return as a
+    """The two premises of a carriage return before `#`: shfmt reads the carriage return as a
     blank where bash reads it as an ordinary word character."""
 
     COMMAND = "echo x\r# -F /dirty.md"
 
     def test_shfmt_puts_the_flag_and_path_inside_a_comment_so_the_projection_drops_them(self):
         parsed = run_shfmt(self.COMMAND)
-        assert parsed.returncode == 0
+        assert parsed.returncode == 0, shfmt_exit_note(parsed)
         assert _comment_texts(json.loads(parsed.stdout)) == [" -F /dirty.md"]
         assert flat_words(self.COMMAND) == ["echo", "x"]
 
@@ -509,7 +502,7 @@ def _generated_literal_only_words() -> list[str]:
 
 
 # Bash's metacharacters, quotes, `\`, `$` and backtick, `#`, the glob and brace characters, `~`, and the
-# carriage return, which the gates deny before shfmt runs.
+# carriage return, which shfmt reads as a blank where bash keeps it in the word.
 _BASH_SYNTAX_CHARACTERS = frozenset(" \t\n|&;()<>'\"\\$`#*?[]{}~\r")
 
 _WORD_POSITIONS = {
@@ -611,7 +604,7 @@ class TestModuleWordsEqualWhatRealBashPrints:
         [pytest.param(*shape, id=shape_id) for shape_id, shape in CONTINUATION_SHAPES.items()]
         + [
             pytest.param(case.command, case.bash_command, case.nested_command_names, id=case.id)
-            for case in CUT_RESIDUAL_AGREEMENT_CASES
+            for case in UNGUARDED_DIVERGENCE_AGREEMENT_CASES
         ],
     )
     def test_each_command_and_agreement_case_matches(self, command, bash_command, nested_command_names):
@@ -682,30 +675,30 @@ CONTAINER_CLOSER_PAIRS = {
 }
 
 
-class TestCutResidualFixtureList:
+class TestUnguardedDivergenceFixtureList:
     """The list is what the pins, the comparison and later suites read, so a dropped or mistyped entry must fail here."""
 
     def test_every_entry_is_a_member_or_an_agreement_case_and_the_two_filters_split_the_list(self):
-        assert {fixture.kind for fixture in CUT_RESIDUAL_FIXTURES} <= {MEMBER, AGREEMENT}
-        assert len(CUT_RESIDUAL_MEMBERS) + len(CUT_RESIDUAL_AGREEMENT_CASES) == len(CUT_RESIDUAL_FIXTURES)
+        assert {fixture.kind for fixture in UNGUARDED_DIVERGENCE_FIXTURES} <= {MEMBER, AGREEMENT}
+        assert len(UNGUARDED_DIVERGENCE_MEMBERS) + len(UNGUARDED_DIVERGENCE_AGREEMENT_CASES) == len(UNGUARDED_DIVERGENCE_FIXTURES)
 
     def test_ids_are_unique(self):
-        ids = [fixture.id for fixture in CUT_RESIDUAL_FIXTURES]
+        ids = [fixture.id for fixture in UNGUARDED_DIVERGENCE_FIXTURES]
         assert len(ids) == len(set(ids))
 
     def test_the_ids_equal_the_named_expected_set(self):
         expected_agreement_ids = {agreement_id for agreement_id, _ in CONTAINER_CLOSER_PAIRS.values()} | {
             agreement_id for agreement_id, _ in FLUSH_COMMENT_BOUNDARY_FORMS.values()
         }
-        assert {fixture.id for fixture in CUT_RESIDUAL_MEMBERS} == EXPECTED_MEMBER_IDS
-        assert {fixture.id for fixture in CUT_RESIDUAL_AGREEMENT_CASES} == expected_agreement_ids
-        assert len(CUT_RESIDUAL_FIXTURES) == len(EXPECTED_MEMBER_IDS) + len(expected_agreement_ids)
+        assert {fixture.id for fixture in UNGUARDED_DIVERGENCE_MEMBERS} == EXPECTED_MEMBER_IDS
+        assert {fixture.id for fixture in UNGUARDED_DIVERGENCE_AGREEMENT_CASES} == expected_agreement_ids
+        assert len(UNGUARDED_DIVERGENCE_FIXTURES) == len(EXPECTED_MEMBER_IDS) + len(expected_agreement_ids)
 
     @pytest.mark.parametrize(
         ("agreement_id", "flush_comment_text"), FLUSH_COMMENT_BOUNDARY_FORMS.values(), ids=FLUSH_COMMENT_BOUNDARY_FORMS.keys()
     )
     def test_each_flush_comment_boundary_form_has_an_agreement_case_holding_it(self, agreement_id, flush_comment_text):
-        matching_cases = [case for case in CUT_RESIDUAL_AGREEMENT_CASES if case.id == agreement_id]
+        matching_cases = [case for case in UNGUARDED_DIVERGENCE_AGREEMENT_CASES if case.id == agreement_id]
         assert len(matching_cases) == 1
         assert flush_comment_text in matching_cases[0].command
         assert matching_cases[0].bash_command.endswith("\n")
@@ -715,12 +708,14 @@ class TestCutResidualFixtureList:
         ("agreement_id", "container_and_closer_text"), CONTAINER_CLOSER_PAIRS.values(), ids=CONTAINER_CLOSER_PAIRS.keys()
     )
     def test_each_container_and_closer_pair_has_an_agreement_case_holding_it(self, agreement_id, container_and_closer_text):
-        matching_cases = [case for case in CUT_RESIDUAL_AGREEMENT_CASES if case.id == agreement_id]
+        matching_cases = [case for case in UNGUARDED_DIVERGENCE_AGREEMENT_CASES if case.id == agreement_id]
         assert len(matching_cases) == 1
         assert container_and_closer_text in matching_cases[0].command
         assert container_and_closer_text in matching_cases[0].bash_command
 
-    @pytest.mark.parametrize("fixture", CUT_RESIDUAL_FIXTURES, ids=[fixture.id for fixture in CUT_RESIDUAL_FIXTURES])
+    @pytest.mark.parametrize(
+        "fixture", UNGUARDED_DIVERGENCE_FIXTURES, ids=[fixture.id for fixture in UNGUARDED_DIVERGENCE_FIXTURES]
+    )
     def test_each_entry_states_an_outcome_valid_for_its_kind_and_the_builds_it_was_seen_on(self, fixture):
         allowed_outcomes = MEMBER_OUTCOMES if fixture.kind == MEMBER else {AGREES}
         assert fixture.outcome in allowed_outcomes
@@ -728,27 +723,27 @@ class TestCutResidualFixtureList:
         assert (fixture.bash_command is not None) == (fixture.kind == AGREEMENT)
 
 
-class TestCutResidualMembersAsShfmtReadsThem:
+class TestUnguardedDivergenceMembersAsShfmtReadsThem:
     """Pins shfmt's reading of each member on CI's build, with no bash involved."""
 
-    @pytest.mark.parametrize("member", CUT_RESIDUAL_MEMBERS, ids=[member.id for member in CUT_RESIDUAL_MEMBERS])
+    @pytest.mark.parametrize("member", UNGUARDED_DIVERGENCE_MEMBERS, ids=[member.id for member in UNGUARDED_DIVERGENCE_MEMBERS])
     def test_member_projects_to_its_stated_outcome(self, member):
         commands = simple_commands(member.command)
         words = [word for command_words in commands for word in command_words]
         if member.outcome == HIDDEN:
-            assert "-F" not in words
-            assert "/dirty.md" not in words
+            assert FLAG_WORD not in words
+            assert PATH_WORD not in words
             if member.visible_head_words:
                 assert any(set(member.visible_head_words) <= set(command_words) for command_words in commands), commands
             if member.unflushed_twin is not None:
                 twin_commands = simple_commands(member.unflushed_twin)
-                assert any("-F" in command_words and "/dirty.md" in command_words for command_words in twin_commands)
+                assert any(holds_flag_and_path(command_words) for command_words in twin_commands)
         elif member.outcome == SHOWN:
-            assert any("-F" in command_words and "/dirty.md" in command_words for command_words in commands)
+            assert any(holds_flag_and_path(command_words) for command_words in commands)
         else:
             assert member.outcome == RENAMED_FLAG
-            assert "-F" not in words
-            assert any("-$F" in command_words and "/dirty.md" in command_words for command_words in commands)
+            assert FLAG_WORD not in words
+            assert any("-$F" in command_words and PATH_WORD in command_words for command_words in commands)
 
 
 # Records each call to `git` as its NUL-terminated arguments on stderr, which a substitution does not capture.
@@ -759,7 +754,7 @@ BASH_GIT_CALL_TRACER = (
     "cat() { local drained; if [ -n \"${1-}\" ]; then read -r -d '' drained < \"$1\" || true; fi; }\n"
     "bash() { local script; read -r -d '' script || true; eval \"$script\"; }\n"
 )
-FLUSH_COMMENT_MEMBERS = [member for member in CUT_RESIDUAL_MEMBERS if member.id.startswith("flush-comment-")]
+FLUSH_COMMENT_MEMBERS = [member for member in UNGUARDED_DIVERGENCE_MEMBERS if member.id.startswith("flush-comment-")]
 
 
 def _git_calls_bash_makes(script: str) -> tuple[list[list[str]], int]:
@@ -774,13 +769,13 @@ def _git_calls_bash_makes(script: str) -> tuple[list[list[str]], int]:
 
 
 def _makes_the_flag_and_path_call(calls: list[list[str]]) -> bool:
-    return any("-F" in call and "/dirty.md" in call for call in calls)
+    return any(holds_flag_and_path(call) for call in calls)
 
 
 class TestFlushCommentMembersDifferFromTheirSpacedFormOnBash:
     """Keeps each pin a record of a divergence: bash reads a flush `#` as part of the word, and a spaced one as a comment.
 
-    A case that fails on its first run shows its entry wrong, so a first-run failure stops the session.
+    A failure on a new entry means the entry is wrong, not the module.
     """
 
     @pytest.mark.parametrize("member", FLUSH_COMMENT_MEMBERS, ids=[member.id for member in FLUSH_COMMENT_MEMBERS])
@@ -789,7 +784,7 @@ class TestFlushCommentMembersDifferFromTheirSpacedFormOnBash:
         spaced_calls, spaced_status = _git_calls_bash_makes(member.command.replace("# ", " # "))
         assert _makes_the_flag_and_path_call(flush_calls), (real_bash_version_line(), flush_calls)
         assert spaced_status == 0, (real_bash_version_line(), spaced_status)
-        assert not any("-F" in call for call in spaced_calls), (real_bash_version_line(), spaced_calls)
+        assert not any(FLAG_WORD in call for call in spaced_calls), (real_bash_version_line(), spaced_calls)
         if member.visible_head_words:
             visible_call = [call for call in spaced_calls if {"commit", "-m"} <= set(call)]
             assert visible_call, (real_bash_version_line(), spaced_calls)
@@ -799,7 +794,7 @@ class TestFlushCommentMembersDifferFromTheirSpacedFormOnBash:
 
 
 # Members whose bash side no case runs: the extglob member needs bash 5.3's `${ }` form, and the one fed to `make`
-# runs in another program. Their bash side rests on the review runs their entries cite.
+# runs in another program. Their bash side rests on the builds their `seen_on` entries name.
 # Each fixture's text is still checked to hold the shared flag-and-path line, so a fixture edited to hold nothing fails.
 MEMBERS_BASH_IS_NOT_RUN_ON = frozenset(
     {"extglob-pattern-holding-a-brace-substitution", "stdin-fed-to-an-interpreter-that-is-not-a-shell"}
@@ -812,7 +807,7 @@ MEMBERS_WITHOUT_A_HIDDEN_LINE_FOR_BASH = frozenset(
 )
 BASH_RUN_MEMBERS = [
     member
-    for member in CUT_RESIDUAL_MEMBERS
+    for member in UNGUARDED_DIVERGENCE_MEMBERS
     if not member.id.startswith("flush-comment-")
     and member.id not in MEMBERS_BASH_IS_NOT_RUN_ON
     and member.id not in MEMBERS_WITHOUT_A_HIDDEN_LINE_FOR_BASH
@@ -822,7 +817,7 @@ BASH_RUN_MEMBERS = [
 class TestOtherMembersAreDivergencesOnBash:
     """Keeps each pin a record of a divergence for the members whose text bash runs directly.
 
-    A case that fails on its first run shows its entry wrong, so a first-run failure stops the session.
+    A failure on a new entry means the entry is wrong, not the module.
     """
 
     @pytest.mark.parametrize("member", BASH_RUN_MEMBERS, ids=[member.id for member in BASH_RUN_MEMBERS])
@@ -832,24 +827,36 @@ class TestOtherMembersAreDivergencesOnBash:
 
     @pytest.mark.parametrize("member_id", sorted(MEMBERS_BASH_IS_NOT_RUN_ON))
     def test_the_fixture_of_a_member_bash_is_not_run_on_holds_the_flag_and_path_line(self, member_id):
-        member = next(m for m in CUT_RESIDUAL_MEMBERS if m.id == member_id)
+        member = next(m for m in UNGUARDED_DIVERGENCE_MEMBERS if m.id == member_id)
         assert FLAG_AND_PATH in member.command
 
     def test_the_trailing_comment_member_is_one_command_for_the_module_and_two_for_bash(self):
-        member = next(m for m in CUT_RESIDUAL_MEMBERS if m.id == "backslash-newline-trailing-comment-ending-in-a-backslash")
+        member = next(
+            m for m in UNGUARDED_DIVERGENCE_MEMBERS if m.id == "backslash-newline-trailing-comment-ending-in-a-backslash"
+        )
         module_commands = [
             command_words
             for command_words in simple_commands(member.command)
-            if "-F" in command_words and "/dirty.md" in command_words
+            if holds_flag_and_path(command_words)
         ]
         assert [command_words[0] for command_words in module_commands] == list(member.visible_head_words)
         bash_calls, _ = _git_calls_bash_makes(member.command)
         assert _makes_the_flag_and_path_call(bash_calls), (real_bash_version_line(), bash_calls)
 
     def test_bash_makes_no_such_call_for_the_member_it_reads_as_literal_text(self):
-        member = next(m for m in CUT_RESIDUAL_MEMBERS if m.id == "delimiter-mismatch-delimiter-quoted-in-a-non-last-part")
-        calls, _ = _git_calls_bash_makes(member.command)
+        member = next(m for m in UNGUARDED_DIVERGENCE_MEMBERS if m.id == "delimiter-mismatch-delimiter-quoted-in-a-non-last-part")
+        calls, status = _git_calls_bash_makes(member.command)
+        assert status == 0, (real_bash_version_line(), status)
         assert not _makes_the_flag_and_path_call(calls), (real_bash_version_line(), calls)
+
+    def test_bash_makes_the_call_when_the_delimiter_has_no_quoted_part(self):
+        """The control for the case above: the same body under an unquoted delimiter is expanded, so bash does run the call."""
+        member = next(m for m in UNGUARDED_DIVERGENCE_MEMBERS if m.id == "delimiter-mismatch-delimiter-quoted-in-a-non-last-part")
+        unquoted_delimiter_text = member.command.replace('<<E"O"F', "<<EOF")
+        assert unquoted_delimiter_text != member.command
+        calls, status = _git_calls_bash_makes(unquoted_delimiter_text)
+        assert status == 0, (real_bash_version_line(), status)
+        assert _makes_the_flag_and_path_call(calls), (real_bash_version_line(), calls)
 
 
 class TestSameLineCaseControl:
@@ -858,18 +865,19 @@ class TestSameLineCaseControl:
     COMMAND = 'case x in x) git commit -m "x"# -F /dirty.md ;; esac'
     NO_HASH_TWIN = 'case x in x) git commit -m "x" -F /dirty.md ;; esac'
 
-    def test_the_command_makes_shfmt_exit_1_so_the_gates_deny_it(self):
-        assert run_shfmt(self.COMMAND).returncode == 1
+    def test_the_command_makes_shfmt_exit_1(self):
+        parsed = run_shfmt(self.COMMAND)
+        assert parsed.returncode == 1, shfmt_exit_note(parsed)
 
     def test_the_twin_without_the_hash_exits_0_and_projects_the_flag_and_path_in_one_command(self):
         commands = simple_commands(self.NO_HASH_TWIN)
-        assert any("-F" in command_words and "/dirty.md" in command_words for command_words in commands)
+        assert any(holds_flag_and_path(command_words) for command_words in commands)
 
 
 class TestContinuationBeforeDollarOrHash:
     """Bash joins `$`, a backslash-newline and `$` or `#` into `$$` or `$#` and expands it. The module keeps both characters."""
 
-    def test_the_joined_special_parameters_stay_as_written_so_the_gates_over_deny_rather_than_miss(self):
+    def test_the_joined_special_parameters_stay_as_written(self):
         assert simple_commands("echo $\\\n$ x $\\\n# y") == [["echo", "$$", "x", "$#", "y"]]
 
 

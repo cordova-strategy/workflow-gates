@@ -20,11 +20,25 @@ Two guards deny where the parse could show the gates something other than what b
 - A command holding a carriage return denies before shfmt runs, because shfmt reads one as a blank where bash does not (row 118).
 - A tree the module does not recognize denies, so a re-encoded tree cannot project to no words (row 24). The check does not see a shfmt that stops writing a key a valid command can omit. The engineer accepted that limit as the session's explanation stated it, and accepted its worktree-gate consequence by a second answer (row 24, Design item 10).
 
-No guard covers the cut residual: odd heredoc delimiters, a heredoc inside a backtick substitution, an extglob pattern holding bash 5.3's `${ cmd; }` or `${| cmd; }`, standard input fed to a shell or another interpreter, the backslash-newline hides, and a `#` with no whitespace after the end of a word part, which shfmt reads as a comment where bash keeps it in the word. Each can show the gates a command other than the one bash runs. The engineer cut the guards of the first five classes (row 128) and chose to record the flush-comment class as a gap rather than guard it, for the triggers the questions named (row 135). Each gate's header records the residual in one Known-gaps line under the cooperative tier (rows 128-130, 135). Design item 10 lists the members. Each needs a construction a cooperative agent does not write (row 130). Out of scope says why a Bash tool running a bash below the repo's 5.2 floor adds no member.
+No guard covers the cut residual. Each gate's header records it in one Known-gaps line under the cooperative tier (rows 128-130, 135). Each of its classes can show the gates a command other than the one bash runs, one class per item:
+- Odd heredoc delimiters.
+- A heredoc inside a backtick substitution.
+- An extglob pattern holding bash 5.3's `${ cmd; }` or `${| cmd; }`.
+- Standard input fed to a shell or another interpreter.
+- The backslash-newline hides.
+- A `#` with no whitespace after the end of a word part, which shfmt reads as a comment where bash keeps it in the word (the flush-comment class).
+
+The engineer cut the guards of the first five classes (row 128). The engineer chose to record the flush-comment class as a gap rather than guard it, for the triggers the questions named (row 135). Design item 10 lists the members. Each needs a construction a cooperative agent does not write (row 130). Out of scope says why a Bash tool running a bash below the repo's 5.2 floor adds no member.
 
 The gates parse bash only. The Bash tool can run zsh (row 15), and the engineer accepted that gap as a recorded residual (row 106).
 
-At run time, a missing shfmt, an oversized command, or a tree the module does not recognize denies, and the deny names the cause. One warn-only SessionStart hook diagnoses the parse path's dependencies, python3 and shfmt alike, so no gate header restates them (rows 76-77, 94). That hook is `check-python-floor.sh`, renamed `check-hook-dependencies.sh` and extended to shfmt. It also warns when neither `timeout` nor `gtimeout` is on PATH, because a hung parse tool then stalls each gated command until the harness's hook timeout (row 111). Under Cursor, the adapter's sessionStart report runs the same shfmt check (row 95). A consumer who pulls before installing shfmt is locked out of the commands these gates parse until they install it, and the engineer accepted that lockout (row 6). From PR 1b, the notice names the cause at the next session start or resume.
+At run time, a missing shfmt, an oversized command, or a tree the module does not recognize denies, and the deny names the cause. The diagnosis and the lockout, one fact per item:
+- One warn-only SessionStart hook diagnoses the parse path's dependencies, python3 and shfmt alike, so no gate header restates them (rows 76-77, 94).
+- That hook is `check-python-floor.sh`, renamed `check-hook-dependencies.sh` and extended to shfmt.
+- It also warns when neither `timeout` nor `gtimeout` is on PATH, because a hung parse tool then stalls each gated command until the harness's hook timeout (row 111).
+- Under Cursor, the adapter's sessionStart report runs the same shfmt check (row 95).
+- A consumer who pulls before installing shfmt is locked out of the commands these gates parse until they install it. The engineer accepted that lockout (row 6).
+- From PR 1b, the notice names the cause at the next session start or resume.
 
 ### Alternatives weighed
 
@@ -85,8 +99,15 @@ The engineer first chose two ordered PRs, one per tokenizer (row 46), then split
   - Its first step builds the table of changed worktree-parser cases for the engineer to review.
   - It branches from the default tip once PR 1b merges, because it builds on PR 1b's `_lib_shell_parse`, and PR 1b's review can still change it. It does not wait for PR 1b to gain field time (row 107).
 - **Between the PRs**, one fact per item:
-  - After PR 1a, every gate still runs its old tokenizer, so a consumer needs no shfmt. A contributor without shfmt sees the module tests skip locally with a reason naming `README.md` § "Requirements", whose shfmt bullet lands in PR 1b. The report-header line names the cause on a run that names a path under `claude/.claude/hooks`, and a full-suite run shows it through the skip text.
-  - That skip reason's citation and the `flatten_word` docstring's pointer to the decision file are the two texts in PR 1a that point ahead to PR 1b, accepted for the window between the merges. PR 1a's other shfmt wording says only what PR 1a does, and Dispatch 2 widens it to the gates (Dispatch 1's amendment).
+  - After PR 1a, every gate still runs its old tokenizer, so a consumer needs no shfmt.
+  - A contributor without shfmt sees the cause, one way per item:
+    - The module tests skip locally with a reason naming the pin in `.github/workflows/tests.yml`.
+    - The report-header line names the cause on a run that names a path under `claude/.claude/hooks`.
+    - A full-suite run shows it through the skip text.
+  - No text in PR 1a points ahead to PR 1b. One site per item, with the dispatch that adds its pointer:
+    - The skip reason and the report-header line name the pin in `.github/workflows/tests.yml`. Their `README.md` § "Requirements" citation arrives with PR 1b's shfmt bullet (Dispatch 5).
+    - The `flatten_word` docstring names no decision file. Dispatch 5, which creates the file, adds that pointer.
+    - PR 1a's other shfmt wording says only what PR 1a does. Dispatch 2 widens it to the gates (Dispatch 1's amendment).
   - After PR 1b, the repo runs two tokenizers, as it does today. The redaction gates parse with shfmt, and the worktree gate and the evaluator keep `parse-git-command.py`.
   - The module holds no git-records code until PR 2 moves the classifiers into it, so on the default branch they sit in one file at every point.
   - A consumer who installed shfmt for PR 1b needs nothing new for PR 2.
@@ -128,13 +149,16 @@ The engineer first chose two ordered PRs, one per tokenizer (row 46), then split
      - Any other status takes the default clause: a tool in the parse or extraction step failed, with its exit status. It names python3, its cap wrapper, awk, and the temp file awk's here-string can need, as today's default arm names python3, awk and that temp file (`_lib.sh:2608`). It drops that arm's "check that each runs" instruction.
    - **`_lib_shell_parse_deny_tail STATUS WORKAROUND`** prints the instruction that follows a clause in a deny. WORKAROUND is `with-file-workaround` or `without-file-workaround`. It is the one home of the status-to-tail mapping: `_lib_command_words_deny_reason` and PR 2's worktree gate both call it, and neither holds a case statement of its own (staff-platform-engineer round 10 R3).
      - One precedence rule comes first. When the module is not linked, the tail is the tool-fault sentence alone, whatever the status, 3 and 7 included. `_lib_shell_parse` returns those two before it consults the link, and the clause then names the unlinked module, which no rewrite of the command fixes. Today's reason omits the workaround in that case too (`_lib.sh:2625`).
-     - Otherwise the tail follows the status:
+     - Otherwise the tail follows the status, one status per item:
        - 3: the file workaround under `with-file-workaround`, and nothing under `without-file-workaround`. Content moved to a file takes a carriage return out of the command, and the clause names the cause.
        - 7: the file workaround under `with-file-workaround`, and nothing under `without-file-workaround`. Content moved to a file brings an oversized command back under the cap.
        - 4: nothing, as today.
-       - Every other status: the tool-fault sentence. That now covers 127 and the module's own 2, because without the `xargs -n1` fast path python3 runs on every parsed command (row 59). It covers a cap kill, because a hung tool is the likelier cause than the command itself (row 102).
-     - `_lib_capped_for`'s header reads any status a caller does not recognise as the child's or the wrapper's own failure, and requires the caller to fail closed on it (`_lib.sh:117-120`). An unlisted status, such as python3's own 1, 126 or 139, is therefore a tool fault by default.
-     - The tool-fault sentence tells the agent to stop and ask, and cites `docs/hooks.md` § "Gate deadlock recovery". The recovery entry gives the human a diagnostic and a fix for each listed status, and one for the default arm (Design item 9).
+       - Every other status: the tool-fault sentence. One reason per status it covers:
+         - 127 and the module's own 2, which it now covers: without the `xargs -n1` fast path, python3 runs on every parsed command (row 59).
+         - A cap kill: a hung tool is the likelier cause than the command itself (row 102).
+         - An unlisted status, such as python3's own 1, 126 or 139: `_lib_capped_for`'s header reads any status a caller does not recognise as the child's or the wrapper's own failure, and requires the caller to fail closed on it (`_lib.sh:117-120`).
+     - The tool-fault sentence tells the agent to stop and ask, and cites `docs/hooks.md` § "Gate deadlock recovery".
+     - The recovery entry gives the human a diagnostic and a fix for each listed status, and one for the default arm (Design item 9).
    - **`_lib_command_words_deny_reason`** composes its lead, the clause, and `_lib_shell_parse_deny_tail STATUS with-file-workaround`. Only the redaction gates compose their reason here, so the workaround reaches them alone (Design item 4). Three rules hold:
      - When the module is not linked, the lead is "could not be checked" at every status, 3 included, the same precedence the tail follows (staff-platform-engineer round 11 R2).
      - The file workaround keeps today's sentence (`_lib.sh:2631` in the staged tree) minus its "multi-line or nested-quoted" wording, because shfmt parses both: write the content to a file in an earlier Bash call and pass it with the flag, or split the command into separate Bash calls.
@@ -333,16 +357,24 @@ The engineer first chose two ordered PRs, one per tokenizer (row 46), then split
    - The missing-cap-tool warning at `install.sh:1052`, which names only jq and git checks, adds that the hooks' command parse then runs uncapped, so a hung shfmt or python3 stalls each gated command until the harness's hook timeout (row 111).
 7. **CI (PR 1a, with its floor check in PR 1b).**
    - An "Install the pinned shfmt binary" step, id `pin-shfmt`, runs in both legs after the stow step, under `if: steps.detect.outputs.changed == 'true'`. Its env holds `CI_SHFMT_VERSION: "3.14.0"`, the floor build (row 62), and `CI_SHFMT_SHA256`, an in-repo literal digest (row 38).
-     - A one-line comment says why it runs in both legs, unlike the zsh step at `tests.yml:172`: a `timing` case that parses with shfmt then finds the pinned build, as a parallel-leg case does. The cost is one download per leg (staff-platform-engineer round 15 R2).
+     - A one-line comment says why it runs in both legs, unlike the zsh step, `pin-zsh`: a `timing` case that parses with shfmt then finds the pinned build, as a parallel-leg case does. The cost is one download per leg (staff-platform-engineer round 15 R2).
    - The step body does the following:
      - It runs under `set -euo pipefail` and fails naming the key when either env value is empty.
      - It downloads the linux amd64 asset, its URL built from `CI_SHFMT_VERSION`, into a fresh `mktemp -d` directory with `curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry <n> --retry-max-time <s> --max-time <s>`.
-     - The `--retry`, `--retry-max-time` and `--max-time` values each carry a one-line comment that cites its source or says no vendor value applies, as `tests.yml:239` does. `--retry-max-time` bounds the retries' total time (staff-platform-engineer code-review round 4 R1).
+     - The `--retry`, `--retry-max-time` and `--max-time` values each carry a comment that cites the curl manual's entry for its flag and says no vendor value applies. `--retry-max-time` bounds the retries' total time (staff-platform-engineer code-review round 4 R1). It exceeds `--max-time`, so an attempt that `--max-time` ends still leaves time for a retry.
      - It checks the file with `sha256sum -c` against a line built from the literal and the downloaded file's own name.
+     - Its install directory is `CI_SHFMT_INSTALL_DIR` when set and `/usr/local/bin` otherwise. That variable is a test-only seam: the step-body test sets it to a stub directory, and no workflow, job or step env sets it, so the runner installs into `/usr/local/bin`.
+       - The seam's design is the session's decision [unverified]. The engineer kept it in PR 1a's scope (row 136).
+       - Its guard has two limits, accepted by the session's decision, not an engineer answer [unverified], one per item:
+         - The test that no env sets the seam scans only the workflow's, each job's and each step's `env:` block, so a `$GITHUB_ENV` write in an earlier step's `run:` would set the seam unseen.
+         - `test_ci_shfmt_equals_the_pin`, which requires `command -v shfmt` to be `/usr/local/bin/shfmt`, carries no `timing` mark, so it runs only in the parallel leg. The timing leg has only the step's own resolved-path check, which follows the seam.
      - It installs the binary with `sudo install -m 0755` only after the check passes, and never runs it before then.
-     - It checks that `command -v shfmt` is `/usr/local/bin/shfmt`, the path it installed, so a same-version shfmt earlier on PATH cannot stand in for the pinned bytes (ciso-reviewer code-review round 4 R6).
+     - After the install, it checks the installed file against the same digest, because the first check covers only the downloaded file. The re-check's design is the session's decision [unverified]. The engineer kept it in PR 1a's scope (row 136).
+     - It checks that `command -v shfmt` is the `shfmt` it installed, so a same-version shfmt earlier on PATH cannot stand in for the pinned bytes (ciso-reviewer code-review round 4 R6).
      - It prints `shfmt --version`.
-     - On failure it says whether the fetch, the hash or the resolved path failed, and where the pin came from.
+     - On failure it says whether the fetch, the downloaded file's hash, the installed file's hash or the resolved path failed.
+       - The fetch, downloaded-file hash and resolved-path messages also say where the pin came from.
+       - The installed-file message names `CI_SHFMT_SHA256` but not where the pin came from. It says the file changed between the digest check and the install, or the install wrote other bytes.
    - Its comments follow the pinned-git step's. They are the spec for the staged comment's rewrite (Dispatch 1's CI part):
      - They say the digest was computed locally by hashing the release's linux amd64 asset with `shasum -a 256`, and that it equals the attested release digest (row 40).
      - They state what each source proves for v3.14.0, one per item (row 40):
@@ -357,10 +389,11 @@ The engineer first chose two ordered PRs, one per tokenizer (row 46), then split
      - The pin equals the floor in `_config.sh`.
      - Under `GITHUB_ACTIONS`, `command -v shfmt` is `/usr/local/bin/shfmt` and its `--version` matches the pin, which shows the step ran.
      - The pin step precedes every pytest step in each leg.
-     - The step body runs in the pattern of `TestPinStepRunBody` (`test_git_floor.py:471-514`), with only `curl`, `sudo` and `install` stubbed. The `curl` stub writes known bytes and logs its URL, `sudo` and `install` log their calls, and the real `sha256sum` does the check. The test skips locally when `sha256sum` is absent and fails under `GITHUB_ACTIONS`.
-     - The stub `curl`'s argv log holds the bounding flags: `--retry-max-time`, `--max-time`, `--proto '=https'` and `--proto-redir '=https'`.
+     - No workflow, job or step env sets `CI_SHFMT_INSTALL_DIR`.
+     - The step body runs in the pattern of `TestPinStepRunBody` in `test_git_floor.py`, with `curl` and `sudo` stubbed and `install` wrapped by a stub that logs its call and the digest of the file it was handed, then runs the real `install`. The `curl` stub writes known bytes and logs its argv. The `sudo` stub logs nothing itself: it runs the `install` stub with `STUB_VIA_SUDO` set, so that stub's log line starts with `sudo`. The real `sha256sum` does both checks. The test skips locally when `sha256sum` is absent and fails under `GITHUB_ACTIONS`.
+     - The stub `curl`'s argv log holds `--fail`, `--location`, `--silent` and `--show-error`, the bounding flags `--retry`, `--retry-max-time` and `--max-time`, each with a numeric value, and `--proto '=https'` and `--proto-redir '=https'`. The `--retry-max-time` value exceeds the `--max-time` value.
      - The step-body outcomes it checks are the ones Verification 6's "Install and CI" group lists.
-     - The version fixture differs from the pin, and the logged URL contains it, so a version hard-coded in the step body fails, as `test_git_floor.py:390-391` does for git.
+     - The version fixture differs from the pin, and the logged URL contains it, so a version hard-coded in the step body fails, as `_FIXTURE_PACKAGE_VERSION` in `test_git_floor.py` does for git.
 8. **Cursor adapter parity (PR 1b).** The adapter records shfmt, and its `check` command and sessionStart report run the same shfmt check as the SessionStart hook (rows 95-96).
    - `RECORDED_TOOLS` (`claude/.claude/scripts/cursor-adapter/cursor_adapter/core.py:222`) gains `shfmt` as its last entry, so the hooks' PATH under Cursor holds shfmt's directory (row 43). An existing Cursor install re-runs `install`, and `check` names that fix.
    - `tool_findings` (`check.py:340-378`), which `check` and the sessionStart entry share (`check.py:402`, `:595`), reports a shfmt missing from the hooks' PATH.
@@ -544,11 +577,20 @@ The engineer first chose two ordered PRs, one per tokenizer (row 46), then split
         - Every member needs a construction a cooperative agent does not write, so the gates' cooperative tier waives it (`docs/hooks.md:13`, `:55`, row 130).
         - Shapes that hide only under a bash below the 5.2 floor are not members, because the repo supports no such bash (`README.md` § "Requirements", `docs/hooks.md` § "Bash version", row 130).
         - Two joins differ from bash without hiding anything, so they are not members: `$\<LF>$` and `$\<LF>#`. The module keeps `$$` and `$#` as written while bash expands them, and the kept `$` makes the gates read each word as needing expansion, an over-deny. One words case pins them (Verification 6).
-        - For the three redaction gates, the merge base read the hidden line of the continuation, substitution, extglob and shell members its reviews ran, through `xargs -n1`, so the cut is a regression (row 129). `docs/hooks.md:26` makes a regression ADDRESS or stop-and-ask, never deferred.
-        - The engineer's answer to that stop-and-ask named the cut by class, "the backslash-newline hides" among them, and is the acceptance for those classes (row 128).
-        - The `$\<LF>` quoted-part flag member was found after that answer. The base never read the single-quoted spelling's `-F`, so the cut is no deny-to-allow change for that spelling on BSD `xargs` (row 129). Its acceptance is the engineer's answer on it by name (PR 1a's session steps).
-        - The flush-comment class is no class that answer named. Its acceptance is the engineer's choice to record it as a gap rather than add a deny [engineer-verified: "Cut it, record as gap (Recommended)"], and to cut it for the worktree gate too [engineer-verified: "Cut it there too (Recommended)"] (row 135).
-        - With row 128's selection, the engineer accepted the risk of the counter-reading of `docs/hooks.md:47` for the five classes it named: on an `irreversible` gate, the cut deliberately admits shapes that carry the gate's denied semantics, which that line says the tier blocks from being waived. The engineer's answers in row 135 cover the cut of the flush-comment class, for the worktree gate too. Their questions did not state that counter-reading, so the plan claims no acceptance of it for that class.
+        - For the three redaction gates, the merge base read the hidden line of the continuation, substitution, extglob and shell members its reviews ran, through `xargs -n1`, so the cut is a regression (row 129).
+        - `docs/hooks.md:26` makes a regression ADDRESS or stop-and-ask, never deferred.
+        - The acceptance, one member group per item:
+          - The five classes row 128 named:
+            - The engineer's answer to that stop-and-ask named the cut by class, "the backslash-newline hides" among them, and is the acceptance for those classes (row 128).
+            - With row 128's selection, the engineer accepted the risk of the counter-reading of `docs/hooks.md:47` for those classes: on an `irreversible` gate, the cut deliberately admits shapes that carry the gate's denied semantics, which that line says the tier blocks from being waived.
+          - The `$\<LF>` quoted-part flag member:
+            - It was found after row 128's answer.
+            - The base never read the single-quoted spelling's `-F`, so the cut is no deny-to-allow change for that spelling on BSD `xargs` (row 129).
+            - Its acceptance is the engineer's answer on it by name (PR 1a's session steps).
+          - The flush-comment class:
+            - It is no class row 128's answer named.
+            - Its acceptance is the engineer's choice to record it as a gap rather than add a deny [engineer-verified: "Cut it, record as gap (Recommended)"], and to cut it for the worktree gate too [engineer-verified: "Cut it there too (Recommended)"] (row 135).
+            - Those answers' questions did not state the `docs/hooks.md:47` counter-reading, so the plan claims no acceptance of it for that class.
         - For the worktree gate, whose old parser dropped every heredoc body, the heredoc classes pre-date the change. Its continuation members the base denied are regressions under the same acceptance.
         - Ordinary continuations, such as a multi-line `gh api` call, parse into the words bash sees, so the residual is the hides, not every backslash-newline (row 132).
         - Every member has a committed pin on shfmt's reading of it. No committed case runs a member under bash, so each member's bash side rests on the review runs its entry cites (Verification 6 and 7).
@@ -2691,6 +2733,23 @@ Row 135 [assumption]: the plan records a `#` flush against the end of a
   - The guard the session planned for the shape after code-review round 5
     is withdrawn. No engineer answer covered it.
   — anchors: row128, row130
+
+Row 136 [assumption]: PR 1a keeps three additions the session made to
+  its CI part: the `CI_SHFMT_INSTALL_DIR` test-only seam and the
+  installed-file digest re-check (Design item 7), and the move of
+  `test_git_floor.py`'s pin-step helpers into `helpers.py` (Dispatch 1's
+  CI part). Asked about that added scope, the engineer selected
+  [engineer-verified: "Keep all three (Recommended)"]. The quote covers
+  keeping the three in PR 1a alone. One fact per item:
+  - The question's wording and its option descriptions are the
+    session's [unverified].
+  - Each addition's design is the session's decision [unverified]. No
+    engineer answer covers how it is built or what it guards.
+  - The seam guard's two limits (Design item 7) are accepted by the
+    session's decision, not an engineer answer [unverified].
+  - PR 1a's pre-first-push step shows the three to the engineer as
+    session-decided rows, and PR 1a's body records them (Critical files).
+  — anchors: row38, row131
 ```
 
 ## Critical files
@@ -2738,6 +2797,7 @@ What a PR body holds (row 133, staff-platform-engineer round 14 R2), one rule pe
     - The engineer's answer on the flush-comment member, "Cut it, record as gap (Recommended)", beside the rule they typed and the question's wording as the session's (row 135).
     - The engineer's answer that, for the dropped-key class, the later acceptances govern over row 76, "Later answers govern (Recommended)", with the question's wording as the session's (row 24).
     - The session-decided rows the pre-first-push step showed the engineer: the empty-`Lit` over-deny and the array-literal-closer and extglob-closer triggers, each as the session's decision (rows 24, 135).
+    - The three session-decided CI additions the pre-first-push step showed the engineer, each as the session's decision: the `CI_SHFMT_INSTALL_DIR` seam with its guard's two limits, the installed-file digest re-check and the `test_git_floor.py` helper move. Beside them, the engineer's scope answer "Keep all three (Recommended)", with the question's wording and option descriptions as the session's (row 136).
     - Row 132's precondition outcome, with its build lines.
     - The agreement cases' outcomes on the session's bash and on CI's, with each build line (PR 1a's session steps).
     - The `words` table's answer in the engineer's words, with a linked comment carrying the table (Verification 1).
@@ -2775,8 +2835,9 @@ The order, one reason per step:
   - Dispatch 1's `require_shfmt()` fails CI until the pin step exists.
   - No gate calls the module in PR 1a, so CI's first contact with the pinned shfmt and with CI's bash comes before any gate depends on either.
 
-A failure at that first run costs one of four things (comment-discipline-reviewer round 14 R6):
-- A pin-step failure, a failed fetch, a digest mismatch or a wrong resolved path, takes a pin or URL change in a fix-up commit.
+A failure at that first run costs one of five things (comment-discipline-reviewer round 14 R6):
+- A pin-step failure, a failed fetch, a downloaded-file digest mismatch or a wrong resolved path takes a pin or URL change in a fix-up commit.
+- An installed-file digest mismatch takes a re-run and an inspection of the install, not a pin change, because its message names a file that changed between the digest check and the install, or an install that wrote other bytes.
 - A conformance case that fails on CI takes CI's form in a fix-up commit, which updates any hand-built tree that copies it.
 - A real-bash comparison that fails, one consequence per kind of case:
   - Row 132's shapes and the carriage-return cases: the failure contradicts row 118 or row 132 and stops the session.
@@ -2805,6 +2866,7 @@ Three more session steps, one per item:
   - The waiver of a separate human re-hash of the pinned asset, by name (row 40).
   - The empty-`Lit` over-deny, shown as a session-decided row with its two shapes and their allow-to-deny table rows, not as a question (row 24, Verification 1).
   - The flush-comment class's array-literal-closer and extglob-closer triggers, shown as a session-decided row with their scan, not as a question and not as an engineer acceptance (row 135).
+  - The `CI_SHFMT_INSTALL_DIR` seam with its guard's two limits, the installed-file digest re-check and the `test_git_floor.py` helper move, each shown as a session-decided row, not as a question (row 136, Design item 7). The engineer's only answer on them is the scope answer "Keep all three (Recommended)".
   PR 1a's body records each answer in the engineer's words and links a comment carrying the table (row 133). PR 1b's expectation changes follow the table's answer, and PR 1b's body quotes it and links PR 1a's comment.
 - At PR 1a's first CI run, one step per item, in order:
   - Read the pin step's exit and its printed `shfmt --version`.
@@ -2828,9 +2890,15 @@ Three more session steps, one per item:
   - Without shfmt: the hand-built-tree cases, the module's exit-path and encoding cases, and the interpreter-isolation and capability-pin tests carried over from the old splitter test file.
   - The completeness tests: `KNOWN_NODE_TYPES` against the corpus's `Type` values in both directions, and every `KNOWN_NODE_TYPES` entry either in the matrix or in a named set of types that hold no command.
 - `claude/.claude/tests/helpers.py`:
-  - `require_shfmt()`, which skips with a reason naming `README.md` § "Requirements" and fails under `GITHUB_ACTIONS` (row 68).
+  - `require_shfmt()`, which skips with a reason naming the pin in `.github/workflows/tests.yml` and fails under `GITHUB_ACTIONS` (row 68). Its `README.md` § "Requirements" citation arrives with PR 1b's shfmt bullet (Dispatch 5).
   - `production_shfmt_argv()`, which sources `_lib.sh` and returns `_LIB_SHFMT_ARGV`. The conformance corpus, the child-position matrix, the shebang cases and the `.editorconfig` case run shfmt with it, and their controls run it with one flag changed.
-  - One stub-shfmt writer beside `write_prewarmed_stub` (`helpers.py:3111`). It prints a given tree or a given version line, or exits with a given status, optionally after a given stderr line or a hang. It logs its argv, its stdin and its working directory. Every stub-shfmt test in both PRs uses it.
+  - One stub-shfmt writer, `write_stub_shfmt`, placed after `write_prewarmed_stub`. It prints a given tree or a given version line, or exits with a given status, optionally after a given stderr line or a hang. It logs its argv, its stdin and its working directory. Every stub-shfmt test in both PRs uses it.
+  - With the CI part below, the workflow readers and pin-step helpers that `test_shfmt_floor.py` and `test_git_floor.py` share. Each is new in this change. Of the workflow readers, the base holds only `ci_tests_workflow_jobs` and `ci_test_slice_job`. One helper per item:
+    - `ci_tests_workflow`, the parsed workflow. `ci_tests_workflow_jobs` is refactored to read it.
+    - `ci_test_slice_step`, which finds one `test-slice` step by id and asserts that exactly one matches.
+    - `PIN_STEP_LOGGING_STUB`, the logging base of every pin-step stub.
+    - `pin_step_sudo_stub`, which writes a `sudo` stub that runs the sibling stub of each accepted command.
+    - `pin_step_calls_to`, which reads one command's lines from a stub log.
 - Create `claude/.claude/hooks/tests/_shell_syntax_tree_runners.py`, the helpers the two new test files share, and `claude/.claude/tests/test_stub_shfmt.py`, the tests of the stub-shfmt writer (row 119).
   - The runners file reads `production_shfmt_argv()` once per session through `functools.cache`, as `claude/.claude/hooks/tests/conftest.py:54` caches its probe, because each call sources `_lib.sh` in a fresh bash.
   - `test_stub_shfmt.py`'s production-argv test asserts that the argv holds `-ln`, `bash` and `--to-json`, not only `shfmt` first.
@@ -2948,7 +3016,7 @@ Three more session steps, one per item:
     - The report-header line in `claude/.claude/hooks/tests/conftest.py` says the shell-syntax-tree tests skip without shfmt.
     - The `_LIB_SHFMT_ARGV` comment in `_lib.sh`, and `production_shfmt_argv()`'s docstring in `helpers.py` with any test that pins it, say the argv is the one the module's tests run.
     - The module docstring's last paragraph drops "runs inside the gates".
-    - The `flatten_word` docstring names `docs/design-decisions/tokenizing-gates-parse-with-shfmt.md` as a file a later change adds, with no PR number, since a docstring carries no PR-defined term. Dispatch 5, which creates the file, restores the plain pointer (ciso-reviewer round 17 R7).
+    - The `flatten_word` docstring names no decision file, because `docs/design-decisions/tokenizing-gates-parse-with-shfmt.md` does not exist in PR 1a. It points at the `backslash-newline-` entries of the runners file's cut-residual fixture list instead. Dispatch 5, which creates the decision file, adds the pointer to it (ciso-reviewer round 17 R7).
   - The scratch table script gives status 3 to any input holding a carriage return, before shfmt, as `_lib_shell_parse` will (Verification 1).
   - `claude/.claude/hooks/shell-syntax-tree.py`, one code edit and no other (Design item 2, row 24):
     - `ALWAYS_PRESENT_KEYS` lists seven more keys: the six command-bearing body keys, `Block.Stmts`, `Subshell.Stmts`, `IfClause.Then`, `WhileClause.Cond`, `WhileClause.Do` and `ForClause.Do`, and `ExtGlob.Pattern`, which the extglob condition reads. The four exceptions stay out by name (row 24).
@@ -2958,12 +3026,20 @@ Three more session steps, one per item:
     - The docstring and comments follow three rules, one per item (staff-backend-engineer code-review round 7 R1-R4):
       - Declaration commands are named by a rule, the commands `-ln bash` parses to `DeclClause`, not by a closed list.
       - The module's own refusal takes one name throughout.
-      - No module comment carries a plan-defined term, or points to a file that does not exist yet beyond the `flatten_word` pointer above.
+      - No module comment carries a plan-defined term, or points to a file that does not exist yet.
     - The staged extglob marker condition, the exit codes and the one-argument interface stand (row 128).
 - Then the CI part, in the same dispatch (Design item 7, row 131), one file per item:
-  - `.github/workflows/tests.yml`: the pin step and the version-report line. The pin step's comment is rewritten to Design item 7's comment spec, and its body gains that item's `--retry-max-time` bound, `--proto` flags and resolved-path check. The 30-minute job cap at :34-43 stays until PR 1a's first CI run confirms or re-derives it (PR 1a's session steps).
+  - `.github/workflows/tests.yml`: the pin step and the version-report line. The pin step's comment is rewritten to Design item 7's comment spec, and its body gains that item's `--retry-max-time` bound, `--proto` flags, installed-file digest re-check, `CI_SHFMT_INSTALL_DIR` seam and resolved-path check. The 30-minute job cap at :34-43 stays until PR 1a's first CI run confirms or re-derives it (PR 1a's session steps).
   - Create `claude/.claude/hooks/tests/test_shfmt_floor.py` with Design item 7's CI checks but the pin-equals-floor check, which Dispatch 3 adds with the floor it reads.
-  - Reuse: `TestPinStepRunBody`'s stub pattern in `test_git_floor.py`, and the pinned-git step's comment pattern in `tests.yml`.
+  - `claude/.claude/hooks/tests/test_git_floor.py` drops its copies of the pin-step helpers and uses the ones Dispatch 1 adds to `claude/.claude/tests/helpers.py`, with no change to what it asserts. The move's design is the session's decision, made so that no second test file keeps a copy of a helper (`claude/.claude/CLAUDE.md` § "Engineering Judgment") [unverified]. The engineer kept it in PR 1a's scope (row 136). One copy and its replacement per item:
+    - `_LOGGING_STUB` becomes `PIN_STEP_LOGGING_STUB`.
+    - `_SUDO_STUB` becomes `pin_step_sudo_stub("apt-get", "apt-mark")`.
+    - `_calls_to` becomes `pin_step_calls_to`.
+    - `_pin_step()`'s id lookup and single-match assertion become a call to `ci_test_slice_step`, and `_pin_step_env()` reads the step through it, as `test_shfmt_floor.py`'s two wrappers do.
+  - Reuse, one source per item:
+    - `TestPinStepRunBody`'s stub pattern in `test_git_floor.py`, through the pin-step helpers in Dispatch 1's `helpers.py` bullet.
+    - `ci_test_slice_job` in `helpers.py`, which `ci_test_slice_step` reads.
+    - The pinned-git step's comment pattern in `tests.yml`.
 
 ### PR 1b — the redaction gates
 
@@ -3089,7 +3165,9 @@ Session steps, one per item:
   - The renamed hook, only if its registration or header checks need it listed.
 - Header Known-gaps only: `claude/.claude/hooks/deny-escaped-backticks-in-pr-body.sh`, `claude/.claude/hooks/deny-pii-in-commits.sh` and `claude/.claude/hooks/deny-private-project-refs.sh` each gain the zsh, cut-residual, placeholder-decoy, prefilter, quoted-text and dropped-key lines. The cut-residual line names the flush-comment class. Each line cites its residual's heading in the decision file this dispatch creates (Design item 10, rows 123, 128). The cut-residual line is one line under the cooperative tier, worded as Design item 10's Known-gaps items say.
 - `claude/.claude/hooks/tests/_shell_syntax_tree_runners.py`: the cut-residual fixture list's comment cites the decision file's cut-residual heading.
-- `claude/.claude/hooks/shell-syntax-tree.py`: the `flatten_word` docstring's pointer to the decision file this dispatch creates drops its "a later change adds" wording (Dispatch 1's amendment).
+- `claude/.claude/hooks/shell-syntax-tree.py`: the `flatten_word` docstring adds a pointer to the decision file this dispatch creates, beside its pointer to the fixture list (Dispatch 1's amendment).
+- `claude/.claude/tests/helpers.py` and `claude/.claude/hooks/tests/conftest.py`: `require_shfmt()`'s skip reason and the report-header line cite the new `README.md` § "Requirements" bullet in place of the pin in `.github/workflows/tests.yml` (Dispatch 1's amendment).
+- `claude/.claude/tests/test_stub_shfmt.py`: `test_skips_outside_ci_naming_the_workflow_that_pins_the_build` matches the `README.md` § "Requirements" citation and is renamed for it, because it matches the PR 1a skip reason's `tests.yml` text and would fail on the edit above.
 - `README.md`:
   - :116 names `check-hook-dependencies.sh`.
   - The `timeout` bullet at :115 gains the cap-tool sentence (Design item 9).
@@ -3341,7 +3419,7 @@ Projected diff: PR 1a about 2,500 changed lines, PR 1b about 4,150 and PR 2 abou
        - The domain is every code point from U+0001 through U+00FF outside bash's syntax set, and every code point in the Unicode categories Zs, Zl, Zp and Cf.
        - Bash's syntax set here is its metacharacters, quotes, `\`, `$`, backtick and `#`, the glob and brace characters the set already leaves out, and the carriage return, which `_lib_shell_parse` denies.
        - This part guards no current defect. It is a tripwire against a shfmt build that reads one of these characters differently, and CI's pinned build is the only build it is held to.
-     - Under `LC_ALL=C`, a word holding a multibyte UTF-8 character projects to the same bytes as under a UTF-8 locale.
+     - With the module's text streams patched in-process to latin-1, a word holding a multibyte UTF-8 character projects to its UTF-8 bytes, from escaped and raw JSON alike. That case is the encoding pin, because CPython runs `LC_ALL=C` with UTF-8 stdio, so a C-locale run cannot show a text-mode stdio. Its subprocess twin, under an installed locale whose stdio is not UTF-8, skips when `locale -a` lists none, as on CI.
      - A non-UTF-8 byte in a word, a comment or a heredoc body makes real shfmt exit 1 with no tree (row 113). The case asserts the exit and the empty stdout, not shfmt's stderr text.
      - `production_shfmt_argv()` holds `-ln`, `bash` and `--to-json`.
      - A word holding U+FFFD, the character jq writes for such a byte, projects to its three UTF-8 bytes (row 113).
@@ -3502,10 +3580,15 @@ Projected diff: PR 1a about 2,500 changed lines, PR 1b about 4,150 and PR 2 abou
      - The README's `shfmt` bullet states the floor `_config.sh` holds, checked in `test_shfmt_floor.py` from Dispatch 5 on.
      - Under `GITHUB_ACTIONS`, `command -v shfmt` is `/usr/local/bin/shfmt` and it reports the pin, from PR 1a. The CI pin equals the floor, from PR 1b.
      - The pin step precedes every pytest step in each leg, from PR 1a.
-     - The step body, from PR 1a, with only `curl`, `sudo` and `install` stubbed and the real `sha256sum`:
-       - passes `curl` the bounding flags, `--retry-max-time`, `--max-time`, `--proto '=https'` and `--proto-redir '=https'`, as its argv log shows;
+     - No workflow, job or step env sets `CI_SHFMT_INSTALL_DIR`, from PR 1a.
+     - The step body, from PR 1a, with `curl` and `sudo` stubbed, `install` wrapped by a logging stub that runs the real `install`, and the real `sha256sum`:
+       - passes `curl` `--fail`, `--location`, `--silent` and `--show-error`, the bounding flags `--retry`, `--retry-max-time` and `--max-time` with numeric values, `--proto '=https'` and `--proto-redir '=https'`, as its argv log shows;
+       - passes a `--retry-max-time` value above the `--max-time` value, so an attempt that `--max-time` ends can still retry;
        - never reaches `install` on a digest mismatch or a failed fetch;
-       - reaches `install` after the check on a match;
+       - reaches `install` after the check on a match, and installs the checked bytes;
+       - exits 1 naming the installed file when the installed bytes differ from the checked bytes;
+       - exits 1 naming the other shfmt's path when that shfmt precedes the install directory on PATH, and exits 1 saying none was found when the install directory is off PATH;
+       - installs into `/usr/local/bin` when `CI_SHFMT_INSTALL_DIR` is unset;
        - names a missing key;
        - fetches a URL holding the fixture version, which differs from the pin.
    - **Cursor:**

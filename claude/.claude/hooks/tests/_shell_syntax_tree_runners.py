@@ -1,9 +1,8 @@
-"""Shared by the shell-syntax-tree.py tests: the module, shfmt, real bash, the cut-residual fixtures, the position matrix."""
+"""Shared by the shell-syntax-tree.py tests: the module, shfmt, real bash, the unguarded divergences, the position matrix."""
 from __future__ import annotations
 
 import functools
 import importlib.util
-import re
 import shutil
 import subprocess
 import sys
@@ -15,8 +14,9 @@ from typing import NamedTuple
 import pytest
 from helpers import HOOKS_DIR, production_shfmt_argv, require_shfmt
 
+from .test_bash_floor import _CONFIG_SH, _floor_constants
+
 MODULE_PATH = HOOKS_DIR / "shell-syntax-tree.py"
-CONFIG_SH_PATH = HOOKS_DIR / "_config.sh"
 
 # No vendor value applies. The guard only ends a hung run, and sits far above a real run's length.
 SUBPROCESS_HANG_GUARD_SECONDS = 60
@@ -39,8 +39,34 @@ def _cached_production_shfmt_argv() -> tuple[str, ...]:
     return tuple(production_shfmt_argv())
 
 
+@functools.cache
+def real_shfmt_identity() -> str:
+    """The shfmt on PATH by file name with the first line of its `--version`, for a failure message.
+
+    The conformance tables follow the build `.github/workflows/tests.yml` pins, so a failure on another build names it here.
+    The directory is left out because a failure message gets pasted into public text.
+    A probe that cannot run is named in the result, not raised, so it never hides the failure it annotates.
+    """
+    shfmt_path = shutil.which("shfmt")
+    if shfmt_path is None:
+        return "no shfmt on PATH"
+    try:
+        version_lines = subprocess.run(
+            [shfmt_path, "--version"], capture_output=True, text=True, check=False, timeout=SUBPROCESS_HANG_GUARD_SECONDS
+        ).stdout.splitlines()
+    except (OSError, subprocess.TimeoutExpired) as probe_error:
+        return f"{Path(shfmt_path).name}: its --version probe failed with {type(probe_error).__name__}"
+    first_version_line = next((line.strip() for line in version_lines if line.strip()), "prints no version")
+    return f"{Path(shfmt_path).name}: {first_version_line}"
+
+
+def shfmt_exit_note(parsed: subprocess.CompletedProcess) -> str:
+    """The build and the exit status and stderr of a real-shfmt run, for the message of an exit-status assertion."""
+    return f"{real_shfmt_identity()} exited {parsed.returncode}: {parsed.stderr!r}"
+
+
 def run_shfmt(command: str | bytes, *, argv: list[str] | None = None, cwd: Path | None = None, env: dict | None = None):
-    """Run shfmt, under the gates' own argv unless `argv` is given, with `command` on stdin.
+    """Run shfmt, under `_LIB_SHFMT_ARGV` unless `argv` is given, with `command` on stdin.
 
     Skips the test when shfmt is not installed, and fails it under GITHUB_ACTIONS, as `require_shfmt` does.
     """
@@ -55,14 +81,6 @@ def run_shfmt(command: str | bytes, *, argv: list[str] | None = None, cwd: Path 
         check=False,
         timeout=SUBPROCESS_HANG_GUARD_SECONDS,
     )
-
-
-def _read_bash_floor() -> tuple[int, int]:
-    floor_text = CONFIG_SH_PATH.read_text()
-    major = re.search(r"^_BASH_FLOOR_MAJOR=(\d+)$", floor_text, re.MULTILINE)
-    minor = re.search(r"^_BASH_FLOOR_MINOR=(\d+)$", floor_text, re.MULTILINE)
-    assert major and minor, f"{CONFIG_SH_PATH} does not assign both bash floor constants"
-    return int(major.group(1)), int(minor.group(1))
 
 
 class RealBash(NamedTuple):
@@ -106,11 +124,11 @@ def run_real_bash(
     A `check` of False returns a nonzero exit instead of failing the test.
     """
     real_bash = _bash_on_path()
-    floor = _read_bash_floor()
+    floor = _floor_constants(_CONFIG_SH)
     if real_bash.version < floor:
         pytest.fail(
             f"{real_bash.version_line} ({real_bash.path}) is below the bash {floor[0]}.{floor[1]} floor"
-            f" that {CONFIG_SH_PATH.name} defines; put a bash at or above it first on PATH"
+            f" that {_CONFIG_SH.name} defines; put a bash at or above it first on PATH"
         )
     bash_argv = [real_bash.path, "--norc", "--noprofile", "-c", script]
     run_kwargs = {"capture_output": True, "check": False, "stdin": subprocess.DEVNULL, "timeout": SUBPROCESS_HANG_GUARD_SECONDS}
@@ -128,7 +146,7 @@ def run_real_bash(
 
 
 def run_module(tree_json: bytes, projection: str = "words", *, script_path: Path = MODULE_PATH, env: dict | None = None):
-    """Run the module under the interpreter flags `_lib_shell_parse` uses."""
+    """Run the module under `python3 -I -S`, the flags that isolate it from the caller's site and path settings."""
     return subprocess.run(
         [sys.executable, "-I", "-S", str(script_path), projection],
         input=tree_json,
@@ -142,7 +160,7 @@ def run_module(tree_json: bytes, projection: str = "words", *, script_path: Path
 def project_words(command: str | bytes, *, env: dict | None = None) -> subprocess.CompletedProcess:
     """`command` through real shfmt and then the `words` projection. Fails the test when shfmt rejects it."""
     parsed = run_shfmt(command, env=env)
-    assert parsed.returncode == 0, f"shfmt exited {parsed.returncode} on {command!r}: {parsed.stderr!r}"
+    assert parsed.returncode == 0, f"{shfmt_exit_note(parsed)} on {command!r}"
     return run_module(parsed.stdout, env=env)
 
 
@@ -219,27 +237,40 @@ AGREES = "agrees-with-bash"
 
 MEMBER_OUTCOMES = frozenset({HIDDEN, SHOWN, RENAMED_FLAG})
 
-FLAG_AND_PATH = "git commit -F /dirty.md"
+FLAG_WORD = "-F"
+PATH_WORD = "/dirty.md"
+FLAG_AND_PATH = f"git commit {FLAG_WORD} {PATH_WORD}"
 FLAG_AND_PATH_CALL = f"w {FLAG_AND_PATH}"
+
+
+def holds_flag_and_path(command_words: list[str]) -> bool:
+    """True when one command's words hold both the flag word and the path word, as a flag and its value do."""
+    return FLAG_WORD in command_words and PATH_WORD in command_words
+
+
+
 _AGREEMENT_SEEN_ON = "agrees on bash 5.3.20, differs on bash 3.2.57"
 _FLUSH_COMMENT_SEEN_ON = "bash 5.3.20 and 3.2.57"
 _FLUSH_AGREEMENT_SEEN_ON = "agrees on bash 5.3.20"
 FLUSH_COMMENT_HEAD_WORDS = ("git", "commit", "-m")
 
 
-class CutResidualFixture(NamedTuple):
-    """One input of the cut residual: a member whose tree shows a command other than the one bash runs, or an agreement case.
+class UnguardedDivergenceFixture(NamedTuple):
+    """One input of the unguarded divergences: a member, or an agreement case that marks where they stop.
+
+    A member is a shape the module accepts unguarded: its tree shows a command other than the one bash runs.
+    No check refuses it, so a test pins what the module projects for it.
 
     A member's `outcome` is one of three:
-    - HIDDEN: `-F` and `/dirty.md` are absent from the words.
+    - HIDDEN: FLAG_WORD and PATH_WORD are absent from the words.
     - SHOWN: both are present in one command.
-    - RENAMED_FLAG: `-$F` and `/dirty.md` are in one command, and `-F` is absent.
+    - RENAMED_FLAG: `-$F` and PATH_WORD are in one command, and FLAG_WORD is absent.
 
     An agreement case holds the same text for bash in `bash_command`
     and the names of the module's commands nested in a substitution in `nested_command_names`.
     `seen_on` names the bash builds a member's hidden or shown line was run on.
     `visible_head_words` are words of a HIDDEN member's visible part, which one command must still hold.
-    `unflushed_twin` is a member's text without the hiding `#`, which projects `-F` and `/dirty.md` in one command.
+    `unflushed_twin` is a member's text without the hiding `#`, which projects FLAG_WORD and PATH_WORD in one command.
     """
 
     id: str
@@ -255,197 +286,197 @@ class CutResidualFixture(NamedTuple):
 
 # Closing a member flips its case in every suite that reads this list.
 # An agreement case is no member: it is the floor-build check, which a bash that hides its flag-and-path call fails.
-CUT_RESIDUAL_FIXTURES = [
-    CutResidualFixture(
+UNGUARDED_DIVERGENCE_FIXTURES = [
+    UnguardedDivergenceFixture(
         "delimiter-mismatch-delimiter-quoted-in-a-non-last-part", MEMBER,
         f'cat <<E"O"F\n$({FLAG_AND_PATH})\nEOF\n', SHOWN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "delimiter-mismatch-double-quoted-delimiter-holding-a-backslash", MEMBER,
         f'cat <<"E\\$F"\nbody\nE$F\n{FLAG_AND_PATH}\nE\\$F\n', HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
     # shfmt keeps the escape text of a `$'...'` or `$"..."` delimiter where bash decodes it, so the terminators differ.
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "delimiter-mismatch-ansi-c-delimiter-decoding-to-the-terminator", MEMBER,
         f"cat <<$'E\\x4fF'\nEOF\n{FLAG_AND_PATH}\nE\\x4fF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
         visible_head_words=("cat",),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "delimiter-mismatch-locale-delimiter-holding-a-backslash", MEMBER,
         f'cat <<$"E\\$F"\nbody\nE$F\n{FLAG_AND_PATH}\nE\\$F\n', HIDDEN, "bash 5.3.20 and 3.2.57",
         visible_head_words=("cat",),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "heredoc-in-backtick-substitution-closing-on-the-opener-line", MEMBER,
         f"x=`: <<EOF`\n{FLAG_AND_PATH}\nEOF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "heredoc-in-backtick-substitution-quoted-delimiter-that-is-a-command-line", MEMBER,
         f"x=`: <<'{FLAG_AND_PATH}'`\n{FLAG_AND_PATH}\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "heredoc-in-backtick-substitution-body-holding-a-bare-backtick", MEMBER,
         f"x=`cat <<'EOF'\n`\n{FLAG_AND_PATH}\nEOF\n`\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "extglob-pattern-holding-a-brace-substitution", MEMBER,
         f"shopt -s extglob\necho @(${{ {FLAG_AND_PATH}; }}|b)\n", HIDDEN, "bash 5.3.20, the only build with the form",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "stdin-fed-to-an-interpreter-heredoc-to-a-shell", MEMBER,
         f"bash <<'EOF'\n{FLAG_AND_PATH}\nEOF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "stdin-fed-to-an-interpreter-hand-off-across-statements", MEMBER,
         f"exec 3<<'EOF'\n{FLAG_AND_PATH}\nEOF\nbash <&3\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "stdin-fed-to-an-interpreter-that-is-not-a-shell", MEMBER,
         f"make -f - <<'EOF'\nall:\n\t{FLAG_AND_PATH}\nEOF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-continuation-splitting-a-heredoc-terminator", MEMBER,
         f"cat <<EOF\nbody\nE\\\nOF\n{FLAG_AND_PATH}\nEOF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-heredoc-body-whose-first-line-is-a-lone-backslash", MEMBER,
         f"cat <<EOF\n\\\nEOF\n{FLAG_AND_PATH}\nEOF\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-comment-ending-in-a-backslash-on-a-heredoc-opener-line", MEMBER,
         f"cat <<'EOF' # c \\\nX\nEOF\n{FLAG_AND_PATH}\nEOFX\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-quoted-heredoc-in-backticks-with-a-split-terminator", MEMBER,
         f"x=`cat <<'EOF'\nbody\nE\\\nOF\n{FLAG_AND_PATH}\nEOF\n`\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-single-quoted-words-split-inside-backticks", MEMBER,
         "x=`git commit '-\\\nF' '/dirty\\\n.md'`\n", HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-between-dollar-and-open-parenthesis", MEMBER,
         f'echo "$\\\n({FLAG_AND_PATH})"\n', HIDDEN, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-before-a-single-quoted-part-of-a-flag", MEMBER,
         "git commit -$\\\n'F' /dirty.md\n", RENAMED_FLAG, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-before-a-double-quoted-part-of-a-flag", MEMBER,
         'git commit -$\\\n"F" /dirty.md\n', RENAMED_FLAG, "bash 5.3.20 and 3.2.57",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "backslash-newline-trailing-comment-ending-in-a-backslash", MEMBER,
         f"cd /x # c \\\n{FLAG_AND_PATH}\n", SHOWN, "bash 5.3.20 and 3.2.57",
         visible_head_words=("cd",),
     ),
     # A `#` flush against the end of a quote or expansion is a comment to shfmt and part of the word to bash,
     # so shfmt drops the rest of the line. The container's closer sits on a later line.
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-a-subshell", MEMBER,
         '( git commit -m "x"# -F /dirty.md\n)\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-a-quoted-command-substitution", MEMBER,
         'echo "$( git commit -m "x"# -F /dirty.md\n)"\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-a-process-substitution", MEMBER,
         'cat <( git commit -m "x"# -F /dirty.md\n)\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-backticks", MEMBER,
         'echo `git commit -m "x"# -F /dirty.md\n`\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-a-case-arm", MEMBER,
         'case x in x) git commit -m "x"# -F /dirty.md\n;; esac\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-after-an-expansion-in-a-subshell", MEMBER,
         "( git commit -m $x# -F /dirty.md\n)\n", HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-an-array-literal", MEMBER,
         f'x=( "a"# $({FLAG_AND_PATH})\n)\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         unflushed_twin=f'x=( "a" $({FLAG_AND_PATH})\n)\n',
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-in-a-declared-array-literal", MEMBER,
         f'declare -a x=( "a"# $({FLAG_AND_PATH})\n)\n', HIDDEN, _FLUSH_COMMENT_SEEN_ON,
         unflushed_twin=f'declare -a x=( "a" $({FLAG_AND_PATH})\n)\n',
     ),
     # A `#` right after an array literal's closing `)` hides the rest of the line at top level too.
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-after-array-literal-closer", MEMBER,
         f"x=(a)# ; {FLAG_AND_PATH}\n", HIDDEN, "bash 5.3.20",
         unflushed_twin=f"x=(a) ; {FLAG_AND_PATH}\n",
     ),
     # A `#` right after an extglob pattern's closing `)` hides the rest of the line in the same containers.
     # The extglob option is set on its own first line, since bash cannot parse the pattern in the same compound command.
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "flush-comment-after-extglob-closer", MEMBER,
         "shopt -s extglob\n( git commit -m @(a|b)# -F /dirty.md\n)\n", HIDDEN, "bash 5.3.20",
         visible_head_words=FLUSH_COMMENT_HEAD_WORDS,
         unflushed_twin="shopt -s extglob\n( git commit -m @(a|b) -F /dirty.md\n)\n",
     ),
     # The class's boundary for a quote or expansion before the `#`: it agrees with bash at top level and inside `{ }`.
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-flush-comment-at-top-level", AGREEMENT,
         'git commit -m "x"# -F /dirty.md\n', AGREES, _FLUSH_AGREEMENT_SEEN_ON,
         'w git commit -m "x"# -F /dirty.md\n',
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-flush-comment-in-braces", AGREEMENT,
         '{ git commit -m "x"# -F /dirty.md\n}\n', AGREES, _FLUSH_AGREEMENT_SEEN_ON,
         '{ w git commit -m "x"# -F /dirty.md\n}\n',
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-flush-comment-after-an-expansion-at-top-level", AGREEMENT,
         "git commit -m $x# -F /dirty.md\n", AGREES, _FLUSH_AGREEMENT_SEEN_ON,
         "w git commit -m $x# -F /dirty.md\n",
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-command-substitution-closer-in-an-unquoted-assignment", AGREEMENT,
         f"x=$(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n)\necho done\n", AGREES, _AGREEMENT_SEEN_ON,
         f"x=$(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n)\nw echo done\n", frozenset({"cat"}),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-command-substitution-closer-in-an-export", AGREEMENT,
         f"export x=$(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n)\necho done\n", AGREES, _AGREEMENT_SEEN_ON,
         f"export x=$(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n)\nw echo done\n", frozenset({"cat"}),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-process-substitution-closer", AGREEMENT,
         f"diff <(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n) /dev/null\n", AGREES, _AGREEMENT_SEEN_ON,
         f"w diff <(cat <<'EOF'\n1)\n{FLAG_AND_PATH_CALL}\nEOF\n) /dev/null\n", frozenset({"cat"}),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-parameter-default-closer", AGREEMENT,
         f"y=${{x:-$(cat <<'EOF'\n}}\n{FLAG_AND_PATH_CALL}\nEOF\n)}}\necho done\n", AGREES, _AGREEMENT_SEEN_ON,
         f"y=${{x:-$(cat <<'EOF'\n}}\n{FLAG_AND_PATH_CALL}\nEOF\n)}}\nw echo done\n", frozenset({"cat"}),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-array-subscript-closer", AGREEMENT,
         f"a[$(cat <<'EOF'\n1]\n{FLAG_AND_PATH_CALL}\nEOF\n)]=1\necho done\n", AGREES, _AGREEMENT_SEEN_ON,
         f"a[$(cat <<'EOF'\n1]\n{FLAG_AND_PATH_CALL}\nEOF\n)]=1\nw echo done\n", frozenset({"cat"}),
     ),
-    CutResidualFixture(
+    UnguardedDivergenceFixture(
         "agreement-one-line-opener-closing-the-substitution", AGREEMENT,
         f"x=$(: <<EOF)\n{FLAG_AND_PATH_CALL}\nEOF\necho done\n", AGREES, _AGREEMENT_SEEN_ON,
         f"x=$(: <<EOF)\n{FLAG_AND_PATH_CALL}\nEOF\nw echo done\n", frozenset({":"}),
     ),
 ]  # fmt: skip
 
-CUT_RESIDUAL_MEMBERS = [fixture for fixture in CUT_RESIDUAL_FIXTURES if fixture.kind == MEMBER]
-CUT_RESIDUAL_AGREEMENT_CASES = [fixture for fixture in CUT_RESIDUAL_FIXTURES if fixture.kind == AGREEMENT]
+UNGUARDED_DIVERGENCE_MEMBERS = [fixture for fixture in UNGUARDED_DIVERGENCE_FIXTURES if fixture.kind == MEMBER]
+UNGUARDED_DIVERGENCE_AGREEMENT_CASES = [fixture for fixture in UNGUARDED_DIVERGENCE_FIXTURES if fixture.kind == AGREEMENT]
 
 
 def iter_objects(tree) -> Iterator[dict]:
@@ -473,7 +504,7 @@ def _row(construct: str, template: str, *holder_types: str) -> ChildPosition:
 
 
 # Each row puts a command into one child position of a construct. A row's holder types are the node
-# types the command sits under, on the path from the tree's root to it. Later projections reuse the rows with other commands.
+# types the command sits under, on the path from the tree's root to it.
 CHILD_POSITION_MATRIX = [
     _row("top-level statement", "{command}", "File", "CallExpr"),
     _row("left of &&", "{command} && true", "BinaryCmd"),
