@@ -62,6 +62,8 @@ class RunSettings:
     launch: Launch
     # Read once when the process starts its blocks, so every record names the checkout state the process began with.
     runner: RunnerProvenance
+    # The reasons after which a run stops retrying. A campaign keeps a timeout retryable. Smoke does not.
+    no_retry_reasons: frozenset[str] = NO_RETRY_REASONS
     # Set when a worker fails or the run is interrupted.
     stop: threading.Event = field(default_factory=threading.Event)
     # (task ID, session ID) of each launch that began and could not be charged.

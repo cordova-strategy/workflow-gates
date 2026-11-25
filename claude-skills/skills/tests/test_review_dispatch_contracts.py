@@ -11,10 +11,16 @@ from _skill_md_helpers import (
     _AGENTS_DIR,
     _CODE_REVIEW_FINDING_DISPOSITION_HEADING,
     _CODE_REVIEW_RIPPLE_HEADING,
+    _CODE_REVIEW_SKILL_PATH,
+    _PLAN_REVIEW_SKILL_PATH,
+    _ROUTING_MD_PATH,
+    _ROUTING_ROLES_HEADING,
     _STEP4_HEADING,
     _agent_body,
     _all_skill_md_paths,
+    _assert_pinned_clause_right_bounded,
     _heading_section_text,
+    _raw_heading_section_text,
     _scope_exempt_change_type_row_text,
     _skill_body,
     _skill_file,
@@ -41,7 +47,7 @@ def test_plan_review_hands_comment_discipline_reviewer_a_plan_path() -> None:
     Its `plan_path:` checks overlap `test_prompt_contract_site_matches_agent_contract`.
     It stays for the spawn-condition literals: the Step 5 condition and the `/review-pr` skip.
     """
-    routing_roles_text = _heading_section_text(_ROUTING_MD_PATH, "## Reviewer roles")
+    routing_roles_text = _heading_section_text(_ROUTING_MD_PATH, _ROUTING_ROLES_HEADING)
     agent_input_contract_text = _heading_section_text(
         _AGENTS_DIR / "comment-discipline-reviewer.md", "## Input contract"
     )
@@ -273,6 +279,14 @@ def test_prompt_contract_sites_cover_every_contract_agent() -> None:
     )
 
 
+# plan-review/SKILL.md's Output format bullet for a round whose only findings are plan prose.
+_PLAN_REVIEW_PROSE_ONLY_ROUND_BULLET = (
+    "A round whose only findings are plan prose ends **Approve with changes**. The completion marker "
+    "follows once the `plan-architect` dispatch that \"Record review completion + deactivate\" names "
+    "is complete."
+)
+
+
 def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> None:
     """These sentences keep plan prose non-blocking and reviewed once, before approval.
 
@@ -291,10 +305,6 @@ def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> No
         "A plan prose finding never makes the verdict **Request changes**, "
         "whatever severity the reviewer gave it, so plan prose alone never adds a review round."
     )
-    approve_with_changes_literal = (
-        "A round whose only findings are plan prose ends **Approve with changes** "
-        "when you accept any of them. It ends **Approve** otherwise."
-    )
     diff_exclusion_literal = (
         "A plan file under `.claude/plans/` that appears in a diff is out of scope"
     )
@@ -303,9 +313,15 @@ def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> No
         f"{plan_review_skill_path}: Output format no longer carries "
         f"{non_blocking_literal!r}. {rerun_note}"
     )
-    assert approve_with_changes_literal in output_format_text, (
-        f"{plan_review_skill_path}: Output format no longer carries "
-        f"{approve_with_changes_literal!r}. {rerun_note}"
+    _assert_pinned_clause_right_bounded(
+        _PLAN_REVIEW_PROSE_ONLY_ROUND_BULLET,
+        _raw_heading_section_text(plan_review_skill_path, "## Output format"),
+        context=(
+            f"{plan_review_skill_path}: Output format no longer carries its prose-only-round "
+            f"bullet verbatim. {rerun_note} Its completion-marker clause is also the subject of "
+            "Cell V in docs/design-decisions/plan-architect-decides-review-findings.md, so re-run "
+            "that cell too."
+        ),
     )
     assert diff_exclusion_literal in agent_scope_text, (
         f"comment-discipline-reviewer.md: Scope no longer carries {diff_exclusion_literal!r}. "
@@ -332,8 +348,6 @@ def test_plan_prose_findings_never_block_and_plan_diffs_stay_out_of_lane() -> No
 # 3. Script-invocation presence check across the three dispatchers.
 # 4. Retired-recipe absence scan across every skill body, so a fourth
 #    dispatcher copy-pasting the old recipe fails rather than passing unseen.
-
-_ROUTING_MD_PATH = _skill_file("plan-review").parent / "ROUTING.md"
 
 # Contract tokens pinned verbatim, not just paraphrased — code-review/SKILL.md
 # and plan-review/ROUTING.md must reuse the same findings_path template and
@@ -418,11 +432,8 @@ def test_routing_spawn_step_states_ledger_instruction_passed_as_literal_text() -
     )
 
 
-_CODE_REVIEW_SKILL_PATH = _skill_file("code-review")
-_PLAN_REVIEW_SKILL_PATH = _skill_file("plan-review")
 _CODE_REVIEW_STEP_1_HEADING = "## Step 1 — Implementation-fitness gate"
 _PLAN_REVIEW_OUTPUT_HEADING = "## Output format"
-_ROUTING_ROLES_HEADING = "## Reviewer roles"
 
 # The field and value constants below are shared by the pins and by `_DECLARATION_BLOCK_TEXT`.
 # That text is built from them, so renaming one in only one place fails a test.

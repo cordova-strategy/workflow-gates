@@ -14,7 +14,7 @@ bodies from the two discovery paths), it costs real tokens on every session work
 in this repo, and a scoped, design-reviewed fix now exists. Intended outcome: no
 path in the repo is literally `<ancestor>/.claude/skills` after this PR;
 `install.sh` auto-migrates existing installs; the shared stow-package enumeration
-is published as a script so the downstream private `workstation-setup` repo can
+is published as a script so the downstream private `<private-setup-repo>` can
 adopt it ahead of the layout change; and `CLAUDE.md` gains a rule ruling out future
 hard dependencies on other repositories.
 
@@ -37,7 +37,7 @@ Givens:
 
 - **G1 — Claude Code's nested project-skill discovery cannot be switched off or path-excluded.** Vendor-owned; the complete skills-discovery settings surface is `disableBundledSkills`, `disableSkillShellExecution`, `skillOverrides`, `syncClaudeAiSkills`, `skillListingBudgetFraction`, `skillListingMaxDescChars`, and `strictPluginOnlyCustomization.skills`, none of which excludes a directory. `[engineer-verified]`
 - **G2 — GNU Stow links each top-level child of a package individually, and tree-folds a target that does not yet exist into a single directory symlink.** Vendor behavior this repo already depends on. `[verified: install.sh:47-51's comment states the tree-folding rule, and the mkdir there creates only $HOME/.claude, never $HOME/.claude/skills]`
-- **G3 — the downstream private `workstation-setup` repo stows `claude/.claude` as its own package root into per-account config directories, and its update is another repo's work.** Its package root is one level below `install.sh`'s, which is why its `--ignore` patterns are anchored differently. `[verified: claude/.claude/scripts/_stow_migration_lib.sh:418-429]`
+- **G3 — the downstream private `<private-setup-repo>` stows `claude/.claude` as its own package root into per-account config directories, and its update is another repo's work.** Its package root is one level below `install.sh`'s, which is why its `--ignore` patterns are anchored differently. `[verified: claude/.claude/scripts/_stow_migration_lib.sh:418-429]`
 - **G4 — editing `plugins/skill-management/hooks/require-skill-review.sh` requires a `plugin-semver` version bump before `git commit` will succeed.** Enforced by `require-plugin-version-bump.sh`, owned by the plugin-semver plugin. `[verified: .claude/rules/review-pipeline-dispatch.md]`
 
 Rows:
@@ -69,7 +69,7 @@ Over-powered-primitive check for the chosen mechanism (a second top-level stow p
 - **A settings key excluding the directory from discovery** would need no restructure at all. Rejected: no such key exists (G1). This was checked first, and it is the reason GH-845 is a separate, cheaper ticket — `claudeMdExcludes` already exists there.
 - **Keeping one package and lifting the tree to `claude/skills/`, stowed via `stow -d claude -t "$HOME/.claude" …`** avoids a new top-level directory. Rejected: `claude/` is simultaneously the package stowed into `$HOME`, so the existing `stow -t "$HOME" claude` would additionally create a `~/skills` symlink; suppressing that needs a third `--ignore` and couples the two invocations. `[verified: install.sh:275]`
 
-**Alternative set aside.** Landing the seam and the move as two separate PRs would let `workstation-setup` adopt the manifest before the layout changes under it, which is what "behavior-preserving refactor first" is for. This plan keeps one PR with the seam as its first commit, per the ticket's framing; if the downstream should adopt before merge, push that commit as its own PR and rebase the rest. Either way the dependency direction is one-way — `workstation-setup` depends on this repo's layout, and this repo depends on nothing — which is exactly the rule this PR adds to `CLAUDE.md`.
+**Alternative set aside.** Landing the seam and the move as two separate PRs would let `<private-setup-repo>` adopt the manifest before the layout changes under it, which is what "behavior-preserving refactor first" is for. This plan keeps one PR with the seam as its first commit, per the ticket's framing; if the downstream should adopt before merge, push that commit as its own PR and rebase the rest. Either way the dependency direction is one-way — `<private-setup-repo>` depends on this repo's layout, and this repo depends on nothing — which is exactly the rule this PR adds to `CLAUDE.md`.
 
 ## Critical files
 
@@ -174,5 +174,5 @@ Then: `.venv/bin/ruff check claude/.claude/ claude-skills/ plugins/` and `script
 - **Extending `require-stow-reminder.sh`'s trigger to `claude-skills/`.** Deliberate, with reasoning recorded in ledger row 17 and in the hook's own "Known gaps" section. Raise as a GitHub issue if `claude-skills/` ever gains a second immediate child.
 - **The ~24 `parents[4]` sites under `claude/.claude/hooks/tests/` and `claude/.claude/scripts/tests/`.** Their depth arithmetic is unaffected by this move. Converting them to `helpers` imports is a real improvement and a separate change.
 - **Historical and dated records (Axis 3).** Do not edit `docs/design-decisions.md`'s dated log entries, `docs/case-studies/**`, `docs/cost-levers-considered.md`, `docs/reports/**`, `CHANGELOG.md`'s existing entries, or anything under `.claude/plans/`, `.claude/handoffs/`, `.claude/briefs/` — including the superseded `.claude/plans/fix-plugin-skill-invocation-prefix.md`. `docs/design-decisions.md` mixes live mechanism description with dated entries; assess its 13 occurrences per-occurrence and change only the live ones.
-- **`workstation-setup`'s own edits.** Its adoption of the manifest is that repo's task, briefed separately. Note the sequencing dependency in the PR body in prose; do not reference its file paths or line numbers, and do not make anything here conditional on it.
+- **`<private-setup-repo>`'s own edits.** Its adoption of the manifest is that repo's task, briefed separately. Note the sequencing dependency in the PR body in prose; do not reference its file paths or line numbers, and do not make anything here conditional on it.
 - **`.claude/rules/test-tree-packaging.md`'s `claude/.claude/**/tests/**` glob.** It no longer matches the moved tests directory, but that directory carries neither `conftest.py` nor `__init__.py`, so the rule was never load-bearing for it (ledger row 14). Leave the glob alone.

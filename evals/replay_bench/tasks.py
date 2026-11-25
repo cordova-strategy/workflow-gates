@@ -97,6 +97,8 @@ class SkipReason(StrEnum):
     BINARY = "binary"
     TOO_FEW_CODE_LINES = "too-few-code-lines"
     TOO_MANY_CODE_LINES = "too-many-code-lines"
+    TOO_MANY_TEST_CODE_LINES = "too-many-test-code-lines"
+    SUBJECT_ONLY_BRIEF = "subject-only-brief"
     PROMPT_TOO_LONG = "prompt-too-long"
     BASE_TREE_TOO_LARGE = "base-tree-too-large"
     BASE_TREE_TOO_MANY_ENTRIES = "base-tree-too-many-entries"
@@ -123,6 +125,8 @@ class SelectionLimits:
     # Basis: the fixture-build timing measured for 12,500 files totaling 100 MB, in the Fixture section of
     # .claude/plans/docstring-verbosity-experiment.md.
     max_base_entries: int = 12_500
+    # An engineering choice for this study, not a vendor or protocol figure.
+    max_test_code_lines: int = 300
 
     def __post_init__(self) -> None:
         """A negative `max_count` would make `git log -n` walk the whole history."""
@@ -136,8 +140,8 @@ class SelectionLimits:
 
 
 _INTEGER_LIMIT_FIELDS = (
-    "max_count", "max_tasks", "max_files", "min_code_lines", "max_code_lines", "max_prompt_chars", "max_base_mb",
-    "max_base_entries",
+    "max_count", "max_tasks", "max_files", "min_code_lines", "max_code_lines", "max_test_code_lines", "max_prompt_chars",
+    "max_base_mb", "max_base_entries",
 )
 
 
@@ -465,6 +469,7 @@ def render_inner_prompt(brief: str, changed_paths: Sequence[str]) -> str:
         f"The original change touched these paths: {', '.join(changed_paths)}. "
         "Leave your changes in the working tree, uncommitted. "
         "Do not install packages or run anything that needs network access. "
+        "Do not run tests, git or any other command that is not read-only, because they cannot run in this environment. "
         "When you finish, reply with the paths you changed.\n\n"
         f"{BEGIN_DESCRIPTION_LINE}\n{brief}\n{END_DESCRIPTION_LINE}"
     )
@@ -827,11 +832,15 @@ def _evaluate_commit(
     if record.author_email not in trusted_authors:
         return SkipReason.UNTRUSTED_AUTHOR
     brief = record.message.strip()
+    # Splits on "\n" only, as git does for a subject line.
+    # The reserved-line check below uses splitlines(), which also splits on Unicode separators.
+    holds_body = any(line.strip() for line in brief.split("\n")[1:])
     if len(record.parents) > 1:
         merged = _merged_commits(repo, record)
         if any(author_email not in trusted_authors for author_email, _subject in merged):
             return SkipReason.UNTRUSTED_MERGED_AUTHOR
         brief += "\n\nMerged commits:\n" + "\n".join(f"- {subject}" for _author_email, subject in merged)
+        holds_body = holds_body or bool(merged)
     if any(line.strip() in _RESERVED_BRIEF_LINES for line in brief.splitlines()):
         return SkipReason.RESERVED_BRIEF_LINE
 
@@ -856,6 +865,10 @@ def _evaluate_commit(
         return SkipReason.TOO_FEW_CODE_LINES
     if code_lines > limits.max_code_lines:
         return SkipReason.TOO_MANY_CODE_LINES
+    if metrics.line_counts["test"][LineClass.CODE.value] > limits.max_test_code_lines:
+        return SkipReason.TOO_MANY_TEST_CODE_LINES
+    if not holds_body:
+        return SkipReason.SUBJECT_ONLY_BRIEF
     if len(render_inner_prompt(brief, changed_paths)) > limits.max_prompt_chars:
         return SkipReason.PROMPT_TOO_LONG
 

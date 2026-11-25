@@ -222,7 +222,7 @@ The skill body states three explicit outcomes:
 
 **Gating: a content-addressed sentinel, not a content-free flag.**
 `.claude/pr-cost-disclosure` is not an empty marker file — its content is the exact
-`owner/repo` string for the repo it was enabled in (e.g. `jaredcordova/claude-config`). The
+`owner/repo` string for the repo it was enabled in (e.g. `<owner>/claude-config`). The
 gate is three explicit conjuncts, not a single equality that can be satisfied by two empty
 strings: (a) the sentinel file exists, (b) its trimmed content is non-empty, and (c)
 `gh repo view --json nameWithOwner --jq .nameWithOwner` for the current repo exits zero with

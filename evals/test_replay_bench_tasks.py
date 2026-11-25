@@ -88,7 +88,7 @@ def _make_repo(
 
 
 def _change(
-    repo: Path, files: dict[str, str | bytes | None] | None = None, message: str = "Add helpers", *,
+    repo: Path, files: dict[str, str | bytes | None] | None = None, message: str = "Add helpers\n\nThey compute values.", *,
     author: str = TRUSTED, committer: str | None = None,
 ) -> str:
     """Commits `files` (None deletes), staging only those paths so an unmodified gitlink stays."""
@@ -179,7 +179,7 @@ def _repo_from_trees(tmp_path: Path, base_tree: dict, change_tree: dict) -> Path
 
     base_commit = _git(repo, "commit-tree", tree(base_tree).decode(), "-m", "base").decode().strip()
     change_commit = _git(
-        repo, "commit-tree", tree(change_tree).decode(), "-p", base_commit, "-m", "Add helpers",
+        repo, "commit-tree", tree(change_tree).decode(), "-p", base_commit, "-m", "Add helpers\n\nThey compute values.",
     ).decode().strip()
     _git(repo, "update-ref", "HEAD", change_commit)
     return repo
@@ -1252,7 +1252,7 @@ class TestWalk:
         # A base file named for the repo keeps two repos' commit ids apart whatever the commit clock reads.
         repo = _make_repo(tmp_path, {"owner.txt": name}, name=name)
         commits = [
-            _change(repo, {f"src/module_{n}.py": "".join(f"value_{i} = {i}\n" for i in range(12))}, message=f"Add {n}")
+            _change(repo, {f"src/module_{n}.py": "".join(f"value_{i} = {i}\n" for i in range(12))}, message=f"Add {n}\n\nBody")
             for n in range(count)
         ]
         return repo, commits
@@ -1459,12 +1459,12 @@ class TestTaskFiles:
 class TestInnerPrompt:
     def test_the_prompt_lists_the_changed_paths_and_wraps_the_brief_in_begin_and_end_lines(self, tmp_path):
         repo = _make_repo(tmp_path)
-        _change(repo, {**QUALIFYING_CHANGE, "src/second.py": "".join(f"v{i} = {i}\n" for i in range(3))}, message="Add helpers")
+        _change(repo, {**QUALIFYING_CHANGE, "src/second.py": "a = 1\n" * 3}, message="Add helpers\n\nThey compute values.")
 
         prompt = tasks.build_inner_prompt(_mine_one_task(repo))
 
         assert "The original change touched these paths: src/app.py, src/second.py. " in prompt
-        assert prompt.endswith("\n\nBEGIN CHANGE DESCRIPTION\nAdd helpers\nEND CHANGE DESCRIPTION")
+        assert prompt.endswith("\n\nBEGIN CHANGE DESCRIPTION\nAdd helpers\n\nThey compute values.\nEND CHANGE DESCRIPTION")
 
 
 # --- prune -------------------------------------------------------------------

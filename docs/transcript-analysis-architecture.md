@@ -214,9 +214,14 @@ unbounded.
 Small display-formatting and text-normalization helpers with no state of their own: model-family
 labels (`_fam`), markdown/table rendering, `_content_text`, `_fmt_usd`, `_pct_of`,
 `_strip_task_notifications`, `_is_main_thread_user_text`, `_is_task_notification`,
-`_is_fresh_user_prompt`. Self-contained. `_is_fresh_user_prompt` has its one definition here, built
+`_is_fresh_user_prompt`. It also holds the user-record origin atoms: `HUMAN_ORIGIN_KIND` with
+`_has_human_origin`, `NO_ORIGIN_PROMPT_MARKERS` with `_has_headless_markers`, `_is_interrupt_marker`,
+`_is_interpretable`, the check that a record's message and text blocks are readable, and
+`_first_command_args` with its two tag constants. Self-contained.
+`_is_fresh_user_prompt` has its one definition here, built
 on the other two predicates; `judgment_pair.py`, `review_rounds.py`'s round-window detection, and
-`period_cost.py`'s review windows read it, as does `compaction-context.py` (see "Sibling scripts").
+`period_cost.py`'s review windows read it, as do `correction_candidates.py` and `compaction-context.py` (see
+"Sibling scripts").
 `rearm_backtest.py`'s boundary detection reads
 `_is_main_thread_user_text`, which also accepts a task notification.
 
@@ -275,7 +280,7 @@ miner's round filter and `routing_guard.py`'s per-round `spawn_open` flag are it
 `_round_skill_name` for its `REVIEW_TRACE_SKILLS` membership test and `--skill` filter comparison, and
 `_SLASH_COMMAND_RE` to extract a `/slash`-invoked skill name before `_round_skill_name` normalizes it.
 `_SLASH_COMMAND_RE` is also `skill_invocation.py`'s `/slash` pattern, and this is its one definition.
-`period_cost.py` and `compaction-context.py` (see "Sibling scripts") read it as well.
+`period_cost.py`, `correction_candidates.py` and `compaction-context.py` (see "Sibling scripts") read it as well.
 `detect_round_windows` is public (no leading
 underscore) for a separate reason: `author_outcome.py` is a second consumer, reading only each
 window's own `open_idx`/`skill`. `review_trace.py` and `routing_guard.py` are further ones.
@@ -677,14 +682,27 @@ registration. Imports `corpus`, `redaction`, `render`, `review_rounds`, and `sco
 for its `--skills` flag. `_add_judgment_pair_subparser` is the one name `build_parser()` reaches
 bare.
 
+### `correction_candidates.py`
+
+The correction-candidates command: `cmd_correction_candidates`, which writes each answered, declined or errored
+main-session `AskUserQuestion` exchange and each typed prompt in the window, each with the agent text
+around it, as JSON Lines to a new owner-only file, and the `_add_correction_candidates_subparser` registration. The extraction is a set of
+functions of in-memory records, so tests drive it without files: `_prompt_verdict`, `_slash_command_args`,
+`_session_candidates`, `_answer_is_free_text`, `_dedup_and_order`, `_failed_relations`,
+`_counts_and_checks`, `_scope_record` (which takes its generation time as an argument), and
+`_jsonl_text`. Imports `corpus`, `ledger_common`, `pricing`, `redaction`, `render`, `review_rounds`,
+`scope`, `skill_invocation`, and `user_input` all by module (attribute access), matching `cost.py`'s
+convention. The record schema and the typed-prompt rule live in `docs/transcript-analysis.md`.
+`_add_correction_candidates_subparser` is the one name `build_parser()` reaches bare.
+
 ### `skill_invocation.py`
 
 The skill-invocation command: `cmd_skill_invocation`, the per-skill tally of top-level, routed, and
 `/slash` invocations, `_normalize_skill_name`, the display-label helper that strips a directory
 qualifier from a skill name, and the `_add_skill_invocation_subparser` registration. Imports
 `corpus`, `render`, `review_rounds`, and `scope` all by module (attribute access), matching
-`cost.py`'s convention. `_normalize_skill_name` has its one definition here, and `review_trace.py`
-reads it. The `/slash` pattern is `review_rounds._SLASH_COMMAND_RE`.
+`cost.py`'s convention. `_normalize_skill_name` has its one definition here, and `review_trace.py` and
+`correction_candidates.py` read it. The `/slash` pattern is `review_rounds._SLASH_COMMAND_RE`.
 `_add_skill_invocation_subparser` is the one name `build_parser()` reaches bare.
 
 ### `skill_pair.py`
@@ -740,8 +758,9 @@ The user-input command: `cmd_user_input`, the per-session narrative of fresh use
 initial, follow-up, or explicit correction, the prompt-classification helpers
 (`_is_fresh_user_prompt_for_narrative`, `_is_unrecognized_user_list_record`, `_classify_prompt`,
 `_attribute_model_to_prompt`, `_truncate_prompt_text`), and the `_add_user_input_subparser`
-registration. Of those helpers, only `_is_fresh_user_prompt_for_narrative` has a production caller outside the
-module (see "Sibling scripts"). Imports `corpus`, `redaction`, `render`, `scope`, and `struggle` all by
+registration. Of those helpers, only `_is_fresh_user_prompt_for_narrative` and `_truncate_prompt_text` have a
+production caller outside the module: `correction_candidates.py` reads both, and `compaction-context.py` reads
+the first (see "Sibling scripts"). Imports `corpus`, `redaction`, `render`, `scope`, and `struggle` all by
 module (attribute access), matching `cost.py`'s convention; `_classify_prompt` reads
 `struggle.STRUGGLE_PHRASES`. It scans `scope.PROJECTS_DIR` only, ignoring declared roots. Its
 `--redact` map comes from `redaction._build_redact_map`'s default root. `_add_user_input_subparser`
@@ -873,11 +892,14 @@ these underscore-prefixed names:
 
 - `user_input._is_fresh_user_prompt_for_narrative` and `user_input._fence_for_text`.
 - `render._content_text` and `render._is_fresh_user_prompt`.
+- `render._has_human_origin`, `render._has_headless_markers`, `render._is_interrupt_marker`,
+  `render._is_interpretable`, and `render._first_command_args`.
 - `scope._branch_tag` and `scope._DETACHED_HEAD_BRANCH`.
 - `review_rounds._SLASH_COMMAND_RE`.
 
 A rename of any of them breaks that script when it runs, so grep `compaction-context.py` before
-changing one. Tightening `_is_fresh_user_prompt_for_narrative` also narrows the prompts that script quotes.
+changing one. Tightening `_is_fresh_user_prompt_for_narrative` or `render._is_fresh_user_prompt` also narrows the
+prompts that script quotes and the prompts `correction_candidates.py` emits.
 
 ## Tests
 
@@ -1085,6 +1107,21 @@ helpers more than one of those files, `tests/test_transcript_analysis_multi_root
 `from ._skill_helpers import ...` — see `.claude/rules/test-tree-packaging.md` for
 why. `TestIsFreshUserPrompt` lives in `tests/test_transcript_render.py` because it tests
 `render.py`, not the judgment-pair command.
+
+The correction-candidates command's tests split at the extraction seam:
+
+- `tests/test_transcript_correction_candidates_extraction.py` covers verdicts, exchanges, context text, truncation,
+  dedup, serialization, and the record key sets.
+- `tests/test_transcript_correction_candidates_questions.py` covers the question entries and lines.
+- `tests/test_transcript_correction_candidates_counts.py` covers the scope record's counters, the count relations,
+  and robustness under field mutation.
+- `tests/test_transcript_correction_candidates_canaries_and_aborts.py` covers what reaches the terminal and the
+  scope record, and the corpus-abort messages.
+- `tests/test_transcript_correction_candidates.py` covers the subparser wiring, refusals, preview, and the written
+  file through `main()`.
+
+`tests/_correction_candidates_helpers.py` holds the shared builders. It is a plain module, not a test file. The args
+builder lives in `tests/conftest.py`; see the helper module's docstring for why.
 
 The session-signal command group splits at command seams, one test file per module:
 `tests/test_transcript_buckets.py`, `tests/test_transcript_fail_seq.py`,

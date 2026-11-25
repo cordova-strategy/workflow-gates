@@ -1419,6 +1419,27 @@ def _context_distribution_args(
     })()
 
 
+def _correction_candidates_args(
+    *,
+    projects: str | None = "*",
+    this_repo: bool = False,
+    since: str | None = None,
+    until: str | None = None,
+    truncate_chars: int = 2000,
+    out: str | None = None,
+    preview: bool = False,
+) -> object:
+    return type("A", (), {
+        "projects": projects,
+        "this_repo": this_repo,
+        "since": since,
+        "until": until,
+        "truncate_chars": truncate_chars,
+        "out": out,
+        "preview": preview,
+    })()
+
+
 def _audit_routing_args(
     *,
     projects: str = "*",

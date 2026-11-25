@@ -28,6 +28,7 @@ from transcript_analysis.context_composition import (
 from transcript_analysis.context_distribution import (
     _add_context_distribution_subparser,
 )
+from transcript_analysis.correction_candidates import _add_correction_candidates_subparser
 from transcript_analysis.cost import _add_cost_subparser, _add_cost_trend_subparser
 from transcript_analysis.cost_ledger import _add_cost_ledger_subparser
 from transcript_analysis.duration import (
@@ -130,6 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     _add_skill_invocation_subparser(sub)
     _add_review_trace_subparser(sub)
     _add_judgment_pair_subparser(sub)
+    _add_correction_candidates_subparser(sub)
     _add_audit_routing_subparser(sub)
     _add_cost_subparser(sub)
     _add_context_distribution_subparser(sub)

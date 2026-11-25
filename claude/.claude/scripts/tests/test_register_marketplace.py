@@ -275,10 +275,10 @@ class TestSettingsFileResolution:
             json.dumps(
                 {
                     "extraKnownMarketplaces": {
-                        "workstation-setup": {"source": {"source": "directory"}}
+                        "private-marketplace": {"source": {"source": "directory"}}
                     },
                     "enabledPlugins": {
-                        "pat-rotation@workstation-setup": True,
+                        "private-plugin@private-marketplace": True,
                         "some-plugin@claude-config": True,
                     },
                 }
@@ -298,7 +298,7 @@ class TestSettingsFileResolution:
         )
 
         assert result.returncode == 0, f"stderr={result.stderr!r}"
-        assert "pat-rotation@workstation-setup" not in _read_log(install_log)
+        assert "private-plugin@private-marketplace" not in _read_log(install_log)
         assert _read_log(install_log) == ["some-plugin@claude-config"]
         assert "not registered for this profile" in result.stdout
 

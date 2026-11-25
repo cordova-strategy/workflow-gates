@@ -3,7 +3,7 @@
 ## Context
 
 The user's machine runs a per-account Claude Code config-dir scheme
-(`workstation-setup`'s `accounts.tsv` + `use_claude_account`): the `personal`
+(`<private-setup-repo>`'s `accounts.tsv` + `use_claude_account`): the `personal`
 account stays at `~/.claude`, every other account resolves to
 `~/.config/claude-accounts/<account>/` via `CLAUDE_CONFIG_DIR`. Sessions
 anchored in a non-personal container reported three symptoms: handoffs/briefs
@@ -95,7 +95,7 @@ a systemic `CLAUDE_CONFIG_DIR` support gap.
   every ~/.claude path on this page lives under that directory instead"]`
 - G2: the `personal` account must stay at bare `~/.claude` (the harness
   default with zero configuration).
-  `[verified: env-vars/claude-directory docs + workstation-setup's own
+  `[verified: env-vars/claude-directory docs + <private-setup-repo>'s own
   documented rationale]`
 - G3: the managed `Read/Edit(~/.config/**)` deny is fixed for this plan.
   `[engineer-verified — user's explicit decision after /verify-sources
@@ -150,7 +150,7 @@ a systemic `CLAUDE_CONFIG_DIR` support gap.
   convention for machine-local lookup files
   (`private-projects.md`-style, read via `_lib_config_lines`), and
   account-name resolution is specific to one machine's scheme and belongs
-  in `workstation-setup`, not the public repo.
+  in `<private-setup-repo>`, not the public repo.
 - **Migrate to `${CLAUDE_SKILL_DIR}`, narrowly** — `anchors: root`.
   Mechanism: the documented harness substitution, which resolves to *the
   referencing skill's own directory*. Scope confirmed at the substitution's
@@ -380,7 +380,7 @@ workaround as the fix. Delete it once `--config-dir` ships.
   correctly-placed, XDG-conventional directory, and would forfeit the
   cross-account transcript isolation the user explicitly wants to keep
   (G4).
-- **Account-name-to-config-dir resolution.** Belongs in `workstation-setup`
+- **Account-name-to-config-dir resolution.** Belongs in `<private-setup-repo>`
   (a thin wrapper can call `transcript-analysis.py --config-dir $(resolved
   path)`); rejected from this plan at `/plan-review` Step 4.
 - **TTL on the abandoned-activation gap**

@@ -473,6 +473,14 @@ def test_transcript_analysis_judgment_pair_help_exits_zero():
     assert "--truncate-chars" in result.stdout
 
 
+def test_transcript_analysis_correction_candidates_help_exits_zero():
+    """Proves, in a fresh interpreter, that build_parser calls the correction-candidates registrar."""
+    result = _run("transcript-analysis.py", "correction-candidates", "--help")
+    assert result.returncode == 0, result.stderr
+    assert "--out" in result.stdout
+    assert "--preview" in result.stdout
+
+
 def test_transcript_analysis_skill_invocation_subprocess_finds_seeded_skill_invocation(tmp_path):
     """Proves, in a fresh interpreter, that real argparse dispatches skill-invocation to cmd_skill_invocation
     through set_defaults(func=...) and that the command reads the seeded corpus."""
@@ -508,6 +516,57 @@ def test_transcript_analysis_judgment_pair_subprocess_finds_seeded_review_skill(
 
     assert result.returncode == 0, result.stderr
     assert "Skill: code-review" in result.stdout
+
+
+def test_transcript_analysis_correction_candidates_subprocess_writes_the_seeded_prompt_and_question(tmp_path):
+    """Proves, in a fresh interpreter, that real argparse dispatches correction-candidates to
+    cmd_correction_candidates through set_defaults(func=...), and that the command runs its real git check and
+    writes the scope record, the seeded typed prompt and the seeded AskUserQuestion exchange."""
+    config_dir = tmp_path / "account"
+    project_dir = config_dir / "projects" / "-home-user-bootstraprepo"
+    project_dir.mkdir(parents=True)
+    ask_input = {
+        "questions": [{
+            "question": "Which one?", "header": "Pick", "multiSelect": False,
+            "options": [{"label": "Alpha", "description": "the first"}, {"label": "Beta", "description": "the second"}],
+        }],
+    }
+    _write_jsonl(project_dir / "s.jsonl", [
+        {
+            "type": "user", "uuid": "bootstrap-u1", "timestamp": "2026-05-19T10:00:00.000Z",
+            "origin": {"kind": "human"}, "message": {"role": "user", "content": "please fix the thing"},
+        },
+        {
+            "type": "assistant", "timestamp": "2026-05-19T10:01:00.000Z",
+            "message": {
+                "role": "assistant", "model": "claude-sonnet-4-6",
+                "content": [{"type": "tool_use", "id": "toolu_bootstrap", "name": "AskUserQuestion", "input": ask_input}],
+            },
+        },
+        {
+            "type": "user", "timestamp": "2026-05-19T10:02:00.000Z",
+            "message": {
+                "role": "user",
+                "content": [{"type": "tool_result", "tool_use_id": "toolu_bootstrap", "content": "User has answered."}],
+            },
+            "toolUseResult": {"questions": [], "answers": {"Which one?": "Alpha"}},
+        },
+    ])
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    out_path = out_dir / "candidates.jsonl"
+
+    result = _run(
+        "transcript-analysis.py", "--config-dir", str(config_dir), "correction-candidates", "--projects", "*",
+        "--out", str(out_path),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == f"{out_path}\n"
+    lines = [json.loads(line) for line in out_path.read_text().splitlines()]
+    assert [line["kind"] for line in lines] == ["scope", "prompt", "question"]
+    assert lines[1]["text"] == "please fix the thing"
+    assert lines[2]["questions"][0]["answer"] == "Alpha"
 
 
 def _seed_session_signal_account(tmp_path: Path) -> tuple[Path, Path]:
