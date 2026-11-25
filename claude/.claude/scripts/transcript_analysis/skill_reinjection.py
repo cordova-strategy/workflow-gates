@@ -239,7 +239,7 @@ class _Report(NamedTuple):
 
 
 def _fold_report(totals: ReinjectionTotals, tracked_skill_names: frozenset[str]) -> _Report:
-    """Fold every name this repo does not track into one withheld row. The result holds no raw skill name.
+    """Fold every name this repo does not track into one withheld row. The result holds no untracked skill name.
 
     The cut-length range takes only tracked names' copies, so an untracked skill's content cannot set an extreme.
     """

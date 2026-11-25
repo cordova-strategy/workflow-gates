@@ -292,7 +292,6 @@ _REPO_ROOT = _checkout_root(__file__)
 # tree tracks a same-named file.
 _BUILT_IN_AGENT_TYPES = frozenset({"general-purpose", "claude-code-guide", "Plan"})
 
-# None when _REPO_ROOT is None, so a module outside the checkout layout allowlists no tracked agent names.
 _REPO_AGENT_DEFINITIONS_DIR = None if _REPO_ROOT is None else _REPO_ROOT / "claude" / ".claude" / "agents"
 
 
@@ -312,7 +311,6 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
       directory -- without it, a non-zero exit leaves stdout empty and the
       failure silently looks like "zero tracked files" instead of raising
       into the fallback path below.
-    - No _REPO_AGENT_DEFINITIONS_DIR (a module outside the checkout layout) returns the built-ins alone.
     - Top-level entries only (no "/" in the path), matching _declared_pin's
       own flat agents_dir / f"{agent_type}.md" resolution -- a nested
       tracked file over-redacts, the safe direction.

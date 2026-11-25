@@ -9,7 +9,7 @@ import time
 import pytest
 from transcript_analysis import redaction, scope, skill_reinjection
 
-from ._compaction_context_helpers import automatic_compaction_records, manual_compaction_records
+from ._compaction_context_helpers import attachment_record, automatic_compaction_records, manual_compaction_records
 from ._publication_scope_helpers import (
     labelled_counts,
     refusal_with_several_roots,
@@ -49,7 +49,6 @@ _NO_GAPS = {
     "unconvertible_timestamps": 0,
 }
 _NO_SKIPPED_INPUT = {"unreadable_roots": 0, "unreadable_project_dirs": 0, "unreadable_main_files": 0}
-_HOOK_CONTEXT_ATTACHMENT = {"type": "attachment", "attachment": {"type": "hook_additional_context", "content": "x"}}
 
 
 def _count(*session_files: list) -> skill_reinjection.ReinjectionTotals:
@@ -99,20 +98,20 @@ class TestPairing:
         assert totals.scan_gaps["unpaired-attachment"] == 1
 
     def test_attachment_that_is_not_invoked_skills_pairs_with_nothing_and_records_no_gap(self):
-        totals = _count([boundary("b1"), _HOOK_CONTEXT_ATTACHMENT])
+        totals = _count([boundary("b1"), attachment_record()])
 
         assert totals.compactions_with_attachment == 0
         assert totals.scan_gaps == {}
 
     def test_attachment_that_is_not_invoked_skills_before_the_first_boundary_records_no_gap(self):
-        totals = _count([_HOOK_CONTEXT_ATTACHMENT, boundary("b1"), attachment(skill_entry(TRACKED_SKILL))])
+        totals = _count([attachment_record(), boundary("b1"), attachment(skill_entry(TRACKED_SKILL))])
 
         assert totals.compactions_with_attachment == 1
         assert totals.reattached == {TRACKED_SKILL: 1}
         assert totals.scan_gaps == {}
 
     def test_attachment_that_is_not_invoked_skills_between_a_boundary_and_its_skills_attachment_leaves_it_paired(self):
-        totals = _count([boundary("b1"), _HOOK_CONTEXT_ATTACHMENT, attachment(skill_entry(TRACKED_SKILL))])
+        totals = _count([boundary("b1"), attachment_record(), attachment(skill_entry(TRACKED_SKILL))])
 
         assert totals.compactions_with_attachment == 1
         assert totals.reattached == {TRACKED_SKILL: 1}

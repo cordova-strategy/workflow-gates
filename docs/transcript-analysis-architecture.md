@@ -107,8 +107,7 @@ which keeps each tracked name and numbers every other name `agent-type-<N>`.
 It also owns the skill-name allowlist `skill_reinjection.py` prints against: `_repo_tracked_skill_names` lists this
 module's own checkout (`_REPO_ROOT`, never the working directory) with `git ls-files` and keeps the attachment name of
 each tracked `SKILL.md` under `claude-skills/skills/`, `.claude/skills/` and `plugins/<plugin>/skills/`. The set is empty, so every name is withheld, in three cases: the `git` call fails or times out, `_REPO_ROOT` is `None` because
-the module is not at `<root>/claude/.claude/scripts/transcript_analysis/`, or the checkout tracks no skill. The report prints the
-same "tracked skills unavailable" line for all three. `_REPO_AGENT_DEFINITIONS_DIR` derives from `_REPO_ROOT`, so the
+the module is not at `<root>/claude/.claude/scripts/transcript_analysis/`, or the checkout tracks no skill. `_REPO_AGENT_DEFINITIONS_DIR` derives from `_REPO_ROOT`, so the
 same layout condition leaves `_repo_tracked_agent_type_names` with the built-in types alone. That `git` call, and the one in
 `_repo_tracked_agent_type_names`, run with the repository-locating `GIT_*` variables (`GIT_DIR`, `GIT_WORK_TREE`,
 `GIT_INDEX_FILE` and the rest of `_REPOSITORY_LOCATING_GIT_VARIABLES`) removed from their environment.

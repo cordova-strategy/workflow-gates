@@ -366,6 +366,7 @@ class TestRepoTrackedSkillNames:
 
         locating_variables_git_lists = {name for name in listed_by_git if not name.startswith("GIT_CONFIG")}
 
+        assert "GIT_DIR" in listed_by_git, "git listed no variables, so the subset check below checks nothing"
         assert locating_variables_git_lists <= redaction._REPOSITORY_LOCATING_GIT_VARIABLES
 
     def test_no_git_config_variable_is_stripped(self):
