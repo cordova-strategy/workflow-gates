@@ -909,7 +909,7 @@ the existing tests live.
 `corpus.py`'s, `pricing.py`'s, `redaction.py`'s, and `render.py`'s tests live in
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
-scan-traversal, scan-gap, and glob-selection classes are tested in
+scan-traversal, scan-gap, glob-selection, and removed-worktree-slug classes are tested in
 `tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
 `tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
 `tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
