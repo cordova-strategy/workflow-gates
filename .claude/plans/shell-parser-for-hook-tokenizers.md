@@ -2750,6 +2750,93 @@ Row 136 [assumption]: PR 1a keeps three additions the session made to
   - PR 1a's pre-first-push step shows the three to the engineer as
     session-decided rows, and PR 1a's body records them (Critical files).
   — anchors: row38, row131
+
+Row 137 [assumption]: `code-file-size-exceptions.toml` joins this
+  plan's Critical files, because PR 1a passes the file-size check in
+  `claude/.claude/tests/test_code_file_size.py` by editing it, not by
+  moving code out. Asked how to fix that check's failure on PR 1a's
+  first CI run, the engineer selected
+  [engineer-verified: "Raise ceilings, mark split pending (Recommended)"].
+  The quote covers that choice of fix for PR 1a alone. One fact per
+  item:
+  - The question's wording and its option descriptions are the
+    session's [unverified].
+  - The edit raises the `claude/.claude/hooks/_lib.sh` and
+    `claude/.claude/tests/helpers.py` rows' ceilings and adds a "split
+    pending" row for
+    `claude/.claude/hooks/tests/test_shell_syntax_tree_contract.py`
+    [verified: code-file-size-exceptions.toml in the working tree].
+    That row's seam names its test-class families by concern [verified:
+    code-file-size-exceptions.toml in the working tree]. Each ceiling
+    equals its file's line count in the working tree [verified:
+    working-tree line counts, staff-platform-engineer round 23 R3; the
+    check itself was not run].
+  - It is the check's third remedy, which adds or raises the file's row
+    "with a seam or a reason", under the heading "If this branch changed
+    the file, take the first remedy that fits:" [verified:
+    claude/.claude/tests/code_file_size.py:37, :418].
+  - The first remedy moves the new code into a new module or test file
+    [verified: code_file_size.py:416]. Here it would move the new shfmt
+    and pin-step helpers into a module local to
+    `claude/.claude/hooks/tests/` and split the contract file along its
+    seam. That the engineer set it aside for PR 1a, as the follow-up
+    split (Out of scope), is the session's account of the question
+    [unverified].
+  - `helpers.py`'s row gives as its reason that a helper used by one
+    test tree goes in that tree's local module, not in `helpers.py`
+    [verified: code-file-size-exceptions.toml]. The pin-step helpers
+    serve `claude/.claude/hooks/tests/` alone (Dispatch 1's `helpers.py`
+    bullet), so until the follow-up the raised ceiling holds helpers
+    that reason places elsewhere. Whether the question stated that
+    reason is [unverified].
+  - A row's ceiling must equal its file's count, so a later edit to any
+    of the three files fails the check until its row is re-synced
+    [verified: claude/.claude/tests/test_code_file_size.py:1]. A PR 1a
+    commit that changes one of them re-syncs its row in the same
+    commit, which the session reads as within this answer [unverified].
+    A merge from `main` can move one of these rows too, and the toml
+    header's conflict rule settles it [verified:
+    code-file-size-exceptions.toml:19-24].
+  - The answer is not taken to cover PR 1b's or PR 2's branch. Each of
+    those PRs meets the same check, which fails a rowed file whose count
+    differs from its ceiling and an unrowed file past the line limit
+    [verified: claude/.claude/tests/code_file_size.py:337-352]. The
+    check's printed output on that PR's branch decides which files need
+    a row edit. The rowed files each PR's dispatch lists edit today, one
+    PR per item [verified: code-file-size-exceptions.toml, Critical
+    files]:
+    - PR 1b, one file per item:
+      - `_lib.sh`, Dispatches 2 and 3.
+      - `helpers.py`, Dispatches 2 and 5.
+      - `claude/.claude/hooks/_config.sh`, Dispatches 3 and 5.
+      - `install.sh`, Dispatch 3.
+      - `claude/.claude/scripts/select-tests.py`, Dispatch 4.
+      - `claude/.claude/scripts/tests/test_select_tests.py`, Dispatch 4,
+        if that dispatch edits it.
+      - `claude/.claude/hooks/tests/test_hook_alignment.py`, Dispatches
+        2 and 5.
+      - `claude/.claude/hooks/tests/test_deny_pii_in_commits.py`,
+        Dispatch 2.
+      - `claude/.claude/hooks/tests/test_deny_private_project_refs.py`,
+        Dispatch 2.
+    - PR 2, one file per item:
+      - The contract file, Dispatches 6 and 7.
+      - `claude/.claude/hooks/tests/test_ask_new_dependency_disclosure.py`,
+        Dispatch 6. Its docstring edit may leave its count unchanged.
+      - `claude/.claude/hooks/tests/test_require_worktree_for_git_writes.py`,
+        Dispatch 7.
+      - `claude/.claude/hooks/tests/test_send_back_skipped_self_review.py`,
+        Dispatch 7.
+      - `test_hook_alignment.py`, Dispatch 7.
+    An unrowed file a dispatch takes past the limit needs a new row.
+    `claude/.claude/hooks/deny-private-project-refs.sh` and
+    `claude/.claude/hooks/tests/_cursor_payloads.py`, which PR 1b
+    edits, sit just under it [verified: working-tree line counts].
+    `test_shell_syntax_tree_git_records.py`, which PR 2 creates by a
+    move and grows, may cross it [unverified].
+    Neither PR's file list holds the toml. PR 1b's first session step
+    puts that addition to the engineer (Critical files).
+  — anchors: row131
 ```
 
 ## Critical files
@@ -2804,6 +2891,7 @@ What a PR body holds (row 133, staff-platform-engineer round 14 R2), one rule pe
     - The dump's forms, as provisional (Verification 2).
     - PR 1a's settlements above.
     - Its first CI run's outcomes, and the parallel leg's wall time as the baseline.
+    - The file-size fix's answer, "Raise ceilings, mark split pending (Recommended)", with the question's wording and option descriptions as the session's, and the follow-up it leaves, the helper move and the contract-file split (row 137, Out of scope).
     - Verification 8's memory measurement.
     - Its size answer.
   - PR 1b:
@@ -2819,9 +2907,11 @@ What a PR body holds (row 133, staff-platform-engineer round 14 R2), one rule pe
     - Its first CI run's parallel-leg wall time, beside PR 1a's.
     - Verification 8's timings.
     - Verification 10 and 11's outcomes.
+    - The file-size fix's answer for PR 1b and PR 2, in the engineer's words, with the question's wording as the session's (row 137, PR 1b's session steps).
     - Its size answer.
   - PR 2:
     - The changed-case table and the engineer's answer (Verification 3).
+    - PR 1b's file-size fix's answer, quoted with a link to PR 1b's body (row 137).
     - The engineer's answers on the dropped-key limit for the worktree gate, "Yes, accept for it too (Recommended)", and on the flush-comment cut there, "Cut it there too (Recommended)", with each question's wording as the session's (rows 24, 135).
     - Verification 8, 10 and 11's PR 2 parts.
     - Its size answer.
@@ -3040,6 +3130,9 @@ Three more session steps, one per item:
     - `TestPinStepRunBody`'s stub pattern in `test_git_floor.py`, through the pin-step helpers in Dispatch 1's `helpers.py` bullet.
     - `ci_test_slice_job` in `helpers.py`, which `ci_test_slice_step` reads.
     - The pinned-git step's comment pattern in `tests.yml`.
+- `code-file-size-exceptions.toml`: the `_lib.sh` and `helpers.py` rows' ceilings rise to their files' counts, and `test_shell_syntax_tree_contract.py` gains a "split pending" row (row 137).
+  - The reason: `claude/.claude/tests/test_code_file_size.py` fails a file whose count differs from its row's ceiling. It also fails a file past the line limit with no row.
+  - The edit fixes the failure PR 1a's first CI run showed. A later PR 1a commit that changes one of the three files re-syncs its row in that same commit (row 137).
 
 ### PR 1b — the redaction gates
 
@@ -3053,6 +3146,11 @@ The order, one reason per step:
 - PR 1b opens after Dispatch 5. Each push to an open PR runs `/ready-for-review` first (`claude/.claude/CLAUDE.md` § "Pre-Handoff Review"), and a PR opened earlier would be reviewed without Dispatch 5's CHANGELOG, migration note and recovery entry, which the lockout makes required (row 6).
 
 Session steps, one per item:
+- Before Dispatch 2, the first PR 1b dispatch that edits a file with a row in `code-file-size-exceptions.toml`, put the file-size check to the engineer, because row 137's answer covers PR 1a alone. One part per item:
+  - Whether the toml joins PR 1b's and PR 2's dispatch file lists, as a Critical-files addition. Until the answer, no dispatch prompt lists it.
+  - The fix for each PR, the check's third remedy or its first, with the rowed and unrowed files row 137 names. The `_lib.sh` row's reason says the issue it names governs that file's ceiling, and whether that issue bounds PR 1b's raise is [unverified].
+  - The session's proposal, marked as the session's: each dispatch re-syncs, at its end, the rows of the files it changed, and its `code-writer` makes the edit. Each dispatch ends with `select-tests.py`, which selects the size check for any changed `.py` or `.sh` path (`select-tests.py:1105-1116`), so a re-sync left to the PR's end leaves each earlier dispatch red.
+  PR 1b's body records the answer in the engineer's words, with the question's wording as the session's. On a yes, each dispatch prompt of the two PRs lists the toml, and PR 1b's body, not this file, records the addition. An answer that moves code out instead changes the dispatches' files, so it stops the session, as an outcome that contradicts a row does.
 - PR 1b's first commit past 400 changed lines meets `require-diff-size-prompt.sh` for its own branch, and the session asks as PR 1a's size step says, with PR 1b's projected size. The question also states that 656 of those lines are whole-file deletions, `split-command-words.py`'s 171 and `test_split_command_words.py`'s 485 (`Projected diff:`, row 134).
 - Before Dispatch 4, settle row 98 from Cursor's hooks documentation.
 - Before Dispatch 5, confirm row 101's quoted lines and row 15's two vendor lines on their pages, and record them in PR 1b's body.
@@ -3774,3 +3872,4 @@ Projected diff: PR 1a about 2,500 changed lines, PR 1b about 4,150 and PR 2 abou
   - The `respond-pr`, `git-feature-branch-sync` and `git-state-safety` skill edits, the instruction tripwire and the pre-PR instruction searches. No example they touched meets a new deny (row 124). That the cut superseded the scope "Keep all in scope (Recommended)" kept is the session's inference, not an engineer answer [unverified] (row 124).
 - **Repointing the stale `'Backtick hygiene'` citation in `deny-escaped-backticks-in-pr-body.sh`.** It names a heading `ready-for-review/SKILL.md` no longer holds (staff-platform-engineer round 12 R1). The fix rode with the cut rewords, and it pre-dates this change, so it is a follow-up of its own.
 - **A Bash tool that runs a bash below the repo's 5.2 floor.** The repo supports no bash below 5.2 (`README.md:111`, `CHANGELOG.md:666`), and the engineer noted that it does not support bash 3.2 (row 130). That a Bash tool whose executing shell is such a bash is therefore an unsupported environment is the architect's reading, because no source names the Bash tool's executing shell [unverified] (row 130). Under that reading, a difference in how such a bash scans a heredoc body inside `$( )`, `<( )`, `${ }` or `a[ ]` is not a gap this plan records. bash 3.2.57 showed such differences, and 5.3.20 did not (row 122). That no 5.2.x build shows them is [unverified] until the cut-residual fixture list's agreement cases run on CI's bash (Dispatch 1's amendment). So Design item 10's cut-residual list and the gates' Known-gaps lines hold no member for them. The hooks' own bash floor still governs the gates, unchanged (`docs/hooks.md` § "Bash version").
+- **Moving PR 1a's new test helpers out of `helpers.py` and splitting `test_shell_syntax_tree_contract.py`, as an intended follow-up.** That is the file-size check's first remedy. `helpers.py`'s row in `code-file-size-exceptions.toml` gives the rule that a helper used by one test tree goes in that tree's local module. For PR 1a the engineer selected "Raise ceilings, mark split pending (Recommended)" instead. The contract file's "split pending" row names the seam its split follows (row 137).
