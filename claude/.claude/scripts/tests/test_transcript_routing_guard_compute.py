@@ -1897,6 +1897,27 @@ class TestOutPath:
         assert outcome.code == 3
         assert not out_path.exists()
 
+    def test_a_not_run_fixture_with_out_in_a_missing_directory_exits_2_and_prints_no_not_run_reason(
+        self, lab, capsys, monkeypatch,
+    ):
+        account = lab.account(key_on=False)
+        lab.row(account, "branch-on", "on", loops=[_loop(growth=1)])
+        lab.row(account, "branch-off", "off", loops=[_loop(growth=2)])
+        lab.write_note()
+        spies = _install_path_spies(monkeypatch)
+        out_path = lab.root / "no-such-directory" / "figures.txt"
+
+        outcome = _compute(capsys, lab, out=str(out_path))
+
+        assert outcome.code == 2
+        assert outcome.out == ""
+        assert outcome.err == (
+            f"routing-guard: --out {str(out_path)!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
+        )
+        assert not out_path.parent.exists()
+        assert not any(path.endswith(".r1.json") for path in spies.opened_paths())
+
 
 class TestUnexpectedFailures:
     def test_an_oserror_the_handler_does_not_expect_exits_4_printing_the_strerror_and_not_the_filename(

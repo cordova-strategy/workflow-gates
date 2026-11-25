@@ -14,7 +14,7 @@ import pytest
 from transcript_analysis import cost_ledger, ledger_common, pr_cost, pr_cost_ledger, scope
 
 from ._pr_cost_helpers import _fake_pr_cost_subprocess_run, _pr_cost_args, _sample_pr_cost_row
-from .conftest import _cost_ledger_args, _cost_ledger_row, _priced, _two_declared_roots, _write_jsonl
+from .conftest import _clean_env, _cost_ledger_args, _cost_ledger_row, _priced, _two_declared_roots, _write_jsonl
 
 _SCRIPT = Path(__file__).parent.parent / "transcript-analysis.py"
 # "transcript_analysis" below never touches sys.modules (module_from_spec + exec_module
@@ -609,6 +609,33 @@ class TestLedgerPathIsGitTracked:
 
         assert ledger_common._ledger_path_is_git_tracked(tmp_path / "ledger.tsv") is False
 
+    @pytest.mark.parametrize(
+        ("variable", "exported_value", "ledger_location", "expected_tracked"),
+        [
+            # Git skips the named root during discovery from a subdirectory, so the check
+            # would answer "not a git repository" for a path inside the work tree.
+            pytest.param("GIT_CEILING_DIRECTORIES", "repo", "repo/sub", True, id="ceiling-at-work-tree-root"),
+            # A work tree pointing elsewhere puts the probed directory outside the work tree.
+            pytest.param("GIT_WORK_TREE", "elsewhere", "repo/sub", True, id="work-tree-elsewhere"),
+            # A repository selected by GIT_DIR claims a directory that sits in no repository.
+            pytest.param("GIT_DIR", "repo/.git", "plain", False, id="git-dir-names-another-repository"),
+        ],
+    )
+    def test_exported_git_variable_does_not_redirect_the_check(
+        self, tmp_path, monkeypatch, variable, exported_value, ledger_location, expected_tracked,
+    ):
+        """Each exported variable would change git's answer for the probed directory, so the
+        check must drop it. Real git, because the discovery rules are git's own. GIT_INDEX_FILE
+        is also dropped but does not change `rev-parse --is-inside-work-tree`, so it has no case."""
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(["git", "init", "-q", str(repo)], env=_clean_env(), check=True)
+        for directory in ("repo/sub", "elsewhere", "plain"):
+            (tmp_path / directory).mkdir()
+        monkeypatch.setenv(variable, str(tmp_path / exported_value))
+
+        assert ledger_common._ledger_path_is_git_tracked(tmp_path / ledger_location / "x.jsonl") is expected_tracked
+
 
 _PUBLISHED_TEXT = "first line\nsecond line\n"
 _PUBLISH_PREFIX = ".publish-test-"
@@ -785,12 +812,45 @@ class TestOutPathHelpersNameTheCommand:
         assert err.startswith(f"{_OUT_COMMAND}: --out {str(out_path)!r} is inside a git working tree")
         assert "pr-cost-export" not in err
 
+    @pytest.mark.parametrize("parent_kind", ["missing", "file"])
+    @pytest.mark.parametrize("path_form", ["absolute", "relative-under-a-changed-working-directory", "symlinked-parent"])
+    def test_refuse_unusable_out_path_refuses_a_parent_that_is_not_a_directory_before_any_git_check(
+        self, tmp_path, monkeypatch, capsys, parent_kind, path_form,
+    ):
+        parent = tmp_path / "parent"
+        if parent_kind == "file":
+            parent.write_text("not a directory\n")
+        if path_form == "absolute":
+            out = str(parent / "export.tsv")
+        elif path_form == "symlinked-parent":
+            (tmp_path / "link").symlink_to(parent)
+            out = str(tmp_path / "link" / "export.tsv")
+        else:
+            monkeypatch.chdir(tmp_path)
+            out = "parent/export.tsv"
+
+        def fail_on_any_subprocess(*args, **kwargs):
+            raise AssertionError("the missing-directory refusal must run before the git check")
+
+        monkeypatch.setattr(subprocess, "run", fail_on_any_subprocess)
+
+        with pytest.raises(SystemExit) as exc_info:
+            ledger_common._refuse_unusable_out_path(out, _OUT_COMMAND)
+
+        assert exc_info.value.code == 2
+        assert capsys.readouterr().err == (
+            f"{_OUT_COMMAND}: --out {out!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
+        )
+        assert parent.exists() is (parent_kind == "file")
+        assert not Path(out).exists()
+
     def test_refuse_unusable_out_path_accepts_a_new_path_outside_a_git_working_tree(self, tmp_path, monkeypatch):
         monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
 
         ledger_common._refuse_unusable_out_path(str(tmp_path / "export.tsv"), _OUT_COMMAND)
 
-    def test_publish_new_owner_file_creates_a_0600_file_through_a_command_prefixed_temp_file(
+    def test_publish_new_owner_file_creates_a_0600_file_through_a_command_prefixed_temp_file_with_the_destinations_extension(
         self, tmp_path, monkeypatch,
     ):
         out_path = tmp_path / "export.tsv"
@@ -809,7 +869,7 @@ class TestOutPathHelpersNameTheCommand:
         assert stat.S_IMODE(out_path.stat().st_mode) == 0o600
         assert len(linked_sources) == 1
         assert linked_sources[0].startswith(f".{_OUT_COMMAND}-")
-        assert linked_sources[0].endswith(".tmp")
+        assert linked_sources[0].endswith(".tsv")
         assert _directory_entries(tmp_path) == ["export.tsv"]
 
     @pytest.mark.parametrize(

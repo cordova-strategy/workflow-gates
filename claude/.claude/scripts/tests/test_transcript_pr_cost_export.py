@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import _config
 import pytest
 from transcript_analysis import pr_cost_export, pr_cost_ledger
 
@@ -942,3 +943,36 @@ class TestPrCostExportArgparseWiring:
         assert "declared=2" in text.splitlines()[0]
         rows = text.splitlines()[2:]
         assert len(rows) == 2
+
+
+class TestPrCostExportMissingOutDirectory:
+    def test_a_config_schema_fault_with_out_in_a_missing_directory_exits_2_before_any_config_or_ledger_read(
+        self, tmp_path, fake_projects, monkeypatch, capsys,
+    ):
+        """The refusal runs before the per-account config read, so the fault that would exit 1 is never reached."""
+        monkeypatch.setattr(subprocess, "run", _fake_pr_cost_subprocess_run())
+        config_reads = []
+        ledger_reads = []
+
+        def raise_schema_empty(key, config_dir_override=None):
+            config_reads.append(key)
+            raise _config.ConfigSchemaEmptyError(key)
+
+        def record_ledger_read(*args, **kwargs):
+            ledger_reads.append(args)
+            raise AssertionError("the ledger must not be read")
+
+        monkeypatch.setattr(_config, "config_enabled", raise_schema_empty)
+        monkeypatch.setattr(pr_cost_ledger, "_pr_cost_ledger_path_or_exit", record_ledger_read)
+        out_path = tmp_path / "no-such-directory" / "export.tsv"
+
+        with pytest.raises(SystemExit) as exc_info:
+            pr_cost_export.cmd_pr_cost_export(_pr_cost_export_args(out=str(out_path)))
+
+        assert exc_info.value.code == 2
+        assert (config_reads, ledger_reads) == ([], [])
+        assert capsys.readouterr().err == (
+            f"pr-cost-export: --out {str(out_path)!r} is not in an existing directory"
+            " -- pass a new path in an existing directory outside any git working tree\n"
+        )
+        assert not out_path.parent.exists()

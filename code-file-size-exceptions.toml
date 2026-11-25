@@ -260,7 +260,7 @@ seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_
 issue = 1603
 
 ["claude/.claude/scripts/tests/conftest.py"]
-ceiling = 2034
+ceiling = 2055
 verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
@@ -376,7 +376,7 @@ verdict = "split pending"
 seam = "Test-class families by migration step: backup selection (`TestNewestBackupSelection`, `TestNewestBackupNameBoundary`), unadopt run selection (`TestNewestUnadoptRunNameBoundary`, `TestNewestUnadoptRunSameNameSelection`), repair and entry (`TestRepairNestedAdoption`, `TestStowUnadoptEntry`, `TestStowUntrackedPackageEntries`), escape handling (`TestGlobEscapeAdversarial`, `TestRegexEscapeAdversarial`)"
 
 ["claude/.claude/scripts/tests/test_transcript_cli_bootstrap.py"]
-ceiling = 1440
+ceiling = 1499
 verdict = "split pending"
 seam = "Function groups per subcommand family as plain test functions: top-level help (`test_transcript_analysis_help_exits_zero`), cost and pr-cost (`test_transcript_analysis_pr_cost_help_exits_zero`), review trace (`test_transcript_analysis_review_trace_help_exits_zero`), period cost (`test_transcript_analysis_period_cost_help_exits_zero`), routing guard (`test_transcript_analysis_routing_guard_help_exits_zero`)"
 
@@ -431,7 +431,7 @@ verdict = "split pending"
 seam = "Test-class families by lifecycle stage: capture (`TestFirstCapture`, `TestLoops`, `TestGrowthAndLaterTurns`), note parsing (`TestNoteParser`, `TestNoteLocation`), deny reconciliation (`TestDenyExtraction`, `TestReconcileDenies`), store and rows (`TestStore`, `TestValidator`, `TestRowLines`), log reading and causes (`TestLogReader`, `TestKeyStateAt`, `TestCauses`, `TestLostEvents`), output (`TestOutput`, `TestFreeText`)"
 
 ["claude/.claude/scripts/tests/test_transcript_routing_guard_compute.py"]
-ceiling = 2184
+ceiling = 2205
 verdict = "split pending"
 seam = "Test-class families by compute stage: readiness and sampling (`TestReadiness`, `TestSelectSample`, `TestSampleReasonsEndToEnd`), capture files and pricing (`TestCaptureFiles`, `TestPricing`), net estimate and bootstrap (`TestPointNet`, `TestBootstrap`, `TestBootstrapThroughCompute`), output (`TestOutput`, `TestOutPath`, `TestUnexpectedFailures`)"
 

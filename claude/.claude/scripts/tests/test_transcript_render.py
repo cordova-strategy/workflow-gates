@@ -1,9 +1,15 @@
 import itertools
+import time
 
 import pytest
 from transcript_analysis import render
 
 from .conftest import _TASK_NOTIFICATION_TEXT, _asst, _task_notification_msg, _tool_result, _user_msg
+
+# A lazy regex rescans to the end of the text from every opener with no closer, so its cost is quadratic in the opener count.
+# About 5 s at the test's input size is a one-off local measurement, against microseconds for str.find.
+# 1 s leaves slow-CI headroom.
+_UNCLOSED_OPENERS_BOUND_SECONDS = 1
 
 
 class TestHelpers:
@@ -300,3 +306,91 @@ class TestIsTaskNotification:
     )
     def test_record_that_is_not_envelope_only_main_thread_user_text_returns_false(self, rec):
         assert render._is_task_notification(rec) is False
+
+
+class TestHasHumanOrigin:
+    @pytest.mark.parametrize(
+        ("rec", "expected"),
+        [
+            pytest.param({"origin": {"kind": "human"}}, True, id="human-origin"),
+            pytest.param({"origin": {"kind": "peer"}}, False, id="other-origin-kind"),
+            pytest.param({}, False, id="no-origin"),
+            pytest.param({"origin": "human"}, False, id="non-dict-origin"),
+        ],
+    )
+    def test_only_a_dict_origin_of_kind_human_returns_true(self, rec, expected):
+        assert render._has_human_origin(rec) is expected
+
+
+class TestHasHeadlessMarkers:
+    _ALL_MARKERS = {"entrypoint": "sdk-cli", "promptSource": "sdk", "turnOrigin": "sdk"}
+
+    def test_all_three_markers_returns_true(self):
+        assert render._has_headless_markers(dict(self._ALL_MARKERS)) is True
+
+    @pytest.mark.parametrize("marker", _ALL_MARKERS)
+    def test_one_marker_missing_returns_false(self, marker):
+        rec = {key: value for key, value in self._ALL_MARKERS.items() if key != marker}
+        assert render._has_headless_markers(rec) is False
+
+    @pytest.mark.parametrize("marker", _ALL_MARKERS)
+    def test_one_marker_with_another_value_returns_false(self, marker):
+        assert render._has_headless_markers({**self._ALL_MARKERS, marker: "typed"}) is False
+
+
+class TestIsInterruptMarker:
+    @pytest.mark.parametrize(
+        ("rec", "expected"),
+        [
+            pytest.param({"interruptedMessageId": "msg-1"}, True, id="key-with-value"),
+            pytest.param({"interruptedMessageId": None}, True, id="key-with-null-value"),
+            pytest.param({}, False, id="no-key"),
+        ],
+    )
+    def test_the_key_alone_decides(self, rec, expected):
+        assert render._is_interrupt_marker(rec) is expected
+
+
+class TestIsInterpretable:
+    @pytest.mark.parametrize(
+        ("rec", "expected"),
+        [
+            pytest.param("not a record", False, id="non-dict-record"),
+            pytest.param({"isSidechain": True, "message": {"content": "hi"}}, False, id="sidechain-record"),
+            pytest.param({"message": "not a dict"}, False, id="non-dict-message"),
+            pytest.param(
+                {"message": {"content": [{"type": "text", "text": 5}]}}, False, id="non-string-text-block"
+            ),
+            pytest.param({"message": {"content": "hi"}}, True, id="plain-record"),
+            pytest.param({}, True, id="record-without-message"),
+        ],
+    )
+    def test_only_a_record_the_predicates_can_read_returns_true(self, rec, expected):
+        assert render._is_interpretable(rec) is expected
+
+
+class TestFirstCommandArgs:
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            pytest.param("<command-args>do the thing</command-args>", "do the thing", id="args-between-the-tags"),
+            pytest.param(
+                "<command-args>first</command-args> <command-args>second</command-args>", "first", id="two-openers"
+            ),
+            pytest.param("<command-args>no closer", "", id="opener-without-closer"),
+            pytest.param("<command-name>/plan-it</command-name>", "", id="no-opener"),
+        ],
+    )
+    def test_text_between_the_first_opener_and_the_first_closer_after_it(self, text, expected):
+        assert render._first_command_args(text) == expected
+
+    def test_a_long_run_of_unclosed_openers_finishes_instead_of_rescanning_per_opener(self):
+        # Elapsed time is checked after the call returns: a join timeout cannot preempt a GIL-holding regex search.
+        text = "<command-args>" * 5_000
+
+        started = time.perf_counter()
+        result = render._first_command_args(text)
+        elapsed_seconds = time.perf_counter() - started
+
+        assert result == ""
+        assert elapsed_seconds < _UNCLOSED_OPENERS_BOUND_SECONDS
