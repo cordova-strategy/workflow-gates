@@ -2,7 +2,7 @@
 
 *2026-10-08.*
 
-**Superseded in part (2026-11-24):** the pilot's `code-review` region, its pin tests and its anchor-set entry are removed under the "Revert contract" paragraph below. `architect_fix_plan_pilot` is inert: no skill reads it, and its schema row stays at `false`. `git log -S 'DISPOSITION_RULE:code-review-fix-plan-pilot' -- claude-skills/skills/code-review/SKILL.md` lists the commits that added and removed the region. To restore the pilot, revert the removing change; the schema row was never removed, so the "Reverting the merge commit is not the rollback" sentence below describes the change that added the key.
+**Superseded in part (2026-11-24):** the pilot's `code-review` region, its pin tests and its anchor-set entry are removed under the "Revert contract" paragraph below. `architect_fix_plan_pilot` is inert: no skill reads it, and its schema row stays at `false`. `git log -S 'DISPOSITION_RULE:code-review-fix-plan-pilot' -- claude-skills/skills/code-review/SKILL.md` lists the commits that added and removed the region. To restore the pilot, revert the removing change. The schema row was never removed, so the "Reverting the merge commit is not the rollback" sentence below describes the change that added the key.
 
 **Superseded in part by [The architect-authored fix-plan pilot is not adopted](architect-fix-plan-pilot-not-adopted.md) (2026-10-25):** the pilot is not adopted. The key stays default-false and the sections below describe a dormant mechanism, not a standing recommendation. The "Measurement and enabling" section's conditions were not met before enabling, and the linked record says what that cost the assessment.
 

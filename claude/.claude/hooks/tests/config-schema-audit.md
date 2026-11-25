@@ -405,7 +405,7 @@ Column legend:
 
 ### `architect_fix_plan_pilot`
 
-- Call site: none. No skill gates on the key. The session config-keys
+- Call site: none. The session config-keys
   recorder logs its state, and `transcript_analysis/routing_guard.py` reads
   that logged state.
 - Resolution: **config-dir** (per account).
