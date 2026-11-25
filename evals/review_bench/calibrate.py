@@ -21,6 +21,7 @@ import random
 import signal
 import sys
 import time
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -39,6 +40,7 @@ HARMS = (HARM_NORMAL, HARM_CONCENTRATED)
 
 SIGN_FLIP_PATH_EXACT = "exact"
 SIGN_FLIP_PATH_MONTE_CARLO = "monte-carlo"
+SIGN_FLIP_PATH_MIXED = "mixed"
 
 # student_t_upper_quantile's docstring states its accuracy only for upper_tail >= 1e-6.
 MIN_ALPHA = 1e-6
@@ -80,15 +82,15 @@ def _require_positive_int(field: str, value: object) -> None:
     _require(isinstance(value, int) and not isinstance(value, bool) and value >= 1, field, "must be an int >= 1", value)
 
 
-def sign_flip_path(fixtures: int) -> str:
-    """Which sign-flip test `analysis.sign_flip_p_value` runs at this fixture count."""
-    return SIGN_FLIP_PATH_EXACT if fixtures <= analysis.SIGN_FLIP_EXACT_MAX_FIXTURES else SIGN_FLIP_PATH_MONTE_CARLO
+def sign_flip_path(value_count: int) -> str:
+    """Which sign-flip test `analysis.sign_flip_p_value` runs on this many `null_centered` values."""
+    return SIGN_FLIP_PATH_EXACT if value_count <= analysis.SIGN_FLIP_EXACT_MAX_FIXTURES else SIGN_FLIP_PATH_MONTE_CARLO
 
 
-def smallest_sign_flip_p_value(fixtures: int, flips: int) -> float:
-    """The smallest p-value `analysis.sign_flip_p_value` can return at this fixture count."""
-    if sign_flip_path(fixtures) == SIGN_FLIP_PATH_EXACT:
-        return 2.0**-fixtures
+def smallest_sign_flip_p_value(value_count: int, flips: int) -> float:
+    """The smallest p-value `analysis.sign_flip_p_value` can return on this many `null_centered` values."""
+    if sign_flip_path(value_count) == SIGN_FLIP_PATH_EXACT:
+        return 2.0**-value_count
     return 1 / (flips + 1)
 
 
@@ -108,6 +110,8 @@ class CalibrationConfig:
     seed: int = 0
     workers: int = 1
     flips: int = analysis.SIGN_FLIP_RESAMPLES
+    finding_floor: int = 1
+    finding_volume_scale: float = 1.0
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "fixture_counts", tuple(self.fixture_counts))
@@ -126,9 +130,27 @@ class CalibrationConfig:
         _require(0 < self.over_cap_share <= 1, "over_cap_share", "must be in (0, 1]", self.over_cap_share)
         for field in ("k", "replicates", "workers", "flips"):
             _require_positive_int(field, getattr(self, field))
+        _require(
+            isinstance(self.finding_floor, int) and not isinstance(self.finding_floor, bool) and self.finding_floor in (0, 1),
+            "finding_floor", "must be an int that is 0 or 1", self.finding_floor,
+        )
+        _require(
+            0 < self.finding_volume_scale <= 1, "finding_volume_scale", "must be in (0, 1]", self.finding_volume_scale,
+        )
+        if self.metric == METRIC_RECALL:
+            _require(
+                self.finding_floor == 1, "finding_floor", "must be 1 under recall, which draws no findings", self.finding_floor,
+            )
+            _require(
+                self.finding_volume_scale == 1.0, "finding_volume_scale",
+                "must be 1.0 under recall, which draws no findings", self.finding_volume_scale,
+            )
         worker_cap = os.process_cpu_count() or 1
         _require(self.workers <= worker_cap, "workers", f"must be at most the usable CPU count {worker_cap}", self.workers)
         # Above the exact cap no alpha below the smallest attainable p-value can adopt, so a sweep would report a structural zero.
+        # A replicate keeps at most as many fixtures as its cell's fixture count.
+        # So when the largest fixture count is at most the exact cap, every replicate takes the exact path.
+        # Above the cap, a replicate with few kept fixtures can still be a structural zero for an alpha this check accepts.
         largest_fixture_count = max(self.fixture_counts)
         smallest_p_value = smallest_sign_flip_p_value(largest_fixture_count, self.flips)
         _require(
@@ -196,7 +218,10 @@ def solve_shift(
     """The shift at which the acted fixtures' expected difference (arm X's rate
     minus the baseline rate) equals `acted_target`, or None when the target lies
     outside the differences the bracket's two ends reach. Precision weights each
-    draw by its expected finding count, 1 + k * lambda, as pooled precision does."""
+    draw by 1 + k * lambda, as pooled precision does. That is its expected finding
+    count at the default finding floor and volume scale. `finding_rate` is drawn
+    independently of the rates, so any weight on it alone gives the same shift up to
+    draw noise. The finding floor and volume scale therefore stay out of the weight."""
     draw_count = SOLVER_DRAWS if solver_draws is None else solver_draws
     rng = random.Random(SOLVER_SEED)
     draws = [draw_latents(rng, metric) for _ in range(draw_count)]
@@ -267,6 +292,7 @@ def plan_cells(config: CalibrationConfig, *, solver_draws: int | None = None) ->
             print(
                 f"calibrate: cell {_describe_cell(fixtures, true_difference)} metric={config.metric} k={config.k} "
                 f"harm={config.harm} over_cap_share={config.over_cap_share!r} acted={acted} "
+                f"finding_floor={config.finding_floor} finding_volume_scale={config.finding_volume_scale!r} "
                 f"replicates={config.replicates} alphas={alphas_token} sign_flip_path={sign_flip_path(fixtures)} "
                 f"flips={config.flips} seed={config.seed} workers={config.workers} shift={shift:.6f} "
                 f"solved in {time.monotonic() - started:.1f}s{unattainable_note}",
@@ -287,6 +313,7 @@ class FixturePlan:
 
 def plan_fixtures(
     rng: random.Random, *, metric: str, harm: str, k: int, fixtures: int, acted_fixtures: int, shift: float,
+    finding_volume_scale: float = 1.0,
 ) -> list[FixturePlan]:
     """Draws every fixture's latents and derives its rates and volumes. Past
     `acted_fixtures` the rule does not act, so arm X behaves as the current rule there."""
@@ -294,7 +321,7 @@ def plan_fixtures(
     for index in range(fixtures):
         latents = draw_latents(rng, metric)
         acted = index < acted_fixtures
-        baseline_volume = k * latents.finding_rate
+        baseline_volume = k * latents.finding_rate * finding_volume_scale
         plans.append(
             FixturePlan(
                 baseline_rate=latents.baseline_rate,
@@ -341,15 +368,16 @@ def draw_recall_counts(
 
 
 def draw_precision_counts(
-    rng: random.Random, plans: Sequence[FixturePlan],
+    rng: random.Random, plans: Sequence[FixturePlan], *, finding_floor: int = 1,
 ) -> dict[str, analysis.DefectPrecisionCounts]:
-    """One defect per fixture. Each arm's findings are 1 + Poisson(expected volume),
-    so every fixture carries at least one finding in both arms."""
+    """One defect per fixture. Each arm's findings are finding_floor + Poisson(expected volume).
+    At a floor of 1 every fixture carries a finding in both arms. At 0 a fixture can carry
+    findings in one arm or neither."""
     counts = {}
     for index, plan in enumerate(plans):
         defect_id = defect_id_for_fixture(index)
-        total_baseline = 1 + draw_poisson(rng, plan.baseline_volume)
-        total_arm_x = 1 + draw_poisson(rng, plan.arm_x_volume)
+        total_baseline = finding_floor + draw_poisson(rng, plan.baseline_volume)
+        total_arm_x = finding_floor + draw_poisson(rng, plan.arm_x_volume)
         counts[defect_id] = analysis.DefectPrecisionCounts(
             defect_id=defect_id,
             valid_by_arm={
@@ -364,13 +392,16 @@ def draw_precision_counts(
 @dataclass(frozen=True)
 class ReplicateResult:
     """One replicate's statistics and decisions, one entry per alpha in config order.
-    An undefined replicate (no terms) has None statistics and adopts nothing."""
+    An undefined replicate (no terms) has None statistics and adopts nothing.
+    `kept_fixtures` counts the fixtures the terms cover, which can fall below the
+    cell's fixture count when the finding floor is 0."""
 
     estimate: float | None
     lower_limits: tuple[float | None, ...]
     p_value: float | None
     t_interval_adopts: tuple[bool, ...]
     sign_flip_adopts: tuple[bool, ...]
+    kept_fixtures: int | None
 
     @property
     def undefined(self) -> bool:
@@ -383,7 +414,7 @@ def decide_replicate(
     """A zero-width interval or a constant `null_centered` gets no special case,
     so this decides as the production statistics do."""
     if terms is None:
-        return ReplicateResult(None, (None,) * len(alphas), None, (False,) * len(alphas), (False,) * len(alphas))
+        return ReplicateResult(None, (None,) * len(alphas), None, (False,) * len(alphas), (False,) * len(alphas), None)
     p_value = analysis.sign_flip_p_value(terms.null_centered, resamples=flips)
     lower_limits = tuple(analysis.fixture_t_interval(terms, alpha_one_sided=alpha)[0] for alpha in alphas)
     return ReplicateResult(
@@ -392,7 +423,17 @@ def decide_replicate(
         p_value=p_value,
         t_interval_adopts=tuple(lower_limit > -delta for lower_limit in lower_limits),
         sign_flip_adopts=tuple(p_value <= alpha for alpha in alphas),
+        kept_fixtures=len(terms.residuals),
     )
+
+
+def replicates_sign_flip_path(results: Sequence[ReplicateResult]) -> str | None:
+    """The defined replicates' common sign-flip path, `SIGN_FLIP_PATH_MIXED` when their
+    kept counts straddle the exact cap, or None when no replicate is defined."""
+    paths = {sign_flip_path(result.kept_fixtures) for result in results if not result.undefined}
+    if not paths:
+        return None
+    return paths.pop() if len(paths) == 1 else SIGN_FLIP_PATH_MIXED
 
 
 class ReplicateJob(NamedTuple):
@@ -411,6 +452,8 @@ class ReplicateJob(NamedTuple):
     delta: float
     alphas: tuple[float, ...]
     flips: int
+    finding_floor: int
+    finding_volume_scale: float
 
 
 def replicate_seed(
@@ -419,7 +462,9 @@ def replicate_seed(
 ) -> str:
     """The string a replicate seeds `random.Random` with. `random` hashes a str
     seed with SHA-512, so the draws are the same in every process. Alphas, flips
-    and workers stay out, so rerunning with others draws the same data."""
+    and workers stay out, so rerunning with others draws the same data.
+    `finding_floor` and `finding_volume_scale` stay out too, so runs that differ
+    only in them draw the same fixture latents."""
     return (
         f"calibrate|{run_seed}|{metric}|{k}|{harm}|{over_cap_share!r}|{fixtures}|{true_difference!r}|{replicate_index}"
     )
@@ -438,7 +483,7 @@ def run_replicate(job: ReplicateJob) -> ReplicateResult:
     )
     plans = plan_fixtures(
         rng, metric=job.metric, harm=job.harm, k=job.k, fixtures=job.fixtures, acted_fixtures=job.acted_fixtures,
-        shift=job.shift,
+        shift=job.shift, finding_volume_scale=job.finding_volume_scale,
     )
     if job.metric == METRIC_RECALL:
         recall_counts = draw_recall_counts(rng, plans, k=job.k)
@@ -448,7 +493,7 @@ def run_replicate(job: ReplicateJob) -> ReplicateResult:
             cluster_by_defect=_one_fixture_per_defect(defect_ids), delta=job.delta,
         )
     else:
-        precision_counts = draw_precision_counts(rng, plans)
+        precision_counts = draw_precision_counts(rng, plans, finding_floor=job.finding_floor)
         defect_ids = list(precision_counts)
         terms = analysis.precision_fixture_terms(
             precision_counts, defect_ids, ARM_CURRENT_RULE, ARM_FUNCTION_CONTEXT,
@@ -463,7 +508,8 @@ def cell_jobs(config: CalibrationConfig, cell: Cell) -> list[ReplicateJob]:
             metric=config.metric, k=config.k, harm=config.harm, over_cap_share=config.over_cap_share,
             fixtures=cell.fixtures, acted_fixtures=cell.acted_fixtures, true_difference=cell.true_difference,
             shift=cell.shift, replicate_index=index, run_seed=config.seed, delta=config.delta,
-            alphas=tuple(config.alphas), flips=config.flips,
+            alphas=tuple(config.alphas), flips=config.flips, finding_floor=config.finding_floor,
+            finding_volume_scale=config.finding_volume_scale,
         )
         for index in range(config.replicates)
     ]
@@ -495,9 +541,15 @@ def summarize_cell(
     config: CalibrationConfig, cell: Cell, results: Sequence[ReplicateResult], *, cells_planned: int,
 ) -> dict:
     """One output row. A rate's denominator includes undefined replicates. The row
-    carries no worker count and no timing, so output is byte-identical across worker counts."""
+    carries no worker count and no timing, so output is byte-identical across worker counts.
+    `sign_flip_path` is the defined replicates' path: `exact`, `monte-carlo`, `mixed` when their
+    kept counts straddle the exact cap, or None when no replicate is defined.
+    Only a floor-0 row carries `replicates_by_kept_fixtures`, because at floor 1 every
+    replicate keeps every fixture.
+    A row omits `finding_floor` and `finding_volume_scale` at their defaults, so an absent
+    one means its default."""
     replicate_count = len(results)
-    return {
+    row = {
         "metric": config.metric,
         "k": config.k,
         "harm": config.harm,
@@ -510,7 +562,7 @@ def summarize_cell(
         "undefined_replicates": sum(result.undefined for result in results),
         "flips": config.flips,
         "seed": config.seed,
-        "sign_flip_path": sign_flip_path(cell.fixtures),
+        "sign_flip_path": replicates_sign_flip_path(results),
         "python_version": platform.python_version(),
         "cells_planned": cells_planned,
         "alphas": [
@@ -522,6 +574,13 @@ def summarize_cell(
             for index, alpha in enumerate(config.alphas)
         ],
     }
+    if config.finding_floor == 0:
+        row["finding_floor"] = 0
+        kept_counts = Counter(result.kept_fixtures for result in results if not result.undefined)
+        row["replicates_by_kept_fixtures"] = {str(count): kept_counts[count] for count in sorted(kept_counts)}
+    if config.finding_volume_scale != 1.0:
+        row["finding_volume_scale"] = config.finding_volume_scale
+    return row
 
 
 def run_sweep(

@@ -410,20 +410,9 @@ def _read_scope_report(args: argparse.Namespace, roots: Sequence[Path] | None = 
     still enforces the same multi-root refusal and DO NOT PUBLISH banner, for
     CLI parity.
     """
-    redact: bool = not bool(getattr(args, "no_redact", False))
     scan_roots: Sequence[Path] = roots if roots is not None else (scope.PROJECTS_DIR,)
     multi_root = len(scan_roots) > 1
-
-    # Defense-in-depth: _resolve_cost_roots is the CLI-level enforcement
-    # point for this refusal, but every direct caller of this function
-    # (including this module's own tests) bypasses that boundary.
-    if not redact and multi_root:
-        print(
-            "read-scope: --no-redact is refused when more than one root is in scope"
-            " (--config-dir was given); drop --no-redact or scope to a single profile",
-            file=sys.stderr,
-        )
-        sys.exit(2)
+    redact: bool = scope.resolve_redaction(args, scan_roots, "read-scope")
 
     if not redact:
         print(scope._DO_NOT_PUBLISH_BANNER)
@@ -436,6 +425,8 @@ def _read_scope_report(args: argparse.Namespace, roots: Sequence[Path] | None = 
     scope.print_resolved_scope("read-scope", scope_label, scan_roots)
 
     resolved_scan_roots = [root.resolve() for root in scan_roots] if multi_root else []
+    # per_account is indexed by sorted-resolved-path ordinal, which _print_read_scope_report labels account-<ordinal>.
+    redact_ordinals: dict[Path, int] = scope._redaction_ordinals(scan_roots) if multi_root else {}
 
     stats = _new_read_scope_stats()
     per_account: list[dict] = [_new_read_scope_stats() for _ in scan_roots] if multi_root else []
@@ -451,7 +442,7 @@ def _read_scope_report(args: argparse.Namespace, roots: Sequence[Path] | None = 
         _merge_read_scope_stats(stats, session_stats)
         if multi_root:
             idx = scope._root_index_for_path(jsonl, resolved_scan_roots)
-            _merge_read_scope_stats(per_account[idx], session_stats)
+            _merge_read_scope_stats(per_account[redact_ordinals[resolved_scan_roots[idx]] - 1], session_stats)
 
     _print_read_scope_report(stats, per_account if multi_root else None, since_label)
 
@@ -617,7 +608,7 @@ def _add_read_scope_subparser(subparsers: argparse._SubParsersAction) -> None:
             "This report's output is aggregate-only (no project names, session IDs, or file"
             " paths), so --no-redact has no effect on its content, but it still prints the"
             " DO NOT PUBLISH banner and enforces the same multi-root refusal as cost, for CLI"
-            " parity. Refused when --config-dir puts more than one root in scope."
+            " parity. Refused whenever more than one root is in scope."
         ),
     )
     p_read_scope.set_defaults(func=cmd_read_scope)

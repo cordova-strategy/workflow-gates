@@ -67,11 +67,7 @@ class TestCmdHandoffSignalResponseScopeAndRedaction:
             handoff_signal_response.cmd_handoff_signal_response(args)
         assert exc_info.value.code == 2
         captured = capsys.readouterr()
-        assert "--no-redact" in captured.err
-        assert "more than one root" in captured.err
-        # The advice names the one route that reads a single root; --this-repo pools every declared root.
-        assert "run --sample without --this-repo or --all-accounts" in captured.err
-        assert "e.g. --this-repo" not in captured.err
+        assert "--no-redact is refused when more than one root is in scope; drop --no-redact" in captured.err
         assert captured.out == ""
 
     def test_sample_no_redact_runs_over_the_active_root_alone_by_default(self, tmp_path, monkeypatch, capsys):

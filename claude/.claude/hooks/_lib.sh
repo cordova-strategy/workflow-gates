@@ -3457,7 +3457,7 @@ _lib_permission_prompt_tracking_active() {
 # The allowed characters are _LIB_SESSION_ID_COMPONENT_CHAR_REGEX; see it for
 # why they are spelled out. The `[[ =~ ]]` match overwrites BASH_REMATCH in the
 # caller and assumes `nocasematch` is off (no caller sets it). It forks no subshell.
-# author_outcome.py's _SESSION_ID_PATTERN is the ASCII-only mirror of it.
+# review_ledger.py's _SESSION_ID_PATTERN is the ASCII-only mirror of it.
 _lib_valid_session_id_component() {
   [[ "${1-}" =~ ^${_LIB_SESSION_ID_COMPONENT_CHAR_REGEX}+$ ]]
 }

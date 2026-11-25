@@ -59,6 +59,12 @@ The rule itself is documented in `docs/transcript-analysis.md` under "Subagent a
 attribute that function defines. `_add_extra_config_dirs_arg` registers the repeatable subcommand-level
 `--config-dir`, whose `extra_config_dirs` values `_resolve_cost_roots` reads.
 
+`scope.py` also owns the shared `--no-redact` refusal. `_refuse_no_redact_above_one_root` exits 2 when the flag
+meets more than one root. `resolve_redaction` calls it and returns whether the subcommand redacts. Nine of the ten
+subcommands that register `--no-redact` read their decision through `resolve_redaction`. `cost` reads `redact` directly
+and calls only `_refuse_no_redact_above_one_root`. Both root resolvers (`resolve_scan_roots`, `_resolve_cost_roots`)
+call `_refuse_no_redact_above_one_root` on the roots they return.
+
 `scope.py` also owns `_iso_date`, the argparse `type=` validator for every YYYY-MM-DD flag, which
 `_parse_absolute_window_args` relies on.
 
@@ -93,7 +99,9 @@ Also owns the `--this-repo` subagent_type disclosure allowlist:
 
 `subagent_mix.py`'s `cmd_subagent_mix` and `cmd_cost_counts` call
 `redaction._repo_tracked_agent_type_names` (attribute access) to gate which raw `subagent_type`
-values a `--this-repo` report may disclose versus fold into a withheld row.
+values a `--this-repo` report may disclose versus fold into a withheld row. `reviewer_yield.py`'s
+`cmd_reviewer_yield` calls `redaction._untracked_agent_type_labels` (attribute access) under `--redact`,
+which keeps each tracked name and numbers every other name `agent-type-<N>`.
 
 ### `pricing.py`
 
@@ -231,7 +239,7 @@ is the one public (non-underscore-prefixed) name here, read by `cost_ledger.py`'
 The reviewer-yield command family: `cmd_reviewer_yield` and every helper used only by it —
 joining each main-thread reviewer-agent dispatch to its own subagent transcript, classifying its
 verdict (findings-found/zero-finding/unclassified), and scoring cited-path edit overlap
-(`compute_reviewer_yield_data`). Imports `corpus`, `pricing`, `render`, and `scope` all by module
+(`compute_reviewer_yield_data`). Imports `corpus`, `pricing`, `redaction`, `render`, and `scope` all by module
 (attribute access), matching `cost.py`'s convention. `compute_reviewer_yield_data` is the one
 public name here, read by `cost_ledger.py`'s own `_cost_ledger_report` as
 `reviewer_yield.compute_reviewer_yield_data`. `_is_reviewer_subagent_type` is read by `review_trace.py`, via
@@ -288,10 +296,7 @@ The author-outcome command family: `cmd_author_outcome` and every helper used on
 for each `--agent`-typed dispatch (default `code-writer`), joins it to the `code-review` round
 that judged its diff (`compute_author_outcomes`), by completion-index ordering against
 `review_rounds.detect_round_windows`' own `open_idx`, and classifies the outcome by reading that
-session's own review-narrative-ledger rows directly. `_LedgerIndex` holds one config-dir root's
-parsed ledger files, refreshed on every session lookup, and attributes each row to a session by
-its `session_id` field or, for a row without one, by its filename. `_read_ledger_row_entries_for_session`
-returns one session's rows sorted by `event_time`. See `docs/transcript-analysis.md`'s
+session's own review-narrative-ledger rows through `review_ledger`. See `docs/transcript-analysis.md`'s
 author-outcome section ("Ledger lookup") for the attribution rules and the residual gaps they
 still leave. `_round_blocks` groups a session's rows into blocks, and the k-th round-open takes
 the k-th block by rank, not by `round` value. The transcript is still the sole source for
@@ -307,11 +312,20 @@ See `_lib.sh`'s own `_lib_acquire_append_lock`/`_lib_append_json_line_locked`
 docstrings for the append-lock mechanism `review-ledger.sh`'s
 write depends on.
 
-Imports `corpus`, `pricing`, `render`, `review_rounds`, and `scope` all by module
+Imports `corpus`, `pricing`, `render`, `review_ledger`, `review_rounds`, and `scope` all by module
 (attribute access), matching `review_rounds.py`'s own convention.
 `_add_author_outcome_subparser` is the one name `build_parser()` reaches bare. See
 `docs/transcript-analysis.md`'s author-outcome section for the full failure definition, output
 shape, and documented scope gaps.
+
+### `review_ledger.py`
+
+Reads the review-narrative-ledger files under a config-dir root and attributes their rows to sessions. A leaf: it imports no other
+package module. `_LedgerIndex` holds one config-dir root's parsed ledger files, refreshed on
+every session lookup, and attributes each row to a session by its `session_id` field or, for a row without one, by its
+filename. `_read_ledger_row_entries_for_session` returns one session's rows sorted by `event_time`.
+`_read_ledger_rows_from_file` prints the file's path on an open failure, with an `author-outcome:` prefix.
+`author_outcome.py` and `ledger_dispositions.py` import it by module.
 
 ### `denials.py`
 
@@ -390,7 +404,7 @@ The review ledger's terminal dispositions over this checkout's ledger files. It 
 takes the config root, the worktree paths, the window and the scanned session ids, and returns a
 `LedgerDispositionCounts` of aggregates only.
 
-- It reads each file `publication_scope._this_repo_ledger_files` selects through `author_outcome._read_ledger_rows_from_file`, with stderr held in a buffer.
+- It reads each file `publication_scope._this_repo_ledger_files` selects through `review_ledger._read_ledger_rows_from_file`, with stderr held in a buffer.
 - A file is unreadable when a point-in-time `os.lstat` by name finds a symlink, a named pipe or any other non-regular entry, which is refused unopened. A hard link and a swap between the check and the open are not detected, and the ledger writer's own check has the same limits.
 - `publication_scope._this_repo_ledger_files` drops a directory, or a symlink to a directory, without counting it.
 - A file is also unreadable when its read printed anything, because that reader prints the file's path.
@@ -398,10 +412,11 @@ takes the config root, the worktree paths, the window and the scanned session id
 - The row reduction and the supersession rule are in the module docstring. `docs/transcript-analysis.md`'s `reviewer-reads` section states them under "Review-ledger dispositions".
 - The module takes no transcript gap counter, so an unreadable ledger directory shows only as its `directory_state`.
 
-Imports, all by module (attribute access): `author_outcome`, `corpus` and `publication_scope`.
+Imports, all by module (attribute access): `author_outcome`, `corpus`, `publication_scope` and `review_ledger`.
 
 Cross-module private reads:
-- `author_outcome._read_ledger_rows_from_file`, its disposition and `carry` constants, `_SESSION_ID_PATTERN` and `_REVIEW_LEDGER_DIRNAME`;
+- `review_ledger._read_ledger_rows_from_file`, `_SESSION_ID_PATTERN`, `_DECODER_LIMIT_ERRORS` and `_REVIEW_LEDGER_DIRNAME`;
+- `author_outcome`'s disposition and `carry` constants;
 - `corpus._parse_ts`;
 - `publication_scope._this_repo_ledger_files` and `_GAP_LEDGER_DIR`.
 
@@ -614,9 +629,9 @@ they use — hook-observable boundary detection (`_hook_observable_boundaries`),
 (`_simulate_rearm_spacing`), `--spacings` parsing (`_parse_rearm_spacings_arg`), the
 nudge-to-handoff conversion classifier (`_nudge_conversion_from_log`), and the per-root log-size
 disclosure line (`_rearm_backtest_log_size_lines`). Imports `handoff_nudge`, `render`, and `scope` all
-by module (attribute access), matching `cost.py`'s convention. The multi-root `--no-redact` refusal
-stays inline in `_rearm_backtest_report`, ahead of any output, in addition to
-`scope._resolve_cost_roots`' own CLI-level refusal. `_add_rearm_backtest_subparser` is the one name
+by module (attribute access), matching `cost.py`'s convention. `_rearm_backtest_report` reads its
+`--no-redact` decision through `scope.resolve_redaction`, ahead of any output, which refuses more than
+one root. `_add_rearm_backtest_subparser` is the one name
 `build_parser()` reaches bare.
 
 ### `spend_over_threshold.py`
@@ -635,8 +650,8 @@ they use — boundary-turn location (`_plan_boundary_turn_index`), the three arm
 (`_arm_b_boundary_plus_one_dollars`, `_arm_b_later_turn_dollars`, `_arm_c_turn_dollars`), and the
 pairwise work-inflation breakeven (`_plan_boundary_work_inflation_breakeven`). Imports
 `handoff_nudge`, `pricing`, `render`, and `scope` all by module (attribute access), matching
-`cost.py`'s convention. The multi-root `--no-redact` refusal is inline in `_plan_boundary_report`,
-ahead of any output, in addition to `scope._resolve_cost_roots`' own CLI-level refusal.
+`cost.py`'s convention. `_plan_boundary_report` reads its `--no-redact` decision
+through `scope.resolve_redaction`, ahead of any output, which refuses more than one root.
 `_add_plan_boundary_subparser` is the one name `build_parser()` reaches bare.
 
 ### `handoff_signal_response.py`
@@ -647,8 +662,8 @@ per-record signal classifiers (`_handoff_signal_bash_check_call`, `_handoff_sign
 scan (`_handoff_signal_response_session_rows`), spend ranking, curation cards, the startup-burn
 benchmark, and the aggregate and markdown renderers. Imports `corpus`, `cost`, `handoff_nudge`,
 `pricing`, `redaction`, `render`, and `scope` all by module (attribute access), matching `cost.py`'s
-convention. The multi-root `--no-redact` refusal lives inline in `cmd_handoff_signal_response`, since
-`scope.resolve_scan_roots` refuses nothing. Its `.handoff-nudge.log` read goes through
+convention. `cmd_handoff_signal_response` reads its `--no-redact` decision through
+`scope.resolve_redaction`, which refuses more than one root. Its `.handoff-nudge.log` read goes through
 `scope.config_dir()` by attribute access, per the rule under `scope.py` above, so `fake_projects`'
 existing `scope.config_dir` patch isolates it. `_add_handoff_signal_response_subparser` is the one name
 `build_parser()` reaches bare.
@@ -875,9 +890,13 @@ the existing tests live.
 scan-traversal, scan-gap, and glob-selection classes are tested in
 `tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
 `tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
-`tests/test_transcript_scope_active_account.py`, and the rest of `scope.py` in
-`tests/test_transcript_scope.py`. `TestProjectsFlagHasNoArgparseType` lives in `tests/test_transcript_cli.py`
-because it walks every subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
+`tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
+`tests/test_transcript_scope_no_redact.py`, and the rest of `scope.py` in
+`tests/test_transcript_scope.py`. `reviewer_yield.py`'s `AgentType` label map, both the `--redact` relabelling and the raw path's control-character strip, is tested in
+`tests/test_transcript_reviewer_yield_redaction.py`, and the rest of its tests live in
+`tests/test_transcript_reviewer_yield.py`. `TestNoRedactFamilyRefusalThroughMain` and
+`TestProjectsFlagHasNoArgparseType` live in `tests/test_transcript_cli.py` because each walks every
+subparser `build_parser()` registers. `TestSkillFilesQuoteRootCountDescLiteral` lives
 in `tests/test_transcript_analysis_multi_root_scope.py`, which `select-tests.py` selects as a `SKILL.md`
 reader. `pricing.py`'s
 shared per-session step, staleness rule, and canary return values, and
@@ -922,7 +941,9 @@ docstrings for why `fake_projects` patches four `config_dir` bindings: `scope.co
 live in `tests/test_author_outcome.py`. Most exercise the package module directly through
 `from transcript_analysis import author_outcome as ao`. That alias is the exception to the
 unaliased rule, so the file is absent from `TEST_FILES`. A small `spec_from_file_location`-loaded
-shim copy is reserved for the argparse-wiring tests.
+shim copy is reserved for the argparse-wiring tests. `review_ledger.py`'s tests live in
+`tests/test_transcript_review_ledger.py` and `tests/test_transcript_review_ledger_decode_limits.py`.
+Both import `review_ledger` unaliased and are listed in `TEST_FILES`.
 
 `fake_projects`, `cost_ledger_file`, and `cost_ledger_enabled` patch the package modules directly, so a
 test file that uses them needs no `transcript-analysis.py` loader of its own.

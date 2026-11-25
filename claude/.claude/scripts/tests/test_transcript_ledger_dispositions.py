@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 from helpers import init_git_repo
-from transcript_analysis import author_outcome, corpus, ledger_dispositions, publication_scope
+from transcript_analysis import author_outcome, corpus, ledger_dispositions, publication_scope, review_ledger
 
+from ._ledger_reader_helpers import LINES_OVER_DECODER_LIMITS, OVER_LIMIT_INTEGER_LINE
 from ._review_round_corpus_helpers import _LEAK_SENTINEL_PREFIX, _leak_sentinel
 from .conftest import (
     _WINDOW_EDGE_TIMESTAMPS,
@@ -143,7 +144,7 @@ class _Ledger:
     def __init__(self, config_root: Path, worktree: Path):
         self.config_root = config_root
         self.worktree = worktree
-        self.directory = config_root / author_outcome._REVIEW_LEDGER_DIRNAME
+        self.directory = config_root / review_ledger._REVIEW_LEDGER_DIRNAME
 
     def write(self, slot: str, rows: list[dict]) -> Path:
         return _write_this_repo_ledger_file(self.config_root, self.worktree, slot, rows)
@@ -779,24 +780,16 @@ class TestFileSelection:
             print(f"read {path}", file=sys.stderr)
             return [_row(_ADDRESS, "r1")], True
 
-        monkeypatch.setattr(author_outcome, "_read_ledger_rows_from_file", reader_that_prints_then_returns_rows)
+        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", reader_that_prints_then_returns_rows)
 
         assert ledger.count() == _expect(files_read=0, unreadable_files=1)
         captured = capsys.readouterr()
         assert captured.out == "" and captured.err == ""
 
 
-_OVER_LIMIT_INTEGER_LINE = '{"id": ' + "1" * 5000 + "}"
-# Each line makes json.loads raise an exception the ledger reader does not catch.
-_UNCAUGHT_DECODE_LINES = [
-    pytest.param("[" * 3_000_000 + "]" * 3_000_000, RecursionError, id="deeply nested"),
-    pytest.param(_OVER_LIMIT_INTEGER_LINE, ValueError, id="integer over the digit limit"),
-]
-
-
 @pytest.mark.usefixtures("default_int_str_digit_limit")
 class TestUndecodableLines:
-    @pytest.mark.parametrize(("line", "decoder_exception"), _UNCAUGHT_DECODE_LINES)
+    @pytest.mark.parametrize(("line", "decoder_exception"), LINES_OVER_DECODER_LIMITS)
     def test_a_line_the_decoder_raises_on_makes_its_file_unreadable_and_its_error_reaches_no_stream(
         self, ledger, capsys, line, decoder_exception,
     ):
@@ -821,10 +814,10 @@ class TestUndecodableLines:
         ledger.write("session-a", [_row(_ADDRESS, "a1")])
         dangling = ledger.directory / f"{repo_hash}.{_leak_sentinel('dangling-slot')}.jsonl"
         dangling.symlink_to(ledger.directory / "missing-target")
-        ledger.write(_leak_sentinel("over-limit-slot"), []).write_text(_OVER_LIMIT_INTEGER_LINE + "\n")
+        ledger.write(_leak_sentinel("over-limit-slot"), []).write_text(OVER_LIMIT_INTEGER_LINE + "\n")
         printing_slot = _leak_sentinel("printing-slot")
         ledger.write(printing_slot, [_row(_ADDRESS, "p1")])
-        real_reader = author_outcome._read_ledger_rows_from_file
+        real_reader = review_ledger._read_ledger_rows_from_file
 
         def reader_that_prints_the_path_of_one_file(path):
             if printing_slot in path.name:
@@ -832,7 +825,7 @@ class TestUndecodableLines:
                 return [_row(_ADDRESS, "p1")], True
             return real_reader(path)
 
-        monkeypatch.setattr(author_outcome, "_read_ledger_rows_from_file", reader_that_prints_the_path_of_one_file)
+        monkeypatch.setattr(review_ledger, "_read_ledger_rows_from_file", reader_that_prints_the_path_of_one_file)
 
         counts = ledger.count()
 
@@ -907,7 +900,7 @@ class TestWriterToReader:
         _git(main_checkout, "worktree", "add", "-q", "-b", "feature", str(linked_checkout))
         toplevel = _git(linked_checkout, "rev-parse", "--show-toplevel").strip()
         _seed_session(home, self._SESSION_ID)
-        ledger_directory = home / ".claude" / author_outcome._REVIEW_LEDGER_DIRNAME
+        ledger_directory = home / ".claude" / review_ledger._REVIEW_LEDGER_DIRNAME
         common = ["--finding", "a finding", "--rationale", "a reason", "--source", "foo.py"]
         defer = [*common, "--disposition", "DEFER", "--defer-criterion", "orthogonal-scope"]
 
