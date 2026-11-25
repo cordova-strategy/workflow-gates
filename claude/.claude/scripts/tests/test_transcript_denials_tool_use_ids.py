@@ -50,6 +50,11 @@ def _shipped_gate_result(tool_use_id: str, hook_file: str, *, is_error: bool = T
     return _hook_deny_current(message, tool_id=tool_use_id, branch=_BRANCH, is_error=is_error)
 
 
+def _with_tool_use_id(result_record: dict, tool_use_id) -> dict:
+    result_record["message"]["content"][0]["tool_use_id"] = tool_use_id
+    return result_record
+
+
 class TestHookDenialsInRecord:
 
     @pytest.mark.parametrize("denial_record", [
@@ -252,6 +257,16 @@ class TestHookDeniedToolUseIds:
         pytest.param(
             {"type": "attachment", "attachment": {"type": "hook_blocking_error", "toolUseID": ["unhashable"]}},
             id="an-unhashable-attachment-tool-use-id",
+        ),
+        pytest.param(
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "name": "Skill", "id": ["list-id"], "input": {"skill": "code-review"}},
+            ]}},
+            id="an-unhashable-launch-id",
+        ),
+        pytest.param(
+            _with_tool_use_id(_shipped_gate_result("unreadable-call", "block-gh-pr-merge.sh"), ["unreadable-call"]),
+            id="an-unhashable-result-tool-use-id",
         ),
     ])
     def test_a_record_of_an_unreadable_shape_contributes_no_id_and_does_not_raise(self, malformed_record):
