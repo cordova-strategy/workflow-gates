@@ -20,6 +20,8 @@ Evidence behind the design, from this session's exploration and two independent 
 
 Sequencing the engineer selected: a small first PR adds a Python config-dir to archive-account-directory resolver with a parity test against the bash encoding. A second PR adds the ledger-copy reader for the two commands, plus a read-only viewer of archived ledger rows. A later PR adds a lister of archived `agent-reviews/` snapshots and the docs pointer (rows 76, 77).
 
+Only PR A is current against the base. PR B, D and E were designed before the ledger reader moved out of `author_outcome.py` into `transcript_analysis/review_ledger.py`. Their file layout, the reason for a new module (M14), the `author_outcome.py` line citations and size figures, and the over-limit-line behavior they state for `author-outcome` are pending re-derivation against that file. Treat each `[verified: author_outcome.py:<line>]` tag and each size figure for those PRs as unverified. The re-derivation is the first step of PR B, and it runs `/plan-review` again.
+
 ## Approach
 
 `author-outcome` and `reviewer-reads`, the only analysis commands that read review-ledger rows (row 12), read the archived ledger copies of every account they scan. They always do, whatever `agent_branch_records` says, and no flag turns that off (rows 3, 42). Each stem's copies and live file are read as one history before anything is counted, and a counts-only line reports what the archive contributed. A read-only viewer prints one stem's history the way `show` prints a live branch's (row 54). A lister of archived `agent-reviews/` snapshots and a docs pointer make the archive known to agents that read the live directories directly (M23, M24). Six PRs deliver it, in this order (M15):
@@ -33,13 +35,13 @@ Sequencing the engineer selected: a small first PR adds a Python config-dir to a
 
 **PR A: the resolver.** A new `claude/.claude/scripts/_branch_records.py` locates archive directories the way `branch_records_status` computes them (row 22). It never reads `claude-config.toml` (row 1).
 - `encode_component(path)` replaces `%` with `%25`, then `/` with `%2F`.
-- `archive_root(home)` returns `<home>/.local/state/agent-branch-records`, or None unless `home` is a non-empty absolute path (M18).
+- `archive_root(home)` returns `<home>/.local/state/agent-branch-records`, or None unless `home` is a non-empty absolute path with no NUL (M18).
 - `account_directory(config_dir, home)` returns None for a relative `config_dir` (M18). Otherwise it canonicalizes `config_dir` with `os.path.realpath(config_dir, strict=True)` and requires a directory. It returns `archive_root(home) / encode_component(<canonical path>)`, or None when any step fails.
   - It strips trailing newlines before and after canonicalizing, as the writer does.
   - It returns None for a config dir spelled with exactly two leading slashes, because `pwd -P` can keep that prefix and `realpath` never does.
   - That None also covers a spelling for which bash would print one slash, which the writer would accept.
-  - Other routes to a `//` path from `pwd -P`, such as a link to `/`, can still read as `absent` (see the module docstring).
-- `archive_subtree(config_dir, name, home)` returns `ArchiveSubtree(state, directory)` for a subtree named by one path component. `directory` is set only for `present`. It raises ValueError for a name that is empty, `.` or `..`, or that holds `/` or NUL. It takes the first state that applies, in this order, so it never reads a subtree under an unmarked root (M18):
+  - Other routes to a `//` path from `pwd -P`, such as a link to `/`, can still read as `absent` (see the `account_directory` docstring).
+- `archive_subtree(config_dir, name, home)` returns `ArchiveSubtree(state, directory)` for a subtree named by one path component, where `state` is a member of the five-member `SubtreeState` enum. `directory` is set only for `present`. It raises ValueError for a name that is empty, `.` or `..`, or that holds `/` or NUL. It takes the first state that applies, in this order, so it never reads a subtree under an unmarked root (M18):
   1. `unresolvable`: `account_directory` returned None.
   2. `unmarked`: a stat of the root's readiness marker finds nothing, or finds something other than a regular file. The stat follows a link, as the writer's `test -f` does (row 59). Finding nothing includes the not-a-directory error that a root that is a file gives, and a dangling root link gives the same result. The archive was never set up, or its volume is not mounted.
   3. `unreadable`: a stat of the marker or the subtree failed in any other way, such as a permission error on the root or the account directory. The subtree is also `unreadable` when it is not a directory, or when its real path is not exactly the account directory's real path joined with the name. The account directory itself is `unreadable` when it is a link, because a link there could name a sibling account's directory. It is also `unreadable` when it exists as anything but a directory, so the not-a-directory error a file there gives never reads as `absent`.
@@ -255,10 +257,10 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
 - Reading the archive only under an opt-in flag: row 2 asks for the opposite default.
 - An opt-out flag for live-only figures: the engineer never wants archive reads turned off (row 42).
 - The resolver in `_config_dir.py`: that module resolves config dirs and the declared-roots file, while the archive layout's home is `_branch-records-lib.sh` and `docs/agent-branch-records.md`.
-- The resolver in `transcript_analysis/scope.py`: it is a 1,235-line split-pending file (row 25), and a caller outside the transcript package would import that package for it.
+- The resolver in `transcript_analysis/scope.py`: it is a 1,252-line split-pending file (row 25), and a caller outside the transcript package would import that package for it.
 - Reading a subtree that exists under an unmarked root: the writer refuses without the marker (row 59), so nothing vouches for data under an unmarked root.
 - A parity test against `_branch_records_encode_component` alone, as the dispatch worded it: it would miss a canonicalization or root difference.
-- Comparing the module with the test helpers' own formula: that compares Python with Python (row 23).
+- Comparing the module with the test helpers' own formula: that compares Python with Python (row 23). The one exception is a test for a config dir name ending in a carriage return, which `run_lib`'s text-mode read drops. That test compares the module with the helpers' model of the account directory, which takes the config dir name as it is. The writer's command substitution strips only trailing newlines, so a trailing carriage return stays in the name. The test claims no writer parity.
 - Pinning HOME for the whole scripts suite: it changes every test's home, and with it git's global config lookup, for one lookup.
 - An environment override of the archive root that only Python reads: a reader and the writer could then disagree.
 - A conftest tripwire that fails a test passing `_branch_records.archive_root` a home outside `tmp_path`: every archive lookup this plan adds goes through `_archive_home`, the pinned seam, directly or through `LedgerArchive`, and a subprocess test sets HOME itself (row 24). A tripwire would guard only a caller the plan does not add, as a second layer over the pin.
@@ -334,7 +336,7 @@ ledger archive: scope=<all-repos|this-repo> roots=<N> present=<N> absent=<N> unm
     - The limit is 1,000 lines, for test files too.
     - An exception row's ceiling is the file's exact count, so a PR that grows an exception file sets its ceiling to the new count.
     - Under the limit: `author_outcome.py` 996 lines, `reviewer_reads.py` 974, `test_transcript_ledger_dispositions.py` 931, `test_transcript_reviewer_reads_command.py` 708 and `test_transcript_cli.py` 598.
-    - Exceptions: `test_author_outcome.py` 3998, `claude/.claude/scripts/tests/conftest.py` 2039, `scope.py` 1235, `select-tests.py` 1557 and `test_select_tests.py` 4396.
+    - Exceptions: `test_author_outcome.py` 3998, `claude/.claude/scripts/tests/conftest.py` 2039, `scope.py` 1252, `select-tests.py` 1557 and `test_select_tests.py` 4396.
 26. Tests depend on these seams, so the change keeps each. [verified: the cited lines]
     - `test_author_outcome.py` monkeypatches `author_outcome._list_ledger_files` (`:547`, `:569`, `:2636`) and `_read_ledger_rows_from_file` (`:1427`, `:1468`).
     - `TestLedgerIndex` constructs `ao._LedgerIndex(<dir>)` with one argument (`test_author_outcome.py:1457`).
@@ -437,9 +439,9 @@ From PR C on, a command test lays out an archive with `build_archive_env(tmp_pat
 **PR A.** Verify with `scripts/venv-run.sh python3 claude/.claude/scripts/select-tests.py`.
 
 Create:
-- `claude/.claude/scripts/_branch_records.py`: the four functions, `ArchiveSubtree`, the five state constants, the root path and the sentinel name. Its docstring names `docs/agent-branch-records.md` § "Snapshots" as the layout's home and says the module never reads the key.
+- `claude/.claude/scripts/_branch_records.py`: the four functions, `ArchiveSubtree`, the five-member `SubtreeState` enum, the root path and the sentinel name. Its docstring names `docs/agent-branch-records.md` § "Snapshots" as the layout's home and says the module never reads the key.
 - `claude/.claude/scripts/tests/test__branch_records.py`, which puts the scripts directory on `sys.path` as `test__config_dir.py:9` does. Reuse `build_archive_env`, `run_status` and `SENTINEL_NAME` from `._branch_records_helpers`. Every marker is named by the helpers' `SENTINEL_NAME`, never by the module's constant, so the `absent` and `present` cases tie the module's sentinel name to the lib's. The None cases, the state cases and the ValueError names are each one test parametrized over its inputs, with an id per case and the `requires_non_root` cases as marked parameters. Cases:
-  - Account-directory parity, one case per config dir: a plain name, a name with a space, a name with `%`, a name holding a literal `%2F`, a non-ASCII name, a config dir reached through a symlink (also to a newline-named directory), a `..` after a symlink, a trailing slash, a trailing newline and three leading slashes. Each asserts `ready` and compares `Path(run_status(...).account_dir)` with `account_directory(<the config dir>, env["HOME"])` as `Path` objects. The three-leading-slashes case passes the module the raw `str` spelling the writer receives, because `Path` collapses it. The test's docstring says it covers case-sensitive, non-normalizing filesystems only (row 58).
+  - Account-directory parity, one case per config dir: a plain name, a name with a space, a name with `%`, a name holding a literal `%2F`, a non-ASCII name, a config dir reached through a symlink (also to a directory named with one trailing newline and to one named with two), a name ending in a space, a name ending in a tab, a `..` after a symlink, a trailing slash, one and two trailing newlines, and three leading slashes. The space and tab cases pin that only trailing newlines are stripped. A separate test pins that a name ending in a carriage return keeps it (see the rejected alternative on comparing with the helpers' own formula). Each parity case asserts `ready` and compares `Path(run_status(...).account_dir)` with `account_directory(<the config dir>, env["HOME"])` as `Path` objects. The three-leading-slashes case passes the module the raw `str` spelling the writer receives, because `Path` collapses it. The test's docstring says it covers case-sensitive, non-normalizing filesystems only (row 58).
   - A config dir spelled with exactly two leading slashes, which the writer can keep and `realpath` collapses:
     - One test pins `account_directory` None and `archive_subtree` `unresolvable`. It skips on a bash whose `pwd -P` drops the prefix.
     - A second test pins the known divergence for a config dir reached through a link to `/`: the module returns a different account directory and `archive_subtree` reads `absent`. It skips without `/proc/self/root` and on a bash that drops the prefix.
@@ -450,8 +452,9 @@ Create:
     - a plain subtree;
     - a subtree for a config dir whose `claude-config.toml` sets the key to false (row 1);
     - a subtree under a root that is a resolving symlink, from `root_symlink_target` with `create_symlink_target=True`;
-    - a subtree under a root whose marker is a symlink to a regular file, which the writer's `test -f` accepts (row 59).
-  - `absent`: the marker exists and the subtree does not.
+    - a subtree under a root whose marker is a symlink to a regular file, which the writer's `test -f` accepts (row 59);
+    - a subtree whose root, account directory and own directory can be searched but not written, in its own `requires_non_root` test, because the reader ignores the writer's writability gate.
+  - `absent`: the marker exists and the subtree does not, including a missing account directory under a root that cannot be written, in its own `requires_non_root` test.
   - `unmarked`, built with `build_archive_env`:
     - no root, from `create_root=False`;
     - a dangling root link, from `root_symlink_target` with `create_symlink_target=False`;

@@ -15,7 +15,14 @@ import _branch_records
 import pytest
 
 from . import _branch_records_helpers as records_helpers
-from ._branch_records_helpers import SENTINEL_NAME, build_archive_env, list_tree, requires_non_root, run_status
+from ._branch_records_helpers import (
+    SENTINEL_NAME,
+    build_archive_env,
+    list_tree,
+    read_only,
+    requires_non_root,
+    run_status,
+)
 
 # The autouse fixture applies only where the test module binds it, and an import would trip F401.
 process_isolation = records_helpers.process_isolation
@@ -73,20 +80,15 @@ def _named(directory_name: str) -> Callable[[Path], dict[str, str]]:
     return lambda tmp_path: build_archive_env(tmp_path, config_dir=tmp_path / directory_name)
 
 
-def _reached_through_symlink(tmp_path: Path) -> dict[str, str]:
-    real_config_dir = tmp_path / "real_config"
-    real_config_dir.mkdir()
-    linked_config_dir = tmp_path / "linked_config"
-    linked_config_dir.symlink_to(real_config_dir)
-    return build_archive_env(tmp_path, config_dir=linked_config_dir)
+def _reached_through_symlink_to_a_directory_named(directory_name: str) -> Callable[[Path], dict[str, str]]:
+    def build_env(tmp_path: Path) -> dict[str, str]:
+        target_dir = tmp_path / directory_name
+        target_dir.mkdir()
+        linked_config_dir = tmp_path / "linked_config"
+        linked_config_dir.symlink_to(target_dir)
+        return build_archive_env(tmp_path, config_dir=linked_config_dir)
 
-
-def _reached_through_symlink_to_a_newline_named_directory(tmp_path: Path) -> dict[str, str]:
-    newline_named_dir = tmp_path / "newline_named\n"
-    newline_named_dir.mkdir()
-    linked_config_dir = tmp_path / "linked_config"
-    linked_config_dir.symlink_to(newline_named_dir)
-    return build_archive_env(tmp_path, config_dir=linked_config_dir)
+    return build_env
 
 
 def _dot_dot_after_symlink(tmp_path: Path) -> dict[str, str]:
@@ -126,14 +128,21 @@ def _marker_is_symlink(tmp_path: Path) -> dict[str, str]:
         pytest.param(_named("name%with%percent"), id="name-with-percent"),
         pytest.param(_named("name%2Fliteral"), id="name-with-literal-percent-2f"),
         pytest.param(_named("nom-é-名前"), id="non-ascii-name"),
-        pytest.param(_reached_through_symlink, id="config-dir-through-symlink"),
+        pytest.param(_reached_through_symlink_to_a_directory_named("real_config"), id="config-dir-through-symlink"),
         pytest.param(
-            _reached_through_symlink_to_a_newline_named_directory,
+            _reached_through_symlink_to_a_directory_named("newline_named\n"),
             id="config-dir-through-symlink-to-newline-named-directory",
         ),
+        pytest.param(
+            _reached_through_symlink_to_a_directory_named("two_newlines_named\n\n"),
+            id="config-dir-through-symlink-to-two-newlines-named-directory",
+        ),
+        pytest.param(_named("name ending in a space "), id="name-ending-in-a-space"),
+        pytest.param(_named("name ending in a tab\t"), id="name-ending-in-a-tab"),
         pytest.param(_dot_dot_after_symlink, id="dot-dot-after-symlink"),
         pytest.param(_with_config_dir_suffix("/"), id="trailing-slash"),
         pytest.param(_with_config_dir_suffix("\n"), id="trailing-newline"),
+        pytest.param(_with_config_dir_suffix("\n\n"), id="two-trailing-newlines"),
         pytest.param(_with_three_leading_slashes, id="three-leading-slashes"),
     ],
 )
@@ -190,6 +199,14 @@ def test_a_config_dir_reached_through_a_link_to_the_root_is_a_known_divergence_t
     assert module_account_dir != writer_account_dir
     assert subtree.state == "absent"
     assert subtree.directory is None
+
+
+def test_account_directory_keeps_a_trailing_carriage_return_as_the_bash_writer_does(tmp_path):
+    """Only newlines are stripped, as `$(...)` strips them: a `\\r` stays part of the config dir's name."""
+    env = build_archive_env(tmp_path, config_dir=tmp_path / "name ending in a carriage return\r")
+    # `run_lib` reads the writer's report in text mode, which drops a trailing carriage return,
+    # so this case checks against the helpers' model of the writer, whose command substitution strips only newlines.
+    assert _branch_records.account_directory(env["CLAUDE_CONFIG_DIR"], env["HOME"]) == expected_account_directory(env)
 
 
 # --- None results ---
@@ -551,8 +568,7 @@ def _forbid_directory_listing(*_args, **_kwargs):
     raise AssertionError("archive_subtree listed a directory")
 
 
-# Each shape leaves the account directory and subtree intact or fails the writer's marker probe,
-# so the writer reports `ready` exactly for `present` and refuses every other state for the missing marker.
+# Shapes whose outcome the writer's marker probe decides alone, with the account directory and subtree intact.
 MARKER_AND_ROOT_SHAPES = [
     pytest.param(_present_plain, "present", id="present-plain"),
     pytest.param(_present_under_root_symlink, "present", id="present-under-root-symlink"),
@@ -666,6 +682,28 @@ def test_archive_subtree_state(tmp_path, request, monkeypatch, arrange, expected
     else:
         assert subtree.directory is None
     assert list_tree(tmp_path) == tree_before_call
+
+
+@requires_non_root
+def test_a_subtree_is_present_when_the_archive_root_account_directory_and_subtree_are_not_writable(tmp_path):
+    """A reader needs search and read access only, so a read-only archive still reads as `present`."""
+    env = build_archive_env(tmp_path)
+    subtree = _make_subtree(env)
+    with read_only(expected_archive_root(env)), read_only(expected_account_directory(env)), read_only(subtree):
+        state = _subtree_state(env)
+    assert state.state == "present"
+    assert state.directory == subtree
+
+
+@requires_non_root
+def test_a_missing_account_directory_is_absent_when_the_archive_root_is_not_writable(tmp_path):
+    """A reader that has not archived yet reads `absent` on a read-only archive, though the writer probes the root there."""
+    env = build_archive_env(tmp_path)
+    assert not expected_account_directory(env).exists()
+    with read_only(expected_archive_root(env)):
+        state = _subtree_state(env)
+    assert state.state == "absent"
+    assert state.directory is None
 
 
 @pytest.mark.parametrize(("arrange", "expected_state"), MARKER_AND_ROOT_SHAPES)
