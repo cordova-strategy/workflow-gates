@@ -1110,8 +1110,7 @@ def _corpus_records_the_detection_gates_reject(fake_projects) -> None:
 
 
 def _denied_calls_inside_an_open_round_records() -> list[dict]:
-    """A `Skill(code-review)` round holding a legacy-denied review-orchestrator spawn and a current-denied
-    `Skill(code-review)`, then a launched review-orchestrator spawn. Each turn carries a distinct input count."""
+    """Each turn carries a distinct input count."""
     return [
         _priced("claude-sonnet-5", input=100_000, branch="feat", content=[_skill_block("s1", "code-review")]),
         _priced(

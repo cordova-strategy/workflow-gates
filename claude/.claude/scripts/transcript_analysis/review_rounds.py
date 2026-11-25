@@ -48,10 +48,10 @@ _REVIEW_SKILL_SET: frozenset[str] = frozenset(REVIEW_SKILLS)
 # - where a window ends
 # - which branch a round goes to
 # - which turns and dispatches it prices
-# - denials.py's _HOOK_DENIAL_SIGNATURE
-# - denials.py's _DENIAL_HOOK_NAME_PATTERNS
-# - removing, renaming or adding a legacy-only _DENIAL_HOOK_LABELS entry
-# The last three each change which calls read as denied.
+# - which calls read as denied, through any of:
+#   - editing denials.py's _HOOK_DENIAL_SIGNATURE or _DENIAL_HOOK_NAME_PATTERNS
+#   - removing or renaming any _DENIAL_HOOK_LABELS entry
+#   - adding a legacy-only _DENIAL_HOOK_LABELS entry
 # ledger_rounds excludes every cell stamped with another value, so a bump drops every older row from its reports.
 # A forced re-capture cannot restore a row whose sessions have all aged out, and restores a partly aged one undercounted.
 # See `docs/pr-cost.md` § "The re-record contract".

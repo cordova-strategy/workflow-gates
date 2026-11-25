@@ -416,7 +416,7 @@ verdict = "split pending"
 seam = "Test-class families by ledger layer: rows (`TestAppendPrCostLedgerRow`, `TestPrCostLedgerConcurrentWrite`, `TestParsePrCostLedgerFileTextMalformed`), headers and migration (`TestPrCostLedgerFrozenHeaders`, `TestPrCostLedgerLegacyHostColumnMigration`), model-breakdown cell (`TestDecodeModelBreakdownCell`, `TestFormatModelBreakdownCell`), file write (`TestWritePrCostLedgerFileDurability`, `TestWritePrCostLedgerFileValuePostcondition`), review-rounds cell (`TestDecodeReviewRoundsCellAccepts`, `TestDecodeReviewRoundsCellRefuses`)"
 
 ["claude/.claude/scripts/tests/test_transcript_review_rounds.py"]
-ceiling = 6683
+ceiling = 6682
 verdict = "split pending"
 seam = "Test-class families matching the module's parts: round costs (`TestComputeReviewRoundCosts`, `TestComputeReviewRoundCounts`, `TestGoldenRoundProjections`), round-open detection (`TestRoundOpenAgentSkills`, `TestSlashRoundOpenRecordClass`, `TestOrchestratorDispatchOpensCodeReviewRound`), command (`TestCmdReviewRoundCost`), bootstrap (`TestBootstrapShareIntervals`), pooled block (`TestPooledPricingTrustLines`, `TestCmdReviewRoundCostPooled`, `TestPooledShowWithheld`)"
 
