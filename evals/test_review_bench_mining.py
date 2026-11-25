@@ -4711,6 +4711,64 @@ def _confirm_workspace(
     return repo, local_dir, tmp_path / "defects.json", fix_sha
 
 
+def _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path: Path) -> tuple[Path, str, str, dict[str, list[str]]]:
+    """Returns (repo, base_sha, introducing_sha, paths_by_flag). The introducing commit adds `added.py`, modifies
+    `modified.py`, and renames `renamed_from.txt` to `renamed_to.txt` with edits. `paths_by_flag` maps the
+    `at base:` value `confirm` shows ("yes" or "no") to the paths that read it against `base_sha`."""
+    repo = _init_repo(tmp_path / "repo")
+    _write(repo, "modified.py", "value = 1\n")
+    _write(repo, "renamed_from.txt", "line one\nline two\nline three\nline four\n")
+    base_sha = _commit(repo, "seed the base")
+    _write(repo, "added.py", "added = 1\n")
+    _write(repo, "modified.py", "value = 2\n")
+    (repo / "renamed_from.txt").rename(repo / "renamed_to.txt")
+    _write(repo, "renamed_to.txt", "line one\nline two edited\nline three\nline four\n")
+    introducing_sha = _commit(repo, "add a file, modify one, and rename one with edits")
+    return repo, base_sha, introducing_sha, {"yes": ["modified.py"], "no": ["added.py", "renamed_to.txt"]}
+
+
+def _confirm_workspace_by_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *flags: str,
+) -> tuple[Path, Path, Path]:
+    """Returns (repo, local_dir, defects_path) for one `szz_candidates.json` holding a candidate `c-<position>` per
+    flag ("yes" or "no"), each at a path that reads that flag against its base commit. Each passes every check."""
+    repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+    monkeypatch.setattr(run_review_bench, "REPO_ROOT", repo)
+    local_dir = tmp_path / "local"
+    defects.save_candidates(local_dir / "szz_candidates.json", [
+        Candidate(**_candidate_kwargs(
+            id=f"c-{position}", base_commit=base_sha, head_commit=introducing_sha, fix_commit=introducing_sha,
+            description=f"value {position} was left at its stale initial value.",
+            evidence={"path": paths_by_flag[flag][0]},
+        ))
+        for position, flag in enumerate(flags, start=1)
+    ])
+    return repo, local_dir, tmp_path / "defects.json"
+
+
+def _declined_ids_path(local_dir: Path) -> Path:
+    return local_dir / "confirm_declined_ids.json"
+
+
+def _write_ids_file(tmp_path: Path, text: str, file_name: str = "ids.txt") -> Path:
+    ids_file_path = tmp_path / file_name
+    ids_file_path.write_text(text, encoding="utf-8")
+    return ids_file_path
+
+
+def _stub_path_at_base_flags(monkeypatch, flag_by_id: dict[str, str]) -> list[str]:
+    """Replaces the helper `confirm` ranks by with a table lookup and returns the IDs it was called for, in call
+    order."""
+    asked_ids: list[str] = []
+
+    def flag_from_the_table(candidate) -> str:
+        asked_ids.append(candidate.id)
+        return flag_by_id[candidate.id]
+
+    monkeypatch.setattr(run_review_bench, "_path_at_base_flag", flag_from_the_table)
+    return asked_ids
+
+
 class TestStdinIsTerminal:
     """The real `_stdin_is_terminal()`, with nothing patched around it."""
 
@@ -5912,12 +5970,16 @@ class TestConfirmCli:
     def _presented_ids(self, stderr: str) -> list[str]:
         return re.findall(r"^candidate (\S+)$", stderr, flags=re.MULTILINE)
 
+    def _prompt_by_presented_id(self, stderr: str) -> dict[str, str]:
+        """Maps each presented candidate id to its prompt text, which starts with the id's line."""
+        prompts = stderr.split("\ncandidate ")[1:]
+        return {prompt.split("\n", 1)[0]: prompt for prompt in prompts}
+
     def _annotations_by_presented_id(self, stderr: str) -> dict[str, list[tuple[str, str, str]]]:
         """Maps each presented candidate id to its (other id, source, status) cross-source annotation lines."""
-        prompts = stderr.split("\ncandidate ")[1:]
         return {
-            prompt.split("\n", 1)[0]: re.findall(r"^    (\S+) \((\S+)\): (.+)$", prompt, flags=re.MULTILINE)
-            for prompt in prompts
+            presented_id: re.findall(r"^    (\S+) \((\S+)\): (.+)$", prompt, flags=re.MULTILINE)
+            for presented_id, prompt in self._prompt_by_presented_id(stderr).items()
         }
 
     def test_candidates_come_out_review_round_then_pr_comment_then_szz_and_in_miner_order_within_a_source(
@@ -6246,3 +6308,201 @@ class TestConfirmCli:
 
         assert "rejected comment-1 -- description shares the word run" in capsys.readouterr().err
         assert not defects_path.exists()
+
+    # --- the at-base flag ---
+
+    def _flag_of_path(self, monkeypatch, repo: Path, base_sha: str, head_sha: str, path: str) -> str:
+        monkeypatch.setattr(run_review_bench, "REPO_ROOT", repo)
+        candidate = Candidate(**_candidate_kwargs(
+            base_commit=base_sha, head_commit=head_sha, fix_commit=head_sha, evidence={"path": path},
+        ))
+        return run_review_bench._path_at_base_flag(candidate)
+
+    def test_a_modified_path_reads_yes_and_an_added_path_reads_no(self, tmp_path, monkeypatch):
+        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        (modified_path,) = paths_by_flag["yes"]
+        added_path = paths_by_flag["no"][0]
+
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, modified_path) == "yes"
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, added_path) == "no"
+
+    def test_a_renamed_path_with_edits_reads_no_though_its_diff_has_hunks(self, tmp_path, monkeypatch):
+        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        renamed_path = paths_by_flag["no"][1]
+        name_status_lines = _git(repo, "diff", "--find-renames", "--name-status", base_sha, introducing_sha).splitlines()
+        assert [line for line in name_status_lines if line.startswith("R")] != []  # git itself reads it as a rename
+
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, renamed_path) == "no"
+
+    def test_an_absent_base_commit_reads_no(self, tmp_path, monkeypatch):
+        repo, _base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+
+        assert self._flag_of_path(monkeypatch, repo, _SHA_A, introducing_sha, paths_by_flag["yes"][0]) == "no"
+
+    def test_a_path_that_exists_when_the_base_equals_the_head_reads_yes(self, tmp_path, monkeypatch):
+        repo, _base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        added_path = paths_by_flag["no"][0]
+
+        assert self._flag_of_path(monkeypatch, repo, introducing_sha, introducing_sha, added_path) == "yes"
+
+    def test_a_git_timeout_reads_unknown(self, tmp_path, monkeypatch):
+        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+
+        def path_check_timing_out(repo_dir, commit, path, **kwargs):
+            raise subprocess.TimeoutExpired(["git", "cat-file"], 10.0)
+
+        monkeypatch.setattr(defects, "path_exists_at_commit", path_check_timing_out)
+
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, paths_by_flag["yes"][0]) == "unknown"
+
+    def test_the_check_runs_under_an_isolated_git_environment(self, tmp_path, monkeypatch):
+        """A `GIT_DIR` in the ambient environment redirects git to another repository, so a `yes` path reading `no`
+        shows the helper passed the ambient environment through."""
+        repo, base_sha, introducing_sha, paths_by_flag = _repo_whose_introducing_commit_adds_modifies_and_renames(tmp_path)
+        monkeypatch.setenv("GIT_DIR", str(tmp_path / "decoy_git_dir"))
+
+        assert self._flag_of_path(monkeypatch, repo, base_sha, introducing_sha, paths_by_flag["yes"][0]) == "yes"
+
+    def test_the_prompt_prints_the_flag_on_the_line_after_the_path(self, tmp_path, monkeypatch, capsys):
+        _repo, local_dir, defects_path = _confirm_workspace_by_flag(tmp_path, monkeypatch, "no", "yes")
+        _feed_answers(monkeypatch, "n", "n")
+
+        run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path))
+
+        prompt_by_presented_id = self._prompt_by_presented_id(capsys.readouterr().err)
+        assert sorted(prompt_by_presented_id) == ["c-1", "c-2"]
+        assert "  path: added.py\n  at base: no\n" in prompt_by_presented_id["c-1"]
+        assert "  path: modified.py\n  at base: yes\n" in prompt_by_presented_id["c-2"]
+
+    def test_an_absent_base_commit_is_rejected_at_prompt_time_without_a_flag_line_and_the_run_continues(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        _repo, local_dir, defects_path, _fix_sha = _confirm_workspace(
+            tmp_path, monkeypatch, {"base_commit": _SHA_A}, {},
+        )
+        _feed_answers(monkeypatch, "y", "")
+
+        assert run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path)) == 0
+
+        stderr = capsys.readouterr().err
+        assert "rejected c-1 -- could not read its commit subjects (" in stderr
+        assert "candidate c-1" not in stderr
+        assert stderr.count("  at base: ") == 1
+        assert stderr.count("[y/n/q]") == 1
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-2"]
+        assert "confirm: 1 appended, 0 skipped, 1 rejected" in stderr
+
+    def test_a_candidate_whose_flag_check_times_out_is_prompted_as_unknown_and_takes_a_y(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        _repo, local_dir, defects_path = _confirm_workspace_by_flag(tmp_path, monkeypatch, "yes")
+        (candidate,) = defects.load_candidates(local_dir / "szz_candidates.json")
+        path_exists_unpatched = defects.path_exists_at_commit
+
+        def path_check_timing_out_at_the_base(repo_dir, commit, path, **kwargs):
+            if commit == candidate.base_commit:
+                raise subprocess.TimeoutExpired(["git", "cat-file"], 10.0)
+            return path_exists_unpatched(repo_dir, commit, path, **kwargs)
+
+        monkeypatch.setattr(defects, "path_exists_at_commit", path_check_timing_out_at_the_base)
+        _feed_answers(monkeypatch, "y", "")
+
+        assert run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path)) == 0
+
+        stderr = capsys.readouterr().err
+        assert "  at base: unknown\n" in stderr
+        assert "rejected c-1 --" not in stderr
+        assert "0 rejected" in stderr
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-1"]
+
+    def test_a_no_candidate_comes_after_the_others_of_its_source_and_still_takes_a_y_or_an_n(
+        self, tmp_path, monkeypatch, capsys,
+    ):
+        """Each source interleaves the flag values, so a key that ignores miner order fails. `rr-1` is `no` and still
+        comes before `sz-1`, which is `yes`. The `szz` `no` pair is written `sz-4` before `sz-2`, so a key that
+        orders by ID within a flag tier fails."""
+        _repo, local_dir, defects_path = self._save_shortlists(tmp_path, monkeypatch, {
+            "all_candidates.json": [
+                dict(id="sz-1", source="szz", description="szz first."),
+                dict(id="rr-1", source="review-round", description="review round first."),
+                dict(id="sz-4", source="szz", description="szz second."),
+                dict(id="sz-3", source="szz", description="szz third."),
+                dict(id="rr-2", source="review-round", description="review round second."),
+                dict(id="sz-2", source="szz", description="szz fourth."),
+            ],
+        })
+        _stub_path_at_base_flags(monkeypatch, {
+            "sz-1": "yes", "sz-2": "no", "sz-3": "unknown", "sz-4": "no", "rr-1": "no", "rr-2": "yes",
+        })
+        _feed_answers(monkeypatch, "n", "y", "", "n", "n", "y", "", "n")
+
+        run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path))
+
+        stderr = capsys.readouterr().err
+        assert self._presented_ids(stderr) == ["rr-2", "rr-1", "sz-1", "sz-3", "sz-4", "sz-2"]
+        assert stderr.count("[y/n/q]") == 6
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["rr-1", "sz-4"]
+        assert sorted(json.loads(_declined_ids_path(local_dir).read_text())) == ["rr-2", "sz-1", "sz-2", "sz-3"]
+
+    def test_the_helper_is_called_only_for_candidates_that_reach_the_prompt(self, tmp_path, monkeypatch):
+        _repo, local_dir, defects_path = self._save_shortlists(tmp_path, monkeypatch, {
+            "all_candidates.json": [
+                dict(id="sz-1", source="szz", description="szz prompted."),
+                dict(id="sz-2", source="szz", description="szz declined earlier."),
+                dict(id="sz-3", source="szz", description="szz outside the ids file."),
+                dict(id="rr-1", source="review-round", description="review round outside the source."),
+            ],
+        })
+        _declined_ids_path(local_dir).write_text('["sz-2"]')
+        ids_file_path = _write_ids_file(tmp_path, "sz-1\nsz-2\nrr-1\n")
+        asked_ids = _stub_path_at_base_flags(monkeypatch, dict.fromkeys(["sz-1", "sz-2", "sz-3", "rr-1"], "yes"))
+        _feed_answers(monkeypatch, "n")
+
+        run_review_bench.cmd_confirm(
+            _confirm_args(local_dir, defects_path, "--source", "szz", "--ids-file", str(ids_file_path)),
+        )
+
+        assert asked_ids == ["sz-1"]
+
+    def test_the_helper_is_not_called_off_a_terminal(self, tmp_path, monkeypatch):
+        _repo, local_dir, defects_path, _fix_sha = _confirm_workspace(tmp_path, monkeypatch, {}, {})
+        asked_ids = _stub_path_at_base_flags(monkeypatch, {})
+        _feed_answers(monkeypatch, terminal=False)
+
+        assert run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path)) == 2
+
+        assert asked_ids == []
+
+    @pytest.mark.parametrize(
+        ("path_at_base", "expected_flag_line"),
+        [("yes", "  at base: yes"), ("no", "  at base: no"), ("unknown", "  at base: unknown")],
+    )
+    def test_the_flag_line_directly_follows_the_path_line_for_each_value(self, capsys, path_at_base, expected_flag_line):
+        run_review_bench._print_candidate_for_approval(
+            Candidate(**_candidate_kwargs(evidence={"path": "app.py"})), [], path_at_base=path_at_base,
+        )
+
+        assert f"  path: app.py\n{expected_flag_line}\n  commit subjects:" in capsys.readouterr().err
+
+    def test_no_flag_line_prints_without_a_flag(self, capsys):
+        run_review_bench._print_candidate_for_approval(
+            Candidate(**_candidate_kwargs(evidence={"path": "app.py"})), [],
+        )
+
+        stderr = capsys.readouterr().err
+        assert "at base" not in stderr
+        assert "  path: app.py\n  commit subjects:" in stderr
+
+    @pytest.mark.parametrize(
+        ("evidence_overrides", "path_label"),
+        [
+            pytest.param({"head_on_pr_branch": False}, " (head is outside the PR branch)", id="head-outside-the-pr-branch"),
+            pytest.param({}, " (PR branch membership unknown)", id="branch-membership-unknown"),
+        ],
+    )
+    def test_the_flag_line_follows_a_path_line_carrying_a_head_branch_label(self, capsys, evidence_overrides, path_label):
+        candidate = Candidate(**_candidate_kwargs(source="pr-comment", evidence={"path": "app.py", **evidence_overrides}))
+
+        run_review_bench._print_candidate_for_approval(candidate, [], path_at_base="no")
+
+        assert f"  path: app.py{path_label}\n  at base: no\n" in capsys.readouterr().err

@@ -294,6 +294,26 @@ def _commit_subjects_or_none(candidate) -> list[tuple[str, str]] | None:
         return None
 
 
+_PATH_AT_BASE_YES = "yes"
+_PATH_AT_BASE_NO = "no"
+_PATH_AT_BASE_UNKNOWN = "unknown"
+
+
+def _path_at_base_flag(candidate) -> str:
+    """An existence check, not a diff status: a new file, a renamed path, and an unresolvable base commit all read no."""
+    from review_bench import defects
+    from review_bench.local_git import isolated_git_environment
+
+    # The base commit is not resolved here: an absent one reads `no`, and `_commit_subjects_or_none` rejects it before display.
+    try:
+        path_is_present = defects.path_exists_at_commit(
+            REPO_ROOT, candidate.base_commit, candidate.evidence["path"], env=isolated_git_environment(),
+        )
+    except subprocess.TimeoutExpired:
+        return _PATH_AT_BASE_UNKNOWN
+    return _PATH_AT_BASE_YES if path_is_present else _PATH_AT_BASE_NO
+
+
 def _defect_passing_confirm_checks(candidate, excerpts_by_id: dict[str, str]):
     """The ConfirmedDefect `candidate` would promote to, or None after printing
     why it is rejected. Every printed field passes through
@@ -381,13 +401,15 @@ def _shown_diff_hunk_lines(diff_hunk) -> list[str]:
 
 def _print_candidate_for_approval(
     candidate, subjects: list[tuple[str, str]], same_location_candidates: Sequence[tuple] = (),
+    *, path_at_base: str | None = None,
 ) -> None:
     """Show one passing candidate to the engineer, with the description first
     and in full. The four inclusion fields the engineer's answer accepts print
     last, beside the prompt. A miner that hard-codes a field as a guess it
     never checked has that field labeled. `same_location_candidates` are the
     other-source candidates that share this one's head, fix, and path, each
-    with its status."""
+    with its status. `path_at_base` prints on its own line after the path, and
+    `None` prints no such line."""
     escape = _escape_control_characters
     path = escape(str(candidate.evidence.get("path", "(none recorded)")))
     if candidate.source in _SOURCES_LABELING_HEAD_BRANCH:
@@ -421,6 +443,7 @@ def _print_candidate_for_approval(
         f"fix {_short_sha(candidate.fix_commit)}",
         *shown_description,
         f"  path: {path}",
+        *([f"  at base: {escape(path_at_base)}"] if path_at_base is not None else []),
         "  commit subjects:",
         *shown_subjects,
         *shown_diff_hunk,
@@ -998,13 +1021,11 @@ def cmd_confirm(args: argparse.Namespace) -> int:
 
     # The sources, the ids file, and the declined IDs, narrow only what is prompted. Every candidate above
     # still loaded, passed the checks, and fed `excerpts_by_id`.
-    position_in_ids_file = {candidate_id: position for position, candidate_id in enumerate(listed_ids)}
+    listed_id_set = set(listed_ids)
     in_selected_scope = [
         (c, d) for c, d in passing
-        if (not args.source or c.source in args.source) and (ids_file_path is None or c.id in position_in_ids_file)
+        if (not args.source or c.source in args.source) and (ids_file_path is None or c.id in listed_id_set)
     ]
-    if ids_file_path is not None:
-        in_selected_scope.sort(key=lambda pair: position_in_ids_file[pair[0].id])
     to_prompt = [
         (c, d) for c, d in in_selected_scope
         if args.include_declined or c.id not in previously_declined_ids
@@ -1030,6 +1051,12 @@ def cmd_confirm(args: argparse.Namespace) -> int:
         )
         return 2 if to_prompt else 0
 
+    path_at_base_by_id = {candidate.id: _path_at_base_flag(candidate) for candidate, _ in to_prompt}
+    # Stable, so the order `candidates` already has within a source and a flag tier is kept.
+    to_prompt.sort(
+        key=lambda pair: (_confirm_source_rank(pair[0]), path_at_base_by_id[pair[0].id] == _PATH_AT_BASE_NO),
+    )
+
     approved: list[defects.ConfirmedDefect] = []
     accepted_ids: set[str] = set()
     declined_ids: set[str] = set()
@@ -1042,7 +1069,7 @@ def cmd_confirm(args: argparse.Namespace) -> int:
         print(f"confirm: prompting only for source(s) {_source_names(args.source)}", file=sys.stderr)
     if ids_file_path is not None:
         print(
-            f"confirm: prompting only for the IDs{_listed_in_ids_file_clause(ids_file_path)}, in that order",
+            f"confirm: prompting only for the IDs{_listed_in_ids_file_clause(ids_file_path)}",
             file=sys.stderr,
         )
     _print_declined_skip_note(skipped_as_declined)
@@ -1067,7 +1094,9 @@ def cmd_confirm(args: argparse.Namespace) -> int:
                 for other in candidates_by_location[_cross_source_location(candidate)]
                 if other.source != candidate.source
             ]
-            _print_candidate_for_approval(candidate, subjects, same_location_candidates)
+            _print_candidate_for_approval(
+                candidate, subjects, same_location_candidates, path_at_base=path_at_base_by_id[candidate.id],
+            )
             decision = _read_promotion_decision()
             if decision == _DECISION_QUIT:
                 break

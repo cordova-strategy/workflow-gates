@@ -506,7 +506,7 @@ verdict = "split pending"
 seam = "Run records (`RunRecord`, `read_run_records`), transcript parsing (`extract_read_like_calls`, `extract_result_usage`), validity (`evaluate_run_validity`), run store (`RunStore`), campaign (`run_campaign`), environment record (`read_environment_record`)"
 
 ["evals/run_review_bench.py"]
-ceiling = 2432
+ceiling = 2461
 verdict = "split pending"
 seam = "Subcommands: mining (`cmd_mine_szz`, `cmd_mine_pr_comments`), confirm (`cmd_confirm`), judge (`cmd_judge`), analyze (`cmd_analyze`), freeze (`cmd_freeze`), spot-check (`cmd_spot_check_export`)"
 
@@ -566,7 +566,7 @@ verdict = "split pending"
 seam = "Statistics (`TestPercentile`, `TestRecallCountsAndDropRule`, `TestFixtureClusterBootstrap`), verdicts (`TestArmRecallAndSensitivityVerdict`, `TestCertifyLaterArm`), harness closure (`TestHarnessClosure`, `TestHarnessClosureOverASyntheticTree`), freeze checks (`TestManifestAndFreezeChecks`, `TestCheckAgainstFrozenConditions`), report columns (`TestSecondaryReportColumns`, `TestBaselineReportFreezeIdentity`)"
 
 ["evals/test_review_bench_cli.py"]
-ceiling = 7124
+ceiling = 7164
 verdict = "split pending"
 seam = "Freeze (`TestCmdFreezeManifestFields`, `TestCmdFreezeGuards`), run and smoke (`TestRunAndSmokeCampaignSelection`, `TestRunAndSmokeFlagsReachRunCampaign`), analyze (`TestCmdAnalyzeBaselineReport`, `TestCmdAnalyzePerGateFigures`, `TestAnalyzeLaterArmVerdicts`), mining (`TestCmdMineSzz`, `TestCmdMinePrComments`), judge (`TestCmdJudgeOutOfSessionReporting`, `TestJudgeVerifiesFrozenConditionsBeforeDispatch`), spot check (`TestCmdSpotCheckExport`, `TestCmdSpotCheckImport`), confirm (`TestConfirmRemembersDeclinedCandidates`, `TestConfirmAnswersFile`, `TestConfirmIdsFile`)"
 
@@ -576,7 +576,7 @@ verdict = "split pending"
 seam = "Fixture repos and artifacts (`TestBuildTwoCommitRepo`, `TestWriteBenchArtifacts`, `TestBuildSingleCommitRepo`), archive extraction (`TestExtractArchiveRefusesAGitPathComponent`, `TestExtractArchiveRefusesALinkIntoGit`, `TestExtractArchiveRefusesWritesThroughHarnessAndConfigPaths`), arm rendering (`TestRenderArmAgent`, `TestSnapshotArmAndInstallArm`)"
 
 ["evals/test_review_bench_mining.py"]
-ceiling = 6248
+ceiling = 6508
 verdict = "split pending"
 seam = "Candidate schema and description policy (`TestCandidateAndConfirmedDefectSchema`, `TestDescriptionPolicy`), SZZ miner (`TestMineSzz`, `TestMineSzzSkipsPythonDocstringLines`), review-round miner (`TestResolveDefectCommits`, `TestMineReviewRoundsCandidates`), PR-comment miner (`TestMinePrComments`, `TestClassifyReply`), confirm CLI (`TestConfirmCli`)"
 

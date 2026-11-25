@@ -840,8 +840,9 @@ content into a committed file or another private-project-adjacent surface.
 
 `confirm` is the engineer's approval step. It reads every `.local/`
 candidate that is not yet in `defects.json`, ordered by source (`review-round`,
-then `pr-comment`, then `szz`) and then by the miner's own order, so an early
-`q` never starves the source whose transcripts age out. For each one it checks
+then `pr-comment`, then `szz`), then by the at-base flag below (`no` last), and
+then by the miner's own order, so an early `q` never starves the source whose
+transcripts age out. For each one it checks
 the schema, that its path exists at its introducing commit, and, when the
 candidate has a description, the description-provenance check against every
 `.local/` excerpt. It then prompts `[y/n/q]` for each candidate that passes, except one that `--source`, `--ids-file`, or the declined
@@ -860,6 +861,14 @@ IDs described below leave out. The prompt shows:
   `lines_exist_at_introducing_head`, `reviewer_could_have_caught_it`, and
   `file_is_markdown`. A field the miner hard-coded rather than computed is
   labeled "unchecked default".
+
+The prompt prints `at base: yes`, `at base: no`, or `at base: unknown` on its
+own line after `path:`. `yes` means the path exists in the base commit's tree,
+and `no` means it does not, so a new file reads `no`. A renamed path also reads
+`no`, so a rename with edits reads `no` although its diff has hunks. `unknown`
+means a git timeout. Within each source, `confirm` prompts for the `no`
+candidates last and ranks `unknown` with `yes`. The flag is a preference, not a
+filter: every candidate still prints and takes a `y` or `n`.
 
 A candidate that shares its head, fix, and path with a candidate from another
 source is annotated with that candidate's ID, source, and status (confirmed,
@@ -884,8 +893,8 @@ every candidate still runs the checks, so the provenance check still sees every
 excerpt.
 
 `--ids-file FILE` restricts the prompts to the candidate IDs a UTF-8 text file
-lists, and prompts for them in the file's order instead of the source order. It
-combines with `--source` as an intersection.
+lists. The file selects candidates and `confirm` orders them, so the file's own
+order carries nothing. It combines with `--source` as an intersection.
 
 The file holds one ID per line. Blank lines and lines starting with `#` are
 skipped. A `#` after an ID is part of the line, so `c-1  # note` names an
