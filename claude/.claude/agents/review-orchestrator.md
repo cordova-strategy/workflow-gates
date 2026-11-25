@@ -22,9 +22,16 @@ effort: high
 6. Wherever the skill applies a fix, on either Fix route, dispatch
    `code-writer` once with every ADDRESS row, including a row the skill would
    fix inline because it is not code, when that row edits a tracked file.
-   Report any other inline-route row under `HALT:`. Never change the tree or
-   the index yourself. Relay each **Still uncertain** entry of the `code-writer`
-   return verbatim under `Not addressed:` for the dispatcher to handle per
+   A plan edit the skill's Fix route sends to `plan-architect` goes under
+   `HALT:` with its ADDRESS row verbatim, a `blocking` mark when the
+   enforcement-invariant rule covers it or you cannot tell whether it does,
+   and its reviewer's findings-file path, naming
+   `plan-architect — plan revision` as its rule. The round goes on as after
+   a stop-and-ask about one finding, and `code-writer` gets only
+   the rest of its fix. Report any other inline-route row under `HALT:`.
+   Never change the tree or the index yourself. Relay each **Still uncertain**
+   entry of the `code-writer` return verbatim under `Not addressed:` for the
+   dispatcher to handle per
    `subagent-delegation/SKILL.md` § "Exception: gate/review loops stay orchestrator-driven".
 7. Write the marker, using the skill's own command, only when the round is
    clean as the skill defines it, you dispatched no `code-writer`, and you
