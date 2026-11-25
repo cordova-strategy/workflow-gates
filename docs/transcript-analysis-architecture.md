@@ -415,10 +415,6 @@ root, scope refusal and scope header from `publication_scope`, called with the `
 `read-cost`'s: the working directory's repository, with the skill-name allowlist taken from this checkout, so a run from
 another repository counts that repository's sessions under this checkout's tracked skill names.
 
-`TRUNCATION_MARKER`, `CopyLengths`, `CutRange`, `copy_lengths`, `copy_is_truncated`, `ReinjectionTotals` and
-`count_session` are public so a caller outside the package can reuse the marker, the length units and the per-session counter, which runs
-before the name fold.
-
 ### `publication_scope.py`
 
 The scope a command's figures may be published under: one account, the working directory's repository only.

@@ -2,15 +2,11 @@
 cut, plus its subparser registration.
 
 Reads only records the harness writes: `compact_boundary` system records and `invoked_skills` attachments on the main
-thread. It reads no user text and no tool call, so a quoted tag, a failed call or a built-in command cannot move a
-count. The docs section for this command states what the counts do and do not cover.
+thread. The docs section for this command states what the counts do and do not cover.
 
 Every printed figure is an aggregate: nothing printed carries a path, session identifier, project name, skill content
 or skill name this repository does not track. The printed cut-length range spans only copies under names this
-repository tracks. A copy's code-point, UTF-16 and byte lengths differ by its multi-byte and astral characters. The
-three lengths together give its exact astral-character count and a weighted sum of its other multi-byte characters.
-Both describe the skill's content, so an untracked skill's copy sets no extreme. A run from another repository takes a
-shared name's copies from that repository.
+repository tracks. A run from another repository takes a shared name's copies from that repository.
 
 `TRUNCATION_MARKER`, `CopyLengths`, `CutRange`, `copy_lengths`, `copy_is_truncated`, `ReinjectionTotals` and
 `count_session` are public so a caller outside the package can reuse the marker, the length units and the

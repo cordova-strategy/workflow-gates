@@ -316,9 +316,6 @@ def _repo_tracked_agent_type_names() -> frozenset[str]:
     - Top-level entries only (no "/" in the path), matching _declared_pin's
       own flat agents_dir / f"{agent_type}.md" resolution -- a nested
       tracked file over-redacts, the safe direction.
-    - _REPO_AGENT_DEFINITIONS_DIR is read fresh on every call (not captured
-      as a default argument) so a test can monkeypatch the module attribute
-      and call .cache_clear() to force a re-read.
     - Same exception set and timeout as scope._repo_scoped_project_slugs
       (scope.py:108-111's rationale: a hung local git must not block the
       whole CLI with no exit), diverging in one way, deliberately: failure
@@ -381,7 +378,6 @@ def _repo_tracked_skill_names() -> frozenset[str]:
     - `errors="replace"` keeps a non-UTF-8 path from raising.
     - Failure, or no `_REPO_ROOT`, returns the empty set, so every name is withheld. Same exception set and timeout as
       `_repo_tracked_agent_type_names`, which also documents why `check=True` is needed.
-    - _REPO_ROOT is read fresh on every call so a test can monkeypatch it and call .cache_clear().
     """
     if _REPO_ROOT is None:
         return frozenset()

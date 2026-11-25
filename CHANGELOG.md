@@ -9,7 +9,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 - **`transcript-analysis.py skill-reinjection --this-repo` counts how often each skill is re-attached after a compaction and how often Claude Code cuts the re-attached copy.**
   - It reads only `compact_boundary` records and `invoked_skills` attachments on the main thread, and prints aggregates. A skill prints by name only when this repository tracks it, and every other name folds into one withheld row.
   - Like `read-cost`, it requires `--this-repo`, refuses `--projects` and a top-level `--config-dir`, and reads the active account alone. A run without `--this-repo` exits 2.
-  - A run from another repository counts that repository's sessions under this checkout's tracked skill names, with that repository's totals and compaction dates, so figures publish only from a run in this repository's own checkout, cited as `docs/transcript-analysis.md`'s `skill-reinjection` Publication paragraph requires.
+  - A run from another repository counts that repository's sessions under this checkout's tracked skill names, with that repository's totals and compaction dates. Figures publish only from a run in this repository's own checkout, cited as `docs/transcript-analysis.md`'s `skill-reinjection` Publication paragraph requires.
   - See `docs/transcript-analysis.md` for the counts and their limits.
 
 ### Changed

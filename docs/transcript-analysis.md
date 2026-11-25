@@ -1948,7 +1948,7 @@ The command refuses a top-level `--config-dir` (exit 2). It has no `--config-dir
 
 ## skill-reinjection
 
-**Purpose.** How often Claude Code re-attaches each skill after a compaction, and how often it cuts the re-attached copy. Claude Code keeps the first 5,000 estimated tokens of each re-attached skill, so a longer skill loses its later steps after a compaction. The command measures that loss from the transcripts, per skill.
+**Purpose.** How often Claude Code re-attaches each skill after a compaction, and how often it cuts the re-attached copy.
 
 **Flags.**
 - `--this-repo` -- required. The command exits 2 without it and refuses any `--projects` scope.
@@ -1965,8 +1965,7 @@ Skill names are checked against the skills this checkout tracks, wherever the co
 - A compaction's date is its boundary `timestamp` converted to UTC. A boundary whose `timestamp` is missing, is not a string, does not parse, or overflows the supported years in the conversion still counts as a compaction. It records an unconvertible-timestamp scan gap and stays out of the first and last compaction date.
 - **Re-attached** is the number of copies of a skill in paired attachments. **Truncated** is the number of those copies whose `content`, with trailing whitespace stripped, ends in Claude Code's truncation marker. A marker elsewhere in the body does not count.
 - A copy not ending in the marker that is longer than 20,000 code points records an unmarked-long-copy scan gap, so a reworded marker or a raised limit shows.
-- A truncated copy's length is reported in code points, UTF-16 units and UTF-8 bytes, as the shortest and the longest across the truncated copies of skills this repository tracks. A truncated copy of any other skill still counts as truncated but sets neither extreme. The three lengths differ by a copy's multi-byte and astral characters, so together they give the copy's exact astral-character count and a weighted sum of its other multi-byte characters. Both describe the skill's content. The three units tell which one the cut counts.
-- The command counts no dropped skills. Claude Code can drop whole skills, oldest first, once the re-attached set passes its combined budget, and a drop is not visible from the records above.
+- A truncated copy's length is reported in code points, UTF-16 units and UTF-8 bytes, as the shortest and the longest across the truncated copies of skills this repository tracks. A truncated copy of any other skill still counts as truncated but sets neither extreme. The three lengths differ by a copy's multi-byte and astral characters, so together they give the copy's exact astral-character count and a weighted sum of its other multi-byte characters. The three units tell which one the cut counts.
 
 **Output.** Aggregates only: no session id, project name, path or skill content prints.
 - A scope header naming the scope label, the active account and the working directory's repository, and stating that `~/.claude/transcript-config-dirs` was not consulted.
