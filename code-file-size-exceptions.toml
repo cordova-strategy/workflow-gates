@@ -371,7 +371,7 @@ verdict = "split pending"
 seam = "Test-class families by migration step: backup selection (`TestNewestBackupSelection`, `TestNewestBackupNameBoundary`), unadopt run selection (`TestNewestUnadoptRunNameBoundary`, `TestNewestUnadoptRunSameNameSelection`), repair and entry (`TestRepairNestedAdoption`, `TestStowUnadoptEntry`, `TestStowUntrackedPackageEntries`), escape handling (`TestGlobEscapeAdversarial`, `TestRegexEscapeAdversarial`)"
 
 ["claude/.claude/scripts/tests/test_transcript_cli_bootstrap.py"]
-ceiling = 1440
+ceiling = 1441
 verdict = "split pending"
 seam = "Function groups per subcommand family as plain test functions: top-level help (`test_transcript_analysis_help_exits_zero`), cost and pr-cost (`test_transcript_analysis_pr_cost_help_exits_zero`), review trace (`test_transcript_analysis_review_trace_help_exits_zero`), period cost (`test_transcript_analysis_period_cost_help_exits_zero`), routing guard (`test_transcript_analysis_routing_guard_help_exits_zero`)"
 
@@ -396,17 +396,17 @@ verdict = "split pending"
 seam = "Test-class families matching the module's parts: windows (`TestValidatedWindow`, `TestReviewPrWindows`), pull-request lookup (`TestValidatedPrList`, `TestFetchPrLists`), group assembly (`TestAssembleGroups`, `TestPeriodStreamTotals`), rendering (`TestRenderSlackReport`, `TestGoldenSample`), notices (`TestNoticeLines`, `TestNoticesAtReportLevel`), topology and command (`TestTopologyReport`, `TestCommandBehavior`, `TestCommandWiring`)"
 
 ["claude/.claude/scripts/tests/test_transcript_pr_cost.py"]
-ceiling = 3608
+ceiling = 3654
 verdict = "split pending"
 seam = "Test-class families by ledger cell: branch totals (`TestComputePrCostBranchTotals`, `TestPrCostBranchTotalsByModel`), branch-to-PR resolution (`TestResolveBranchPrTieBreak`, `TestResolveBranchPrJoinConfidence`), report and recording (`TestPrCostReportOrchestration`, `TestPrCostRecordWritesAndReportsTheBreakdown`), model-breakdown cell (`TestCheckModelBreakdownCell`, `TestSeededBreakdownSweep`), review-rounds cell (`TestReviewRoundsCellCapture`, `TestCheckReviewRoundsCell`, `TestReviewRoundsForceRefusal`)"
 
 ["claude/.claude/scripts/tests/test_transcript_pr_cost_gh.py"]
-ceiling = 1007
+ceiling = 1015
 verdict = "split pending"
 seam = "Test-class families: enrichment failures (`TestPrCostPerPrEnrichmentRateLimitDegradesRowNotRun`), pinning and host (`TestPrCostGhCallsPinnedAfterRepoIdentityResolution`, `TestPrCostGheHostQualifiesGhRepoCalls`), ledger isolation (`TestPrCostCrossRepoLedgerIsolation`, `TestPrCostCrossHostLedgerIsolation`), refusal redaction (`TestPrCostMultiRootRefusalRedaction`, `TestPrCostReadModeRedaction`), all accounts and end to end (`TestPrCostAllAccounts`, `TestCmdPrCostEndToEndViaRealArgparse`)"
 
 ["claude/.claude/scripts/tests/test_transcript_pr_cost_ledger.py"]
-ceiling = 1994
+ceiling = 1999
 verdict = "split pending"
 seam = "Test-class families by ledger layer: rows (`TestAppendPrCostLedgerRow`, `TestPrCostLedgerConcurrentWrite`, `TestParsePrCostLedgerFileTextMalformed`), headers and migration (`TestPrCostLedgerFrozenHeaders`, `TestPrCostLedgerLegacyHostColumnMigration`), model-breakdown cell (`TestDecodeModelBreakdownCell`, `TestFormatModelBreakdownCell`), file write (`TestWritePrCostLedgerFileDurability`, `TestWritePrCostLedgerFileValuePostcondition`), review-rounds cell (`TestDecodeReviewRoundsCellAccepts`, `TestDecodeReviewRoundsCellRefuses`)"
 
@@ -451,7 +451,7 @@ verdict = "split pending"
 seam = "Review-window detection (`_review_pr_windows`, `_ReviewWindow`), pull-request lookup (`_fetch_pr_lists`, `_validated_pr_list`), group assembly (`_assemble_groups`), Slack rendering (`_render_slack_report`), report notices (`_notice_lines`)"
 
 ["claude/.claude/scripts/transcript_analysis/pr_cost.py"]
-ceiling = 1272
+ceiling = 1396
 verdict = "split pending"
 seam = "Model-breakdown cell (`_build_model_breakdown_cell`, `_check_model_breakdown_cell`), review-rounds cell (`_build_review_rounds_cell`, `_check_review_rounds_cell`), branch-to-PR resolution (`_resolve_branch_pr`, `_gh_pr_view_enrichment`) apart from the report body (`_pr_cost_report`)"
 
@@ -461,12 +461,12 @@ verdict = "split pending"
 seam = "Round-window detection (`detect_round_windows`), dispatch pricing (`compute_review_round_costs`, `_price_dispatch`), pooled block (`_render_pooled_block`, `_pooled_shares`, `_bootstrap_share_intervals`), subcommand entry (`cmd_review_round_cost`)"
 
 ["claude/.claude/scripts/transcript_analysis/routing_guard.py"]
-ceiling = 2092
+ceiling = 2089
 verdict = "split pending"
 seam = "Lifecycle stages: capture (`_run_capture`, `_parse_capture_bytes`, `_load_capture_file`), session config-keys log reading (`_read_session_config_keys_log`), deny reconciliation (`_reconcile_denies`), compute (`_run_compute`, `_bootstrap_net`)"
 
 ["claude/.claude/scripts/transcript_analysis/scope.py"]
-ceiling = 1252
+ceiling = 1305
 verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 

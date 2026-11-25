@@ -154,6 +154,7 @@ TEST_FILES = (
     "test_transcript_reviewer_reads_command.py",
     "test_transcript_scope_active_account.py",
     "test_transcript_scope_no_redact.py",
+    "test_transcript_scope_repo_scope.py",
     "test_transcript_reviewer_yield_redaction.py",
     "test_transcript_corpus.py",
     "test_transcript_routing_guard_capture.py",

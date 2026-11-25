@@ -891,7 +891,8 @@ scan-traversal, scan-gap, and glob-selection classes are tested in
 `tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
 `tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
 `tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
-`tests/test_transcript_scope_no_redact.py`, and the rest of `scope.py` in
+`tests/test_transcript_scope_no_redact.py`, the `--projects` keywords of `_add_project_scope_args` and the
+`_branch_never_joins_a_pr` predicate in `tests/test_transcript_scope_repo_scope.py`, and the rest of `scope.py` in
 `tests/test_transcript_scope.py`. `reviewer_yield.py`'s `AgentType` label map, both the `--redact` relabelling and the raw path's control-character strip, is tested in
 `tests/test_transcript_reviewer_yield_redaction.py`, and the rest of its tests live in
 `tests/test_transcript_reviewer_yield.py`. `TestNoRedactFamilyRefusalThroughMain` and

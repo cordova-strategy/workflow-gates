@@ -356,7 +356,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
 - Counting a never-merged fork PR's head name toward the unfiltered match count, through `gh_cli._gh_discover_closed_unmerged_pr_branches`: it adds a second discovery call for a case the docs can name as a residual.
 
 ### Shipping
-- One PR, with three sequential `code-writer` dispatches (Critical files).
+- One PR, with three sequential `code-writer` dispatches, then the size-check fix (row 64) (Critical files).
 - The PR body references GH-1426 without a closing keyword, because item 5, the reader rule, stays open. It may close GH-1426 only if item 5 already sits in an issue of its own (row 37).
 - The PR body states the departure from GH-1426 guarantee 2's "identity-resolved" wording, and why (row 48).
 - The PR body records the fork-PR skip as the issue's default, taken by the engineer's selection (row 3).
@@ -531,6 +531,7 @@ None. The engineer settled size at about 1,350 lines (row 49), and the removed-w
     - for two or more matches it already returns `low`, so a call-site override changes only the one-joinable-match case [verified: `pr_cost.py:189-204`];
     - seven unit calls pass it four positional arguments [verified: Grep of `tests/test_transcript_pr_cost.py` for `_resolve_branch_pr(`, `:412-527`];
     - discovery lists merged PRs only, so a never-merged fork PR never enters the count [verified: `gh_cli.py:483`].
+64. [engineer-verified: "Raise rows, split the scope test (Recommended)"] After the sync with `origin/main`, the code-file size check fails on this branch. The raised row ceilings and the split of `tests/test_transcript_scope.py` stay in this PR. [engineer-verified: "Yes, record them in the plan (Recommended)"] This fix adds two entries to Critical files, `code-file-size-exceptions.toml` and `tests/test_transcript_scope_repo_scope.py`. The projected-diff line grows past row 49's about 1,350 lines, and the option the engineer selected named that growth.
 
 **Mechanisms.**
 - M1. Repo default through the `repo_scope_default` and `projects_help` keywords, with the default applied inline in `_pr_cost_report`. anchors: row4, row11, row12, row28, row41, row46. Lighter options set aside: (a) a pr-cost-only scope group, as skill-invocation has, which copies the group a third time; (b) `set_defaults(this_repo=True)`, which keeps the repo arm under an explicit `--projects`.
@@ -565,7 +566,7 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
     - `args._this_repo_slugs` still holds the live list after the first resolution;
     - each label's N counts its own root's directories found;
     - without the keyword, the first root yields only the live directories' sessions.
-- `tests/test_transcript_scope.py`, beside `TestAddProjectScopeArgsThisRepoHelp`:
+- `tests/test_transcript_scope_repo_scope.py` (row 64 moved these classes out of `tests/test_transcript_scope.py`, which keeps `TestAddProjectScopeArgsThisRepoHelp`):
   - a caller that omits both keywords keeps `"*"` and no `--projects` help; `repo_scope_default=True` gives a None default; `projects_help` sets the help;
   - `_branch_never_joins_a_pr` is true for `main`, `master`, `develop`, `HEAD` and `worktree-agent-x`, and false for an ordinary branch.
 - `tests/test_transcript_gh_cli.py`: `_MERGED_PR_LIST_FIELDS` (`:885`).
@@ -677,11 +678,18 @@ Paths under `transcript_analysis/` and `tests/` are under `claude/.claude/script
 - `docs/pr-cost.md`, `docs/transcript-analysis.md` (every edit but `:1530`), `docs/transcript-analysis-architecture.md` (`:443` and `:827-837`), `docs/private-project-redaction.md` and `CHANGELOG.md`, as Design's Docs section states.
 - Verification: steps 1 to 3 below.
 
+**Size-check fix (`code-writer`, after the sync with `origin/main`; row 64).**
+- `code-file-size-exceptions.toml`: the `ceiling` of each file this branch grew set to its current line count, and `routing_guard.py`'s lowered to its current count. No other row changes.
+- `tests/test_transcript_scope.py` and the new `tests/test_transcript_scope_repo_scope.py`: the two classes this PR added move to the new file, unchanged, so the old file stays under the line limit with no row.
+- `tests/test_transcript_package_module_prefixes.py`: `TEST_FILES` lists the new file.
+- `docs/transcript-analysis-architecture.md` (`:894-896`): the sentence naming each `scope.py` test file names the new file.
+- Verification: `tests/test_code_file_size.py`, plus steps 1 to 3 below.
+
 **Reuse.** `scope._DEFAULT_BRANCH_CANDIDATES` and `scope._names_no_pr_branch`, through the new helper; routing-guard's prefix rule, moved; `scope._list_dir_recording_gaps`; `scope._path_to_project_slug`; `_MODEL_BREAKDOWN_KEY_RE`; `pr_cost._ROUNDS_ABSENCES`; `_repo_scoped_project_slugs`'s existing fail-closed exits; `_pr_cost_export_date_only`; `_CANONICAL_SAMPLE_REVIEW_ROUNDS_CELL`, `_FROZEN_HEADER_CASES`, `_spy_on_scans` and `_fake_pr_cost_subprocess_run`.
 
 **Flagged by exploration, left untouched.** `tests/test_transcript_cli_bootstrap.py:258-264` seeds a pre-`model_breakdown` header, which stays recognized. `tests/test_transcript_ledger_rounds.py:461` builds rows through `_current_line_with_cell`, which follows the live tuple. [verified: Read of both]
 
-Projected diff: about 1,295 lines: about 205 production, 910 test, and 180 docs and changelog. Moving the five helpers accounts for about 150 of the test lines, each moved line counted once removed and once added. Dispatch 1 is about 145 of them, dispatch 2 about 970 and dispatch 3 about 180.
+Projected diff: about 1,295 lines: about 205 production, 910 test, and 180 docs and changelog. Moving the five helpers accounts for about 150 of the test lines, each moved line counted once removed and once added. Dispatch 1 is about 145 of them, dispatch 2 about 970 and dispatch 3 about 180. The size-check fix adds about 100 more changed lines (14 in the toml, 40 removed and 47 added in the move, a registry line and a doc clause), counted from its staged diff. The total is past row 49's about 1,350 lines.
 
 ## Verification
 
