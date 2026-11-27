@@ -36,6 +36,7 @@ from helpers import (
     run_hook,
     scaled_shim_sleep,
     skill_review_marker_path,
+    skip_without_timeout_binary,
     staged_diff_hash,
     staged_diff_hash_at_base,
     write_marker,
@@ -5331,8 +5332,7 @@ class TestMarkerScriptVerification:
         is a third call on the same `check` fast-path, ordered before both of
         those, and needs the identical stub-and-assert-degradation proof."""
         _commit_the_fixtures_staged_change(git_repo)
-        if not shutil.which("timeout"):
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
         real_git = shutil.which("git")
         stub_dir = tmp_path / "stub-bin"
         stub_dir.mkdir()
@@ -5538,8 +5538,7 @@ class TestMarkerScriptVerification:
         `check` indefinitely, and a killed call must fall through to
         no-match, never a false match."""
         _commit_the_fixtures_staged_change(git_repo)
-        if not shutil.which("timeout"):
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
         real_git = shutil.which("git")
         stub_dir = tmp_path / "stub-bin"
         stub_dir.mkdir()
@@ -5574,8 +5573,7 @@ class TestMarkerScriptVerification:
         capped` call it precedes. A stalled `git status` must not hang
         `check` indefinitely, and a killed call must fall through to
         no-match, never a false match."""
-        if not shutil.which("timeout"):
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
         real_git = shutil.which("git")
         stub_dir = tmp_path / "stub-bin"
         stub_dir.mkdir()
@@ -5630,8 +5628,7 @@ class TestMarkerScriptVerification:
         technique. The gh stub keeps status's cumulative-review line off a
         real `gh pr view` call, same as this file's other status timing
         tests."""
-        if not shutil.which("timeout"):
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
         real_git = shutil.which("git")
         stub_dir = tmp_path / "stub-bin"
         stub_dir.mkdir()

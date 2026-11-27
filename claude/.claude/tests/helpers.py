@@ -2978,8 +2978,15 @@ def _make_git_exiting_with_status(bin_dir: Path, arg_pattern: str, exit_status: 
     return shim
 
 
+def which_tool(name: str) -> str | None:
+    """`shutil.which(name)`, except `"timeout"` also resolves to `gtimeout`, in `_lib_capped_for`'s probe order."""
+    if name == "timeout":
+        return shutil.which("timeout") or shutil.which("gtimeout")
+    return shutil.which(name)
+
+
 def _timeout_binary_present() -> bool:
-    return shutil.which("timeout") is not None or shutil.which("gtimeout") is not None
+    return which_tool("timeout") is not None
 
 
 def _make_git_blocking_on_arg(
@@ -3524,7 +3531,7 @@ def real_binary_shim_env(shim_dir: Path, tool_bodies: dict[str, str]) -> dict[st
     """
     shim_dir.mkdir(exist_ok=True)
     for tool, body in tool_bodies.items():
-        real_binary = shutil.which(tool)
+        real_binary = which_tool(tool)
         assert real_binary is not None, f"cannot shim {tool!r}: no such binary on PATH={os.environ['PATH']}"
         write_prewarmed_stub(shim_dir / tool, f"#!/bin/bash\nREAL={shlex.quote(real_binary)}\n{body}\n")
     return {"PATH": f"{shim_dir}{os.pathsep}{os.environ['PATH']}"}
@@ -3537,7 +3544,7 @@ def skip_without_timeout_binary() -> None:
     """
     import pytest  # imported here because the module header keeps pytest out of the runtime imports
 
-    if shutil.which("timeout") is None and shutil.which("gtimeout") is None:
+    if not _timeout_binary_present():
         pytest.skip("neither timeout(1) nor gtimeout(1) available — BSD/macOS without coreutils")
 
 
@@ -3583,7 +3590,7 @@ def write_scaled_timeout_shim(bin_dir: Path) -> bool:
 
     Write each sh-family stub a capped call can reach with `write_prewarmed_stub`.
     """
-    real_timeout = shutil.which("timeout") or shutil.which("gtimeout")
+    real_timeout = which_tool("timeout")
     if real_timeout is None:
         return False
     marker_dir = bin_dir / _SCALED_TIMEOUT_MARKER_DIRNAME

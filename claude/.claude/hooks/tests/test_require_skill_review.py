@@ -37,7 +37,9 @@ from helpers import (
     run_hook_reason,
     run_skill_command,
     skill_review_marker_path,
+    skip_without_timeout_binary,
     staged_diff_hash_at_base,
+    which_tool,
     write_skill_review_marker,
 )
 
@@ -1445,12 +1447,11 @@ class TestRequireSkillReview:
         harness = '. "{lib}"; _lib_capped_for "$1" "${{@:2}}"'
         bash_path = shutil.which("bash")
         sleep_path = shutil.which("sleep")
-        timeout_path = shutil.which("timeout")
+        timeout_path = which_tool("timeout")
         dirname_path = shutil.which("dirname")
         if not bash_path or not sleep_path or not dirname_path:
             pytest.skip("bash, sleep, or dirname not found in PATH")
-        if not timeout_path:
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
 
         # dirname must be on PATH too: the stowed _lib.sh sources _config.sh via
         # `$(dirname "${BASH_SOURCE[0]}")`, so a PATH stripped down to just
@@ -1487,12 +1488,11 @@ class TestRequireSkillReview:
         harness = '. "{lib}"; _lib_capped_for "$1" "${{@:2}}"'
         bash_path = shutil.which("bash")
         sleep_path = shutil.which("sleep")
-        timeout_path = shutil.which("timeout")
+        timeout_path = which_tool("timeout")
         dirname_path = shutil.which("dirname")
         if not bash_path or not sleep_path or not dirname_path:
             pytest.skip("bash, sleep, or dirname not found in PATH")
-        if not timeout_path:
-            pytest.skip("timeout(1) not available to alias as gtimeout — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
 
         # Alias the real timeout binary under the gtimeout name and omit timeout
         # from PATH entirely, simulating a Homebrew-coreutils-only machine.
@@ -1587,12 +1587,11 @@ class TestRequireSkillReview:
         harness = '. "{lib}"; _lib_capped_for "$1" "${{@:2}}"'
         bash_path = shutil.which("bash")
         sleep_path = shutil.which("sleep")
-        timeout_path = shutil.which("timeout")
+        timeout_path = which_tool("timeout")
         dirname_path = shutil.which("dirname")
         if not bash_path or not sleep_path or not dirname_path:
             pytest.skip("bash, sleep, or dirname not found in PATH")
-        if not timeout_path:
-            pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+        skip_without_timeout_binary()
 
         timeout_bin_dir = tmp_path / "bin-with-timeout"
         timeout_bin_dir.mkdir()

@@ -43,6 +43,7 @@ from helpers import (
     run_reconciler,
     scaled_shim_sleep,
     v2_registry_entry,
+    which_tool,
     write_plugin_registry,
     write_prewarmed_stub,
     write_scaled_timeout_shim,
@@ -87,7 +88,7 @@ def _preflight_path(
     if include_timeout:
         tools.append("timeout")
     for tool in tools:
-        tool_path = shutil.which(tool)
+        tool_path = which_tool(tool)
         assert tool_path, f"{tool} not found on this machine's PATH"
         (bin_dir / tool).symlink_to(tool_path)
     if include_claude:
@@ -305,6 +306,24 @@ class TestPreconditionRefusals:
         bin_dir = _preflight_path(tmp_path, include_claude=True, include_timeout=True)
         for tool in ("git", "sha256sum", "awk", "touch"):
             (bin_dir / tool).symlink_to(shutil.which(tool))
+
+        result = _run_with_exact_path(repo, config_dir=config_dir, bin_dir=bin_dir, home=tmp_path / "home")
+
+        assert result.returncode == 0, repr(result)
+        # The exact PATH has no `python3`, so the run ends at the lock step, past every preflight guard.
+        assert [line["decision"] for line in reconciler_audit_lines(config_dir)] == ["lock_unavailable"]
+
+    def test_gtimeout_as_the_only_capping_binary_does_not_log_a_preflight_line(self, tmp_path: Path) -> None:
+        repo = tmp_path / "repo"
+        init_reconciler_repo(repo, enabled_plugins={"foo@bar": True})
+        config_dir = tmp_path / "cfg"
+        bin_dir = _preflight_path(
+            tmp_path, include_claude=True, include_timeout=False, extra_tools=["git", "sha256sum", "awk", "touch"]
+        )
+        capping_binary = which_tool("timeout")
+        assert capping_binary, "neither timeout nor gtimeout found on this machine's PATH"
+        (bin_dir / "gtimeout").symlink_to(capping_binary)
+        assert shutil.which("timeout", path=str(bin_dir)) is None, "the exact PATH must carry no timeout"
 
         result = _run_with_exact_path(repo, config_dir=config_dir, bin_dir=bin_dir, home=tmp_path / "home")
 
