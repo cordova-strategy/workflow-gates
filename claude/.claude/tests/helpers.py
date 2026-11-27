@@ -21,7 +21,7 @@ import time
 from collections import Counter
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import yaml
 
@@ -98,17 +98,39 @@ def xargs_is_gnu() -> bool:
     return "GNU" in result.stdout + result.stderr
 
 
+# Bounds a hung shell read; no vendor value applies, and a real read finishes in well under a second.
+_SHELL_READ_HANG_GUARD_SECONDS = 60
+
+# Sources the file named by the script's first argument, then drops that argument. A source that fails
+# (a bash below the floor, for one) ends the script with the source's own status and stderr.
+_SOURCE_FIRST_ARGUMENT = '. "$1" || exit "$?"; shift; '
+
+
+def _read_shell_output(shell_body: str, what: str, *arguments: str) -> subprocess.CompletedProcess:
+    """Run `bash -c shell_body bash *arguments` and assert a zero exit.
+
+    This is the reader behind `_sourced_value`, `_nonempty_shell_lines` and `production_shfmt_argv`.
+    Other helpers in this file run `bash -c` directly.
+    A failure names `what`, the exit status and the shell's stderr, so a refused source's floor message reaches the report.
+    """
+    result = subprocess.run(
+        ["bash", "-c", shell_body, "bash", *arguments],
+        capture_output=True,
+        check=False,
+        timeout=_SHELL_READ_HANG_GUARD_SECONDS,
+    )
+    stderr_text = result.stderr.decode(errors="replace")
+    assert result.returncode == 0, f"reading {what} exited {result.returncode}: {stderr_text}"
+    return result
+
+
 def _sourced_value(var_name: str) -> str:
     """Return `var_name`'s value after sourcing _lib.sh in a bash subprocess
     -- reads the shell's own definition rather than a hand-copied Python
     literal that could drift from it."""
-    result = subprocess.run(
-        ["bash", "-c", f'. {_LIB_SH}; printf "%s" "${var_name}"'],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return result.stdout
+    return _read_shell_output(
+        _SOURCE_FIRST_ARGUMENT + 'printf "%s" "${!1}"', f"{var_name} from _lib.sh", str(_LIB_SH), var_name
+    ).stdout.decode()
 
 
 # SKILL.md fences may be indented when the fixture sits inside a
@@ -216,9 +238,8 @@ def _nonempty_shell_lines(shell_body: str, what: str) -> list[str]:
     The emptiness assertion stops a renamed or emptied shell value from reading as an empty list,
     which would leave every test iterating it passing with zero iterations or skipped.
     """
-    result = subprocess.run(["bash", "-c", shell_body], capture_output=True, text=True, check=False)
-    assert result.returncode == 0, f"reading {what} exited {result.returncode}: {result.stderr}"
-    lines = [line for line in result.stdout.splitlines() if line]
+    result = _read_shell_output(shell_body, what)
+    lines = [line for line in result.stdout.decode().splitlines() if line]
     assert lines, f"reading {what} printed nothing: a renamed or emptied shell value"
     return lines
 
@@ -2716,13 +2737,119 @@ def run_skill_command(command: str, cwd: Path, isolated_home: Path) -> None:
 CI_TEST_SLICE_JOB_ID = "test-slice"
 
 
+def ci_tests_workflow() -> dict:
+    return yaml.safe_load(_CI_TESTS_WORKFLOW_PATH.read_text())
+
+
 def ci_tests_workflow_jobs() -> dict:
-    return yaml.safe_load(_CI_TESTS_WORKFLOW_PATH.read_text())["jobs"]
+    return ci_tests_workflow()["jobs"]
 
 
 def ci_test_slice_job() -> dict:
     """The parsed `test-slice` job of tests.yml, the job whose matrix legs run the pytest passes."""
     return ci_tests_workflow_jobs()[CI_TEST_SLICE_JOB_ID]
+
+
+def ci_test_slice_step(step_id: str) -> dict:
+    """The step of tests.yml's `test-slice` job with `id: step_id`, located by id."""
+    matching_steps = [step for step in ci_test_slice_job()["steps"] if step.get("id") == step_id]
+    assert len(matching_steps) == 1, (
+        f"Expected exactly one step with id: {step_id} in tests.yml -- did the step move or get renamed?"
+    )
+    return matching_steps[0]
+
+
+# The base of every stub a pin-step run-body test runs: it appends one line per call to the file STUB_LOG names.
+# The line holds `sudo ` when STUB_VIA_SUDO is set, then the command name, then each argument wrapped in `<` `>`,
+# so a space inside one argument stays visible and the log does not depend on the shebang bash's quoting rules.
+PIN_STEP_LOGGING_STUB = """#!/bin/bash
+{ printf '%s%s' "${STUB_VIA_SUDO:+sudo }" "${0##*/}"; printf ' <%s>' "$@"; printf '\\n'; } >> "$STUB_LOG"
+"""
+
+
+def pin_step_sudo_stub(*accepted_commands: str, install_root: Path | None = None) -> str:
+    """A `sudo` stub script that runs the sibling stub of an accepted command with STUB_VIA_SUDO set.
+
+    It exits 2 on any other command or flag form (such as `-n` or `env`), so a `sudo` call the test did not expect fails.
+    The stub runs `install` only when its last argument, the destination, lies under `install_root`.
+    Any other destination is logged like a call and exits 2 with nothing written, so a step that ignores the test's seam
+    cannot write outside the test's temp directory.
+    Accepting `install` without an absolute `install_root` raises ValueError.
+    """
+    install_is_accepted = "install" in accepted_commands
+    if install_is_accepted and (install_root is None or not install_root.is_absolute()):
+        raise ValueError(f"pin_step_sudo_stub accepting `install` needs an absolute install_root, got {install_root!r}")
+    other_commands = [command for command in accepted_commands if command != "install"]
+    install_case = ""
+    if install_is_accepted:
+        quoted_root = shlex.quote(str(install_root))
+        install_case = f"""  install)
+    destination="${{@: -1}}"
+    case "$destination" in
+      */..|*/../*) destination_allowed=no ;;
+      {quoted_root}/*) destination_allowed=yes ;;
+      *) destination_allowed=no ;;
+    esac
+    if [ "$destination_allowed" != yes ]; then
+      {{ printf 'sudo install'; printf ' <%s>' "${{@:2}}"; printf '\\n'; }} >> "$STUB_LOG"
+      echo "sudo stub: refusing to install to $destination, outside "{quoted_root} >&2
+      exit 2
+    fi
+    STUB_VIA_SUDO=1 exec "${{0%/*}}/install" "${{@:2}}" ;;
+"""
+    other_case = (
+        f'  {"|".join(other_commands)}) STUB_VIA_SUDO=1 exec "${{0%/*}}/$1" "${{@:2}}" ;;\n' if other_commands else ""
+    )
+    return f"""#!/bin/bash
+case "$1" in
+{install_case}{other_case}  *) echo "sudo stub: unstubbed command $1" >&2; exit 2 ;;
+esac
+"""
+
+
+def pin_step_calls_to(call_log: list[str], command: str) -> list[str]:
+    """The lines of a pin-step stub log for `command`, whether or not `sudo` ran it."""
+    return [line for line in call_log if line.startswith((f"{command} ", f"sudo {command} "))]
+
+
+# The bash that runs a script a test launches by name.
+BASH_PATH = shutil.which("bash") or "/bin/bash"
+
+
+def completed_process_output(result: subprocess.CompletedProcess) -> str:
+    """A run's stdout and stderr, for an assertion message."""
+    return f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+
+
+def run_pin_step_script(
+    tmp_path: Path,
+    step_run: str,
+    *,
+    stub_dir: Path,
+    stub_texts: dict[str, str],
+    env: dict[str, str],
+    timeout_seconds: float,
+) -> tuple[subprocess.CompletedProcess, list[str]]:
+    """Run a pin step's `run:` body under bash and return the result and the lines the stubs logged.
+
+    Each of `stub_texts` is written into the existing `stub_dir` as a prewarmed stub named for its key.
+    `env` is the whole environment except HOME, which is `tmp_path`, and STUB_LOG, the log the stubs append to.
+    """
+    for command, text in stub_texts.items():
+        write_prewarmed_stub(stub_dir / command, text)
+    call_log = tmp_path / "stub-calls.log"
+    call_log.touch()
+    script_path = tmp_path / "pin-step.sh"
+    script_path.write_text(step_run)
+    result = subprocess.run(
+        [BASH_PATH, str(script_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"HOME": str(tmp_path), "STUB_LOG": str(call_log), **env},
+        timeout=timeout_seconds,
+    )
+    return result, call_log.read_text().splitlines()
 
 
 def extract_ci_detect_step_run_block() -> str:
@@ -3165,6 +3292,132 @@ def write_prewarmed_stub(path: Path, script: str) -> Path:
     return path
 
 
+def require_shfmt() -> None:
+    """Guard for a test that needs a real shfmt binary, not a stub: skip locally when shfmt isn't
+    installed, but hard-fail in this repo's own CI, where a skip would turn a missing install step green.
+
+    Checks GITHUB_ACTIONS rather than the generic CI var, as `require_direnv` does in the scripts tests.
+    """
+    import pytest  # imported here because the module header keeps pytest out of the runtime imports
+
+    if shutil.which("shfmt"):
+        return
+    if os.environ.get("GITHUB_ACTIONS"):
+        pytest.fail("shfmt missing in CI — .github/workflows/tests.yml must install it")
+    pytest.skip("shfmt not installed; install the build that .github/workflows/tests.yml pins")
+
+
+def decode_shfmt_argv(printed_words: bytes) -> list[str]:
+    """The argv in `printed_words`, the NUL-terminated words `production_shfmt_argv` has bash print.
+
+    An unset array makes `printf "%s\\0" "${arr[@]}"` print one empty word, so an empty word fails here as well as no word.
+    """
+    argv = printed_words.decode().split("\0")[:-1]
+    assert argv and all(argv), "reading _LIB_SHFMT_ARGV gave no word or an empty word: a renamed, unset or emptied shell value"
+    return argv
+
+
+def production_shfmt_argv() -> list[str]:
+    """`_LIB_SHFMT_ARGV` from _lib.sh -- the argv the shell-syntax-tree tests run shfmt with by default.
+
+    A test that checks another dialect or builds a control argv does not use it.
+
+    Fails with _lib.sh's own stderr and exit status when it refuses to source, as it does under a bash below the floor.
+    """
+    result = _read_shell_output(
+        _SOURCE_FIRST_ARGUMENT + 'printf "%s\\0" "${_LIB_SHFMT_ARGV[@]}"', "_LIB_SHFMT_ARGV from _lib.sh", str(_LIB_SH)
+    )
+    return decode_shfmt_argv(result.stdout)
+
+
+class StubShfmtCall(NamedTuple):
+    argv: list[str]
+    stdin: bytes
+    cwd: str
+
+
+class StubShfmt:
+    """A stub `shfmt` on disk, plus the log of the calls it received."""
+
+    def __init__(self, path: Path, log_dir: Path):
+        self.path = path
+        self.log_dir = log_dir
+
+    def calls(self) -> list[StubShfmtCall]:
+        """Every call so far, in order. A `--version` call has empty stdin."""
+        recorded = []
+        call_index = 0
+        while (self.log_dir / f"call-{call_index}.argv").exists():
+            stem = self.log_dir / f"call-{call_index}"
+            argv = stem.with_suffix(".argv").read_bytes().decode().split("\0")[:-1]
+            stdin_path = stem.with_suffix(".stdin")
+            recorded.append(
+                StubShfmtCall(
+                    argv=argv,
+                    stdin=stdin_path.read_bytes() if stdin_path.exists() else b"",
+                    cwd=stem.with_suffix(".cwd").read_text(),
+                )
+            )
+            call_index += 1
+        return recorded
+
+
+def write_stub_shfmt(
+    path: Path,
+    *,
+    tree: str = "",
+    version_line: str = "",
+    exit_status: int = 0,
+    stderr_line: str | None = None,
+    hang_parse_seconds: float | None = None,
+    hang_version_seconds: float | None = None,
+    ignore_sigterm: bool = False,
+) -> StubShfmt:
+    """Write a stub `shfmt` at `path` with `write_prewarmed_stub` and return it with its call log.
+
+    A `--version` call prints `version_line`, and any other call prints `tree`. Both exit with `exit_status`.
+    Either call first writes `stderr_line` to stderr, when given.
+    A hang ends the call: the stub then execs `sleep`, so a cap's SIGTERM reaches the sleeping process itself.
+    `ignore_sigterm` ignores SIGTERM from the first line, so the sleep outlasts a cap's SIGTERM.
+    A logged call then shows the signal is already ignored.
+    Each call logs its argv, stdin and working directory under a directory beside `path`.
+    A call with no argument logs an empty argv, distinct from one empty argument.
+    The stub uses only bash builtins and `sleep`, so a curated PATH needs only the latter.
+    """
+    log_dir = path.parent / f"{path.name}-calls"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    def hang_lines(hang_seconds: float | None) -> str:
+        return "" if hang_seconds is None else f"exec sleep {hang_seconds}\n"
+
+    sigterm_trap_line = "trap '' TERM\n" if ignore_sigterm else ""
+    stderr_lines = f"printf '%s\\n' {shlex.quote(stderr_line)} >&2\n" if stderr_line is not None else ""
+    script = (
+        "#!/bin/bash\n"
+        f"{sigterm_trap_line}"
+        f"log_dir={shlex.quote(str(log_dir))}\n"
+        "call_index=0\n"
+        'while [ -e "$log_dir/call-$call_index.argv" ]; do call_index=$((call_index + 1)); done\n'
+        ": > \"$log_dir/call-$call_index.argv\"\n"
+        'if [ "$#" -gt 0 ]; then printf \'%s\\0\' "$@" >> "$log_dir/call-$call_index.argv"; fi\n'
+        "printf '%s' \"$(pwd -P)\" > \"$log_dir/call-$call_index.cwd\"\n"
+        'if [ "${1-}" = "--version" ]; then\n'
+        f"{stderr_lines}"
+        f"{hang_lines(hang_version_seconds)}"
+        f"printf '%s\\n' {shlex.quote(version_line)}\n"
+        f"exit {exit_status}\n"
+        "fi\n"
+        "IFS= read -r -d '' stdin_text || true\n"
+        "printf '%s' \"$stdin_text\" > \"$log_dir/call-$call_index.stdin\"\n"
+        f"{stderr_lines}"
+        f"{hang_lines(hang_parse_seconds)}"
+        f"printf '%s' {shlex.quote(tree)}\n"
+        f"exit {exit_status}\n"
+    )
+    write_prewarmed_stub(path, script)
+    return StubShfmt(path, log_dir)
+
+
 class UnwarmedStubError(AssertionError):
     """A launch under the scaled timeout shim could exec an sh-family stub that write_prewarmed_stub did not write."""
 
@@ -3579,7 +3832,6 @@ def live_process():
 # ---------------------------------------------------------------------------
 
 RECONCILE_SH = SCRIPTS_DIR / "reconcile-project-plugins.sh"
-_BASH = shutil.which("bash") or "/bin/bash"
 
 
 def plugin_registry_file(config_dir: Path) -> Path:
@@ -3970,7 +4222,7 @@ def run_reconciler(
     if extra_env:
         env.update(extra_env)
     return subprocess.run(
-        [_BASH, str(RECONCILE_SH), str(repo_root)],
+        [BASH_PATH, str(RECONCILE_SH), str(repo_root)],
         capture_output=True,
         text=True,
         cwd=str(cwd) if cwd else None,
