@@ -41,7 +41,7 @@ seam = "Writer half (`_config_set`, `_config_scaffold`, `_config_quote_value_for
 issue = 1117
 
 ["claude/.claude/hooks/_lib.sh"]
-ceiling = 6262
+ceiling = 6268
 verdict = "structural exception"
 reason = "In-file reorganization and the gate for moving any cluster are recorded in #1117, which governs this file's shape and ceiling. No further seam is assessed here."
 
@@ -222,6 +222,11 @@ seam = "Test-class families following the ledger library's validation and render
 ceiling = 2322
 verdict = "split pending"
 seam = "Test families by concern as plain functions: path floor (`test_path_floor_reviewers_table`), transcript parsing (`test_extract_tool_calls_is_error_absent_false_and_true`), assessment rules (`test_missing_diff_reread_after_last_edit_fails_r5_only`) and hook envelope handling (`test_allow_envelope_preserves_every_other_tool_input_field`)"
+
+["claude/.claude/hooks/tests/test_shell_syntax_tree_contract.py"]
+ceiling = 1191
+verdict = "split pending"
+seam = "Test-class families by concern: refusal and internal faults (`TestUnrecognizedTreesExit5`, `TestInternalFaultsExit2`, `TestStderrNeverEchoesTreeText`), build and interpreter isolation (`TestInterpreterIsolation`, `TestRealShfmtIdentity`, `TestDialectIsPinnedToBash`), and the conformance corpus (`TestConformanceCorpus`, `TestAlwaysPresentKeysFollowTheCorpus`, `TestChildPositionMatrix`)"
 
 ["claude/.claude/scripts/_review-ledger-lib.sh"]
 ceiling = 1359
@@ -476,7 +481,7 @@ verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 
 ["claude/.claude/tests/helpers.py"]
-ceiling = 4182
+ceiling = 4434
 verdict = "structural exception"
 reason = "#1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file. A helper used by one test tree goes in that tree's local module, not in helpers.py."
 

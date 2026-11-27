@@ -202,16 +202,100 @@ jobs:
           sudo apt-mark hold zsh zsh-common
           zsh --version
 
+      # The pin is the shfmt linux amd64 release asset at the floor's version, installed only after its SHA-256 matches the digest below, and checked against the digest again once installed.
+      # The step runs in both legs, unlike the zsh step, because a `timing` case that parses with shfmt must then find the pinned build, as a parallel-leg case does. The cost is one download per leg.
+      # The digest was computed locally by hashing the release's linux amd64 asset with `shasum -a 256`, and it equals the attested release digest.
+      # What each source proves for v3.14.0, one per item:
+      # - The release carries no checksum file asset.
+      # - Its GitHub release attestation verifies and lists the pinned digest. That shows the asset is the one the release published, and its root of trust is GitHub.
+      # - It carries no build-provenance attestation, so nothing ties the binary to a source build.
+      # - A Go checksum database match proves the tag's source and not the binary, so it is never a comparison for this digest. A source build would prove the tag's source, which the release attestation does not.
+      # The binary's build is unproven, because nothing stronger held at the pin.
+      # To bump:
+      # 1. Run `gh release verify` and `gh attestation verify` again on the new release.
+      # 2. Change the version and digest together.
+      # 3. Update any install.sh message that names this version.
+      # 4. Move any shfmt floor that names it, in the same change.
+      # test_ci_shfmt_equals_the_pin fails when the test steps run without this step.
+      - name: Install the pinned shfmt binary
+        id: pin-shfmt
+        if: steps.detect.outputs.changed == 'true'
+        env:
+          CI_SHFMT_VERSION: "3.14.0"
+          CI_SHFMT_SHA256: "fe42021c7272ef2d67ea36cbc3031683c625d0badec733ef3a57b567246a0b66"
+        run: |
+          set -euo pipefail
+          : "${CI_SHFMT_VERSION:?}"
+          : "${CI_SHFMT_SHA256:?}"
+
+          asset="shfmt_v${CI_SHFMT_VERSION}_linux_amd64"
+          url="https://github.com/mvdan/sh/releases/download/v${CI_SHFMT_VERSION}/${asset}"
+          download_dir="$(mktemp -d)"
+          # CI_SHFMT_INSTALL_DIR is a test-only seam: the step's test sets it to a stub directory, and no workflow, job or step env sets it, so the runner installs into /usr/local/bin.
+          install_dir="${CI_SHFMT_INSTALL_DIR:-/usr/local/bin}"
+
+          # The curl manual's --retry entry (curl 8.23.0) says curl retries a timeout, an FTP 4xx response code and an HTTP 408, 429, 500, 502, 503, 504, 522 or 524 response code, and an older curl lists fewer.
+          # A refused or reset connection and a TLS failure are not on that list, so they fail at once. No vendor value applies to the retry count.
+          fetch_retries=3
+          # The curl manual's --retry-max-time entry says the retry timer starts before the first attempt and no retry starts once it reaches this many seconds, and an attempt already running may outlast it. No vendor value applies.
+          # It must exceed fetch_attempt_max_seconds, or an attempt that --max-time ends leaves no retry.
+          fetch_retry_max_seconds=180
+          # The curl manual's --max-time entry says it bounds each transfer and its counter resets on each retry. No vendor value applies.
+          fetch_attempt_max_seconds=60
+          if ! curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' \
+            --retry "$fetch_retries" --retry-max-time "$fetch_retry_max_seconds" --max-time "$fetch_attempt_max_seconds" \
+            --output "${download_dir}/${asset}" "$url"; then
+            {
+              echo "The fetch of $url failed, so no digest was checked."
+              echo "Read curl's error above. A 404 means the pinned version has no such asset, so bump the pin as the comment above this step says."
+              echo "Any other failure is likely a transient fetch error, so re-run the job first."
+            } >&2
+            exit 1
+          fi
+
+          if ! (cd "$download_dir" && printf '%s  %s\n' "$CI_SHFMT_SHA256" "$asset" | sha256sum --check --strict -); then
+            {
+              echo "The SHA-256 of $asset does not match CI_SHFMT_SHA256, so the binary was not installed."
+              echo "The digest is the in-repo pin the comment above this step describes. Check it against the asset before changing it."
+            } >&2
+            exit 1
+          fi
+
+          sudo install -m 0755 "${download_dir}/${asset}" "${install_dir}/shfmt"
+
+          # The check above covers the downloaded file, so the installed file is checked too.
+          if ! printf '%s  %s\n' "$CI_SHFMT_SHA256" "${install_dir}/shfmt" | sha256sum --check --strict -; then
+            {
+              echo "The SHA-256 of the installed ${install_dir}/shfmt does not match CI_SHFMT_SHA256, so the tests would not parse with the pinned build."
+              echo "The file changed between the digest check and the install, or the install wrote other bytes."
+            } >&2
+            exit 1
+          fi
+
+          # A same-version shfmt earlier on PATH would otherwise stand in for the pinned bytes.
+          resolved_shfmt="$(command -v shfmt || true)"
+          if [ "$resolved_shfmt" != "${install_dir}/shfmt" ]; then
+            {
+              echo "shfmt resolves to '${resolved_shfmt:-none found}' on PATH, not the installed ${install_dir}/shfmt, so the tests would not parse with the pinned build."
+              echo "The pin is this step's env and comment. Find which PATH entry holds the other shfmt."
+            } >&2
+            exit 1
+          fi
+          echo "shfmt resolved on PATH: $resolved_shfmt"
+          shfmt --version
+
       - name: Report runner core count
         if: steps.detect.outputs.changed == 'true'
         run: nproc
 
-      # Records the pinned git's version, the runner's gh version, and which awk implementation runs the cumulative-review normalizer's tests.
+      # Records the pinned git's version, the runner's bash and gh versions, and which awk implementation runs the cumulative-review normalizer's tests.
+      # bash comes from the runner image and is not pinned, so its version identifies the build the real-bash cases in the shell-syntax-tree tests run on.
       # gh comes from the runner image and is not pinned, so its version identifies which release's `gh help` output the drift-guard tests in test_lib_tool_argv.py parse.
-      - name: Report runner git, gh and awk versions
+      - name: Report runner git, bash, gh and awk versions
         if: steps.detect.outputs.changed == 'true'
         run: |
           git --version
+          bash --version | head -n 1
           gh --version || true
           readlink -f "$(command -v awk)" || true
           { awk --version || awk -W version || awk -version; } </dev/null 2>/dev/null | head -n 1 || true
