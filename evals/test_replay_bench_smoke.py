@@ -8,7 +8,19 @@ import pytest
 from replay_bench import checks, diffing, smoke, smoke_pass
 from replay_bench import tasks as tasks_mod
 from review_bench import runner as review_runner
-from test_replay_bench_checks_support import _assistant, _line, _tool_use, _transcript
+from test_replay_bench_checks_support import (
+    PATH_GLOB_MATCH,
+    PRINTED_SKIPPED_LINES_SIGNAL_SUFFIX,
+    PRINTED_STATUS_DENIED,
+    PRINTED_STATUS_RAN,
+    PRINTED_STATUS_UNANSWERED,
+    PRINTED_TORN_LINE_SIGNAL,
+    PRINTED_UNREADABLE_SIGNAL_PREFIX,
+    _assistant,
+    _line,
+    _tool_use,
+    _transcript,
+)
 from test_replay_bench_runner_support import (
     AGENT_ID,
     CLAUDE_MD_TEXT,
@@ -193,7 +205,8 @@ class TestTheRunReportShowsWhatTheRunDid:
         printed, _outcomes = reports(agent_scenarios(toolkit=toolkit))
 
         assert (
-            f"  file tool calls: ['Read {reviewer} (ran)', 'Edit src/app.py (denied)', 'Write src/extra.py (ran)']"
+            f"  file tool calls: ['Read {reviewer} ({PRINTED_STATUS_RAN})', "
+            f"'Edit src/app.py ({PRINTED_STATUS_DENIED})', 'Write src/extra.py ({PRINTED_STATUS_RAN})']"
             in printed["toolkit"].splitlines()
         )
 
@@ -250,7 +263,7 @@ class TestTheRunReportShowsWhatTheRunDid:
 
         lines = smoke.format_run_report("toolkit", with_unanswered_call)
 
-        assert "  file tool calls: ['Write src/pending.py (unanswered)']" in lines
+        assert f"  file tool calls: ['Write src/pending.py ({PRINTED_STATUS_UNANSWERED})']" in lines
 
     def test_an_unreadable_transcript_says_the_list_may_be_incomplete_and_gives_the_reason(self, smoke_outcomes, tmp_path):
         outcome = smoke_outcomes["toolkit"]
@@ -262,12 +275,16 @@ class TestTheRunReportShowsWhatTheRunDid:
         lines = smoke.format_run_report("toolkit", with_unreadable_transcript)
 
         assert [line for line in lines if "file tool calls" in line] == [
-            f"  file tool calls (list may be incomplete: unreadable: {unreadable.unreadable_detail}): []",
+            f"  file tool calls (list may be incomplete: {PRINTED_UNREADABLE_SIGNAL_PREFIX}"
+            f"{unreadable.unreadable_detail}): []",
         ]
 
     @pytest.mark.parametrize(
         ("damage", "named_signals"),
-        [("torn", "last line torn; 1 skipped lines"), ("skip", "1 skipped lines")],
+        [
+            ("torn", f"{PRINTED_TORN_LINE_SIGNAL}; 1{PRINTED_SKIPPED_LINES_SIGNAL_SUFFIX}"),
+            ("skip", f"1{PRINTED_SKIPPED_LINES_SIGNAL_SUFFIX}"),
+        ],
         ids=["torn-last-line", "skipped-line"],
     )
     def test_a_missing_run_with_a_damaged_sidecar_prints_what_it_could_read_and_no_captured_change(
@@ -280,7 +297,8 @@ class TestTheRunReportShowsWhatTheRunDid:
         toolkit_lines = printed["toolkit"].splitlines()
         assert "[toolkit] status: missing (transcript-unreadable)" in toolkit_lines
         assert (
-            f"  file tool calls (list may be incomplete: {named_signals}): ['Read src/app.py (ran)']" in toolkit_lines
+            f"  file tool calls (list may be incomplete: {named_signals}): ['Read src/app.py ({PRINTED_STATUS_RAN})']"
+            in toolkit_lines
         )
         assert "  changed paths: not captured" in toolkit_lines
         assert not any(line.startswith("  metrics:") for line in toolkit_lines)
@@ -449,7 +467,7 @@ class TestTheMarginsRuleTerm:
         with_dispatcher_rule = Scenario(log_lines=lambda sid: [
             _line(str(world.config_dir / "CLAUDE.md"), session_id=sid),
             _line(rule, session_id=sid),
-            _line(rule, "path_glob_match", agent_id=AGENT_ID, session_id=sid),
+            _line(rule, PATH_GLOB_MATCH, agent_id=AGENT_ID, session_id=sid),
         ])
 
         exit_code, _stub = run_smoke(world, by_call=agent_scenarios(toolkit=with_dispatcher_rule))
@@ -467,7 +485,7 @@ class TestWhichFailuresSmokeRetries:
             checks.REASON_FIXTURE_INSTRUCTION_LOAD: ("code-writer", Scenario(
                 log_lines=lambda sid, cwd: [
                     _line(str(world.config_dir / "CLAUDE.md"), session_id=sid),
-                    _line(str(cwd / "src" / "app.py"), "path_glob_match", agent_id=AGENT_ID, session_id=sid),
+                    _line(str(cwd / "src" / "app.py"), PATH_GLOB_MATCH, agent_id=AGENT_ID, session_id=sid),
                 ],
             )),
             checks.REASON_ACCOUNT_HOOKS_MISSING: ("code-writer", Scenario(write_account_session_file=False)),

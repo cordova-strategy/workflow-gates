@@ -22,7 +22,14 @@ from review_bench import runner
 SESSION_ID = "synthetic-session-id"
 OTHER_SESSION_ID = "synthetic-other-session-id"
 AGENT_ID = "synthetic-agent-id"
-SESSION_START, PATH_GLOB_MATCH = checks.LOAD_REASON_SESSION_START, checks.LOAD_REASON_PATH_GLOB_MATCH
+# The load reasons and printed strings below are spelled out, not taken from `checks`, so a change there fails the tests.
+SESSION_START, PATH_GLOB_MATCH = "session_start", "path_glob_match"
+PRINTED_STATUS_RAN = "ran"
+PRINTED_STATUS_DENIED = "denied"
+PRINTED_STATUS_UNANSWERED = "unanswered"
+PRINTED_UNREADABLE_SIGNAL_PREFIX = "unreadable: "
+PRINTED_TORN_LINE_SIGNAL = "last line torn"
+PRINTED_SKIPPED_LINES_SIGNAL_SUFFIX = " skipped lines"
 
 
 class _Absent:
