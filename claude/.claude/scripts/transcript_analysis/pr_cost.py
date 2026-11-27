@@ -471,7 +471,7 @@ def _review_rounds_force_refusal(
             if len(prior_rounds) > len(new_rounds) or (
                 sum(r["agents"] for r in prior_rounds) > sum(r["agents"] for r in new_rounds)
             ):
-                return "the re-capture is less complete under the same round rule"
+                return "the new cell shows fewer rounds or agents for a skill under the same round rule"
     return None
 
 

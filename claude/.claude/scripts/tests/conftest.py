@@ -879,6 +879,19 @@ def _asst(
     return rec
 
 
+# Spelled out, not imported from pricing: the code under test parses this model ID out of transcripts.
+_SYNTHETIC_MODEL = "<synthetic>"
+
+
+def _usage_drift_records(request_id: str) -> list[dict]:
+    """Two records of one request whose input_tokens disagree (100 vs 999), tripping the usage-drift canary."""
+    first = _asst("claude-sonnet-5", content=[{"type": "thinking", "thinking": "..."}], request_id=request_id)
+    first["message"]["usage"] = {"input_tokens": 100, "output_tokens": 3}
+    second = _asst("claude-sonnet-5", content=[{"type": "text", "text": "done"}], request_id=request_id)
+    second["message"]["usage"] = {"input_tokens": 999, "output_tokens": 50}
+    return [first, second]
+
+
 def _user_msg(content, *, branch: str = "main", ts: str | None = None) -> dict:
     rec: dict = {"type": "user", "gitBranch": branch, "message": {"content": content}}
     if ts:
@@ -1310,6 +1323,23 @@ def _extract_grand_total(out: str) -> float:
     match = re.search(r"^total\s+([\d,]+\.\d\d)\s*$", out, re.MULTILINE)
     assert match is not None, "grand total row not found in output"
     return float(match.group(1).replace(",", ""))
+
+
+_EXCLUDED_SPEND_MARKER = "EXCLUDED SPEND"
+_PRICING_INTEGRITY_MARKER = "PRICING INTEGRITY"
+_UNPRICED_TOKENS_MARKER = "Unpriced tokens (unknown model IDs):"
+
+
+def _extract_unpriced_total(out: str) -> int:
+    """Read cmd_cost's 'Unpriced tokens (unknown model IDs): N' line as an int.
+
+    A single named extractor for this one non-tabular summary line, matching
+    _table_cols' role for tabular output — one parse point to update if the
+    line's wording changes, instead of an inline regex at each call site.
+    """
+    match = re.search(rf"{re.escape(_UNPRICED_TOKENS_MARKER)} ([\d,]+)", out)
+    assert match is not None, "unpriced-tokens summary line not found in output"
+    return int(match.group(1).replace(",", ""))
 
 
 def _cost_args(
