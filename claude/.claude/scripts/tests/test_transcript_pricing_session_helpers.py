@@ -7,6 +7,7 @@ import pytest
 from transcript_analysis import cost, pricing
 
 from .conftest import (
+    _PRICING_INTEGRITY_MARKER,
     _agent_use,
     _asst,
     _cost_args,
@@ -339,7 +340,6 @@ class TestRateExpired:
 
 
 _SUBAGENT_WARNING = "WARNING: subagent spawns detected"
-_BANNER = "PRICING INTEGRITY"
 _SESSION_ORDERS = pytest.mark.parametrize(
     ("name_of_session_a", "name_of_session_b"),
     [("sess-1", "sess-2"), ("sess-2", "sess-1")],
@@ -369,7 +369,7 @@ class TestCostAccumulatesSubagentCanaryInputsAcrossSessions:
 
         captured = capsys.readouterr()
         assert _SUBAGENT_WARNING not in captured.err
-        assert _BANNER not in captured.out
+        assert _PRICING_INTEGRITY_MARKER not in captured.out
 
     def test_spawns_in_both_sessions_and_no_sidechain_turns_warns_once(self, fake_projects, capsys):
         _write_jsonl(fake_projects / "sess-1.jsonl", _spawn_session_records())
@@ -379,7 +379,7 @@ class TestCostAccumulatesSubagentCanaryInputsAcrossSessions:
 
         captured = capsys.readouterr()
         assert captured.err.count(_SUBAGENT_WARNING) == 1
-        assert _BANNER in captured.out
+        assert _PRICING_INTEGRITY_MARKER in captured.out
 
     @_SESSION_ORDERS
     def test_spawn_in_one_session_and_nothing_in_the_other_warns_once(
@@ -392,4 +392,4 @@ class TestCostAccumulatesSubagentCanaryInputsAcrossSessions:
 
         captured = capsys.readouterr()
         assert captured.err.count(_SUBAGENT_WARNING) == 1
-        assert _BANNER in captured.out
+        assert _PRICING_INTEGRITY_MARKER in captured.out

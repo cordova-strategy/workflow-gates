@@ -37,6 +37,13 @@ transcript records alongside the main thread, matching `review-trace`'s own
 widened default scope. A row recorded before that date and one recorded
 after it are not comparable on this column alone.
 
+Rows recorded before and after the recording machine pulled the request-merge
+commit can differ on `usd`, `context_pct`, `opus_pct` and `ge200k_pct` for the
+same transcripts, even under one `rates` stamp. `--record` writes only the
+current ISO week, so a past week cannot be re-recorded.
+`docs/pr-cost.md` § "Comparing rows across rate stamps" describes that boundary
+and how to find its commit.
+
 `context_pct` does not separate a warm cache read from an idle-gap TTL-expiry
 rebuild write — both land in the same context-class dollar share; see
 `cache-rebuild` for the write-specific breakdown.
