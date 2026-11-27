@@ -265,7 +265,7 @@ seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_
 issue = 1603
 
 ["claude/.claude/scripts/tests/conftest.py"]
-ceiling = 2089
+ceiling = 2113
 verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
@@ -476,7 +476,7 @@ verdict = "split pending"
 seam = "Lifecycle stages: capture (`_run_capture`, `_parse_capture_bytes`, `_load_capture_file`), session config-keys log reading (`_read_session_config_keys_log`), deny reconciliation (`_reconcile_denies`), compute (`_run_compute`, `_bootstrap_net`)"
 
 ["claude/.claude/scripts/transcript_analysis/scope.py"]
-ceiling = 1252
+ceiling = 1253
 verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 

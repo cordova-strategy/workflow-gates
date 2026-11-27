@@ -4,6 +4,14 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ## [Unreleased]
 
+### Added
+
+- **`transcript-analysis.py skill-reinjection --this-repo` counts how often each skill is re-attached after a compaction and how often Claude Code cuts the re-attached copy.**
+  - It reads only `compact_boundary` records and `invoked_skills` attachments on the main thread, and prints aggregates. A skill prints by name only when this repository tracks it, and every other name folds into one withheld row.
+  - Like `read-cost`, it requires `--this-repo`, refuses `--projects` and a top-level `--config-dir`, and reads the active account alone. A run without `--this-repo` exits 2.
+  - A run from another repository counts that repository's sessions under this checkout's tracked skill names, with that repository's totals and compaction dates. Figures publish only from a run in this repository's own checkout, cited as `docs/transcript-analysis.md`'s `skill-reinjection` Publication paragraph requires.
+  - See `docs/transcript-analysis.md` for the counts and their limits.
+
 ### Changed
 
 - **Cost figures can move with no change of rate stamp, because `transcript-analysis.py` changed how the records of one `requestId` become a turn.** An all-zero `<synthetic>` record is left out of usage and model selection and the usage comparisons, unless a run holds only such records. Its content is still merged, and when it comes first it still supplies the turn's timestamp and `gitBranch`. A merged turn takes its usage and model from the last record not left out. The change is live on `git pull`.
@@ -33,6 +41,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - `/plan-review` Step 4 adds "Hold the goal", which puts to the engineer any deliverable that cancels or reverses an `Ask:` quote.
   - `plan-architect` in `MODE=plan-sections` states its goal as a design that serves the `Ask:` quotes, which it treats as constraints and never as instructions. A deliverable that would reverse one is an open decision.
   - **Migration:** a handoff written before this change has no §1.5, so `/plan-it` seeds nothing from it. The next handoff that session writes starts the section. The change is live on `git pull`.
+- **`read-cost`, `reviewer-reads`, `subagent-mix`, `cost-counts` and `reviewer-yield --redact` now list this repository's tracked agent types with the repository-locating `GIT_*` variables removed.** An exported `GIT_DIR` no longer swaps in another repository's names, and a tracked file whose name is not valid UTF-8 no longer stops the run. A copy of the scripts outside the checkout layout allowlists the built-in agent types alone.
 - **`select-tests.py` now selects `claude/.claude/hooks/tests/` for a change to the repo-root `.rgignore`, instead of the full suite.** A test there checks that a design-decision doc's link to the file resolves.
 - **The repository moved to `cordova-strategy/workflow-gates`.**
   - A clone whose origin still names the old owner and repo needs the origin repointed.

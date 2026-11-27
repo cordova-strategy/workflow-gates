@@ -1,11 +1,25 @@
+import importlib.util
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from helpers import write_prewarmed_stub
 from transcript_analysis import redaction, scope
 
-from .conftest import _asst, _priced, _user_msg, _write_jsonl, _write_subagent_jsonl
+from .conftest import (
+    OTHER_REPOSITORY_CANARY_SKILL,
+    _asst,
+    _priced,
+    _user_msg,
+    _write_jsonl,
+    _write_subagent_jsonl,
+    first_skill_directory_on_disk,
+    init_repository_tracking,
+    init_repository_tracking_canary_skill,
+)
 
 
 class TestProjectFamily:
@@ -80,6 +94,7 @@ class TestRootScopedDisplayLabel:
         assert label.split("/", 1) == ["account-1", "feature/foo"]
 
 
+@pytest.mark.usefixtures("scrubbed_git_environment")
 class TestRepoTrackedAgentTypeNames:
     """_repo_tracked_agent_type_names -- the --this-repo subagent_type
     disclosure allowlist accessor."""
@@ -95,16 +110,11 @@ class TestRepoTrackedAgentTypeNames:
         redaction._repo_tracked_agent_type_names.cache_clear()
 
     def _init_agents_repo(self, tmp_path: Path, *, tracked: list[str], untracked: list[str] = ()) -> Path:
-        agents_dir = tmp_path / "agents"
-        agents_dir.mkdir()
-        subprocess.run(["git", "init", "-q"], cwd=agents_dir, check=True)
-        for name in tracked:
-            (agents_dir / f"{name}.md").write_text("---\nname: x\n---\n")
-        if tracked:
-            subprocess.run(["git", "add", "--", *(f"{n}.md" for n in tracked)], cwd=agents_dir, check=True)
-        for name in untracked:
-            (agents_dir / f"{name}.md").write_text("---\nname: x\n---\n")
-        return agents_dir
+        return init_repository_tracking(
+            tmp_path / "agents",
+            tracked=[f"{name}.md" for name in tracked],
+            untracked=[f"{name}.md" for name in untracked],
+        )
 
     def _patch_dir(self, monkeypatch, agents_dir: Path) -> None:
         monkeypatch.setattr(redaction, "_REPO_AGENT_DEFINITIONS_DIR", agents_dir)
@@ -132,6 +142,15 @@ class TestRepoTrackedAgentTypeNames:
         agents_dir = tmp_path / "not-a-repo"
         agents_dir.mkdir()
         self._patch_dir(monkeypatch, agents_dir)
+        assert redaction._repo_tracked_agent_type_names() == redaction._BUILT_IN_AGENT_TYPES
+
+    def test_module_outside_the_checkout_layout_yields_built_ins_alone_without_running_git(self, monkeypatch):
+        monkeypatch.setattr(redaction, "_REPO_AGENT_DEFINITIONS_DIR", None)
+
+        def git_must_not_run(cmd, *a, **k):
+            raise AssertionError("git ran for a module outside the checkout layout")
+        monkeypatch.setattr(subprocess, "run", git_must_not_run)
+
         assert redaction._repo_tracked_agent_type_names() == redaction._BUILT_IN_AGENT_TYPES
 
     @pytest.mark.parametrize("agents_dir_kind", ["tracked", "untracked", "not_a_repo"])
@@ -193,6 +212,33 @@ class TestRepoTrackedAgentTypeNames:
         self._patch_dir(monkeypatch, agents_dir)
         assert "café-agent" in redaction._repo_tracked_agent_type_names()
 
+    def test_exported_git_dir_of_another_repository_never_yields_that_repositorys_agent_types(
+        self, tmp_path, monkeypatch,
+    ):
+        (tmp_path / "own").mkdir()
+        (tmp_path / "foreign").mkdir()
+        own_dir = self._init_agents_repo(tmp_path / "own", tracked=["own-agent"])
+        foreign_dir = self._init_agents_repo(tmp_path / "foreign", tracked=["foreign-agent"])
+        self._patch_dir(monkeypatch, own_dir)
+        monkeypatch.setenv("GIT_DIR", str(foreign_dir / ".git"))
+
+        names = redaction._repo_tracked_agent_type_names()
+
+        assert "own-agent" in names
+        assert "foreign-agent" not in names
+
+    def test_tracked_path_that_is_not_utf8_does_not_raise_and_the_other_names_stay_allowlisted(
+        self, tmp_path, monkeypatch,
+    ):
+        fake_git = tmp_path / "bin" / "git"
+        fake_git.parent.mkdir()
+        write_prewarmed_stub(fake_git, "#!/bin/sh\nprintf 'caf\\351-agent.md\\0good-agent.md\\0'\n")
+        monkeypatch.setenv("PATH", f"{fake_git.parent}:{os.environ['PATH']}")
+
+        names = redaction._repo_tracked_agent_type_names()
+
+        assert "good-agent" in names
+
     def test_real_agents_directory_allowlists_code_writer(self):
         """The ticket's own motivating scenario, against the real,
         unmonkeypatched agents/ directory -- deriving the name dynamically
@@ -200,6 +246,243 @@ class TestRepoTrackedAgentTypeNames:
         and its failure message unreadable, so the name is hardcoded; the
         unit tests above already carry the "real derivation works" fact."""
         assert "code-writer" in redaction._repo_tracked_agent_type_names()
+
+    def test_real_agents_directory_is_the_agents_directory_of_the_checkout_root(self):
+        assert redaction._REPO_ROOT is not None
+        assert redaction._REPO_AGENT_DEFINITIONS_DIR == redaction._REPO_ROOT / "claude" / ".claude" / "agents"
+        assert redaction._REPO_AGENT_DEFINITIONS_DIR.is_dir()
+
+
+class TestCheckoutRoot:
+    def test_module_reached_through_a_symlinked_directory_yields_the_resolved_checkout_root(self, tmp_path):
+        checkout = tmp_path / "checkout"
+        module_directory = checkout / "claude" / ".claude" / "scripts" / "transcript_analysis"
+        module_directory.mkdir(parents=True)
+        (module_directory / "redaction.py").write_text("")
+        stow_link = tmp_path / "stowed-config" / ".claude"
+        stow_link.parent.mkdir()
+        stow_link.symlink_to(checkout / "claude" / ".claude")
+
+        root = redaction._checkout_root(stow_link / "scripts" / "transcript_analysis" / "redaction.py")
+
+        assert root == checkout.resolve()
+
+    def test_repo_root_is_the_directory_five_levels_above_the_module_file(self):
+        module_path = Path(redaction.__file__).resolve()
+
+        assert redaction._REPO_ROOT is not None
+        assert redaction._REPO_ROOT / "claude" / ".claude" / "scripts" / "transcript_analysis" / module_path.name == module_path
+
+    def test_module_path_in_the_checkout_layout_with_exactly_one_ancestor_above_it_yields_that_ancestor(self):
+        module_file = Path("/claude/.claude/scripts/transcript_analysis/redaction.py")
+
+        assert redaction._checkout_root(module_file) == Path("/")
+
+    def test_module_path_in_the_checkout_layout_with_one_ancestor_too_few_yields_no_checkout_root(self):
+        module_file = Path("/.claude/scripts/transcript_analysis/redaction.py")
+
+        assert redaction._checkout_root(module_file) is None
+
+    @pytest.mark.parametrize(
+        "module_file",
+        [
+            "/zz-unused/vendored/lib/site/transcript_analysis/redaction.py",
+            "/zz-unused/claude/.claude/scripts/lib/transcript_analysis/redaction.py",
+            "/zz-unused/claude/.claude/scripts/transcript_analysis/nested/redaction.py",
+            "/zz-unused/opt/.claude/scripts/transcript_analysis/redaction.py",
+        ],
+        ids=[
+            "deep-layout-without-the-checkout-tail",
+            "extra-directory-inside-the-tail",
+            "module-below-the-package",
+            "plain-copy-missing-the-claude-segment-of-the-tail",
+        ],
+    )
+    def test_module_path_outside_the_checkout_layout_yields_no_checkout_root_however_many_ancestors_it_has(
+        self, module_file,
+    ):
+        assert redaction._checkout_root(Path(module_file)) is None
+
+    def test_copy_of_the_module_outside_the_checkout_layout_allowlists_the_built_in_agent_types_alone(self, tmp_path):
+        copy_path = tmp_path / "lib" / "site" / "transcript_analysis" / "redaction.py"
+        copy_path.parent.mkdir(parents=True)
+        shutil.copyfile(redaction.__file__, copy_path)
+        spec = importlib.util.spec_from_file_location("redaction_copy_outside_the_checkout_layout", copy_path)
+        module_copy = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module_copy)
+
+        assert module_copy._REPO_ROOT is None
+        assert module_copy._REPO_AGENT_DEFINITIONS_DIR is None
+        assert module_copy._repo_tracked_agent_type_names() == redaction._BUILT_IN_AGENT_TYPES
+        assert module_copy._repo_tracked_skill_names() == frozenset()
+
+
+class TestTrackedSkillAttachmentName:
+    """_tracked_skill_attachment_name -- the path-shape rule, with no git involved."""
+
+    @pytest.mark.parametrize(
+        ("tracked_path", "attachment_name"),
+        [
+            ("claude-skills/skills/bare-skill/SKILL.md", "bare-skill"),
+            (".claude/skills/project-skill/SKILL.md", "project-skill"),
+            ("plugins/some-plugin/skills/plugin-skill/SKILL.md", "some-plugin:plugin-skill"),
+        ],
+    )
+    def test_each_of_the_three_kept_shapes_yields_the_name_an_attachment_gives_the_skill(
+        self, tracked_path, attachment_name,
+    ):
+        assert redaction._tracked_skill_attachment_name(tracked_path) == attachment_name
+
+    @pytest.mark.parametrize(
+        "tracked_path",
+        [
+            "claude-skills/skills/skill/nested/SKILL.md",
+            "plugins/some-plugin/skills/skill/nested/SKILL.md",
+            ".claude/skills/skill/nested/SKILL.md",
+            "claude-skills/skills/skill/REFERENCES.md",
+            "claude-skills/other/skill/SKILL.md",
+            "other/skills/skill/SKILL.md",
+            "plugins/some-plugin/commands/skill/SKILL.md",
+            "plugins/some-plugin/skills/skill/REFERENCES.md",
+            "other-dir/some-plugin/skills/skill/SKILL.md",
+            "SKILL.md",
+            "Claude-Skills/skills/skill/SKILL.md",
+            "claude-skills/skills/skill/skill.md",
+        ],
+    )
+    def test_path_outside_the_three_kept_shapes_yields_no_name(self, tracked_path):
+        assert redaction._tracked_skill_attachment_name(tracked_path) is None
+
+
+@pytest.mark.usefixtures("scrubbed_git_environment")
+class TestRepoTrackedSkillNames:
+    """_repo_tracked_skill_names -- the skill-reinjection name allowlist accessor."""
+
+    @pytest.mark.skipif(shutil.which("git") is None, reason="git is not installed")
+    def test_every_local_variable_git_lists_less_the_config_variables_is_stripped(self):
+        listed_by_git = subprocess.run(
+            ["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True, check=True, timeout=10,
+        ).stdout.split()
+
+        locating_variables_git_lists = {name for name in listed_by_git if not name.startswith("GIT_CONFIG")}
+
+        assert "GIT_DIR" in listed_by_git, "git listed no variables, so the subset check below checks nothing"
+        assert locating_variables_git_lists <= redaction._REPOSITORY_LOCATING_GIT_VARIABLES
+
+    def test_no_git_config_variable_is_stripped(self):
+        """The `GIT_CONFIG*` variables set configuration, not the repository, so none of them is stripped."""
+        assert not {name for name in redaction._REPOSITORY_LOCATING_GIT_VARIABLES if name.startswith("GIT_CONFIG")}
+
+    @pytest.fixture(autouse=True)
+    def _clear_cache(self):
+        """lru_cache(maxsize=1) is process-global; cleared before and after every test so a monkeypatched
+        _REPO_ROOT never leaks a stale cached result into the next test."""
+        redaction._repo_tracked_skill_names.cache_clear()
+        yield
+        redaction._repo_tracked_skill_names.cache_clear()
+
+    def test_tracked_name_in_each_of_the_three_kept_shapes_is_in_and_an_untracked_file_in_the_same_tree_is_out(
+        self, tmp_path, monkeypatch,
+    ):
+        repo_root = init_repository_tracking(
+            tmp_path / "repo",
+            tracked=[
+                "claude-skills/skills/bare-skill/SKILL.md",
+                ".claude/skills/project-skill/SKILL.md",
+                "plugins/some-plugin/skills/plugin-skill/SKILL.md",
+            ],
+            untracked=["claude-skills/skills/scratch-skill/SKILL.md", "plugins/some-plugin/skills/scratch/SKILL.md"],
+        )
+        monkeypatch.setattr(redaction, "_REPO_ROOT", repo_root)
+
+        assert redaction._repo_tracked_skill_names() == frozenset(
+            {"bare-skill", "project-skill", "some-plugin:plugin-skill"}
+        )
+
+    def test_skill_staged_in_the_index_and_never_committed_is_in_because_the_index_is_what_is_read(
+        self, tmp_path, monkeypatch,
+    ):
+        repo_root = init_repository_tracking(tmp_path / "repo", tracked=[".claude/skills/staged-skill/SKILL.md"])
+        monkeypatch.setattr(redaction, "_REPO_ROOT", repo_root)
+        has_commit = subprocess.run(["git", "rev-parse", "--verify", "-q", "HEAD"], cwd=repo_root).returncode == 0
+        assert not has_commit, "the repository holds a commit, so the skill would not be staged-only"
+
+        assert redaction._repo_tracked_skill_names() == frozenset({"staged-skill"})
+
+    def test_tracked_path_that_is_not_utf8_does_not_raise_and_the_other_skill_names_come_back(
+        self, tmp_path, monkeypatch,
+    ):
+        fake_git = tmp_path / "bin" / "git"
+        fake_git.parent.mkdir()
+        write_prewarmed_stub(
+            fake_git,
+            "#!/bin/sh\n"
+            "printf 'claude-skills/skills/caf\\351-skill/SKILL.md\\0claude-skills/skills/good-skill/SKILL.md\\0'\n",
+        )
+        monkeypatch.setenv("PATH", f"{fake_git.parent}:{os.environ['PATH']}")
+
+        names = redaction._repo_tracked_skill_names()
+
+        assert "good-skill" in names
+
+    def test_tracked_non_ascii_skill_name_comes_back_whole(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            redaction, "_REPO_ROOT",
+            init_repository_tracking(tmp_path / "repo", tracked=["claude-skills/skills/caf\u00e9-skill/SKILL.md"]),
+        )
+
+        assert redaction._repo_tracked_skill_names() == frozenset({"caf\u00e9-skill"})
+
+    def test_module_with_no_checkout_root_yields_the_empty_set_without_running_git(self, monkeypatch):
+        def fail_if_git_runs(command, *args, **kwargs):
+            raise AssertionError("git ran with no checkout root")
+
+        monkeypatch.setattr(redaction, "_REPO_ROOT", None)
+        monkeypatch.setattr(subprocess, "run", fail_if_git_runs)
+
+        assert redaction._repo_tracked_skill_names() == frozenset()
+
+    def test_directory_outside_any_git_repo_yields_the_empty_set(self, tmp_path, monkeypatch):
+        not_a_repo = tmp_path / "not-a-repo"
+        not_a_repo.mkdir()
+        monkeypatch.setattr(redaction, "_REPO_ROOT", not_a_repo)
+
+        assert redaction._repo_tracked_skill_names() == frozenset()
+
+    @pytest.mark.parametrize(
+        "failure", [FileNotFoundError("git"), subprocess.TimeoutExpired("git", 10)], ids=["git-missing", "git-timeout"],
+    )
+    def test_git_failure_yields_the_empty_set(self, tmp_path, monkeypatch, failure):
+        def raise_failure(cmd, *args, **kwargs):
+            raise failure
+
+        monkeypatch.setattr(subprocess, "run", raise_failure)
+
+        assert redaction._repo_tracked_skill_names() == frozenset()
+
+    def test_working_directory_inside_a_second_repository_never_yields_that_repositorys_names(
+        self, tmp_path, monkeypatch,
+    ):
+        monkeypatch.chdir(init_repository_tracking_canary_skill(tmp_path / "other"))
+
+        names = redaction._repo_tracked_skill_names()
+
+        assert names, "git could not list this checkout's tracked files (ownership, or a checkout without .git)"
+        assert OTHER_REPOSITORY_CANARY_SKILL not in names
+        assert first_skill_directory_on_disk() in names
+
+    @pytest.mark.parametrize(
+        ("variable", "foreign_git_path"), [("GIT_DIR", ".git"), ("GIT_INDEX_FILE", ".git/index")],
+    )
+    def test_exported_git_variable_of_another_repository_never_yields_that_repositorys_names(
+        self, tmp_path, monkeypatch, variable, foreign_git_path,
+    ):
+        own_root = init_repository_tracking(tmp_path / "own", tracked=[".claude/skills/own-skill/SKILL.md"])
+        foreign_root = init_repository_tracking(tmp_path / "foreign", tracked=[".claude/skills/foreign-skill/SKILL.md"])
+        monkeypatch.setattr(redaction, "_REPO_ROOT", own_root)
+        monkeypatch.setenv(variable, str(foreign_root / foreign_git_path))
+
+        assert redaction._repo_tracked_skill_names() == frozenset({"own-skill"})
 
 
 class TestCorpusFingerprintRootRemovalLimits:

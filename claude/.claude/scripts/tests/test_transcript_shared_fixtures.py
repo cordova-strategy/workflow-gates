@@ -1,11 +1,19 @@
 """Tests of conftest's shared fixtures and helpers. This file deliberately loads no transcript-analysis.py shim,
 so a fixture that comes to depend on the shim fails here first."""
 import os
+import subprocess
 
 import pytest
-from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, scope
+from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, redaction, scope
 
-from .conftest import _pin_transcript_corpus_lookups, _table_cols
+from .conftest import (
+    OTHER_REPOSITORY_CANARY_SKILL,
+    _pin_transcript_corpus_lookups,
+    _table_cols,
+    _this_repo_args,
+    init_repository_tracking,
+    init_repository_tracking_canary_skill,
+)
 
 _LEDGER_PATH_SENTINEL = "/zz-ledger-path-sentinel/pr-cost-ledger.tsv"
 
@@ -58,6 +66,54 @@ def test_cost_ledger_fixtures_patch_their_targets_without_a_shim(
     assert cost_ledger._cost_ledger_path() == cost_ledger_file
     assert cost_ledger.config_dir() == cost_ledger_enabled
     assert ledger_common.config_dir() == cost_ledger_enabled
+
+
+class TestScrubbedGitEnvironment:
+    """The class-scoped fixture sets every locating variable before the function-scoped monkeypatch the fixture under
+    test uses, and tears down after it.
+
+    Its teardown asserts each variable is back to the value it set, which only holds once that monkeypatch has undone.
+    """
+
+    @pytest.fixture(scope="class", autouse=True)
+    def _locating_variables_set_around_the_fixture(self):
+        with pytest.MonkeyPatch.context() as class_scoped_monkeypatch:
+            for variable in redaction._REPOSITORY_LOCATING_GIT_VARIABLES:
+                class_scoped_monkeypatch.setenv(variable, "/zz-git-variable-sentinel")
+            yield
+            for variable in redaction._REPOSITORY_LOCATING_GIT_VARIABLES:
+                assert os.environ.get(variable) == "/zz-git-variable-sentinel", f"{variable} was not restored"
+
+    @pytest.mark.usefixtures("scrubbed_git_environment")
+    def test_every_variable_production_strips_is_absent_in_the_test_body(self):
+        assert redaction._REPOSITORY_LOCATING_GIT_VARIABLES.isdisjoint(os.environ)
+
+
+@pytest.mark.usefixtures("scrubbed_git_environment")
+class TestInitRepositoryTracking:
+    def _indexed_paths(self, repository_root) -> set[str]:
+        listing = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=repository_root, capture_output=True, text=True, check=True,
+        ).stdout
+        return set(listing.split("\0")) - {""}
+
+    def test_index_holds_the_tracked_paths_and_the_tree_also_holds_the_untracked_ones(self, tmp_path):
+        repository_root = init_repository_tracking(
+            tmp_path / "repo", tracked=["a/tracked.md"], untracked=["b/untracked.md"],
+        )
+
+        assert self._indexed_paths(repository_root) == {"a/tracked.md"}
+        assert (repository_root / "b" / "untracked.md").is_file()
+
+    def test_canary_repository_tracks_the_canary_skill_as_a_project_skill(self, tmp_path):
+        repository_root = init_repository_tracking_canary_skill(tmp_path / "repo")
+
+        assert self._indexed_paths(repository_root) == {f".claude/skills/{OTHER_REPOSITORY_CANARY_SKILL}/SKILL.md"}
+
+
+class TestThisRepoArgs:
+    def test_seeded_slug_names_the_project_directory_the_fake_projects_fixture_creates(self, fake_projects):
+        assert fake_projects.name == _this_repo_args()._this_repo_slugs[0]
 
 
 class TestTableColsHelper:

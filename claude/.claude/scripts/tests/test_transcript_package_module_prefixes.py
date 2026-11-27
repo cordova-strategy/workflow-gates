@@ -63,6 +63,7 @@ PRODUCTION_MODULES = (
     "ledger_dispositions.py",
     "reviewer_reads.py",
     "review_ledger.py",
+    "skill_reinjection.py",
 )
 TEST_FILES = (
     "test_transcript_cost_ledger.py",
@@ -160,6 +161,7 @@ TEST_FILES = (
     "test_transcript_scope_active_account.py",
     "test_transcript_scope_no_redact.py",
     "test_transcript_reviewer_yield_redaction.py",
+    "test_transcript_skill_reinjection.py",
     "test_transcript_corpus.py",
     "test_transcript_routing_guard_capture.py",
     "test_transcript_routing_guard_compute.py",
