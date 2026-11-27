@@ -1828,22 +1828,32 @@ when the run ended with no text, instruction loads by class,
 the first-turn prompt size, the Bash commands, out-of-fixture paths, the
 permission-denial count, the allow-list Reads, the file tool calls, the changed
 paths, the change's metrics, the cost, the fixture-build seconds and the wall
-clock. The `file tool calls` line lists each Read, Edit, MultiEdit, Write and
-NotebookEdit call in transcript order as `<tool> <path> (<status>)`, where the
-status is `ran` for a call answered with no recorded permission denial,
-`denied`, or `unanswered` for a call with no result. `ran` does not mean the
-call took effect. A call whose path is missing or not a string shows `None` as
-its path. When the transcript is torn, has skipped lines or cannot be read,
-the line says the list may be incomplete and names which of those fired. When
-the transcript is not available, the line says so instead of listing calls.
-The `changed paths` line lists the paths the captured change holds. The capture
-honors gitignore, so a write to an ignored path appears only in the next line's
-`ignored_paths` count, and `[]` with `ignored_paths` above zero does not mean the
-run changed nothing. A run that changed only tests lists only test paths, and a
-run with no captured change prints `not captured`. The metrics line gives the non-test code lines, the
-test code lines and the non-test comment-plus-docstring words. A smoke run
-removes the account's earlier smoke-pass record before it launches, and a pass
-writes a new one.
+clock. Some of these lines need explaining:
+
+- `file tool calls` lists each Read, Edit, MultiEdit, Write and NotebookEdit
+  call in transcript order as `<tool> <path> (<status>)`. A call whose path is
+  missing or not a string shows `None` as its path.
+  - The status is `ran` for a call answered with no recorded permission
+    denial, `denied`, or `unanswered` for a call with no result. `ran` does not
+    mean the call took effect.
+  - When the transcript is torn, has skipped lines or cannot be read, the line
+    says the list may be incomplete and names which of those fired.
+  - When the transcript is not available, the line says so instead of listing
+    calls.
+- `changed paths` lists the paths the captured change holds.
+  - The capture honors gitignore, so the line leaves out a new file at an
+    ignored path.
+  - `[]` does not show that the run changed nothing, even when the next line's
+    `ignored_paths` count is 0, because that count skips the root `.claude/`.
+  - A run that ended missing prints `not captured`.
+- `metrics` gives the non-test code lines, the test code lines and the non-test
+  comment-plus-docstring words.
+
+The whole printout stays in local output, because it can hold Bash commands,
+absolute paths and the source repository's file names.
+
+A smoke run removes the account's earlier smoke-pass record before it launches,
+and a pass writes a new one.
 
 The `smoke` task must modify a file the base tree holds that one of the
 account's rules matches, because the `toolkit` run's rule load is the positive
@@ -1883,16 +1893,15 @@ section below. These names can appear:
   fails it too.
 - `read-grant-denied`: a `toolkit` Read of a path on the allow list was denied.
 - `read-grant-unexercised`: no `toolkit` Read of an allow-list path ran, so the
-  grant shows nothing. When the `toolkit` run's transcript is clean and holds
-  no Edit, MultiEdit, Write or NotebookEdit call that ran, the detail adds
-  "the toolkit run made no Edit, MultiEdit, Write or NotebookEdit call that
-  ran, so the reviewer-file Reads the self-review requires after an edit may
-  not have been triggered". A denied Read of a toolkit file off the list prints
-  by name and fails nothing.
+  grant shows nothing. The detail adds that the Reads the self-review requires
+  after an edit may never have been triggered. It does so when the `toolkit`
+  run's `file tool calls` line shows a list with no incompleteness caveat, and
+  that list holds no Edit, MultiEdit, Write or NotebookEdit call that ran.
 
-A `bare` Read of a listed path fails `arm-leak`, never `read-grant-denied`.
-`smoke` also prints an exclude note: whether the `bare` run read a file that
-triggered a rule load in the `toolkit` run. The note never gates a pass.
+A `bare` Read of a listed path fails `arm-leak`, never `read-grant-denied`. A
+denied `toolkit` Read of a toolkit file off the list prints by name and fails
+nothing. `smoke` also prints an exclude note: whether the `bare` run read a file
+that triggered a rule load in the `toolkit` run. The note never gates a pass.
 
 The residual: a `bare` run that reads no rule-matching file passes without
 testing the exclude. The block calibration's body term is a character-count

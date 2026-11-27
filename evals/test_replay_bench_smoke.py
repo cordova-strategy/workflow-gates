@@ -175,21 +175,11 @@ def delete_sidecar_transcript(call):
 
 class TestTheRunReportShowsWhatTheRunDid:
     @pytest.fixture
-    def reports(self, world, capsys, monkeypatch):
-        """Runs a smoke and returns each arm's printed report and its outcome."""
-        outcomes = {}
-        real_format = smoke.format_run_report
-
-        def recording_format(arm_name, outcome):
-            outcomes[arm_name] = outcome
-            return real_format(arm_name, outcome)
-
-        monkeypatch.setattr(smoke, "format_run_report", recording_format)
-
+    def reports(self, world, capsys):
         def run(by_call=None):
             run_smoke(world, by_call=by_call)
             toolkit_report, bare_report = capsys.readouterr().out.split("[bare] status:")
-            return {"toolkit": toolkit_report, "bare": bare_report}, outcomes
+            return {"toolkit": toolkit_report, "bare": bare_report}
 
         return run
 
@@ -202,7 +192,7 @@ class TestTheRunReportShowsWhatTheRunDid:
             ("Write", {"file_path": "src/extra.py"}, False),
         ])
 
-        printed, _outcomes = reports(agent_scenarios(toolkit=toolkit))
+        printed = reports(agent_scenarios(toolkit=toolkit))
 
         assert (
             f"  file tool calls: ['Read {reviewer} ({PRINTED_STATUS_RAN})', "
@@ -211,17 +201,12 @@ class TestTheRunReportShowsWhatTheRunDid:
         )
 
     def test_a_run_with_no_file_tool_calls_prints_an_empty_list(self, reports):
-        printed, _outcomes = reports(agent_scenarios(bare=Scenario(tool_calls=[("Bash", {"command": "ls"}, False)])))
+        printed = reports(agent_scenarios(bare=Scenario(tool_calls=[("Bash", {"command": "ls"}, False)])))
 
         assert "  file tool calls: []" in printed["bare"].splitlines()
 
-    def test_changed_paths_print_for_a_run_that_changed_a_file(self, reports):
-        printed, _outcomes = reports()
-
-        assert "  changed paths: ['src/new_module.py']" in printed["toolkit"].splitlines()
-
-    def test_changed_paths_print_empty_for_a_run_that_changed_nothing(self, reports):
-        printed, _outcomes = reports(agent_scenarios(bare=Scenario(edit=lambda _fixture_dir: None)))
+    def test_changed_paths_name_a_changed_file_and_are_empty_for_a_run_that_changed_nothing(self, reports):
+        printed = reports(agent_scenarios(bare=Scenario(edit=lambda _fixture_dir: None)))
 
         assert "  changed paths: []" in printed["bare"].splitlines()
         assert "  changed paths: ['src/new_module.py']" in printed["toolkit"].splitlines()
@@ -234,7 +219,7 @@ class TestTheRunReportShowsWhatTheRunDid:
         def write_only_non_test_code(fixture_dir):
             (fixture_dir / "src" / "other_module.py").write_text('"""Two words."""\n# three more words\nvalue = 1\nother = 2\n')
 
-        printed, _outcomes = reports(agent_scenarios(
+        printed = reports(agent_scenarios(
             toolkit=Scenario(edit=write_only_non_test_code), bare=Scenario(edit=write_only_a_test),
         ))
 
@@ -253,6 +238,19 @@ class TestTheRunReportShowsWhatTheRunDid:
             "  file tool calls: not shown, the transcript is not available",
         ]
         assert "  changed paths: ['src/new_module.py']" in lines
+
+    def test_a_changed_path_holding_a_newline_and_an_escape_prints_escaped_on_the_one_changed_paths_line(
+        self, smoke_outcomes,
+    ):
+        outcome = smoke_outcomes["toolkit"]
+        changed_paths = [*outcome.record.metrics["changed_paths"], "src/z\nforged\x1b[31m.py"]
+        with_control_characters = dataclasses.replace(outcome, record=dataclasses.replace(
+            outcome.record, metrics={**outcome.record.metrics, "changed_paths": changed_paths},
+        ))
+
+        lines = smoke.format_run_report("toolkit", with_control_characters)
+
+        assert "  changed paths: ['src/new_module.py', 'src/z\\nforged\\x1b[31m.py']" in lines
 
     def test_a_call_with_no_result_prints_as_unanswered(self, smoke_outcomes, tmp_path):
         outcome = smoke_outcomes["toolkit"]
@@ -292,7 +290,7 @@ class TestTheRunReportShowsWhatTheRunDid:
     ):
         damaged = Scenario(tool_calls=[("Read", {"file_path": "src/app.py"}, False)], damage_sidecar=damage)
 
-        printed, _outcomes = reports(agent_scenarios(toolkit=damaged))
+        printed = reports(agent_scenarios(toolkit=damaged))
 
         toolkit_lines = printed["toolkit"].splitlines()
         assert "[toolkit] status: missing (transcript-unreadable)" in toolkit_lines

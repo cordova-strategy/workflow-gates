@@ -660,10 +660,7 @@ FILE_CALL_RAN = "ran"
 
 
 def file_tool_calls(transcript: SubagentTranscript) -> list[dict]:
-    """One `{"tool", "path", "status"}` per Read or write-tool call, in transcript order. `path` is None when the
-    call's target is missing or not a string. `status` is `FILE_CALL_DENIED`, `FILE_CALL_UNANSWERED` for a call with
-    no result, or `FILE_CALL_RAN`, which means answered with no recorded permission denial, not that the call took
-    effect."""
+    """`FILE_CALL_RAN` means answered with no recorded permission denial, not that the call took effect."""
     calls: list[dict] = []
     for call in transcript.tool_calls:
         if call.name != _TOOL_NAME_READ and call.name not in _WRITE_TOOL_NAMES:
@@ -678,7 +675,6 @@ def made_write_call_that_ran(transcript: SubagentTranscript) -> bool:
 
 
 def transcript_incompleteness_signals(transcript: SubagentTranscript) -> list[str]:
-    """Names each reason the transcript may be missing calls, as `SubagentTranscript` describes."""
     signals = []
     if transcript.unreadable_detail is not None:
         signals.append(f"unreadable: {transcript.unreadable_detail}")

@@ -1,5 +1,5 @@
 """Tests for the evals/replay_bench/checks readers behind a smoke run's report: file tool calls, whether a write ran and
-transcript incompleteness. Shared helpers live in test_replay_bench_checks_support.
+transcript incompleteness.
 """
 from __future__ import annotations
 
