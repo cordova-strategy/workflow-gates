@@ -2,13 +2,13 @@
 
 ## Context
 
-Goal: build a reusable eval runner that tells us whether agent-written docstrings and comments are verbose because of the model's built-in habits or because of this toolkit's own instructions.
+Goal: build a reusable eval runner that tells us whether agent-written docstrings and comments are verbose because of the model's built-in habits or because of this toolkit's own instructions. The study also asks whether the toolkit's prose reads better or worse, answered by a human quality read beside the word count (Approach, "Human quality read").
 
-Ask: "I'm trying to figure out why agents are so verbose with docstrings, which I think is leading to imprecision and review round findings. I don't know if there's prose in the claude-config toolkit that influences it or if it's just built-in behavior. And if we're not certain, we could probably design an experiment using an agent that has omitClaudeMd and no allowed skills and see how it does docstrings?" Later, on task source: "Why not use replayed claude-config PRs and [other private repos' PRs] if you need? Actually I authorize you to look at every root on this machine."
+Ask: "I'm trying to figure out why agents are so verbose with docstrings, which I think is leading to imprecision and review round findings. I don't know if there's prose in the claude-config toolkit that influences it or if it's just built-in behavior. And if we're not certain, we could probably design an experiment using an agent that has omitClaudeMd and no allowed skills and see how it does docstrings?" Later, on task source: "Why not use replayed claude-config PRs and [other private repos' PRs] if you need? Actually I authorize you to look at every root on this machine." Later, on quality: "I am interested in better quality prose period. I've only asked you to judge verbosity, but I realize that quality is something that's needed as well."
 
 Why now: review rounds keep finding comment and docstring prose that is false, stale or overstated. The toolkit's own measurement for this (`.claude/plans/prose-claim-truth-check.md`, Context) counted about 50 post-first-commit fix commits out of 819 in the 150 most recent merged PRs. A commit qualified when its headline says it corrects a false, stale or overstated prose claim. About 20 of those roughly 50 commits are in code comments or docstrings. That count is a lower bound taken from commit headlines, and it covers this repository's history only. No measurement yet separates the model's default style from the effect of the instructions in `claude/.claude/CLAUDE.md` §Durable text, `claude/.claude/agents/code-writer.md`, and `claude/.claude/agents/comment-discipline-reviewer.md`.
 
-Intended outcome: a local runner that replays past commits as coding tasks under at least two configuration arms, counts the comment and docstring lines each arm adds, and writes per-run records to gitignored storage. A third arm that removes only the §Durable text rules is designed but gated on the open isolation questions below.
+Intended outcome: a local runner that replays past commits as coding tasks under at least two configuration arms, counts the comment and docstring lines each arm adds, and writes per-run records to gitignored storage. A third arm that removes only the §Durable text rules is designed but gated on the open isolation questions below. A human quality read of Python campaigns, beside the word count, is its own plan-only PR (Approach, "Human quality read").
 
 Engineer decisions this session, as the labels they selected:
 - Deliverable: "Reusable evals/ runner (Recommended)".
@@ -22,7 +22,7 @@ Engineer decisions this session, as the labels they selected:
 
 Build `evals/replay_bench/`, a local runner that replays a source repo's past commits as coding tasks. A thin headless dispatcher hands each commit's message to one subagent. Arm `toolkit`, the Context's B, dispatches the production `code-writer` under the account's full config. Arm `bare`, the Context's A, dispatches a fixture-local `bare-writer` with `omitClaudeMd: true` and a one-line body, in a fixture whose settings exclude the account's rule files. Both arms may read the account's agent and skill files through exact Read allow entries, so `code-writer` can read its reviewer files. Every launch gets an environment built from an allowlist. No sandbox contains the subagent, because steered agents are out of scope for this runner (row 47). The runner classifies every line the subagent added as code, comment, docstring, blank or prose, keeps one record and one diff per run under gitignored `evals/replay_bench/.local/`, and prints the paired arm difference over tasks to the terminal only.
 
-The work ships as two pull requests, split at the Phase 2 to Phase 3 boundary (D4, row 124):
+The runner ships as two pull requests, split at the Phase 2 to Phase 3 boundary (D4, row 124). The human quality read is a third, plan-only PR (row 177):
 - The first PR, merged as #1452, holds Phases 1 and 2 and the `select-tests.py` rows for its own files (Phase 5a). Its last dispatch ran after Verification step 1c, which set the `--max-base-entries` default (Fixture). It needs no `claude -p` run.
 - The second PR, on a follow-on branch from `main` after the first merges, holds Phases 3 and 4 and the rest of Phase 5 (Phase 5b). Verification step 1b ran at its start (row 164), and the live checks run before it merges.
 - This file stays whole and ships with the first PR (row 127). The second PR edits it in place, so each later change to the plan ships with the code it governs. Its Phase 3 to 5 sections are the second PR's plan, and main holds that design before its code. M21 names the two alternatives set aside.
@@ -123,6 +123,46 @@ Arm C ships later as a pair of arms sharing one delivery route, so their contras
 
 `no-durable − toolkit-copy` isolates the rules. `toolkit − toolkit-copy` measures the route and the hook together. Adding the pair takes arm entries and fixture extras, plus the `smoke` prompt-size check D2(a) names for it. `run`'s smoke gate checks the record's arms, so the pair needs its own passing `smoke` on each account before any paid block.
 
+### Human quality read
+
+The word count stays the programmatic outcome, with the 20% rule `evals/README.md` § "Replay bench" states (row 168). A second pre-set outcome is read by the engineer: whether each arm's added prose reads better (row 167). It uses the diffs one Python campaign stores and needs no further agent run.
+
+- **What gets compared.** Arm `toolkit` against arm `bare`. Each arm's prose is the writer's first draft, before any review loop (row 62).
+  - The units come from the next Python campaign alone, a `run` whose tasks were mined from Python source repos. Pooling a second campaign is parked (row 187).
+  - A unit is one `.py` file from one task, outside the paths the runner's `is_test_path` in `evals/replay_bench/comment_metrics.py` calls test paths.
+  - Prose is every `#` comment and every docstring, but not a shebang, an encoding line or a lint pragma. Added prose is prose on a line the arm's diff adds.
+- **How units are chosen.**
+  - Each arm contributes its lowest-indexed run that ended ok. A task supplies no unit unless both arms have such a run.
+  - A file qualifies when both arms touched it, at least one arm added prose to it, and neither arm added more than 40 lines of code to it. The cap counts added code lines only, never comment, docstring, blank, removed or unchanged lines, so one side of a card can run longer than 40 lines (row 179).
+  - The draw picks one qualifying file per task at random.
+  - The draw excludes every task whose stored diffs the engineer has already read (row 174).
+  - Before the first card, the engineer sees how many units the draw kept and decides whether to start the read, given Test's floor of 25 decided units.
+- **Card content.** Each side shows its arm's own change to the file as `git diff -U3` shows it against the task's base commit: added and removed lines are marked, with up to three unchanged lines around each change. The stored diffs hold no unchanged lines, so those come from the base commit in the task's source repo (row 199). A card does not show an existing comment more than three lines from a change, or matching code an arm wrote in another file. So a side can be charged on the omission card for a fact stated out of view. The card shows no task brief, so the omission card asks about the code shown alone.
+- **Cards, in order, per unit:**
+  - a verdict: "X reads better", "Y reads better", "both fine" or "both bad";
+  - a reason card for the losing side after a win, or for each side after "both bad": says too much, says too little, hard to read, wrong or overstated, or other with a few typed words;
+  - an omission card: "Missing a fact a reader needs? X, Y, both or neither" (row 175).
+- **Test.**
+  - A decided unit is a verdict of "X reads better" or "Y reads better", which unblinding turns into a toolkit win or a bare win. "Both fine" and "both bad" are tallied and never tested.
+  - One two-sided exact sign test at 0.05 runs once over the decided units, with no early stop (row 176).
+  - The target is at least 30 decided units. Below 25 the scorer prints no p-value, and the read is inconclusive (row 172).
+  - The scorer prints to the terminal only (rows 4, 10): the four verdict counts, the toolkit's win count with its exact p-value and interval, the decided units split by whether one side had no prose, the reason and omission tallies per arm, and the dropped units by reason.
+- **Reading rule.**
+  - A significant result stands as the engineer's own quality judgment (row 169).
+  - A null is inconclusive, never evidence of no difference (row 172).
+  - A unit with one empty side measures prose presence as well as quality.
+- **Basic rules.**
+  - Each unit's sides are assigned to X and Y at random, and units are shown in random order.
+  - The arm behind each side, and the campaign's `summarize` output, stay hidden from the engineer until every answer for every unit is in.
+  - Cards are shown in a fresh session that reads card files only, never the key, stored diffs, run records or `summarize` output. It shows each card's text unchanged and says nothing about either side.
+  - If a card looks wrong, the read stops without anyone opening the key. The key and the answers given so far are kept.
+  - The draw's seed, the cards, key and answers sit on the campaign machine, outside any git tree and outside cloud sync (rows 182, 183, 187). While Remote Control connects the engineer's phone, the phone shows card text, and Anthropic's servers store the session transcript, card text and answers included, under Anthropic's Data usage policy (row 190). The engineer accepted that stored copy (rows 193, 194).
+  - The key and the answers to every card also get a backup off the campaign machine, refreshed as answers come in, so the read can still be scored if that machine's disk is lost (rows 189, 197). The backup is encrypted so only the engineer can read it, sits in a place the engineer controls, and stays outside any git tree (rows 182, 191). The means to decrypt it is also kept somewhere other than the campaign machine.
+  - Sessions that draw, show or score cards start outside this repository's checkouts and worktrees. Card text, answers and scorer output stay out of memory and handoff notes.
+  - The read's results and card text stay out of every public artifact, PR comments and issues included, apart from which way the read pointed or that it was inconclusive (rows 9, 10).
+  - This plan merges before anyone reads output of the campaign that supplies the units.
+- **Tools.** Cards are shown and answered through a Claude Code session on the campaign machine, which may use another account than the source repo's (row 181). The engineer may answer that session from their phone through Remote Control, while the session itself runs on the campaign machine (rows 188, 190, 192). The draw, viewer and scorer stay local, uncommitted and outside any git tree (rows 177, 182). Their details, and the backup's tool and place, are settled when they are built, with no review in this repository (rows 195, 196).
+
 ### Open decisions for the engineer
 
 - **D1 (resolved).** For arm A's shape, the engineer selected "Subagent for both arms (Recommended)" (row 3).
@@ -202,7 +242,7 @@ Arm C ships later as a pair of arms sharing one delivery route, so their contras
 7. [engineer-verified: "Why not use replayed claude-config PRs and [other private repos' PRs] if you need? Actually I authorize you to look at every root on this machine."] Replayed pull requests are the task source, and the runner may read any local git root it is given. Row 46 holds why first-parent commits are pull requests here.
 8. [engineer-verified: "we could probably design an experiment using an agent that has omitClaudeMd and no allowed skills and see how it does docstrings?"] The engineer's first message proposed an `omitClaudeMd` agent with no skills as the bare arm.
 9. [verified: `docs/private-project-redaction.md` § "A wider corpus goes to the owner, never into a public artifact"] Nothing computed from a corpus wider than this repository on one account may appear in a public artifact. So no committed default, fixture or test names or mines another repository, the tests use synthetic repositories only, and the PR carries no figure.
-10. [verified: `docs/private-project-redaction.md:136-137`] A subcommand with no scope refusal of its own is not a publication instrument. The runner refuses no wider corpus, so even an own-history figure from it is not publishable.
+10. [verified: `docs/private-project-redaction.md` § "This repository, one account", the bullet opening "A subcommand with no scope refusal of its own"] A subcommand with no scope refusal of its own is not a publication instrument. The runner refuses no wider corpus, so even an own-history figure from it is not publishable.
 11. [verified: this session's probe, as relayed; repo `CLAUDE.md` "Secrets, tokens, credentials"] `CLAUDE_CONFIG_DIR=<empty dir>` printed "Not logged in", and copying credentials into a config dir is barred.
 12. [verified: `claude/.claude/agents/code-writer.md:4`] `code-writer`'s tools are Read, Edit, Write, Bash, Grep and Glob, with no `Skill` tool, so `bare-writer` copies a list without it too.
 13. [verified: `claude/.claude/settings.json`, its `SubagentStop` entry] The `SubagentStop` hook `send-back-skipped-self-review.sh` has the matcher `code-writer`.
@@ -471,6 +511,62 @@ Arm C ships later as a pair of arms sharing one delivery route, so their contras
 
     An `interrupted` or unknown kind counts as executed. [unverified] The shape on a subagent sidecar is unseen, so the legacy marker stays.
 166. [verified: the session's runs of the live checks, on the engineer's "I authorize you to run those scripts"] The first `smoke` failed `bare` on the denial shape in row 165. After that fix, `tasks`, `preflight` and `smoke` passed. `smoke` ended `instrument: ok` on both arms. No figure from these runs is published (rows 9, 10).
+167. [engineer-verified: "I think quality as a preset outcome beside word counts is good"] A human quality read is a second pre-set outcome beside the word count. The quote covers that placement, nothing more.
+168. [engineer-verified: "word counts as a good programmatic, I think it's a good programmatic indicator because that's something that you can just run"] The word count stays the indicator a script can produce. The quote covers that, nothing more. [verified: `evals/README.md` § "Replay bench"] The 20% rule is stated there and stays the word count's alone.
+169. [engineer-verified: "you don't need to have a caveat there"] The read is reported as the engineer's own quality judgment, with no rater-taste caveat. The quote covers dropping the caveat, nothing more. [unverified] Blinding stays, because it guards against recognizing the arm, not against taste.
+170. [engineer-verified: "I don't think you can run that because that's expensive"] No judge for missing facts runs. The omission card puts that question to the human read.
+    - [unverified] A judge with repo access could check omissions against callers and the task's intent.
+    - [unverified] That judge would need a validation set before its output counts.
+    - [unverified] The consult inferred that a model judge asks for more documentation than needed. That inference is unchecked.
+171. [engineer-verified: "sounds good."] The engineer answered the session's offer to draft this amendment from the architect's outline. The quote covers drafting it, nothing more.
+    - [unverified] The unit, draw, card and blinding design is the session's.
+    - [unverified] It was taken from an architect consult.
+    - [unverified] The engineer was not asked to confirm any single parameter by name, apart from the choices rows 175 to 187 record.
+172. [verified: exact binomial computation of a two-sided sign test at 0.05, run for this plan] These are design parameters, not campaign figures. For each decided-unit count, the wins needed and the power at two true win rates:
+    - 15 units: 12 wins; power 0.46 at 0.75 and 0.82 at 0.85.
+    - 20 units: 15 wins; power 0.62 at 0.75 and 0.93 at 0.85.
+    - 25 units: 18 wins; power 0.73 at 0.75 and 0.97 at 0.85.
+    - 30 units: 21 wins; power 0.80 at 0.75 and 0.99 at 0.85.
+    - 40 units: 27 wins; power 0.90 at 0.75 and 1.00 at 0.85.
+
+    The target of 30 decided units and the floor of 25 are judgments, since exact-test power is not monotone in the count. At 30 units the power is 0.36 at a true win rate of 0.65. [unverified] The staff reviewers recomputed the rows above.
+173. [engineer-verified: "Drop it"] Asked whether to keep a stability check that re-shows about a fifth of the judged units, at least six, a day or more later with sides flipped, the engineer selected this label. It covers dropping that check, nothing more. [unverified] Without it nothing checks whether the engineer's own verdicts are stable.
+174. [unverified] The engineer has already read some tasks' stored run pairs, so those tasks would give an unclean test and supply no unit. No figure from that earlier read is published (rows 9, 10).
+175. [engineer-verified: "Keep it"] Asked whether to keep the omission card, "Missing a fact a reader needs? X, Y, both or neither", in the quality read, the engineer selected this label. It covers keeping that card, nothing more.
+176. [engineer-verified: "Keep it"] Asked whether to keep one file per task for every qualifying task, a target of at least 30 decided units, one two-sided exact sign test with no early stop, and a floor of 25 decided units, the engineer selected this label. It covers that rule, nothing more. [unverified] The engineer was not asked about the code-context cap, or about a task whose files all fall over it supplying no unit.
+177. [engineer-verified: "Keep it"] Asked whether to keep the viewer and scorer as local scratch tools, never committed or moved into `evals/`, with the amendment as its own plan-only PR, the engineer selected this label. It covers that, nothing more. This third PR departs from row 127's rule that a plan ships with the code it governs, because the read's tools never enter the repo.
+178. [engineer-verified: "Yes, pool them"] Asked whether a later campaign's units may join an earlier campaign's under the one test, the engineer selected this label. The agent's alternative was "No, one test per campaign (Recommended)". The label covers pooling, nothing more. Row 187 parks pooling, so the read runs on one campaign.
+179. [unverified] The cap of 40 added code lines per side is the session's judgment. Nothing measured it.
+180. [unverified] Withdrawn. It held the session's card sizing, which this plan no longer sets.
+181. [engineer-verified: "Accept (Recommended)"] Asked whether card text from a repo on one account may be shown in a session under another account, the engineer selected this label. The agent's alternative was "Same account only". This narrows row 5 for the read's cards.
+182. [engineer-verified: "Outside git (Recommended)"] Asked where the read's seed, key, verdicts and scratch tools live, the engineer selected this label. The agent's alternative was "Under .local/". This narrows row 4's "only" for the read's own files. The stored run diffs stay under `.local/`.
+183. [engineer-verified: "If I take the time to manually review test cases or fixture data, I don't want that work to be lost. So then if another analysis requires the same type of fixture data, then I'd have to relabel everything again."] The quote covers the concern, nothing more. [unverified] Answers outlive a worktree, so a later analysis reuses them.
+184. [engineer-verified: "not ssh, sorry I didn't read carefully enough. I was considering copying by private repo or SendMessage or something"] The channel that moves cards and labels between the engineer's machines is not chosen, and the plan names none. The quote covers that, nothing more.
+    - [unverified] The architect advised against a hosted git repository for labels.
+    - [unverified] The properties a channel needs, and the rule that no card, label or key moves before a ledger row records the channel after a security check, are the session's.
+    - [unverified] Any channel the engineer picks gets an architect check first.
+    - [unverified] This plan's reading, which no quote states: that rule and that check cover only the cross-machine sharing row 187 parks. Answering from the phone and the backup, which Approach's "Human quality read" allows, are not that sharing.
+185. [engineer-verified: "Any machine"] Asked from which machine a label may be made, the engineer selected this label. The agent's alternative was "Campaign machine only (Recommended)". It covers that choice, nothing more. Row 187 supersedes it.
+186. [engineer-verified: "Cards copied to other machines"] Asked how another machine gets cards, the engineer selected this label. The agent's alternative was "Any device, one data machine (Recommended)". It covers that choice, nothing more. The engineer later retracted the transport (row 184), and row 187 supersedes it.
+187. [engineer-verified: "I would like to park this idea"] Asked how the cards reach them, the engineer wrote "OK, this is a half-baked idea for me. I would like to park this idea." and, on where the files live, "just stick with what you wanted to do originally, which would just leave it local to this machine". The quote covers parking the idea and keeping the read local to the campaign machine. [unverified] The session read that as parking cross-machine sharing, and the pooling that depends on it, which rows 178, 185 and 186 then no longer support. The engineer also asked for a separate task to work out where these files should live, and that is outside this plan.
+188. [engineer-verified: "Yes I may answer cards from my phone and I will probably do all of them on my phone because it's more convenient."] The engineer may answer cards from their phone. anchors: root
+189. [engineer-verified: "Yes we should have a backup of the key and answers because this data review takes a ton of time."] The key and the answers are backed up. anchors: root
+190. [verified: code.claude.com/docs/en/remote-control, read this session through a fetch agent, as relayed] Through Remote Control, the engineer's phone answers a Claude Code session that runs on the campaign machine. The page says "Claude keeps running locally the entire time, so your code execution and filesystem access stay on your machine", and that the machine has to stay on with the `claude` process running. The fetch agent found no statement on the page that file contents never leave the machine. The page also says "While Remote Control is connected, the session transcript, including your messages, Claude's responses, and tool activity, is stored on Anthropic servers". So the card text the session shows and the answers the engineer types are stored there. The page says stored transcripts "are retained under the Data usage policy" and gives no period. [unverified] The linked policy was not read, so how long Anthropic keeps them is unknown.
+191. [unverified] The backup's encryption and the engineer's control of its place are the session's proposal, and this plan adopts them. Row 189's quote names neither. Scoring the read from the backup after a disk loss is this plan's reading of the quote's reason, "this data review takes a ton of time".
+192. [engineer-verified: "Yes, that's correct."] Asked about the session's expectation that Remote Control would be the way to answer from the phone, the engineer confirmed it. anchors: root
+193. [engineer-verified: "OK, use my phone (Recommended)"] Asked whether Anthropic's stored copy of the Remote Control session transcript is OK, the engineer selected this label. The question said that copy holds the engineer's answers and, by the session's inference, the card text, which may come from private repos, and that the page read gives no retention period. The agent's alternative was "Computer only". The label covers accepting that stored copy, nothing more. This narrows row 187's local-only choice for the Remote Control transcript.
+194. [unverified] The selected label's description was the session's own text. It said the plan stays as written, and that showing a card in Claude Code already sends its text to Anthropic's model, so Remote Control adds only the stored transcript. No source was read for that inference.
+195. [engineer-verified: "Yes the bigger cut for sure."] Offered "the bigger cut" to the Human quality read section, the engineer typed this. The quote covers taking that cut, nothing more.
+196. [unverified] The session's wording for "the bigger cut", as the session relayed it, not the engineer's words: keep what gets compared, how cards are chosen and answered, the statistical test, what can be published, and a few basic blinding and storage rules. Tool details are settled at build time, with no review in this repository.
+197. [engineer-verified: "The shortened section looks correct."] Asked whether the shortened section, with its phone and backup additions summarized in chat, looked right, the engineer typed this. The quote covers that answer, nothing more.
+198. [unverified] The chat summary was the session's, as the session relayed it, not the engineer's words:
+    - the engineer can answer cards from their phone through a session on the campaign machine, which puts card text on the phone;
+    - the key and answers are backed up off the campaign machine, updated as the engineer answers, encrypted, kept somewhere the engineer controls and outside git;
+    - the backup's tool and place are chosen when it is built;
+    - encryption and control of the place were marked as the session's proposal.
+
+    This plan reads row 197 as narrowing row 187's local-only choice for the backup.
+199. [verified: `evals/replay_bench/diffing.py:21,69-80`; `evals/replay_bench/records.py:110-117`; `evals/replay_bench/tasks.py:56`] Each run's stored diff is `git diff -U0` output, so it holds no unchanged lines. Each task record names its source repo and base commit.
 
 **Mechanisms:**
 - **M1. Task mining from first-parent commits.** `tasks.py` states the selection rules, refusals, briefs and recorded fields (Tasks). anchors: row6, row7, row9, row33, row34, row45, row46, row61, row64, row82, row92, row96, row100, row101, row102, row103, row104, row105, row106, row109, row130, row131.
@@ -523,7 +619,13 @@ Arm C ships later as a pair of arms sharing one delivery route, so their contras
 - **M21. Two PRs split at Phase 2 to Phase 3, with this file shipping whole in the first and edited in place by the second, the lightest delivery that keeps every plan change with its code.** Alternatives set aside:
   - (a) a new plan file for the follow-on branch would split one ledger, whose later rows anchor to earlier ones, across two files, and would rerun `/plan-it` and `/plan-review` over material already reviewed;
   - (b) shipping this file only with the second PR would merge the first PR's code with no plan (row 127), and the plan would have to come out of a branch that already committed it.
+  - The human quality read's plan-only PR is outside this delivery rule (row 177).
   - anchors: row124, row125, row126, row127, row128, row141.
+- **M22. A blind human read beside the word count, with a pairwise verdict on one file per task.** Lighter primitives checked:
+  - (a) the word count alone cannot separate narration from fact-dense prose (row 38);
+  - (b) a rating per snippet scores only prose that exists, so it never shows a needed comment that is missing.
+  - Set aside: committing the diffs or answers, which carry private code and campaign figures (rows 9, 10), and a judge pass, which first needs this read's answers to validate it (rows 38, 170).
+  - anchors: row38, row167, row168, row169, row170, row171, row172, row173, row174, row175, row176, row177, row179, row181, row182, row183, row184, row187, row188, row189, row190, row191, row192, row193, row194, row195, row196, row197, row198, row199.
 
 ## Critical files
 
@@ -617,9 +719,13 @@ Projected diff: about 3,790 lines for the first PR as merged (3,755 added, 36 re
 
 That is about 900 above the 2,890 row 141 accepted. The engineer's earlier "Proceed anyway" on this plan's size is on record in row 110.
 
+**Human quality read (its own plan-only PR).** `.claude/plans/docstring-verbosity-experiment.md` is the only file, edited in place (M21).
+
+Projected diff: 0 changed lines, since plan files are not counted.
+
 ## Verification
 
-Each step names its PR. Steps 2, 3 and 5 run for each PR over its own files.
+Each step names its PR. Steps 2, 3 and 5 run for each of the two runner PRs over its own files. Step 7 covers the plan-only PR.
 
 1. Three manual probes. Steps 1a, 1b and 1c have run (rows 106, 164).
    - **1a, already run.** It ran three things, and its results stand in rows 16, 18, 19, 20, 26, 53, 76, 88, 94 and 106 and set the Fixture defaults:
@@ -700,13 +806,20 @@ Each step names its PR. Steps 2, 3 and 5 run for each PR over its own files.
    - Beside that listing, the engineer counts the keys under the top-level `projects` object of the account's `.claude.json` before and after that `smoke`, and notes only whether the count grew. A growth is an open question for the engineer before any `run`, and the runner never edits `.claude.json`.
    - A `run` on any other account first needs one passing `smoke` on a task from that account, and `run` refuses otherwise.
    - On a failed smoke, stop before any `run` and bring the failing premise to the engineer: row 16, 18, 19, 20, 26, 31, 32, 37, 70, 88, 106, 115, 117, 120, 132, 138, 145 or 146.
+7. Human quality read, its own plan-only PR, which runs no code. `/plan-review` and `/ready-for-review` cover the plan edit, and `git diff --name-only origin/main...HEAD` lists this plan file alone.
 
 ## Out of scope
 
 - Building arm C. It waits on D2, D3 and its own smoke (row 2).
-- A judge pass that runs `comment-discipline-reviewer` over each stored diff and counts its Comment verbosity and Restating-the-code findings per arm. A word or line count measures comment volume and shape, not verbosity as that lens judges it (row 38). The Context's intended outcome names line counts, and a judge needs its own validation first. Every run keeps its diff, so a later judge pass needs no rerun.
+- A judge pass that runs `comment-discipline-reviewer` over each stored diff and counts its Comment verbosity and Restating-the-code findings per arm. A word or line count measures comment volume and shape, not verbosity as that lens judges it (row 38).
+  - A judge needs its own validation first. [unverified] The Human quality read's answers could serve as that set for a judge run over the same cards.
+  - Every run keeps its diff, so a later judge pass needs no rerun.
+- A later re-show of judged units to check the rater's stability. The engineer dropped it (row 173).
+- A judge for missing facts. The engineer chose not to run it, because "that's expensive" (row 170).
+- Sharing the quality read's store with other machines, pooling a second campaign, and any channel for either. The engineer parked them (rows 184, 187). By this plan's reading, answering from the phone and the backup that Approach's "Human quality read" allows are not this sharing (row 184).
+- Committing the quality read's tools or reviewing them in this repository (rows 177, 195, 196).
 - Counting trailing comments outside Python, and a third-party lexer such as pygments for language-accurate tokens. A lexer is a new dependency that needs the engineer's confirmation first, and the paired contrast tolerates a classifier error both arms share (row 35).
-- Publishing any figure, an own-history one included (rows 4, 9, 10).
+- Publishing any figure, an own-history one included, and any figure computed from the quality read's answers (rows 4, 9, 10).
 - Source repos that are not on this machine (row 6).
 - A headless main-session arm, the review-and-ship loop, as a further arm. It can be added later as arm data. Until it exists, a null result cannot show the verbosity is built-in (row 62).
 - Containing a replay agent, by a sandbox, a credential deny list or a tool-deny set. Steered agents are out of scope for this runner (row 47), and the README states the residual risk (row 45).
