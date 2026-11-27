@@ -2042,7 +2042,7 @@ The reasons listed below as never retrying also never retry in `smoke`.
 
 A retried run's record and `smoke` printout take their evidence from its final
 attempt alone, so an earlier attempt may have done something they do not show.
-The run's cost, wall clock and token counts sum over all its attempts.
+The run's cost and wall clock sum over all its attempts.
 
 - `fixture-error` (building the fixture or generating its exclude or Read
   allow list raised) and `analysis-error` (the diff, the classifier or a
