@@ -145,14 +145,14 @@ def _read_scope_growth_for_group(group: list[dict], since_ts: float | None) -> t
     record, since a compaction boundary applies to the file, not to one
     session. The first turn of every resulting per-session sequence has no
     predecessor and so contributes nothing. A turn with absent or malformed
-    usage is skipped without breaking its session's chain for the turn after
-    it. A shrinking context contributes nothing (never negative). Every
-    chain is built over every record regardless of --since; --since filters
-    only the completed deltas, by the later (owning) turn's own timestamp --
-    fail-closed: a delta whose owning turn's timestamp doesn't parse is
-    excluded rather than included, and counted in the returned exclusion
-    total so the report's own growth figure stays auditable against
-    --since's promise.
+    usage, or from a `<synthetic>` record, is skipped without breaking its
+    session's chain for the turn after it. A shrinking context contributes
+    nothing (never negative). Every chain is built over every record
+    regardless of --since; --since filters only the completed deltas, by the
+    later (owning) turn's own timestamp -- fail-closed: a delta whose owning
+    turn's timestamp doesn't parse is excluded rather than included, and
+    counted in the returned exclusion total so the report's own growth figure
+    stays auditable against --since's promise.
 
     Returns (growth_tokens, deltas_excluded_for_unparseable_timestamp).
     """
@@ -176,7 +176,7 @@ def _read_scope_growth_for_group(group: list[dict], since_ts: float | None) -> t
             continue
 
         usage = (rec.get("message") or {}).get("usage")
-        if not usage:
+        if not usage or (rec.get("message") or {}).get("model") == pricing._SYNTHETIC_MODEL_ID:
             continue
 
         session_key = rec.get("sessionId") or ""
