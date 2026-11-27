@@ -248,8 +248,8 @@ reuse on offer is thin; `config_dir()` is imported, and the rest is a JSONL line
 | 5 | The bounded `find` over `$HOME` completes in ~18.9s and finds all 5 locks present | `[verified: timed run on one Darwin machine]` — a basis for the timeout constant, **not a bound** for other users. anchors: source B |
 | 6 | cwd-harvest alone is **incomplete** — misses a real lock whose project has no transcript, and finds 2 worktree locks the depth-4 find misses | `[verified: both methods tested against the 5 known locks]` — anchors: source B, justifies the union and the removal of `--fast` |
 | 7 | Lock fields are `sessionId`/`pid`/`procStart`/`acquiredAt` | `[verified: identical 4-field shape across all 5 locks]` — but this is the same undocumented-contract class as row 1; `acquiredAt`'s unit is inferred. anchors: source B |
-| 8 | Reads under `~/.config/**` are blocked by **enterprise managed settings**, not any hook in this repo, and that layer gates tool calls only — a script run in the engineer's own terminal is unaffected | `[verified: no hook in this repo matches that path; the managed-settings file states the manual-override property explicitly]` — anchors: `--config-dir` |
-| 9 | Additional account profiles come from a repeatable `--config-dir`, not auto-discovery | `[engineer-verified]` — keeps claude-config free of any dependency on the account-provisioning repo's layout |
+| 8 | Reads under `~/.config/**` are blocked by a `Read/Edit` deny rule, not any hook in this repo. Such a rule doesn't cover a Python script that opens files itself, so a script run in the engineer's own terminal is unaffected. | `[verified: no hook in this repo matches that path; Claude Code permissions documentation on Read and Edit deny rules]` — anchors: `--config-dir` |
+| 9 | Additional account profiles come from a repeatable `--config-dir`, not auto-discovery | `[engineer-verified]` — keeps claude-config free of any dependency on how a machine provisions its non-default Claude accounts |
 | 10 | Tool and doc bullet ship in one PR | `[engineer-verified]` |
 | 11 | Transcript line 1 does **not** carry `cwd`; the first `cwd`-bearing record is at index 2–4 and almost always carries the user's first prompt | `[verified: 1 of 200 sampled files had cwd on line 1; 198 of 200 first-cwd records also carried `message`]` — corrects a false claim in the prior draft; anchors the field-allowlist design |
 | 12 | `test_no_bash4_constructs.py` sweeps `claude/.claude/**/*.sh` only | `[verified: `_CLAUDE_DIR.rglob("*.sh")`, `_CLAUDE_DIR = <repo>/claude/.claude`]` — the extensionless wrapper at `claude/.local/bin/` is **not** covered by it; shellcheck via `scripts/list-shell-files.sh` is what reaches it. anchors: Verification |
@@ -360,8 +360,8 @@ undocumented on-disk contracts.
 
 - Modifying `resume-context.sh`, `/handoff`, or `/brief` — those recover deliberately
   authored continuity files; this tool detects an unannounced crash.
-- Loosening the managed-settings or hook rules gating `~/.config/**`.
-- Reading or depending on the account-provisioning repo's account list.
+- Loosening the deny rule or hook rules gating `~/.config/**`.
+- Reading or depending on any list, kept outside this repo, of a machine's non-default Claude accounts.
 - Changing any existing `transcript-analysis.py` subcommand's behavior.
 - **The bare-PID leak.** `claude -p` one-shot runs never fire `SessionEnd`, so
   `sessions/<pid>` files accumulate. Real, but separable from this tool and from the
