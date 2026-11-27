@@ -820,6 +820,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Added
 
+- **`claude-hook-review` 2.7.0 adds a Review checklist item: a choice to deny or over-deny a command shape rests on how often agents actually emit it.** The count comes from session transcripts, and the user is asked only when the counts cannot settle it. Run `claude plugin update claude-hook-review@claude-config --scope project` from the consuming repository's root directory, then `/reload-plugins` (or restart Claude Code), to refresh it.
 - **`transcript-analysis.py reviewer-reads --this-repo --since DATE --until DATE` measures how reviewer subagents' whole-file Reads came back.**
   - It reports each whole-file call as complete, partial or refused, whether the reviewer read on afterwards, the Read share of reviewer spend, the review ledger's terminal ADDRESS, DEFER and SETTLED rows, and the harness versions and models behind the reviewer windows. See `docs/transcript-analysis.md` § "reviewer-reads".
   - It reads this repository's live worktrees on the active account only and refuses a wider scope, as `read-cost` does. Its ledger section opens only the files named for this checkout's worktree paths.
