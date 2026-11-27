@@ -405,17 +405,19 @@ Column legend:
 
 ### `architect_fix_plan_pilot`
 
-- Call site: `code-review/SKILL.md`'s `code-review-fix-plan-pilot` region,
-  which reads the key through `config-get.sh`.
+- Call site: none. The session config-keys
+  recorder logs its state, and `transcript_analysis/routing_guard.py` reads
+  that logged state.
 - Resolution: **config-dir** (per account).
 - Legacy-probe-on-resolution-failure: **false**.
 - Legacy-import-locations: **config-dir**. This key has no legacy
   predecessor at all, so there is no legacy file for
   `migrate-legacy-config.sh` to import from either location.
-- Fail direction on resolution failure: only an observed exit 0 from
-  `config-get.sh` enables the pilot. Any other outcome, including a call
-  that yields no exit code, leaves it off, which leaves the default
-  disposition procedure unchanged.
+- Fail direction on resolution failure: no behavior changes. When the config
+  dir cannot resolve, `record-session-config-keys.sh` writes no row and
+  prints its no-row notice. When one key's read fails, the row carries
+  `unreadable`. Either way the routing guard treats the key's state as
+  unknown and refuses the branch.
 
 ### `review_orchestrator_routing`
 

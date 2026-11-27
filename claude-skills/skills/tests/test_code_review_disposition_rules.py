@@ -1,18 +1,11 @@
-"""Pins on code-review's clean definition and its contradiction-route, defer-invariant, new-primitive, fix-plan-pilot rules."""
+"""Pins on code-review's clean definition and its contradiction-route, defer-invariant and new-primitive rules."""
 from __future__ import annotations
 
-import re
-
-# pyproject.toml's pythonpath also puts claude/.claude/scripts on the import
-# path, where the production config-keys.psv parser lives.
-from _config import schema as config_schema
 from _skill_md_helpers import (
     _CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR,
     _CODE_REVIEW_DEFER_CRITERIA_HEADING,
     _CODE_REVIEW_DEFER_INVARIANT_ANCHOR,
     _CODE_REVIEW_FINDING_DISPOSITION_HEADING,
-    _CODE_REVIEW_HEAVIER_MECHANISM_RULE_OPENING,
-    _CODE_REVIEW_INVALID_DEFER_HEADING,
     _CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR,
     _assert_pinned_clause_right_bounded,
     _heading_section_text,
@@ -168,6 +161,10 @@ class TestCodeReviewContradictionRouteRegionPin:
       carry rules live in `--help`, pinned by test_review_ledger_script.py);
     - the `--ref` that retires a decision, and the `ADDRESS --ref` reopen;
     - the consult prompt's bar on invoking `review-ledger.sh` or `marker.sh`.
+
+    It also checks the referent and the ordering the region cites. The heavier-mechanism rule must
+    still state its disagreement stop-and-ask, and the region must sit after that rule and before
+    both the DEFER criteria heading and the defer-invariant region.
     """
 
     def test_contradiction_route_region_matches_live_text(self) -> None:
@@ -181,6 +178,65 @@ class TestCodeReviewContradictionRouteRegionPin:
             f"matches its pinned text.\n"
             f"  live:   {live_text!r}\n"
             f"  pinned: {pinned_text!r}"
+        )
+
+    def test_cited_disagreement_stop_still_exists(self) -> None:
+        """The region defers its disagreement stop-and-ask to the heavier-mechanism rule, which must still state it."""
+        skill_md_path = _skill_file("code-review")
+        disagreement_stop = (
+            "A disagreement between the orchestrator and the returned recommendation "
+            "is a blocking stop-and-ask to the human"
+        )
+        heavier_mechanism_text = _normalized_anchor_text(
+            skill_md_path, _CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR
+        )
+        assert disagreement_stop in heavier_mechanism_text, (
+            f"{skill_md_path}: the heavier-mechanism region must still contain "
+            f"{disagreement_stop!r}, which the contradiction-route region cites"
+        )
+
+    def test_region_sits_between_new_primitive_route_and_defer_criteria(self) -> None:
+        """The region sits after the heavier-mechanism region it cites as 'directly
+        above', and before both the DEFER criteria heading and the defer-invariant
+        region, which its 'below' citations name as the enforcement-invariant rule."""
+        skill_md_path = _skill_file("code-review")
+        raw_text = skill_md_path.read_text()
+        new_primitive_route_end = raw_text.find(
+            f"<!-- {_CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR} end -->"
+        )
+        contradiction_route_start = raw_text.find(
+            f"<!-- {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} start -->"
+        )
+        contradiction_route_end = raw_text.find(
+            f"<!-- {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} end -->"
+        )
+        defer_criteria = raw_text.find(_CODE_REVIEW_DEFER_CRITERIA_HEADING)
+        defer_invariant_start = raw_text.find(
+            f"<!-- {_CODE_REVIEW_DEFER_INVARIANT_ANCHOR} start -->"
+        )
+        offsets = (
+            new_primitive_route_end,
+            contradiction_route_start,
+            contradiction_route_end,
+            defer_criteria,
+            defer_invariant_start,
+        )
+        assert -1 not in offsets, (
+            f"{skill_md_path}: placement needs the new-primitive-route end anchor, both "
+            f"contradiction-route anchors, {_CODE_REVIEW_DEFER_CRITERIA_HEADING} and the "
+            f"{_CODE_REVIEW_DEFER_INVARIANT_ANCHOR} start anchor; offsets found: {offsets}"
+        )
+        assert new_primitive_route_end < contradiction_route_start, (
+            f"{skill_md_path}: {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} start anchor must "
+            f"fall after the {_CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR} end anchor"
+        )
+        assert contradiction_route_end < defer_criteria, (
+            f"{skill_md_path}: {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} end anchor must "
+            f"fall before {_CODE_REVIEW_DEFER_CRITERIA_HEADING}"
+        )
+        assert contradiction_route_end < defer_invariant_start, (
+            f"{skill_md_path}: {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} end anchor must "
+            f"fall before the {_CODE_REVIEW_DEFER_INVARIANT_ANCHOR} start anchor"
         )
 
 
@@ -236,7 +292,8 @@ class TestCodeReviewDeferInvariantRegionPin:
     - The new-primitive-route region must contain
       _ENFORCEMENT_INVARIANT_CONSULT_STOP_SENTENCE, which ends the
       Endorsed-with-no-plan-file and Rejected returns of an enforcement-invariant
-      finding's heavier-mechanism consult in the blocking stop-and-ask.
+      finding's heavier-mechanism consult in the blocking stop-and-ask. The region
+      must also keep the `**Rejected` outcome bullet the sentence names.
 
     On failure, update the pinned text only if the new wording preserves what
     every sentence of the current pinned text guarantees.
@@ -275,7 +332,8 @@ class TestCodeReviewDeferInvariantRegionPin:
         self,
     ) -> None:
         """An enforcement-invariant finding's Endorsed-with-no-plan-file and
-        Rejected consult returns still end in the human stop."""
+        Rejected consult returns still end in the human stop, and the Rejected
+        bullet the pinned sentence names still exists."""
         skill_md_path = _skill_file("code-review")
         heavier_mechanism_text = _normalized_anchor_text(
             skill_md_path, _CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR
@@ -285,177 +343,7 @@ class TestCodeReviewDeferInvariantRegionPin:
             f"{skill_md_path}: the {_CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR} region "
             f"must still contain {stop_sentence!r}"
         )
-
-
-_CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR = "DISPOSITION_RULE:code-review-fix-plan-pilot"
-
-
-# The whole fix-plan pilot region, pinned by exact equality so any edit to it is a visible
-# change to this constant. The mid-sentence "- " tokens are SKILL.md's verdict bullets after
-# whitespace collapse, not typos.
-_PINNED_FIX_PLAN_PILOT_CLAUSE = (
-    "**Once a round has a reviewer-spawned finding, run "
-    "`~/.claude/scripts/config-get.sh architect_fix_plan_pilot`; "
-    "only exit 0 applies this rule.** The contradiction route's "
-    "settled-site stop and carries run first, and the "
-    "reviewer-spawned findings left after them are the payload; "
-    "with none left, dispatch nothing and write no tag. Number the "
-    "payload findings from 1 and mark each one at an earlier "
-    "round's site. Dispatch `plan-architect` once, with "
-    "`MODE=consult` as the prompt's first line. The prompt carries "
-    "the numbered findings; each marked one's earlier finding and "
-    "fix; the contradiction route's judgment standard; the DEFER "
-    "criteria and invalid DEFER rationales below; this round's "
-    "findings-file paths; the diff artifact resolved as for "
-    "`comment-discipline-reviewer`; the plan file and ledger digest "
-    "paths when each exists; the bar on invoking "
-    "`review-ledger.sh` or `marker.sh` stated above; "
-    "and the project layer's path when Step 0.5 loaded one. Ask for "
-    "one row per payload number, each a single line of `<n>.` "
-    "followed by ADDRESS with the fix shape and the files it "
-    "touches, DEFER naming a closed-list criterion, or KEEP (keep "
-    "current text) for a marked number. Ask for exactly one line "
-    "reading `foundation: sound` or `foundation: wrong`. Say that "
-    "reasoning and not-verified notes go outside the rows, that no "
-    "other line starts like a row, and that a finding it cannot "
-    "commit to gets no row. For payload findings a valid table "
-    "decides, this consult replaces the contradiction consult. "
-    "Relay the return verbatim and validate "
-    "it by the list below; never re-litigate a row. Each stop names "
-    "every condition the return failed. Nothing re-dispatches "
-    "automatically. Only the human may re-dispatch or send the "
-    "payload findings through the rest of this section instead. A "
-    "re-dispatch's return is read under the same list. Write one tag on the "
-    "round's `Fix route:` line: `fix-plan: dispatched` when a valid "
-    "table became the disposition, `fix-plan: fell-back` when the "
-    "human chose the rest of this section, and `fix-plan: stopped` "
-    "for any other end. - **Valid table.** Every line starting "
-    "`<n>. ADDRESS`, `<n>. DEFER` or `<n>. KEEP` is a row in the "
-    "shape asked for, the rows' numbers are the payload numbers "
-    "with none missing or repeated, no row is barred as below, and "
-    "exactly one line starts with `foundation:` and reads exactly "
-    "`foundation: sound`. Text outside the rows and `foundation:` "
-    "lines decides nothing. The table is then the disposition. One "
-    "`code-writer` carries its ADDRESS rows, if any, each fix shape "
-    "replacing the Suggested fix. A fix "
-    "that trips the heavier-mechanism limbs takes that rule instead. "
-    "Log each row as the ledger section below "
-    "and a loaded project layer prescribe. Log a KEEP as the "
-    "contradiction route logs a consult's keep. Log an ADDRESS or "
-    "fresh DEFER of a repeat with the `--ref <id>` that route "
-    "requires. Every table-decided row's `--rationale` starts with "
-    "`fix-plan:`. - **`foundation: wrong`**, with or without rows, "
-    "is a blocking stop-and-ask on whether to re-plan; a yes "
-    "re-plans as the round-cap consult's first verdict above does. "
-    "- **Barred row.** A DEFER or KEEP row on a finding the "
-    "enforcement-invariant rule below or a loaded project layer "
-    "bars from DEFER is a blocking stop-and-ask. - **Any other "
-    "return**, a failed dispatch included, is a blocking "
-    "stop-and-ask before any fix is dispatched."
-)
-
-
-class TestCodeReviewFixPlanPilotRegionPin:
-    """Pin code-review/SKILL.md's fix-plan pilot region whole, so dropping or
-    weakening any of its rules fails a test instead of drifting silently.
-    """
-
-    def test_fix_plan_pilot_region_matches_live_text(self) -> None:
-        skill_md_path = _skill_file("code-review")
-        live_text = _normalized_anchor_text(
-            skill_md_path, _CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR
-        )
-        pinned_text = " ".join(_PINNED_FIX_PLAN_PILOT_CLAUSE.split())
-        assert live_text == pinned_text, (
-            f"{skill_md_path}: {_CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR} no longer "
-            f"matches its pinned text.\n"
-            f"  live:   {live_text!r}\n"
-            f"  pinned: {pinned_text!r}"
-        )
-
-    def test_region_placed_after_contradiction_route_and_before_defer_criteria(
-        self,
-    ) -> None:
-        """The region's "above", "below" and "the rest of this section"
-        references depend on its position."""
-        skill_md_path = _skill_file("code-review")
-        raw_text = skill_md_path.read_text()
-        contradiction_end = raw_text.find(
-            f"<!-- {_CODE_REVIEW_CONTRADICTION_ROUTE_ANCHOR} end -->"
-        )
-        pilot_start = raw_text.find(
-            f"<!-- {_CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR} start -->"
-        )
-        defer_criteria = raw_text.find(_CODE_REVIEW_DEFER_CRITERIA_HEADING)
-        assert -1 not in (contradiction_end, pilot_start, defer_criteria), (
-            f"{skill_md_path}: placement needs the contradiction-route end anchor, "
-            f"the fix-plan pilot start anchor and {_CODE_REVIEW_DEFER_CRITERIA_HEADING}; "
-            f"offsets found: {contradiction_end}, {pilot_start}, {defer_criteria}"
-        )
-        assert contradiction_end < pilot_start < defer_criteria, (
-            f"{skill_md_path}: {_CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR} start anchor must "
-            "fall after the contradiction-route end anchor and before "
-            f"{_CODE_REVIEW_DEFER_CRITERIA_HEADING}"
-        )
-
-    def test_cited_referents_still_exist(self) -> None:
-        """The region cites "the round-cap consult's first verdict", "that
-        rule" (the heavier-mechanism rule, consult through Rejected outcome and
-        disagreement stop) and "invalid DEFER rationales below" by position and
-        name, and none of those is otherwise pinned."""
-        skill_md_path = _skill_file("code-review")
-        round_cap_text = _normalized_anchor_text(
-            skill_md_path, "DISPOSITION_RULE:code-review-round-cap-consult-verdict"
-        )
-        first_bullet_start = round_cap_text.find("- **")
-        assert first_bullet_start != -1 and round_cap_text[
-            first_bullet_start + len("- **") :
-        ].startswith("Foundation is wrong"), (
-            f"{skill_md_path}: the round-cap consult region's first verdict bullet "
-            "must be the re-plan verdict (`Foundation is wrong`)"
-        )
-        heavier_mechanism_text = _normalized_anchor_text(
-            skill_md_path, _CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR
-        )
-        assert heavier_mechanism_text.startswith(
-            _CODE_REVIEW_HEAVIER_MECHANISM_RULE_OPENING
-        ), (
-            f"{skill_md_path}: the heavier-mechanism region must open with "
-            f"{_CODE_REVIEW_HEAVIER_MECHANISM_RULE_OPENING!r}"
-        )
-        # A limb-tripping ADDRESS row takes the whole rule, so its Rejected outcome and its
-        # orchestrator-disagreement stop must survive too.
-        for heavier_mechanism_clause in (
-            "**Rejected",
-            "A disagreement between the orchestrator and the returned recommendation "
-            "is a blocking stop-and-ask to the human",
-        ):
-            assert heavier_mechanism_clause in heavier_mechanism_text, (
-                f"{skill_md_path}: the heavier-mechanism region must still contain "
-                f"{heavier_mechanism_clause!r}"
-            )
-        raw_text = skill_md_path.read_text()
-        pilot_end = raw_text.find(
-            f"<!-- {_CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR} end -->"
-        )
-        invalid_defer_heading = raw_text.find(_CODE_REVIEW_INVALID_DEFER_HEADING)
-        assert -1 not in (pilot_end, invalid_defer_heading), (
-            f"{skill_md_path}: the region cites {_CODE_REVIEW_INVALID_DEFER_HEADING} "
-            "by name and needs it below the region; offsets found: "
-            f"{pilot_end}, {invalid_defer_heading}"
-        )
-        assert pilot_end < invalid_defer_heading, (
-            f"{skill_md_path}: {_CODE_REVIEW_INVALID_DEFER_HEADING} must fall "
-            "after the fix-plan pilot region"
-        )
-
-    def test_region_names_a_key_in_the_config_schema(self) -> None:
-        """Guards the region-to-schema wiring, not behavior."""
-        region_text = _normalized_anchor_text(
-            _skill_file("code-review"), _CODE_REVIEW_FIX_PLAN_PILOT_ANCHOR
-        )
-        key_match = re.search(r"config-get\.sh ([a-z0-9_]+)", region_text)
-        assert key_match, "fix-plan pilot region no longer names a config-get.sh key"
-        assert key_match.group(1) in config_schema(), (
-            f"{key_match.group(1)!r} is not a key in config-keys.psv"
+        assert "**Rejected" in heavier_mechanism_text, (
+            f"{skill_md_path}: the {_CODE_REVIEW_NEW_PRIMITIVE_ROUTE_ANCHOR} region "
+            "must still contain the `**Rejected` outcome bullet the stop sentence names"
         )

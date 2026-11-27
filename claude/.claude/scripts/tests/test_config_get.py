@@ -92,9 +92,10 @@ class TestWritePointerNamesTheDocNotTheCommand:
 
 
 class TestArchitectFixPlanPilotGate:
-    """code-review/SKILL.md enables the architect fix-plan pilot only on a
-    config-get.sh exit 0, so the exit code is the contract these pin against
-    the real schema."""
+    """Pin config-get.sh's exit-code contract against architect_fix_plan_pilot's
+    real schema row, which no skill reads. The row stays at false so a scaffolded
+    config holding it reads without a warning, and because the session config-keys
+    recorder and the routing guard read it."""
 
     _KEY = "architect_fix_plan_pilot"
 
@@ -139,7 +140,7 @@ class TestArchitectFixPlanPilotGate:
     def test_true_only_in_home_claude_dir_exits_1_when_claude_config_dir_is_another_account(
         self, tmp_path: Path
     ) -> None:
-        """The pilot is per-account: a home-level file must not enable it for an
+        """The key is per-account: a home-level file must not turn it on for an
         account whose CLAUDE_CONFIG_DIR points elsewhere."""
         scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         (self._config_dir(tmp_path) / "claude-config.toml").write_text(f"{self._KEY} = true\n")
@@ -156,9 +157,9 @@ class TestArchitectFixPlanPilotGate:
     ) -> None:
         """An unresolvable config dir (status 2 in config-get.sh) exits 3 with
         no stdout. test_config_py.py already pins the exit code; this case
-        adds the empty-stdout assertion on the pilot key's real row. Falling
-        through would print an empty VALUE, and "" != "false" would enable the
-        pilot on a mis-set environment."""
+        adds the empty-stdout assertion on the key's real row. Falling
+        through would print an empty VALUE, and "" != "false" would read as on
+        in a mis-set environment."""
         scripts_dir = _isolated_scripts_dir(tmp_path, CONFIG_KEYS_PSV.read_text())
         (self._config_dir(tmp_path) / "claude-config.toml").write_text(f"{self._KEY} = true\n")
 
