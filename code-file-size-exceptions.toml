@@ -299,6 +299,11 @@ ceiling = 1433
 verdict = "split pending"
 seam = "Test-class families by install step: venv creation and recovery (`TestUnhealthyVenvIsRecreated`, `TestIdempotency`, `TestEnsurepipMissingDebian`), pinned interpreter (`TestPinnedInterpreter`, `TestPinnedInterpreterFailsToStart`), opt-in gate (`TestPrivateProjectsGate`), plugin step (`TestPyrightLspStep`, `TestConfirmPluginInstall`)"
 
+["claude/.claude/scripts/tests/test_lib_source_cost_lib.py"]
+ceiling = 1296
+verdict = "split pending"
+seam = "Section banners by measurement stage: flag values, cluster file and start-line lookup, span resolution and arm edits, arm list and rotation, minimum fold and arithmetic, report lines, locale-pinned patterns"
+
 ["claude/.claude/scripts/tests/test_migrate_legacy_config.py"]
 ceiling = 1065
 verdict = "split pending"
