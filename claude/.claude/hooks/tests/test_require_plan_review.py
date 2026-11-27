@@ -2323,14 +2323,14 @@ class TestRequirePlanReviewPlanMode:
         plan_mode_file.write_text("# plan\n")
 
         sid = "session-planmode-timeout"
-        with assert_cap_engaged(stub_dir, production_cap=5):
-            result = run_hook(
+        with assert_cap_engaged(stub_dir, production_cap=5, command="sha256sum"):
+            reason = run_hook_reason(
                 REQUIRE_PLAN_REVIEW_HOOK,
                 {**exitplanmode_input(plan_file_path=str(plan_mode_file)), "session_id": sid},
                 cwd=plan_review_repo,
                 extra_env={"PATH": f"{stub_dir}:{os.environ['PATH']}"},
             )
-        assert result == "deny"
+        assert "cannot read the plan-mode file" in reason
 
     @pytest.mark.timing
     def test_planfilepath_hung_jq_denies_within_timeout(

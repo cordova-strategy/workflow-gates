@@ -122,7 +122,7 @@ verdict = "split pending"
 seam = "Test-class families `TestPerFileShape` and `TestFaultInjection`"
 
 ["claude/.claude/hooks/tests/test_enforce_marker_script_shape.py"]
-ceiling = 4366
+ceiling = 4363
 verdict = "split pending"
 seam = "Test-class families following the hook's write-scan and shape-matcher halves: shape (`TestEnforceMarkerScriptShape`, `TestPrescriptionAllowlistAlignment`), gate-release authority (`TestGateReleaseAuthority`, `TestGateReleaseAuthorityFileWrites`) and ledger paths (`TestReviewLedgerAppendAuthority`, `TestReviewLedgerStatePaths`)"
 

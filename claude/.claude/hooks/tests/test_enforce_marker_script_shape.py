@@ -3449,9 +3449,6 @@ class TestReviewLedgerStatePaths:
 
     @pytest.fixture
     def no_realpath_path(self, tmp_path):
-        """On this PATH no normalized candidate form exists, which
-        test_the_stub_path_leaves_no_normalized_form checks by running the
-        resolver."""
         return _no_realpath_stub_path(tmp_path)
 
     def test_the_stub_path_leaves_no_normalized_form(self, tmp_path, no_realpath_path):

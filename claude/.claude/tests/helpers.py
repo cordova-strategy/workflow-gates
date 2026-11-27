@@ -2979,7 +2979,7 @@ def _make_git_exiting_with_status(bin_dir: Path, arg_pattern: str, exit_status: 
 
 
 def which_tool(name: str) -> str | None:
-    """`shutil.which(name)`, except `"timeout"` also resolves to `gtimeout`, in `_lib_capped_for`'s probe order."""
+    """The `timeout`-then-`gtimeout` order mirrors `_lib_capped_for`'s probe."""
     if name == "timeout":
         return shutil.which("timeout") or shutil.which("gtimeout")
     return shutil.which(name)
@@ -3527,12 +3527,12 @@ CP_OPERANDS_NOTE = (
 def real_binary_shim_env(shim_dir: Path, tool_bodies: dict[str, str]) -> dict[str, str]:
     """`{"PATH": ...}` with `shim_dir` first, holding one prewarmed shim per tool in `tool_bodies`.
 
-    Each body runs with `$REAL` bound to the binary PATH resolves for that tool before `shim_dir`.
+    Each body runs with `$REAL` bound to `which_tool(tool)`, resolved before `shim_dir` joins PATH.
     """
     shim_dir.mkdir(exist_ok=True)
     for tool, body in tool_bodies.items():
         real_binary = which_tool(tool)
-        assert real_binary is not None, f"cannot shim {tool!r}: no such binary on PATH={os.environ['PATH']}"
+        assert real_binary is not None, f"cannot shim {tool!r}: which_tool found no binary on PATH={os.environ['PATH']}"
         write_prewarmed_stub(shim_dir / tool, f"#!/bin/bash\nREAL={shlex.quote(real_binary)}\n{body}\n")
     return {"PATH": f"{shim_dir}{os.pathsep}{os.environ['PATH']}"}
 
