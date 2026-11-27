@@ -48,6 +48,8 @@ _REVIEW_SKILL_SET: frozenset[str] = frozenset(REVIEW_SKILLS)
 # cell stamped with another value, so a bump drops every older row from its reports. A forced re-capture cannot restore
 # a row whose sessions have all aged out, and restores a partly aged one undercounted;
 # see `docs/pr-cost.md` § "The re-record contract".
+# Exception: cells stamped 1 span the request-merge boundary, which changed rounds, windows, branches and priced turns
+# with no bump, so they can differ for the same transcripts; see `docs/pr-cost.md` § "Comparing rows across rate stamps".
 REVIEW_ROUND_RULE: int = 1
 
 
@@ -522,8 +524,8 @@ def compute_review_round_costs(
     invariant to skill_filter.
 
     A malformed-usage turn is excluded and counted in invalid_usage_records; its spawn blocks are still followed.
-    A truthy non-object `usage` at the head of a requestId run raises AttributeError; see docs/pr-cost.md,
-    "The `review_rounds` cell", for the limit.
+    A truthy non-object `usage` can raise AttributeError before that count; see docs/pr-cost.md,
+    "The `review_rounds` cell", for the trigger.
 
     rounds_only skips a session that opens no round.
     It drops "branch_totals" from the return, because the skipped sessions would leave partial totals.
@@ -1227,10 +1229,10 @@ _DECLARED_ROOT_DIAGNOSTIC_RE = re.compile(r"^declared_transcript_roots: declared
 _PRICING_NON_CONTIGUOUS_MERGE_NOTICE_RE = re.compile(
     r"^NOTICE: non-contiguous requestId run "
     r"(?:merged -- requestId .+? has \d+ non-contiguous assistant records, "
-    r"merged into one turn \(usage matched on every record\) "
+    r"merged into one turn \(usage matched on every compared record\) "
     r"\(further merged occurrences this run of the CLI are suppressed\)\."
     r"|rejected -- requestId .+? has \d+ non-contiguous assistant records, "
-    r"left as separate turns \(usage did not match on every record\) "
+    r"left as separate turns \(usage did not match on every compared record\) "
     r"\(further rejected occurrences this run of the CLI are suppressed\)\.)$"
 )
 # Fail-open notice for the declared-root case: declared_roots_matching's own

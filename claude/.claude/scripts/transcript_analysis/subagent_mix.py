@@ -581,14 +581,13 @@ def _dispatch_usage_summary(
     """Modal observed-model family plus priced dollar totals for one subagent
     dispatch's own transcript.
 
-    Reads every assistant record's message.model in jsonl_path. Two or more
+    Reads one message.model per deduplicated assistant turn. Two or more
     distinct real (non-"<synthetic>") model IDs report the literal bucket
     "mixed", never collapsed into one family — an unstable dispatch should be
     visible, not silently assigned one of its models. A single distinct real
     model ID (regardless of how many turns used it) resolves via _fam. No
     real model ID at all (only "<synthetic>" turns) resolves via
-    _fam("<synthetic>") -> "other". This bucket is computed over every
-    assistant record in the file, regardless of since_ts/until_ts — a
+    _fam("<synthetic>") -> "other". This bucket ignores since_ts/until_ts — a
     dispatch's model identity isn't scoped to a reporting window.
 
     actual_dollars/dollars_by_class price (via _price_turn) only the deduped

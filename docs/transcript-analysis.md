@@ -1197,7 +1197,7 @@ The `Of those, unreadable` column only appears when the count is nonzero; a full
 
 Computed locally at API list price — this is a compute estimate, not an invoice, and may not match what your plan or contract actually bills.
 
-PRICING INTEGRITY — the transcript format may have drifted, so the figures below may be structurally wrong. Re-run the report directly (not through pr-cost-section.sh) to read the drift diagnostic on stderr.
+PRICING INTEGRITY — the transcript format may have drifted, so the figures below may be structurally wrong. Cause: usage drift, where records of one API call disagree on input or cache token counts. Re-run the report directly (not through pr-cost-section.sh) to read the drift diagnostic on stderr.
 
 
 MALFORMED USAGE — 3 usage-bearing turns had non-numeric or negative token fields and were excluded from the figures below.
@@ -1249,7 +1249,7 @@ Session          Proj                                  $
 session-1        private-project-1                 32.10
 session-1        private-project-2                  2.04
 ```
-`PRICING INTEGRITY`, `MALFORMED USAGE`, and `EXCLUDED SPEND` each print only when their own condition fires — a healthy, all-priced, non-drifted corpus with no malformed usage shows none of the three banners, only the caveat sentence directly under the `## Cost report` heading. `claude-fable-5` above is priced, not excluded — Fable rates are in the base table (see "Pricing" above) under the vendor's published API model ID, `[unverified]` against what Claude Code actually writes to `message.model` (see `pricing.py`'s rate-table comment); only a model ID with no table entry (`claude-example-9` here) triggers `EXCLUDED SPEND` and the trailing "Unpriced tokens" line.
+`PRICING INTEGRITY`, `MALFORMED USAGE`, and `EXCLUDED SPEND` each print only when their own condition fires — a healthy, all-priced, non-drifted corpus with no malformed usage shows none of the three banners, only the caveat sentence directly under the `## Cost report` heading. `claude-fable-5` above is priced, not excluded — Fable rates are in the base table (see "Pricing" above) under the vendor's published API model ID, `[unverified]` against what Claude Code actually writes to `message.model` (see `pricing.py`'s rate-table comment); only a model ID with no table entry (`claude-example-9` here) triggers `EXCLUDED SPEND` and the trailing "Unpriced tokens" line. The `PRICING INTEGRITY` banner names each canary that fired (usage drift, subagent-format drift) with one fixed sentence per canary. No cause sentence carries a request ID, path, or transcript content.
 
 **When to reach for it.** Rank workflow-efficiency levers by dollars instead of raw token counts before proposing an optimization — a metric denominated in output tokens alone (like `audit-routing`'s Sonnet-tier estimate) can headline 0.6% of spend while missing an 87%-of-spend context-cost problem entirely. Also the source of the redacted, aggregate-only tables that go into a public cost-audit issue — never publish the top-N-sessions section or any `--no-redact` output, both of which are real-project-identifying by construction. If that issue is filed via `gh issue create`, note that `deny-private-project-refs.sh` does not scan `gh issue create`/`gh issue comment` bodies at all — see `docs/private-project-redaction.md`'s "Known gaps" section — so this redaction is not backstopped by the hook on that publish path. Even a `--this-repo`-scoped, redacted table's `private-project-N` numbering is shaped by the operator's full local project corpus, not just this repo — see `_build_redact_map`'s docstring for the ordinal side-channel this implies. Observed wall-clock for a `--since 30d` run against this toolkit's own transcript corpus: ~10s with `--no-redact`, ~18s with the default redacted run — the redact-map first pass roughly doubles the time, since it fully parses every transcript once just to read a directory name (see `iter_sessions`' docstring; this is a known, deliberately deferred perf gap, not a `cost`-specific one).
 
@@ -1692,6 +1692,7 @@ Unpriced turns inside round windows: 0
 - The overridden-roots line depends only on the environment, so it adds no data-dependent bit.
 - The drift line is the one data-dependent exception to the fixed line set.
 - Its trigger is a contiguous multi-record requestId run whose records disagree on an invariant input/cache usage class, merged by `dedup_turns_by_request_id`; a disagreeing non-contiguous group is rejected before the canary and never sets it.
+- The comparison leaves out all-zero `<synthetic>` records.
 - Every main transcript and every spawn's dispatched-subagent transcript the scan reads or prices counts, whether or not a round window contains it, so the bit is scan-wide.
 - The subagent-format canary has no caller on this command, so its absence says nothing about the subagent layout.
 - The stderr withheld notice fires on drift and on any unrecognized line, so it is a superset.
@@ -1862,6 +1863,7 @@ A scope-unverified notice follows the header on every run. In default mode a one
 
 **Known limits.**
 - A PR's size is its final merged size, not the size each round read, so an early round's dollars are set against changes made after it ran.
+- Rows included under one `rule` can come from both sides of the request-merge boundary, which `docs/pr-cost.md` § "Comparing rows across rate stamps" describes. Nothing in the report marks it, and the report has no option to leave out a chosen PR.
 - A PR enters the aggregates only with at least one `code-review` round before merge, so rounds per PR floors at 1. `PRs with no code-review round before merge` counts the PRs left out.
 - Bucket medians resolve only at the bucket edges above, so a threshold inside a bucket reads from the per-PR rows.
 - A round's dollars are `review-round-cost`'s window dollars, an upper bound on review cost (see "Round detection caveats" under `review-round-cost`): fix and other main-thread work inside the window, and every subagent dispatch in it, are priced in.
@@ -2433,6 +2435,16 @@ No quantity the guard computes is published. `docs/private-project-redaction.md`
   - The listing runs once per account store the note's rows name.
   - Only a file modified before the upgrade can hold the undercount.
   - "The captures directory" above gives the delete and re-capture steps.
+- A capture written before the account's checkout crossed the request-merge boundary can hold wrong figures. It is exposed when a session or dispatch transcript it read holds either a requestId run with an all-zero `<synthetic>` record, or a merged run whose records name different models. No capture field identifies an affected file. `docs/pr-cost.md` § "Comparing rows across rate stamps" describes the boundary.
+  - Where a contiguous run ended in the zero record, the merged turn had zero usage under the first record's model. A `growth_tokens` read from that turn is off by its whole context, and inside a round the turn added no tokens to `overhead_tokens`.
+  - Where a contiguous run began with the zero record, the merged turn was `<synthetic>`, which capture skips. `overhead_tokens` and `later_turns` can read low, and `growth_tokens` can be read from a different turn.
+  - Either contiguous shape printed the `PRICING INTEGRITY` line when the real records carried input or cache tokens.
+  - Where a non-contiguous group held two or more real records and the zero record, each real record counted as its own turn. `overhead_tokens` or `later_turns` can be too high, and `growth_tokens` can be read from a different turn. This shape did not itself print the line.
+  - A non-contiguous group that now merges sits at its first record's position, even with one real record. The round that counts it, and the turn `growth_tokens` reads, can differ.
+  - A merged run whose records name different models took the first record's model and now takes that of the last record kept. `overhead_tokens` and `later_turns` can move between models. When either model is `<synthetic>`, they gain or lose the turn, and `growth_tokens` can be read from a different turn.
+  - A capture run after the upgrade does not clear an earlier file. It reports the file `already captured`, none of these shapes prints the line any longer, and it can exit 0.
+  - A file published by a run that printed the line still falls under that run's printed remedy. Before compute, delete it and capture the row again, under the retention condition in "The captures directory" above.
+  - No remedy is defined for an affected file that cannot be identified or does not meet that condition. The file stays in place, and compute pools it with later files because the capture revision is unchanged. A PASSED or FAILED verdict can therefore rest on a wrong file.
 
 ### Retirement
 

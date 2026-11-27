@@ -298,6 +298,9 @@ def _reportable_unpriced_model_ids(unpriced_tokens: dict[str, int]) -> list[str]
     ]
 
 
+_CACHE_CREATION_SPLIT_KEYS = ("ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens")
+
+
 def _cache_write_split(usage: dict) -> tuple[int, int]:
     """Return (ephemeral_1h_tokens, ephemeral_5m_tokens) for one usage record.
 
@@ -309,7 +312,8 @@ def _cache_write_split(usage: dict) -> tuple[int, int]:
     """
     nested = usage.get("cache_creation")
     if nested is not None:
-        return int(nested.get("ephemeral_1h_input_tokens", 0)), int(nested.get("ephemeral_5m_input_tokens", 0))
+        ephemeral_1h_key, ephemeral_5m_key = _CACHE_CREATION_SPLIT_KEYS
+        return int(nested.get(ephemeral_1h_key, 0)), int(nested.get(ephemeral_5m_key, 0))
     return 0, int(usage.get("cache_creation_input_tokens", 0))
 
 
@@ -407,13 +411,15 @@ def _merge_assistant_run(run: list[dict]) -> dict:
     """Merge one requestId run of assistant records into a single synthetic record.
 
     message.content is the concatenation of every record's own content blocks,
-    in original order. Every other field (uuid, parentUuid, timestamp) is
-    taken from the run's first record -- the documented --since semantics
-    depend on the first block's timestamp. message.usage is taken from the
-    run's LAST record instead: input_tokens and the cache_* classes are
-    identical across a run, but output_tokens ascends within the run and
-    only reaches its billed value on the last record (measured across 150
-    transcripts / 15,653 multi-record runs -- see _warn_if_run_usage_drift).
+    in original order. message.usage and message.model both come from the last
+    record _usage_bearing_records keeps, so a turn is priced under the model of
+    the record that supplies its usage. Every other field (uuid, parentUuid,
+    timestamp) is taken from the run's first record. timestamp and gitBranch come
+    from that record even when _usage_bearing_records skips it, so it decides the
+    turn's --since and --branches scope. input_tokens and the
+    cache_* classes are identical across the kept records, but output_tokens
+    ascends within the run and only reaches its billed value on the last one
+    (see _USAGE_DRIFT_INVARIANT_KEYS).
     """
     merged = dict(run[0])
     merged_message = dict(merged.get("message") or {})
@@ -421,19 +427,61 @@ def _merge_assistant_run(run: list[dict]) -> dict:
     for rec in run:
         merged_content.extend((rec.get("message") or {}).get("content") or [])
     merged_message["content"] = merged_content
-    merged_message["usage"] = (run[-1].get("message") or {}).get("usage")
+    usage_source_message = _usage_bearing_records(run)[-1].get("message") or {}
+    merged_message["usage"] = usage_source_message.get("usage")
+    # No model on that record yields "", which subagent-mix skips; no evidence one request's records differ in that.
+    merged_message["model"] = usage_source_message.get("model", "")
     merged["message"] = merged_message
     return merged
+
+
+def _usage_is_all_zero(usage: object) -> bool:
+    """Any shape it does not recognize as zero returns False, so the record still reaches the drift canary
+    instead of being skipped.
+    """
+    if not isinstance(usage, dict):
+        return False
+    nested = usage.get("cache_creation")
+    if nested is None:
+        nested = {}
+    if not isinstance(nested, dict):
+        return False
+    return all(usage.get(key) == 0 for key in _NON_CONTIGUOUS_MERGE_REQUIRED_MATCH_KEYS) and all(
+        nested.get(key, 0) == 0 for key in _CACHE_CREATION_SPLIT_KEYS
+    )
+
+
+def _is_synthetic_zero_usage_record(rec: dict) -> bool:
+    message = rec.get("message") or {}
+    return message.get("model") == _SYNTHETIC_MODEL_ID and _usage_is_all_zero(message.get("usage"))
+
+
+def _usage_bearing_records(run: list[dict]) -> list[dict]:
+    """The run's records minus its `<synthetic>` all-zero-usage ones; the whole run when every record is one.
+
+    Such a record is observed trailing the record that holds the real usage of a
+    refusal-ended request. A skipped record carries no tokens to price. A refusal
+    that arrives before any output is not billed in some categories, so recorded
+    usage can overstate such a request
+    (https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback#how-refusals-are-billed).
+    An all-zero record under any other model is kept, so the drift canary still
+    sees it. _merge_assistant_run, _warn_if_run_usage_drift and
+    _non_contiguous_run_usage_matches all read usage through this one filter
+    so they cannot disagree about which records count.
+    """
+    bearing = [rec for rec in run if not _is_synthetic_zero_usage_record(rec)]
+    return bearing or run
 
 
 def _cache_miss_reason(message: dict) -> str | None:
     """message.diagnostics.cache_miss_reason.type for one assistant turn's own
     (possibly merged) record, or None when absent/malformed.
 
-    _merge_assistant_run takes every non-content, non-usage field from a
-    requestId run's first record unchanged, so a merged turn's "diagnostics"
-    already reflects the run's own opening call with no extra collapsing
-    logic needed here. cache_miss_reason is always a dict shaped
+    _merge_assistant_run takes every field except message.content,
+    message.usage and message.model from a requestId run's first record
+    unchanged, so a merged turn's "diagnostics" already reflects the run's own
+    opening call with no extra collapsing logic needed here.
+    cache_miss_reason is always a dict shaped
     {"type": <str>, "cache_missed_input_tokens": <int>} across a 3,926-record
     survey of real transcripts, with "cache_missed_input_tokens" absent only
     for reason types "previous_message_not_found" and "unavailable" -- no
@@ -452,13 +500,12 @@ def _cache_miss_reason(message: dict) -> str | None:
 
 
 # Names the usage keys _warn_if_run_usage_drift treats as required-invariant
-# across a requestId run: measured identical in 15,653/15,653 multi-record
-# runs (see dedup_turns_by_request_id's docstring). output_tokens is
-# deliberately excluded -- it ascends within a run by design, completing on
-# the last record, so divergence there is the documented norm, not drift.
+# across a requestId run. output_tokens is deliberately excluded -- it ascends
+# within a run by design, completing on the last record, so divergence there is
+# the documented norm, not drift.
 # cache_creation's nested ephemeral_1h/5m_input_tokens need no separate entry:
-# both measured invariant across the same 15,653 runs, and every run's first
-# and last record alike carried a cache_creation block.
+# both were observed invariant, with a cache_creation block on each observed
+# run's first and last record.
 _USAGE_DRIFT_INVARIANT_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 # Usage keys a non-contiguous same-requestId run must agree on before
@@ -477,19 +524,22 @@ _usage_drift_warned = False
 
 def _warn_if_run_usage_drift(run: list[dict]) -> bool:
     """Emit one stderr warning per process when a requestId run's records
-    disagree on an input/cache usage class that's measured invariant across
+    disagree on an input/cache usage class that it treats as invariant across
     a run (see _USAGE_DRIFT_INVARIANT_KEYS).
 
     _merge_assistant_run relies on these classes being identical across every
     record of one API call to price a merged turn correctly regardless of
     which record's value it reads; this is the runtime canary for that
-    assumption. Drift prints a warning rather than raising. A truthy non-dict
-    message.usage raises AttributeError when it sits on the first record or on
-    any record before the first drifting one; records after that are never read.
+    assumption. Records that _usage_bearing_records skips are not compared.
+    Drift prints a warning rather than raising. A truthy non-dict message.usage
+    raises AttributeError when it sits on a compared record at or before the
+    first drifting one and at least two records are compared; records after
+    that are never read.
 
     Returns whether this run drifted, even after the per-process warning has printed.
     """
     global _usage_drift_warned
+    run = _usage_bearing_records(run)
     first_usage = (run[0].get("message") or {}).get("usage") or {}
     for rec in run[1:]:
         rec_usage = (rec.get("message") or {}).get("usage") or {}
@@ -518,7 +568,11 @@ def _non_contiguous_run_usage_matches(run: list[dict]) -> bool:
     every member (not just adjacent pairs) against the run's first record.
     A record with no usage dict at all has no evidence to corroborate on, so
     it fails the match rather than vacuously agreeing with another empty one.
+    Records that _usage_bearing_records skips are not compared. A skipped
+    record carries no tokens to price, while a missing usage dict is an
+    unrecognized shape.
     """
+    run = _usage_bearing_records(run)
     first_usage = (run[0].get("message") or {}).get("usage") or {}
     if not first_usage:
         return False
@@ -548,9 +602,9 @@ def _log_non_contiguous_merge_decision(request_id: str, record_count: int, *, me
     if kind in _non_contiguous_merge_notices_logged:
         return
     outcome = (
-        "merged into one turn (usage matched on every record)"
+        "merged into one turn (usage matched on every compared record)"
         if merged
-        else "left as separate turns (usage did not match on every record)"
+        else "left as separate turns (usage did not match on every compared record)"
     )
     print(
         f"NOTICE: non-contiguous requestId run {kind} -- requestId {request_id!r} has "

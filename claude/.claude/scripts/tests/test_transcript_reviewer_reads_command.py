@@ -470,7 +470,7 @@ class TestRequestIdNotice:
         assert "req-noncontiguous" not in captured.out
         assert captured.err == (
             "NOTICE: non-contiguous requestId run merged -- requestId 'req-noncontiguous' has 2 non-contiguous"
-            " assistant records, merged into one turn (usage matched on every record) (further merged occurrences"
+            " assistant records, merged into one turn (usage matched on every compared record) (further merged occurrences"
             " this run of the CLI are suppressed).\n"
         )
 

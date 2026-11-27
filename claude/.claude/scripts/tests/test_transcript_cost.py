@@ -14,6 +14,9 @@ import pytest
 from transcript_analysis import audit_routing, cost, pricing, redaction, render, scope
 
 from .conftest import (
+    _EXCLUDED_SPEND_MARKER,
+    _PRICING_INTEGRITY_MARKER,
+    _UNPRICED_TOKENS_MARKER,
     _agent_use,
     _asst,
     _audit_routing_args,
@@ -21,9 +24,11 @@ from .conftest import (
     _cost_args,
     _cost_trend_args,
     _extract_grand_total,
+    _extract_unpriced_total,
     _opus,
     _priced,
     _table_cols,
+    _usage_drift_records,
     _user_msg,
     _write_cost_root,
     _write_jsonl,
@@ -91,18 +96,6 @@ def _md_table_cols(out: str, *, header_contains: str, row_contains: str | Sequen
     return dict(zip(labels, values, strict=False))
 
 
-def _extract_unpriced_total(out: str) -> int:
-    """Read cmd_cost's 'Unpriced tokens (unknown model IDs): N' line as an int.
-
-    A single named extractor for this one non-tabular summary line, matching
-    _table_cols' role for tabular output — one parse point to update if the
-    line's wording changes, instead of an inline regex at each call site.
-    """
-    match = re.search(r"Unpriced tokens \(unknown model IDs\): ([\d,]+)", out)
-    assert match is not None, "unpriced-tokens summary line not found in output"
-    return int(match.group(1).replace(",", ""))
-
-
 def _extract_md_grand_total(out: str) -> float:
     """Read --summary's bolded grand-total row ('| **total** | **X.XX** | | |')
     from the markdown token-class table."""
@@ -131,7 +124,8 @@ def _extract_excluded_spend_summary(out: str) -> tuple[int, int]:
     tests assert against directly, by the exact ID strings the banner
     names)."""
     match = re.search(
-        r"EXCLUDED SPEND — the dollar figures below leave out ([\d,]+) tokens across (\d+) unrecognized model IDs",
+        rf"{_EXCLUDED_SPEND_MARKER} — the dollar figures below leave out ([\d,]+) tokens across (\d+)"
+        r" unrecognized model IDs",
         out,
     )
     assert match is not None, "summary EXCLUDED SPEND banner not found in output"
@@ -1422,6 +1416,45 @@ class TestCostByProject:
         assert len(data_rows) == 1  # not one row per worktree
         assert float(data_rows[0].split()[-2].replace(",", "")) == pytest.approx(3.00)
 
+    @staticmethod
+    def _write_family_scanned_out_of_label_order(projects: Path) -> None:
+        """One worktree family whose directories are scanned as branch-b, branch-a, branch-c, so the smallest
+        raw label is neither the first nor the last one scanned."""
+        for dir_name in (
+            "-home-alice-testrepo--claude-worktrees-branch-b",
+            "-home-bob-testrepo--claude-worktrees-branch-a",
+            "-home-carol-testrepo--claude-worktrees-branch-c",
+        ):
+            (projects / dir_name).mkdir(parents=True)
+            _write_jsonl(projects / dir_name / "sess.jsonl", [_priced("claude-sonnet-5", input=1_000_000)])
+
+    def test_family_row_is_represented_by_its_smallest_raw_label(self, tmp_path, monkeypatch, capsys):
+        """Redaction numbers labels in sorted order, which makes the smallest one private-project-1."""
+        projects = tmp_path / "projects"
+        self._write_family_scanned_out_of_label_order(projects)
+        monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
+
+        cost._cost_report(_cost_args(by_project=True), date(2026, 8, 2))
+        out = capsys.readouterr().out
+
+        section = out.split("## Cost by project")[1].split("## Top")[0]
+        data_rows = [ln for ln in section.splitlines() if ln.strip() and not ln.strip().startswith("Project")]
+        assert len(data_rows) == 1
+        assert data_rows[0].split()[0] == "private-project-1"
+
+    def test_family_row_under_two_roots_is_represented_by_its_smallest_raw_label(self, tmp_path, capsys):
+        """Two roots key each label by (root ordinal, label). Redaction numbers restart in each root."""
+        roots = [tmp_path / "acct-a", tmp_path / "acct-b"]
+        for root in roots:
+            self._write_family_scanned_out_of_label_order(root)
+
+        cost._cost_report(_cost_args(by_project=True), date(2026, 8, 2), roots=roots)
+        out = capsys.readouterr().out
+
+        section = out.split("## Cost by project")[1].split("## Top")[0]
+        data_rows = [ln for ln in section.splitlines() if ln.strip().startswith("account-")]
+        assert [row.split()[1] for row in data_rows] == ["private-project-1", "private-project-1"]
+
     def test_by_project_empty_corpus_renders_clean_zero_state(self, fake_projects, capsys):
         """No priced turns at all: the per-project section renders the same
         zero-state line as the top-N-sessions section, not a traceback or an
@@ -1918,23 +1951,21 @@ class TestPrintBranchExclusionDiagnostic:
     TestCostMarkdownTablePrinters's precedent -- pins the function's own
     labeling/sorting/redaction invariants without paying a full _cost_report
     fixture per case. TestCostBranchFilter below keeps its own full-report
-    integration tests for the wiring (_cost_report populates the right dict/
-    set and never calls this function at all under --summary), since that
+    integration tests for the wiring (_cost_report populates the right dict
+    and never calls this function at all under --summary), since that
     is the actual public-PR-body leak surface and is worth covering
     end-to-end too. This function has no markdown/summary-mode variant;
     --summary drops the diagnostic entirely."""
 
     def test_no_exclusions_is_a_noop(self, capsys):
-        cost._print_branch_exclusion_diagnostic({}, set(), redact=True)
+        cost._print_branch_exclusion_diagnostic({}, redact=True)
         assert capsys.readouterr().out == ""
 
     def test_non_summary_redact_default_sorts_labels_and_never_labels_sentinel(self, capsys):
         """Mixed named branches plus the "?" sentinel, non-summary redact=True
         (the default): labels are assigned in sorted real-name order, and "?"
         -- carrying no identifying information -- is never assigned one."""
-        cost._print_branch_exclusion_diagnostic(
-            {"feature-b": 1, "feature-a": 2, "?": 3}, {"t1"}, redact=True
-        )
+        cost._print_branch_exclusion_diagnostic({"feature-b": 1, "feature-a": 2, "?": 3}, redact=True)
         out = capsys.readouterr().out
         assert "feature-a" not in out
         assert "feature-b" not in out
@@ -1946,7 +1977,7 @@ class TestPrintBranchExclusionDiagnostic:
         assert cols_q["Turns"] == "3"  # "?" prints literally, never as a branch-N label
 
     def test_non_summary_no_redact_shows_raw_names(self, capsys):
-        cost._print_branch_exclusion_diagnostic({"feature-a": 5}, {"t1"}, redact=False)
+        cost._print_branch_exclusion_diagnostic({"feature-a": 5}, redact=False)
         out = capsys.readouterr().out
         cols = _table_cols(out, header_contains="Turns", row_contains="feature-a", row_startswith=True)
         assert cols["Turns"] == "5"
@@ -1956,7 +1987,7 @@ class TestPrintBranchExclusionDiagnostic:
         the diagnostic's own generated label -- the dict-key lookup in the
         print loop always substitutes the generated label for a redacted
         branch, so a same-shaped raw name never passes through unredacted."""
-        cost._print_branch_exclusion_diagnostic({"branch-1": 1, "aaa-first": 2}, {"t1"}, redact=True)
+        cost._print_branch_exclusion_diagnostic({"branch-1": 1, "aaa-first": 2}, redact=True)
         out = capsys.readouterr().out
         # sorted(["aaa-first", "branch-1"]) -> aaa-first is branch-1, branch-1 (real) is branch-2
         cols_real_branch1 = _table_cols(
@@ -3006,7 +3037,7 @@ class TestCostShareOnly:
     @staticmethod
     def _excluded_spend_line(out: str) -> str:
         for line in out.splitlines():
-            if line.startswith("EXCLUDED SPEND"):
+            if line.startswith(_EXCLUDED_SPEND_MARKER):
                 return line
         raise AssertionError("EXCLUDED SPEND banner not found in output")
 
@@ -3162,11 +3193,11 @@ class TestCostShareOnly:
         out = capsys.readouterr().out
         line = self._excluded_spend_line(out)
         assert line == (
-            "EXCLUDED SPEND — some turns used unpriced or unrecognized model IDs and are"
+            f"{_EXCLUDED_SPEND_MARKER} — some turns used unpriced or unrecognized model IDs and are"
             " excluded from the shares below."
         )
         assert not re.search(r"\d", line)
-        assert "Unpriced tokens (unknown model IDs):" not in out
+        assert _UNPRICED_TOKENS_MARKER not in out
         assert not re.search(r"unpriced\s+[\d,]+\s+tokens", out)
 
     def test_excluded_spend_banner_share_only_variant_has_no_count_all_unpriced_corpus(
@@ -3374,7 +3405,7 @@ class TestExcludedSpendBanner:
         _write_jsonl(fake_projects / "sess.jsonl", [_priced("claude-sonnet-5", input=100_000)])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
         out = capsys.readouterr().out
-        assert "EXCLUDED SPEND" not in out
+        assert _EXCLUDED_SPEND_MARKER not in out
 
     def test_silent_on_clean_corpus_summary_mode(self, tmp_path, monkeypatch, capsys):
         """--summary's own render path: an all-priced corpus stays silent
@@ -3395,7 +3426,7 @@ class TestExcludedSpendBanner:
 
         cost._cost_report(_cost_args(summary=True, this_repo=True), date(2026, 8, 2), roots=[projects])
         out = capsys.readouterr().out
-        assert "EXCLUDED SPEND" not in out
+        assert _EXCLUDED_SPEND_MARKER not in out
 
     def test_silent_with_synthetic_at_zero_tokens(self, fake_projects, capsys):
         """A <synthetic> turn with zero total tokens (every usage field 0)
@@ -3406,7 +3437,7 @@ class TestExcludedSpendBanner:
         ])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
         out = capsys.readouterr().out
-        assert "EXCLUDED SPEND" not in out
+        assert _EXCLUDED_SPEND_MARKER not in out
 
     def test_fires_with_synthetic_at_nonzero_tokens(self, fake_projects, capsys):
         """<synthetic> at nonzero tokens IS reportable -- the predicate's
@@ -3448,7 +3479,7 @@ class TestExcludedSpendBanner:
 
         cost._cost_report(_cost_args(summary=True, this_repo=True), date(2026, 8, 2), roots=[projects])
         out = capsys.readouterr().out
-        assert "EXCLUDED SPEND" in out
+        assert _EXCLUDED_SPEND_MARKER in out
         assert "<synthetic>" not in out
 
 
@@ -3466,25 +3497,21 @@ class TestPricingIntegrityBanner:
             _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")]),
         ])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
-        assert "PRICING INTEGRITY" in capsys.readouterr().out
+        assert _PRICING_INTEGRITY_MARKER in capsys.readouterr().out
 
     def test_fires_on_real_usage_drift_condition_with_subagent_flag_held_false(self, fake_projects, capsys):
         """A requestId run with non-identical input_tokens across its own
         records -- the other independent fire case. The autouse conftest
         fixture holds _subagent_format_drift_detected False here, so
         neither flag can mask the other."""
-        rec1 = _asst("claude-sonnet-5", content=[{"type": "thinking", "thinking": "..."}], request_id="req-1")
-        rec1["message"]["usage"] = {"input_tokens": 100, "output_tokens": 3}
-        rec2 = _asst("claude-sonnet-5", content=[{"type": "text", "text": "done"}], request_id="req-1")
-        rec2["message"]["usage"] = {"input_tokens": 999, "output_tokens": 50}
-        _write_jsonl(fake_projects / "sess.jsonl", [rec1, rec2])
+        _write_jsonl(fake_projects / "sess.jsonl", _usage_drift_records("req-1"))
         cost._cost_report(_cost_args(), date(2026, 8, 2))
-        assert "PRICING INTEGRITY" in capsys.readouterr().out
+        assert _PRICING_INTEGRITY_MARKER in capsys.readouterr().out
 
     def test_silent_on_healthy_corpus(self, fake_projects, capsys):
         _write_jsonl(fake_projects / "sess.jsonl", [_priced("claude-sonnet-5", input=1_000)])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
-        assert "PRICING INTEGRITY" not in capsys.readouterr().out
+        assert _PRICING_INTEGRITY_MARKER not in capsys.readouterr().out
 
     def test_silent_on_healthy_corpus_summary_mode(self, tmp_path, monkeypatch, capsys):
         """--summary's own render path: a healthy corpus stays silent there
@@ -3504,20 +3531,42 @@ class TestPricingIntegrityBanner:
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         cost._cost_report(_cost_args(summary=True, this_repo=True), date(2026, 8, 2), roots=[projects])
-        assert "PRICING INTEGRITY" not in capsys.readouterr().out
+        assert _PRICING_INTEGRITY_MARKER not in capsys.readouterr().out
 
-    def test_fires_on_real_drift_condition_summary_mode(self, tmp_path, monkeypatch, capsys):
-        """--summary's own render path: the subagent-drift condition fires
-        the summary-mode wording (bounded to what was detected, naming an
-        action a PR reviewer can take) and never leaks a req_/requestId-
-        shaped token -- the underlying diagnostic it stands in for carries a
-        raw requestId, on stderr only."""
+    @pytest.mark.parametrize(
+        ("drifting_records", "cause_text"),
+        [
+            pytest.param(
+                [_asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")])],
+                "Cause: subagent-format drift, where subagent spawns were recorded but no subagent turns were read.",
+                id="subagent-format-drift",
+            ),
+            pytest.param(
+                _usage_drift_records("req-sentinel-7f3a"),
+                "Cause: usage drift, where records of one API call disagree on input or cache token counts.",
+                id="usage-drift",
+            ),
+            pytest.param(
+                [
+                    *_usage_drift_records("req-sentinel-7f3a"),
+                    _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")]),
+                ],
+                "Cause: usage drift, where records of one API call disagree on input or cache token counts."
+                " Cause: subagent-format drift, where subagent spawns were recorded but no subagent turns were read.",
+                id="both",
+            ),
+        ],
+    )
+    def test_fires_on_real_drift_condition_summary_mode(
+        self, drifting_records, cause_text, tmp_path, monkeypatch, capsys
+    ):
+        """--summary output reaches public PR bodies through pr-cost-section.sh, so the
+        whole banner line is fixed text, and the request ID that the stderr diagnostic
+        prints and the transcript's path appear nowhere in the output."""
         projects = tmp_path / "projects"
         mine = projects / "-repo-main"
         mine.mkdir(parents=True)
-        _write_jsonl(mine / "sess.jsonl", [
-            _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")]),
-        ])
+        _write_jsonl(mine / "sess.jsonl", drifting_records)
         monkeypatch.setattr(os, "getcwd", lambda: "/repo/main")
 
         def fake_run(cmd, *a, **k):
@@ -3530,22 +3579,46 @@ class TestPricingIntegrityBanner:
 
         cost._cost_report(_cost_args(summary=True, this_repo=True), date(2026, 8, 2), roots=[projects])
         out = capsys.readouterr().out
-        assert "PRICING INTEGRITY — this tool detected a transcript-format change" in out
+        banner_lines = [line for line in out.splitlines() if _PRICING_INTEGRITY_MARKER in line]
+        assert banner_lines == [
+            f"{_PRICING_INTEGRITY_MARKER} — this tool detected a transcript-format change it does not recognize,"
+            f" so the figures below may be incomplete or wrong. {cause_text}"
+            " Ask the PR author to re-run the report locally before relying on the figures."
+        ]
         assert "req_" not in out
         assert "requestId" not in out
+        assert "req-sentinel-7f3a" not in out
+        assert str(tmp_path) not in out
+        assert "sess.jsonl" not in out
 
-    def test_banner_text_carries_no_request_id_shaped_token(self, fake_projects, capsys):
-        """The banner text is a hardcoded literal today, so this is a
-        regression guard for if a future edit adds interpolation -- the
-        underlying _warn_if_run_usage_drift diagnostic it stands in for
-        does carry a raw requestId, on stderr only."""
+    def test_banner_names_usage_drift_and_leaks_no_request_id(self, fake_projects, capsys):
+        """The full report's own banner, which is a separate string from --summary's."""
+        _write_jsonl(fake_projects / "sess.jsonl", _usage_drift_records("req-secret-1"))
+        cost._cost_report(_cost_args(), date(2026, 8, 2))
+        out = capsys.readouterr().out
+        assert "usage drift" in out
+        assert "subagent-format drift" not in out
+        assert "req-secret-1" not in out
+        assert "requestId" not in out
+
+    def test_banner_names_subagent_format_drift(self, fake_projects, capsys):
         _write_jsonl(fake_projects / "sess.jsonl", [
             _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")]),
         ])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
         out = capsys.readouterr().out
-        assert "PRICING INTEGRITY" in out
-        assert "requestId" not in out
+        assert "subagent-format drift" in out
+        assert "usage drift" not in out
+
+    def test_banner_names_both_causes_when_both_canaries_fired(self, fake_projects, capsys):
+        _write_jsonl(fake_projects / "sess.jsonl", [
+            *_usage_drift_records("req-1"),
+            _asst("claude-opus-4-7", branch="main", content=[_agent_use("a1", "staff-backend-engineer")]),
+        ])
+        cost._cost_report(_cost_args(), date(2026, 8, 2))
+        out = capsys.readouterr().out
+        assert "usage drift" in out
+        assert "subagent-format drift" in out
 
     def test_composes_with_stale_pricing_and_excluded_spend(self, fake_projects, capsys):
         """All three title-block banners fire together on one corpus,
@@ -3558,8 +3631,8 @@ class TestPricingIntegrityBanner:
         cost._cost_report(_cost_args(), date(2026, 12, 5))
         out = capsys.readouterr().out
         assert "STALE PRICING" in out
-        assert "PRICING INTEGRITY" in out
-        assert "EXCLUDED SPEND" in out
+        assert _PRICING_INTEGRITY_MARKER in out
+        assert _EXCLUDED_SPEND_MARKER in out
 
 
 class TestMalformedUsageBanner:

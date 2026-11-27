@@ -45,6 +45,12 @@ change and one recorded after it are not comparable. The default `--record`
 scope is machine-wide and did not change. Each machine takes the change at its
 own `git pull`, and the ledger has no scope column that marks which rows
 predate it.
+Rows recorded before and after the recording machine pulled the request-merge
+commit can differ on `usd`, `context_pct`, `opus_pct` and `ge200k_pct` for the
+same transcripts, even under one `rates` stamp. `--record` writes only the
+current ISO week, so a past week cannot be re-recorded.
+`docs/pr-cost.md` § "Comparing rows across rate stamps" describes that boundary
+and how to find its commit.
 
 `context_pct` does not separate a warm cache read from an idle-gap TTL-expiry
 rebuild write — both land in the same context-class dollar share; see

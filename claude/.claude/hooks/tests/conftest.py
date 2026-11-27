@@ -42,6 +42,20 @@ TIMEOUT_SHIM_SLEEP_SECONDS = 10
 requires_jq = pytest.mark.skipif(shutil.which("jq") is None, reason="jq not found in PATH")
 
 
+def pytest_report_header(config):
+    """Name a missing shfmt once, so a skipped shell-syntax-tree test has a stated cause.
+
+    pytest calls this hook only for initial conftests, so the line prints for a run that names a path under
+    claude/.claude/hooks and not for the full-suite command, where `require_shfmt()`'s skip text names the cause.
+    """
+    if shutil.which("shfmt") is None:
+        return (
+            "shfmt: not on PATH; the shell-syntax-tree tests skip without it."
+            " Install the build that .github/workflows/tests.yml pins."
+        )
+    return None
+
+
 @functools.cache
 def _real_timeout_is_gnu_coreutils() -> bool:
     """True when the `timeout`/`gtimeout` that write_scaled_timeout_shim wraps

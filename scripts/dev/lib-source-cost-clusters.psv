@@ -1,0 +1,17 @@
+# lib-source-cost-clusters.psv — the function spans that lib-source-cost.sh measures.
+# Row grammar: cluster|file|first_function|last_function, with no whitespace around a `|`.
+# The file field is _lib.sh or _config.sh, both under claude/.claude/hooks/.
+# A span runs from the first function's definition line through the last function's closing line.
+# Several rows with one cluster label make a non-contiguous cluster.
+# A renamed or deleted function stops the script until its row is updated.
+# Lines starting with `#` and blank lines are skipped.
+resume-context|_lib.sh|_lib_resume_context_tmpdir_root|_lib_sanitize_for_terminal
+plugin-reconcile|_lib.sh|_lib_validate_plugin_id|_lib_missing_plugin_ids_for_content
+worktree-lock|_lib.sh|_lib_worktree_lock_pid|_lib_worktree_collision_guard
+review-pr|_lib.sh|_lib_review_pr_marker_repo_hash|_lib_review_pr_marker_repo_hash
+review-pr|_lib.sh|_lib_review_pr_completion_marker_fields|_lib_review_pr_completion_marker_fields
+review-pr|_lib.sh|_lib_review_pr_artifact_path|_lib_review_pr_provenance_field
+review-pr|_lib.sh|_lib_review_pr_worktree_name_prefix|_lib_review_pr_reviewer_findings_dir
+reviewer-round|_lib.sh|_lib_reviewer_round_state_cap|_lib_round_consult_gate_disabled
+push-parser|_lib.sh|_lib_git_push_word_is_computed|_lib_push_protected_branches
+config-writer|_config.sh|_config_quote_value_for_write|_config_scaffold

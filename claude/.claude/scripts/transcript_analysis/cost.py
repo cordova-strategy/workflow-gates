@@ -32,6 +32,28 @@ _LIST_PRICE_CAVEAT = (
 # alerts render, and a GFM alert cannot nest inside another element.
 _LIST_PRICE_CAVEAT_ALERT = f"> [!IMPORTANT]\n> {_LIST_PRICE_CAVEAT}"
 
+# Cause sentences for the PRICING INTEGRITY banner. --summary embeds the banner in a
+# public PR body, so these stay generic: no request ID, path, or transcript content.
+_USAGE_DRIFT_CAUSE = "Cause: usage drift, where records of one API call disagree on input or cache token counts."
+_SUBAGENT_FORMAT_DRIFT_CAUSE = (
+    "Cause: subagent-format drift, where subagent spawns were recorded but no subagent turns were read."
+)
+
+
+def _pricing_integrity_cause() -> str:
+    # This flag list must stay in step with pricing._format_drift_detected.
+    causes = []
+    if pricing._usage_drift_warned:
+        causes.append(_USAGE_DRIFT_CAUSE)
+    if pricing._subagent_format_drift_detected:
+        causes.append(_SUBAGENT_FORMAT_DRIFT_CAUSE)
+    return " ".join(causes)
+
+
+def _raw_label_part(label: redaction._RedactMapKey) -> str:
+    return label[1] if isinstance(label, tuple) else label
+
+
 # Full-report-only audit line under --branches: the turns and dollars the
 # pre-branch step (see scope._attribute_pre_branch) moved into the filter set
 # from outside it. Never printed under --summary or --share-only.
@@ -489,7 +511,6 @@ def _print_excluded_spend_banner(
 
 def _print_branch_exclusion_diagnostic(
     excluded_turns_by_branch: dict[str, int],
-    excluded_transcript_ids: set[str],
     *,
     redact: bool,
 ) -> None:
@@ -757,10 +778,8 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
     # period_cost._accumulate_session's invalid_usage_records counter.
     invalid_usage_records = 0
     # Turn counts (not re-priced dollars) tallied per branch a --branches
-    # filter dropped a record for, plus the distinct transcript files those
-    # drops span -- feeds _print_branch_exclusion_diagnostic below.
+    # filter dropped a record for -- feeds _print_branch_exclusion_diagnostic below.
     excluded_turns_by_branch: dict[str, int] = defaultdict(int)
-    excluded_transcript_ids: set[str] = set()
     # Turns (and their priced dollars) the pre-branch step moved into the
     # --branches filter set from outside it -- feeds _PRE_BRANCH_MOVED_LINE.
     pre_branch_moved_turns = 0
@@ -836,10 +855,10 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
 
             moved_into_filter = False
             if branch_filter is not None:
+                assert branch_context is not None
                 attributed_branch = scope._attributed_branch(rec, branch_context)
                 if attributed_branch is None or attributed_branch not in branch_filter:
                     excluded_turns_by_branch[attributed_branch or "?"] += 1
-                    excluded_transcript_ids.add(session_id)
                     continue
                 # The attributed branch is in the filter here, so a timeline branch outside it
                 # means the pre-branch step moved the record in.
@@ -875,6 +894,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
             # refuses --config-dir above, so this accumulator is unreachable
             # (not merely unused) under --summary.
             if multi_root:
+                assert account_ordinal is not None
                 _accumulate_per_account_turn(per_account[account_ordinal], dollars_by_class, token_counts, turn_total, model)
             bucket_totals[pricing._context_bucket(context_at_turn)] += turn_total
             session_total += turn_total
@@ -890,6 +910,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
             priced_session_count += 1
             if not summary_mode:
                 if multi_root:
+                    assert account_ordinal is not None
                     scoped_label: redaction._RedactMapKey = (account_ordinal, raw_proj_label)
                 else:
                     scoped_label = raw_proj_label
@@ -916,13 +937,11 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
                 })
 
                 if by_project:
-                    root_component = scoped_label[0] if multi_root else None
+                    root_component = scoped_label[0] if isinstance(scoped_label, tuple) else None
                     project_key = (root_component, redaction._project_family(raw_proj_label))
                     project_totals[project_key] += session_total
-                    raw_part = scoped_label[1] if isinstance(scoped_label, tuple) else scoped_label
                     current_repr = project_repr_label.get(project_key)
-                    current_raw_part = current_repr[1] if isinstance(current_repr, tuple) else current_repr
-                    if current_repr is None or raw_part < current_raw_part:
+                    if current_repr is None or _raw_label_part(scoped_label) < _raw_label_part(current_repr):
                         project_repr_label[project_key] = scoped_label
 
     if not (
@@ -1026,16 +1045,18 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
         )
 
     if pricing._format_drift_detected():
+        cause = _pricing_integrity_cause()
+        cause_clause = f" {cause}" if cause else ""
         if summary_mode:
             print(
                 "\nPRICING INTEGRITY — this tool detected a transcript-format change it does not"
-                " recognize, so the figures below may be incomplete or wrong. Ask the PR author to"
-                " re-run the report locally before relying on them.\n"
+                f" recognize, so the figures below may be incomplete or wrong.{cause_clause} Ask the PR author to"
+                " re-run the report locally before relying on the figures.\n"
             )
         else:
             print(
                 "\nPRICING INTEGRITY — the transcript format may have drifted, so the figures below"
-                " may be structurally wrong. Re-run the report directly (not through"
+                f" may be structurally wrong.{cause_clause} Re-run the report directly (not through"
                 " pr-cost-section.sh) to read the drift diagnostic on stderr.\n"
             )
 
@@ -1084,7 +1105,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
     _print_thread_table(main_total, subagent_total, grand_total, markdown=summary_mode)
 
     if branch_filter is not None and not summary_mode:
-        _print_branch_exclusion_diagnostic(excluded_turns_by_branch, excluded_transcript_ids, redact=redact)
+        _print_branch_exclusion_diagnostic(excluded_turns_by_branch, redact=redact)
         if pre_branch_moved_turns:
             print(
                 "\n" + _PRE_BRANCH_MOVED_LINE.format(turns=pre_branch_moved_turns, dollars=pre_branch_moved_dollars)
@@ -1111,6 +1132,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
         elif multi_root:
             print(f"{'Account':<12} {'Project':<24} {'$':>14} {'Share':>7}")
             for (ordinal, family), val in sorted(project_totals.items(), key=lambda kv: kv[1], reverse=True):
+                assert ordinal is not None
                 account_col = f"account-{ordinal}" if redact else str(root_by_ordinal[ordinal].parent)
                 repr_label = project_repr_label[(ordinal, family)]
                 # The redact map's multi-root value is "account-K/private-

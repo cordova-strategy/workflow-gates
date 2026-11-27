@@ -41,7 +41,7 @@ seam = "Writer half (`_config_set`, `_config_scaffold`, `_config_quote_value_for
 issue = 1117
 
 ["claude/.claude/hooks/_lib.sh"]
-ceiling = 6262
+ceiling = 6268
 verdict = "structural exception"
 reason = "In-file reorganization and the gate for moving any cluster are recorded in #1117, which governs this file's shape and ceiling. No further seam is assessed here."
 
@@ -223,6 +223,11 @@ ceiling = 2322
 verdict = "split pending"
 seam = "Test families by concern as plain functions: path floor (`test_path_floor_reviewers_table`), transcript parsing (`test_extract_tool_calls_is_error_absent_false_and_true`), assessment rules (`test_missing_diff_reread_after_last_edit_fails_r5_only`) and hook envelope handling (`test_allow_envelope_preserves_every_other_tool_input_field`)"
 
+["claude/.claude/hooks/tests/test_shell_syntax_tree_contract.py"]
+ceiling = 1191
+verdict = "split pending"
+seam = "Test-class families by concern: refusal and internal faults (`TestUnrecognizedTreesExit5`, `TestInternalFaultsExit2`, `TestStderrNeverEchoesTreeText`), build and interpreter isolation (`TestInterpreterIsolation`, `TestRealShfmtIdentity`, `TestDialectIsPinnedToBash`), and the conformance corpus (`TestConformanceCorpus`, `TestAlwaysPresentKeysFollowTheCorpus`, `TestChildPositionMatrix`)"
+
 ["claude/.claude/scripts/_review-ledger-lib.sh"]
 ceiling = 1359
 verdict = "split pending"
@@ -260,7 +265,7 @@ seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_
 issue = 1603
 
 ["claude/.claude/scripts/tests/conftest.py"]
-ceiling = 2055
+ceiling = 2089
 verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
@@ -293,6 +298,11 @@ seam = "Test-class families by translation: output table (`TestOutputTable`), co
 ceiling = 1433
 verdict = "split pending"
 seam = "Test-class families by install step: venv creation and recovery (`TestUnhealthyVenvIsRecreated`, `TestIdempotency`, `TestEnsurepipMissingDebian`), pinned interpreter (`TestPinnedInterpreter`, `TestPinnedInterpreterFailsToStart`), opt-in gate (`TestPrivateProjectsGate`), plugin step (`TestPyrightLspStep`, `TestConfirmPluginInstall`)"
+
+["claude/.claude/scripts/tests/test_lib_source_cost_lib.py"]
+ceiling = 1296
+verdict = "split pending"
+seam = "Section banners by measurement stage: flag values, cluster file and start-line lookup, span resolution and arm edits, arm list and rotation, minimum fold and arithmetic, report lines, locale-pinned patterns"
 
 ["claude/.claude/scripts/tests/test_migrate_legacy_config.py"]
 ceiling = 1065
@@ -381,7 +391,7 @@ verdict = "split pending"
 seam = "Function groups per subcommand family as plain test functions: top-level help (`test_transcript_analysis_help_exits_zero`), cost and pr-cost (`test_transcript_analysis_pr_cost_help_exits_zero`), review trace (`test_transcript_analysis_review_trace_help_exits_zero`), period cost (`test_transcript_analysis_period_cost_help_exits_zero`), routing guard (`test_transcript_analysis_routing_guard_help_exits_zero`)"
 
 ["claude/.claude/scripts/tests/test_transcript_cost.py"]
-ceiling = 4473
+ceiling = 4532
 verdict = "split pending"
 seam = "Test-class families by report facet: core and roots (`TestCost`, `TestCostResolveRoots`, `TestCostMultiRootReport`), scoping (`TestCostByProject`, `TestCostByAccount`, `TestCostBranchFilter`), pricing (`TestFablePricing`, `TestOpus55Pricing`, `TestSonnet55Pricing`), summary and banners (`TestCostSummary`, `TestExcludedSpendBanner`, `TestPricingIntegrityBanner`), trend (`TestCostTrend`, `TestCostTrendConfigDir`)"
 
@@ -436,7 +446,7 @@ verdict = "split pending"
 seam = "Test-class families by compute stage: readiness and sampling (`TestReadiness`, `TestSelectSample`, `TestSampleReasonsEndToEnd`), capture files and pricing (`TestCaptureFiles`, `TestPricing`), net estimate and bootstrap (`TestPointNet`, `TestBootstrap`, `TestBootstrapThroughCompute`), output (`TestOutput`, `TestOutPath`, `TestUnexpectedFailures`)"
 
 ["claude/.claude/scripts/tests/test_transcript_session_pricing.py"]
-ceiling = 1838
+ceiling = 1853
 verdict = "split pending"
 seam = "Test-class families by concern: window and arithmetic (`TestWindowAndDays`, `TestMicroDollars`), input defects (`TestUnpriced`, `TestReadability`, `TestUndatedTurns`, `TestStaleness`), request-id collisions (`TestRequestIdCollisions`), canaries and validator (`TestCanaries`, `TestValidator`), errors and output (`TestErrors`, `TestOutputContract`, `TestPublicSurfacePin`)"
 
@@ -461,7 +471,7 @@ verdict = "split pending"
 seam = "Model-breakdown cell (`_build_model_breakdown_cell`, `_check_model_breakdown_cell`), review-rounds cell (`_build_review_rounds_cell`, `_check_review_rounds_cell`), branch-to-PR resolution (`_resolve_branch_pr`, `_gh_pr_view_enrichment`) apart from the report body (`_pr_cost_report`)"
 
 ["claude/.claude/scripts/transcript_analysis/review_rounds.py"]
-ceiling = 1591
+ceiling = 1593
 verdict = "split pending"
 seam = "Round-window detection (`detect_round_windows`), dispatch pricing (`compute_review_round_costs`, `_price_dispatch`), pooled block (`_render_pooled_block`, `_pooled_shares`, `_bootstrap_share_intervals`), subcommand entry (`cmd_review_round_cost`)"
 
@@ -476,7 +486,7 @@ verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 
 ["claude/.claude/tests/helpers.py"]
-ceiling = 4200
+ceiling = 4434
 verdict = "structural exception"
 reason = "#1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file. A helper used by one test tree goes in that tree's local module, not in helpers.py."
 

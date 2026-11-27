@@ -3169,7 +3169,7 @@ def _cell_of(rule: int, **agents_by_skill: list[int]) -> dict:
 
 _REASON_PASS_FAILED = "the review-round pass failed"
 _REASON_OLDER_RULE = "this checkout's round rule is older than the captured row's"
-_REASON_LESS_COMPLETE = "the re-capture is less complete under the same round rule"
+_REASON_LESS_COMPLETE = "the new cell shows fewer rounds or agents for a skill under the same round rule"
 
 
 class TestReviewRoundsCellOutcome:

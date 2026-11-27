@@ -2,6 +2,8 @@
 
 *2026-10-29.*
 
+**Superseded in part (2026-11-24):** the fix-plan pilot's region is removed, so this rule's region no longer names a fix-plan table. The "Which rows are challenged" bullet on rows after `fix-plan: fell-back`, and the two Known-gaps limbs naming a fix-plan-table row and a valid fix-plan table, describe text the region no longer holds. On a revert of this pilot, read "Revert contract"'s "return the generic config-get test's comment to one pilot region" as dropping that comment's pilot-region sentences. The generic config-get test's comment now names only this pilot's region.
+
 **Partially superseded by [Second window, fixed before re-enabling](#second-window-fixed-before-re-enabling) (2026-11-21):** the first window ended not evaluated. The second window runs under that section's values and rules, dated as its "The six values" bullet states. That bears on these sites:
 - The "Unit" bullet under "Pre-registration, fixed before enabling": rows count toward the figures the decision rule compares with a value only for sessions in the new section's analysis set.
 - The "Primary metric" bullet: the same narrowing, and out-of-set `challenge:` tags count in no stratum.
