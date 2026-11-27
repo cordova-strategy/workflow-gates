@@ -884,7 +884,6 @@ _SYNTHETIC_MODEL = "<synthetic>"
 
 
 def _usage_drift_records(request_id: str) -> list[dict]:
-    """Two records of one request whose input_tokens disagree (100 vs 999), tripping the usage-drift canary."""
     first = _asst("claude-sonnet-5", content=[{"type": "thinking", "thinking": "..."}], request_id=request_id)
     first["message"]["usage"] = {"input_tokens": 100, "output_tokens": 3}
     second = _asst("claude-sonnet-5", content=[{"type": "text", "text": "done"}], request_id=request_id)

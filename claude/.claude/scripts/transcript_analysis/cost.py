@@ -41,7 +41,6 @@ _SUBAGENT_FORMAT_DRIFT_CAUSE = (
 
 
 def _pricing_integrity_cause() -> str:
-    """The cause sentence for each drift canary that has fired, joined by a space."""
     # This flag list must stay in step with pricing._format_drift_detected.
     causes = []
     if pricing._usage_drift_warned:
@@ -52,7 +51,6 @@ def _pricing_integrity_cause() -> str:
 
 
 def _raw_label_part(label: redaction._RedactMapKey) -> str:
-    """The raw project label inside a plain or (root ordinal, label) redact-map key."""
     return label[1] if isinstance(label, tuple) else label
 
 
@@ -836,7 +834,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
 
             moved_into_filter = False
             if branch_filter is not None:
-                assert branch_context is not None  # built above whenever branch_filter is set
+                assert branch_context is not None
                 attributed_branch = scope._attributed_branch(rec, branch_context)
                 if attributed_branch is None or attributed_branch not in branch_filter:
                     excluded_turns_by_branch[attributed_branch or "?"] += 1
@@ -875,7 +873,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
             # refuses --config-dir above, so this accumulator is unreachable
             # (not merely unused) under --summary.
             if multi_root:
-                assert account_ordinal is not None  # set above for every session under multi_root
+                assert account_ordinal is not None
                 _accumulate_per_account_turn(per_account[account_ordinal], dollars_by_class, token_counts, turn_total, model)
             bucket_totals[pricing._context_bucket(context_at_turn)] += turn_total
             session_total += turn_total
@@ -891,7 +889,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
             priced_session_count += 1
             if not summary_mode:
                 if multi_root:
-                    assert account_ordinal is not None  # set above for every session under multi_root
+                    assert account_ordinal is not None
                     scoped_label: redaction._RedactMapKey = (account_ordinal, raw_proj_label)
                 else:
                     scoped_label = raw_proj_label
@@ -1107,7 +1105,7 @@ def _cost_report(args: argparse.Namespace, today: date, roots: Sequence[Path] | 
         elif multi_root:
             print(f"{'Account':<12} {'Project':<24} {'$':>14} {'Share':>7}")
             for (ordinal, family), val in sorted(project_totals.items(), key=lambda kv: kv[1], reverse=True):
-                assert ordinal is not None  # every project key carries its root ordinal under multi_root
+                assert ordinal is not None
                 account_col = f"account-{ordinal}" if redact else str(root_by_ordinal[ordinal].parent)
                 repr_label = project_repr_label[(ordinal, family)]
                 # The redact map's multi-root value is "account-K/private-

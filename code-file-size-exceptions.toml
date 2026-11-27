@@ -260,7 +260,7 @@ seam = "Rule tables (`DOMAIN_RULES`, `CROSS_DOMAIN_EXCEPTIONS`, `GLOBAL_TRIGGER_
 issue = 1603
 
 ["claude/.claude/scripts/tests/conftest.py"]
-ceiling = 2090
+ceiling = 2089
 verdict = "split pending"
 seam = "Transcript-record builders (`_asst`, `_priced`, `_user_msg`, `_write_jsonl`), git repo and worktree builders (`_make_worktree`, `_make_repo_with_remote`, `_init_repo`), direnv shim sources (`_shimmed_env`, `_noop_direnv_shim_source`), command shims (`_make_gh_pr_view_shim`, `_git_shim_that_fails_on_subcommand`)"
 
@@ -446,7 +446,7 @@ verdict = "split pending"
 seam = "Test-class families by helper: in-use detection (`TestWorktreeInUseIdlePath`, `TestWorktreeInUseLiveProcess`, `TestCollectProcessCwdsExcludesSelf`), resolution and listing (`TestResolveWorktreeForBranch`, `TestCollectAllWorktrees`, `TestWorktreeMatchesFilter`), state checks (`TestWorktreeIsClean`, `TestWorktreeRemovalVerdict`), ensure checks (`TestEnsureNameCheck`, `TestEnsureClassify`, `TestEnsureTargetCheck`, `TestEnsureDescribeRecord`)"
 
 ["claude/.claude/scripts/transcript_analysis/cost.py"]
-ceiling = 1346
+ceiling = 1344
 verdict = "split pending"
 seam = "Cost report (`cmd_cost`, `_cost_report`) with its table printers (`_print_scan_coverage_table`, `_print_token_class_table`, `_print_excluded_spend_banner`) apart from the trend subcommand (`cmd_cost_trend`, `compute_cost_trend_data`, `_cost_trend_report`) and branch totals (`_compute_pr_cost_branch_totals`, `_compute_workstream_dollars`)"
 

@@ -11,7 +11,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
   - `cost`'s `PRICING INTEGRITY` banner, which `pr-cost-section.sh` carries into PR bodies, now has a `Cause:` sentence for each drift check that fired.
   - `cost` output, `pr-cost` rows and weekly `cost-ledger` rows can be higher or lower.
   - `review-cost-by-size` can pool stored `review_rounds` cells from before and after the change, with no output line marking it. See its section's "Known limits" in `docs/transcript-analysis.md`.
-  - `read-scope`'s prompt-token growth now leaves out every `<synthetic>` record. Growth and `Read-result tokens as share of prompt-token growth` can differ from earlier figures, recorded trigger baselines included, with no change in reading behavior.
+  - `read-scope`'s prompt-token growth now leaves out every `<synthetic>` record.
   - Stored `pr-cost` rows from before and after the change can differ for the same transcripts. See `docs/pr-cost.md` § "Comparing rows across rate stamps", and `docs/cost-ledger.md` for weekly rows.
   - **Migration:** a `routing-guard` capture written before the pull can be wrong. See the `routing-guard` section's "Known gaps" list in `docs/transcript-analysis.md`.
   - **Migration:** in `session_pricing`, `usage_drift_detected`, and with it `format_drift_detected`, changed meaning, which breaks its stability promise. The `session_pricing.py` section of `docs/transcript-analysis-architecture.md` states the break.

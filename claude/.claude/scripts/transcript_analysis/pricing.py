@@ -298,7 +298,6 @@ def _reportable_unpriced_model_ids(unpriced_tokens: dict[str, int]) -> list[str]
     ]
 
 
-# The token keys of a usage record's nested cache_creation block, in (1h, 5m) order.
 _CACHE_CREATION_SPLIT_KEYS = ("ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens")
 
 
@@ -415,13 +414,12 @@ def _merge_assistant_run(run: list[dict]) -> dict:
     in original order. message.usage and message.model both come from the last
     record _usage_bearing_records keeps, so a turn is priced under the model of
     the record that supplies its usage. Every other field (uuid, parentUuid,
-    timestamp) is taken from the run's first record -- the documented --since
-    semantics depend on the first block's timestamp. timestamp and gitBranch come
+    timestamp) is taken from the run's first record. timestamp and gitBranch come
     from that record even when _usage_bearing_records skips it, so it decides the
     turn's --since and --branches scope. input_tokens and the
     cache_* classes are identical across the kept records, but output_tokens
     ascends within the run and only reaches its billed value on the last one
-    (see _warn_if_run_usage_drift).
+    (see _USAGE_DRIFT_INVARIANT_KEYS).
     """
     merged = dict(run[0])
     merged_message = dict(merged.get("message") or {})
@@ -438,12 +436,8 @@ def _merge_assistant_run(run: list[dict]) -> dict:
 
 
 def _usage_is_all_zero(usage: object) -> bool:
-    """Whether usage is a dict reporting 0 for every token field pricing reads.
-
-    Each of _NON_CONTIGUOUS_MERGE_REQUIRED_MATCH_KEYS must be present. The nested
-    cache_creation block, and each of its _CACHE_CREATION_SPLIT_KEYS, counts as 0
-    when absent. A non-dict usage or cache_creation is not all-zero, so a
-    malformed record still reaches the drift canary instead of being skipped.
+    """Any shape it does not recognize as zero returns False, so the record still reaches the drift canary
+    instead of being skipped.
     """
     if not isinstance(usage, dict):
         return False
@@ -458,7 +452,6 @@ def _usage_is_all_zero(usage: object) -> bool:
 
 
 def _is_synthetic_zero_usage_record(rec: dict) -> bool:
-    """Whether rec has the `<synthetic>` model and all-zero usage."""
     message = rec.get("message") or {}
     return message.get("model") == _SYNTHETIC_MODEL_ID and _usage_is_all_zero(message.get("usage"))
 
@@ -531,7 +524,7 @@ _usage_drift_warned = False
 
 def _warn_if_run_usage_drift(run: list[dict]) -> bool:
     """Emit one stderr warning per process when a requestId run's records
-    disagree on an input/cache usage class that's measured invariant across
+    disagree on an input/cache usage class that it treats as invariant across
     a run (see _USAGE_DRIFT_INVARIANT_KEYS).
 
     _merge_assistant_run relies on these classes being identical across every

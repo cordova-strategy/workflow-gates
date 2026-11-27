@@ -48,8 +48,8 @@ _REVIEW_SKILL_SET: frozenset[str] = frozenset(REVIEW_SKILLS)
 # cell stamped with another value, so a bump drops every older row from its reports. A forced re-capture cannot restore
 # a row whose sessions have all aged out, and restores a partly aged one undercounted;
 # see `docs/pr-cost.md` § "The re-record contract".
-# Exception, with no bump: the request-merge boundary can change rounds, windows, branches and priced turns, so cells
-# stamped alike can differ for the same transcripts; see `docs/pr-cost.md` § "Comparing rows across rate stamps".
+# Exception: cells stamped 1 span the request-merge boundary, which changed rounds, windows, branches and priced turns
+# with no bump, so they can differ for the same transcripts; see `docs/pr-cost.md` § "Comparing rows across rate stamps".
 REVIEW_ROUND_RULE: int = 1
 
 

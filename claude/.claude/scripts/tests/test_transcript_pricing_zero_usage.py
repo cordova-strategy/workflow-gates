@@ -40,8 +40,6 @@ _FLAT_ZERO_USAGE = {
 
 
 class TestSyntheticZeroUsageRecordInRun:
-    """A run holding a `<synthetic>` all-zero record beside a record with real usage."""
-
     def test_trailing_record_leaves_usage_and_model_to_the_earlier_record(self):
         real = _real_usage_record("req-1")
         turns = pricing.dedup_turns_by_request_id([real, _synthetic_zero_record("req-1")])
@@ -72,17 +70,22 @@ class TestSyntheticZeroUsageRecordInRun:
         assert _EXCLUDED_SPEND_MARKER not in out
 
     def test_non_contiguous_leading_record_merges_into_one_priced_turn(self, fake_projects, capsys):
-        real = _priced("claude-sonnet-5", input=1_000_000, request_id="req-1")  # $2.00
-        records = [_synthetic_zero_record("req-1"), _user_msg([_tool_result("t1", "one")]), real]
+        first_real = _priced("claude-sonnet-5", input=1_000_000, request_id="req-1")  # $2.00
+        second_real = _priced("claude-sonnet-5", input=1_000_000, request_id="req-1")
+        records = [
+            _synthetic_zero_record("req-1"), _user_msg([_tool_result("t1", "one")]),
+            first_real, _user_msg([_tool_result("t2", "two")]),
+            second_real,
+        ]
         _write_jsonl(fake_projects / "sess.jsonl", records)
 
         turns = pricing.dedup_turns_by_request_id(records)
         cost._cost_report(_cost_args(), date(2026, 8, 2))
         out = capsys.readouterr().out
 
-        assert [turn["type"] for turn in turns] == ["assistant", "user"]
+        assert [turn["type"] for turn in turns] == ["assistant", "user", "user"]
         assert turns[0]["message"]["model"] == "claude-sonnet-5"
-        assert turns[0]["message"]["usage"] == real["message"]["usage"]
+        assert turns[0]["message"]["usage"] == second_real["message"]["usage"]
         assert _extract_grand_total(out) == pytest.approx(2.00)
         assert _EXCLUDED_SPEND_MARKER not in out
 
@@ -117,8 +120,29 @@ class TestSyntheticZeroUsageRecordInRun:
         assert turns[0]["message"]["usage"] == first_real["message"]["usage"]
         assert _extract_grand_total(capsys.readouterr().out) == pytest.approx(2.00)
 
-    def test_usage_canary_stays_silent_for_a_trailing_zero_record(self, capsys):
-        run = [_real_usage_record("req-1"), _synthetic_zero_record("req-1")]
+    @pytest.mark.parametrize(
+        "run_with_a_zero_record",
+        [
+            pytest.param(
+                lambda: [_real_usage_record("req-1"), _synthetic_zero_record("req-1")],
+                id="zero-record-trailing",
+            ),
+            pytest.param(
+                lambda: [
+                    _synthetic_zero_record("req-1"), _real_usage_record("req-1"), _real_usage_record("req-1"),
+                ],
+                id="zero-record-leading",
+            ),
+            pytest.param(
+                lambda: [
+                    _real_usage_record("req-1"), _synthetic_zero_record("req-1"), _real_usage_record("req-1"),
+                ],
+                id="zero-record-between-two-agreeing-real-records",
+            ),
+        ],
+    )
+    def test_usage_canary_stays_silent_for_a_zero_record(self, run_with_a_zero_record, capsys):
+        run = run_with_a_zero_record()
 
         assert pricing._warn_if_run_usage_drift(run) is False
         assert capsys.readouterr().err == ""
@@ -209,6 +233,13 @@ class TestSyntheticZeroUsageRecordInRun:
                     _synthetic_zero_record("req-1"),
                 ],
                 id="drift-before-trailing-zero-record",
+            ),
+            pytest.param(
+                lambda: [
+                    _real_usage_record("req-1"), _synthetic_zero_record("req-1"),
+                    _real_usage_record("req-1", input=999),
+                ],
+                id="drift-after-zero-record",
             ),
             pytest.param(
                 lambda: [
