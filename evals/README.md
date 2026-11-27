@@ -1881,8 +1881,8 @@ section below. These names can appear:
   lacks a load the check expects. Those are the dispatcher's `session_start`
   load of the account's `CLAUDE.md` and, for the block calibration, a rule
   load in the `toolkit` subagent. A `toolkit` run that reads no rule-matching
-  file fails it too, so check the printed loads and the transcript before
-  blaming the hook.
+  file fails it too, so check the printed loads and the `file tool calls` line
+  before blaming the hook.
 - `arm-leak`: a `bare` run loaded or reached a file it should not have. That
   is a subagent instruction load outside the fixture, a dispatcher load other
   than the account's `CLAUDE.md`, or a Read or Bash command that reaches the
@@ -1893,10 +1893,11 @@ section below. These names can appear:
   fails it too.
 - `read-grant-denied`: a `toolkit` Read of a path on the allow list was denied.
 - `read-grant-unexercised`: no `toolkit` Read of an allow-list path ran, so the
-  grant shows nothing. The detail adds that the Reads the self-review requires
-  after an edit may never have been triggered. It does so when the `toolkit`
-  run's `file tool calls` line shows a list with no incompleteness caveat, and
-  that list holds no Edit, MultiEdit, Write or NotebookEdit call that ran.
+  grant shows nothing. The detail adds that the reviewer-file Reads
+  `code-writer`'s self-review requires after an edit may never have been
+  triggered. It does so when the `toolkit` run's `file tool calls` line shows
+  a list with no incompleteness caveat, and that list holds no Edit,
+  MultiEdit, Write or NotebookEdit call that ran.
 
 A `bare` Read of a listed path fails `arm-leak`, never `read-grant-denied`. A
 denied `toolkit` Read of a toolkit file off the list prints by name and fails
@@ -2036,8 +2037,11 @@ fixtures and session stores stay until someone removes them by hand.
 ### Retry and missing reasons
 
 A failed attempt retries once on a fresh fixture, then the run is recorded
-missing with its reason. A campaign retries a `timeout` once. `smoke` does
-not. The reasons listed below as never retrying also never retry in `smoke`.
+missing with its reason. A retried run's record and `smoke` printout take their
+evidence from its final attempt alone, so an earlier attempt may have done
+something they do not show. Its cost, wall clock and token counts sum over all
+its attempts. A campaign retries a `timeout` once. `smoke` does not. The
+reasons listed below as never retrying also never retry in `smoke`.
 
 - `fixture-error` (building the fixture or generating its exclude or Read
   allow list raised) and `analysis-error` (the diff, the classifier or a
