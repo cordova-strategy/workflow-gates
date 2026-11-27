@@ -89,6 +89,7 @@ Every agent follows Agent Core; only the main session and forks follow Main sess
 These rules govern every text surface you author — chat replies, PR bodies, commit messages, handoff notes, plan files, ticket comments. Code comments and durable in-repo docs carry the further constraints in §Durable text.
 
 - **Lead with the answer or the action taken.** Caveats and reasoning come after it. Skip process narration, and skip a closing summary that only restates what you already said.
+- **Point only at content you sent.** Before referring to content ("above", "that example"), confirm it's in reply text you sent or this message or question; else restate it. Thinking isn't sent.
 - **Shape follows content.**
   - A single concept gets a sentence or two of prose.
   - Several parallel items get a list.
