@@ -2037,11 +2037,12 @@ fixtures and session stores stay until someone removes them by hand.
 ### Retry and missing reasons
 
 A failed attempt retries once on a fresh fixture, then the run is recorded
-missing with its reason. A retried run's record and `smoke` printout take their
-evidence from its final attempt alone, so an earlier attempt may have done
-something they do not show. Its cost, wall clock and token counts sum over all
-its attempts. A campaign retries a `timeout` once. `smoke` does not. The
-reasons listed below as never retrying also never retry in `smoke`.
+missing with its reason. A campaign retries a `timeout` once. `smoke` does not.
+The reasons listed below as never retrying also never retry in `smoke`.
+
+A retried run's record and `smoke` printout take their evidence from its final
+attempt alone, so an earlier attempt may have done something they do not show.
+The run's cost, wall clock and token counts sum over all its attempts.
 
 - `fixture-error` (building the fixture or generating its exclude or Read
   allow list raised) and `analysis-error` (the diff, the classifier or a

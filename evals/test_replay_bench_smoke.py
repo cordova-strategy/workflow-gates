@@ -214,7 +214,7 @@ class TestTheRunReportShowsWhatTheRunDid:
     def test_the_metrics_line_reports_test_scope_code_lines_beside_the_non_test_figure(self, reports):
         def write_only_a_test(fixture_dir):
             (fixture_dir / "tests").mkdir()
-            (fixture_dir / "tests" / "test_new.py").write_text("first = 1\nsecond = 2\nthird = 3\n")
+            (fixture_dir / "tests" / "test_new.py").write_text("# one two three\nfirst = 1\nsecond = 2\nthird = 3\n")
 
         def write_only_non_test_code(fixture_dir):
             (fixture_dir / "src" / "other_module.py").write_text('"""Two words."""\n# three more words\nvalue = 1\nother = 2\n')
@@ -224,9 +224,15 @@ class TestTheRunReportShowsWhatTheRunDid:
         ))
 
         assert "  changed paths: ['tests/test_new.py']" in printed["bare"].splitlines()
-        assert "  metrics: non-test code lines 0, test code lines 3, comment-plus-docstring words 0" in printed["bare"]
+        assert (
+            "  metrics: non-test code lines 0, test code lines 3, non-test comment-plus-docstring words 0"
+            in printed["bare"].splitlines()
+        )
         assert "  changed paths: ['src/other_module.py']" in printed["toolkit"].splitlines()
-        assert "  metrics: non-test code lines 2, test code lines 0, comment-plus-docstring words 5" in printed["toolkit"]
+        assert (
+            "  metrics: non-test code lines 2, test code lines 0, non-test comment-plus-docstring words 5"
+            in printed["toolkit"].splitlines()
+        )
 
     def test_a_run_with_no_transcript_says_so_in_one_line_and_lists_no_calls(self, smoke_outcomes):
         outcome = smoke_outcomes["toolkit"]
@@ -251,6 +257,21 @@ class TestTheRunReportShowsWhatTheRunDid:
         lines = smoke.format_run_report("toolkit", with_control_characters)
 
         assert "  changed paths: ['src/new_module.py', 'src/z\\nforged\\x1b[31m.py']" in lines
+
+    def test_a_file_call_path_holding_a_newline_and_an_escape_prints_escaped_on_the_one_file_tool_calls_line(
+        self, smoke_outcomes, tmp_path,
+    ):
+        outcome = smoke_outcomes["toolkit"]
+        hostile_read = [_assistant([_tool_use("toolu_1", "Read", {"file_path": "src/z\nforged\x1b[31m.py"})])]
+        with_control_characters = dataclasses.replace(
+            outcome, final=dataclasses.replace(outcome.final, transcript=_transcript(tmp_path, hostile_read)),
+        )
+
+        lines = smoke.format_run_report("toolkit", with_control_characters)
+
+        assert [line for line in lines if "file tool calls" in line] == [
+            f"  file tool calls: ['Read src/z\\nforged\\x1b[31m.py ({PRINTED_STATUS_UNANSWERED})']",
+        ]
 
     def test_a_call_with_no_result_prints_as_unanswered(self, smoke_outcomes, tmp_path):
         outcome = smoke_outcomes["toolkit"]

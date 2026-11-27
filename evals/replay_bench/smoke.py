@@ -103,7 +103,7 @@ def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
         lines.append(
             f"  metrics: non-test code lines {metrics['line_counts']['non_test']['code']}, "
             f"test code lines {metrics['line_counts']['test']['code']}, "
-            f"comment-plus-docstring words {metrics['comment_words']['non_test']}"
+            f"non-test comment-plus-docstring words {metrics['comment_words']['non_test']}"
         )
     lines.append(
         f"  cost: ${record.total_cost_usd:.2f}, fixture build: {record.fixture_build_s}, wall clock: {record.wall_clock_s:.1f} s"
