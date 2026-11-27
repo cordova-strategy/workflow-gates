@@ -7,6 +7,8 @@ A study of past `/code-review` findings set out to measure whether some finding 
 The review history was frozen on 2026-10-07. The candidate rules are defined in `.claude/plans/clean-pass-criteria.md` § "Candidate rules (item 6 ships the scope, the fail-closed defaults, the exclusions, the definition and the picked rules word for word)". The heading's "item 6" is the plan's name for the keep rule it would have shipped, which this decision did not ship.
 `code-review/SKILL.md` § "Finding disposition" is unchanged. So is what counts as clean, defined in `code-review/SKILL.md` § "Step — Record review completion".
 
+A later trial, on 2026-11-22, resolved `/code-review` FYI findings as DEFER and surfaced defects. `review-pr` can tier findings below blocking only because a human reviews each of its PRs closely, and an agent PR gets no such review. To curb scope growth, shrink each fix rather than the set of findings addressed.
+
 The study's figures are not published. A miss rate would rest on agent judgment over local review records, which no command can re-run. Those records can also span more than one account's sessions, so the wider-corpus bar applies to every figure. `docs/private-project-redaction.md` § "Publishing a tooling measurement" bars such figures without per-figure authorization. The study's working files stayed local.
 
 Reducing review rounds is a separate question, piloted off by default in [architect-authored-fix-plan-pilot.md](architect-authored-fix-plan-pilot.md).
