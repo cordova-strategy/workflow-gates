@@ -6,7 +6,7 @@ from datetime import date
 import pytest
 from transcript_analysis import cost, pricing
 
-from .conftest import _cost_args, _extract_grand_total, _priced, _write_jsonl
+from .conftest import _EXCLUDED_SPEND_MARKER, _cost_args, _extract_grand_total, _priced, _write_jsonl
 
 _HAIKU_5_5 = "claude-haiku-5-5"
 _THRESHOLD = 100_000
@@ -232,6 +232,6 @@ class TestHaiku55PricedTurns:
         ])
         cost._cost_report(_cost_args(), date(2026, 8, 2))
         out = capsys.readouterr().out
-        assert "EXCLUDED SPEND" not in out
+        assert _EXCLUDED_SPEND_MARKER not in out
         # $0.10/MTok on 100,000 tokens = $0.01; $0.50/MTok on 1,000,000 tokens = $0.50.
         assert _extract_grand_total(out) == pytest.approx(0.51)

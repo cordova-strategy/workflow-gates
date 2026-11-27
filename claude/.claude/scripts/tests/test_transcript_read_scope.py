@@ -10,11 +10,13 @@ from transcript_analysis import (
 
 from .conftest import (
     _NON_CONVERSATION_CONTENT_RECORD_TYPES,
+    _SYNTHETIC_MODEL,
     _api_request_blob_rec,
     _asst,
     _bash_use,
     _compact_boundary_rec,
     _opus,
+    _priced,
     _read_result,
     _read_use,
     _tool_result,
@@ -775,6 +777,27 @@ class TestScanReadScopeSession:
         ]
         stats = read_scope._scan_read_scope_session(group, [group], None)
         assert stats["growth_tokens"] == 50
+
+    def test_synthetic_zero_usage_turn_skipped_not_treated_as_zero_context(self):
+        """An all-zero turn mid-chain recorded as context=0 would make the next
+        real turn read as 150 tokens of growth instead of the true 50."""
+        group = [
+            _growth_asst(ts="2026-05-19T10:00:00.000Z", context=100),
+            _priced(_SYNTHETIC_MODEL, ts="2026-05-19T10:01:00.000Z"),
+            _growth_asst(ts="2026-05-19T10:02:00.000Z", context=150),
+        ]
+        stats = read_scope._scan_read_scope_session(group, [group], None)
+        assert stats["growth_tokens"] == 50
+
+    def test_synthetic_turn_with_non_zero_usage_adds_no_growth(self):
+        """Chained, the synthetic turn's 500-token context would read as 400 tokens of growth."""
+        group = [
+            _growth_asst(ts="2026-05-19T10:00:00.000Z", context=100),
+            _priced(_SYNTHETIC_MODEL, input=500, ts="2026-05-19T10:01:00.000Z"),
+            _growth_asst(ts="2026-05-19T10:02:00.000Z", context=100),
+        ]
+        stats = read_scope._scan_read_scope_session(group, [group], None)
+        assert stats["growth_tokens"] == 0
 
     def test_shrinking_context_yields_no_negative_contribution(self):
         group = [

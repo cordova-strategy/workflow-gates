@@ -24,7 +24,7 @@ import pytest
 from helpers import REPO_ROOT, SCRIPTS_DIR
 from transcript_analysis import corpus, pricing, session_pricing
 
-from .conftest import _agent_use, _asst, _priced, _user_msg, _write_jsonl, _write_subagent_jsonl
+from .conftest import _SYNTHETIC_MODEL, _agent_use, _asst, _priced, _user_msg, _write_jsonl, _write_subagent_jsonl
 
 _PRICED_MODEL = "claude-sentinel-priced-1"
 _PRICED_MODEL_BASE_RATE = 2.0
@@ -998,6 +998,21 @@ class TestCanaries:
         clean = _write_session(tmp_path, 1, [_turn("2026-05-19T10:00:00.000Z")])
 
         assert _price([drifting, clean]).usage_drift_detected is True
+
+    def test_trailing_synthetic_zero_record_is_not_usage_drift_and_leaves_the_request_priced(self, tmp_path, capsys):
+        ts = "2026-05-19T10:00:00.000Z"
+        session = _write_session(tmp_path, 0, [
+            _priced(_PRICED_MODEL, input=1_000_000, request_id="req-trailing-zero", ts=ts),
+            _priced(_SYNTHETIC_MODEL, request_id="req-trailing-zero", ts=ts),
+        ])
+
+        result = _price([session])
+
+        assert result.usage_drift_detected is False
+        assert result.format_drift_detected is False
+        assert result.total_micro_dollars == _ONE_MILLION_INPUT_TURN_MICRO_DOLLARS
+        assert result.total_unpriced_tokens == 0
+        assert _usage_warning_count(capsys.readouterr().err) == 0
 
     def test_spawn_without_any_sidechain_turn_reports_subagent_drift_and_prints_one_warning(self, tmp_path, capsys):
         session = _write_session(tmp_path, 0, [_spawn_turn()])

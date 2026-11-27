@@ -703,7 +703,6 @@ _EXPECTED_DISPOSITION_RULE_ANCHORS = {
     ("code-review", "code-review-contradiction-route"),
     ("code-review", "code-review-defer-invariant"),
     ("code-review", "code-review-disposition-challenge"),
-    ("code-review", "code-review-fix-plan-pilot"),
     ("code-review", "code-review-new-primitive-route"),
     ("code-review", "code-review-round-cap-consult-verdict"),
     ("plan-review", "plan-review-fix-or-ask"),
@@ -918,9 +917,9 @@ def test_every_config_get_key_named_in_a_skill_is_in_the_config_schema() -> None
         ):
             call_sites.append((skill_md_path, key_match.group(1)))
     # pr-description and transcript-analysis each carry one call site.
-    # The two pilot regions add two more; the floor excludes them so removing
-    # either region leaves this test green. Removing or redirecting a pilot region fails
-    # test_disposition_rule_anchors_present and that region's pin test.
+    # The disposition-challenge pilot region adds one more; the floor excludes it so
+    # removing that region leaves this test green. Removing or redirecting it fails
+    # test_disposition_rule_anchors_present and its pin test.
     minimum_call_sites = 2
     assert len(call_sites) >= minimum_call_sites, (
         f"found {len(call_sites)} config-get.sh call sites across shipped skills; "

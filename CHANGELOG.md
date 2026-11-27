@@ -14,6 +14,15 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Changed
 
+- **Cost figures can move with no change of rate stamp, because `transcript-analysis.py` changed how the records of one `requestId` become a turn.** An all-zero `<synthetic>` record is left out of usage and model selection and the usage comparisons, unless a run holds only such records. Its content is still merged, and when it comes first it still supplies the turn's timestamp and `gitBranch`. A merged turn takes its usage and model from the last record not left out. The change is live on `git pull`.
+  - This fixes a pricing defect: when an all-zero `<synthetic>` record immediately followed a request's other records, the request's real usage was priced at zero, which could also trip `PRICING INTEGRITY`.
+  - `cost`'s `PRICING INTEGRITY` banner, which `pr-cost-section.sh` carries into PR bodies, now has a `Cause:` sentence for each drift check that fired.
+  - `cost` output, `pr-cost` rows and weekly `cost-ledger` rows can be higher or lower.
+  - `review-cost-by-size` can pool stored `review_rounds` cells from before and after the change, with no output line marking it. See its section's "Known limits" in `docs/transcript-analysis.md`.
+  - `read-scope`'s prompt-token growth now leaves out every `<synthetic>` record.
+  - Stored `pr-cost` rows from before and after the change can differ for the same transcripts. See `docs/pr-cost.md` § "Comparing rows across rate stamps", and `docs/cost-ledger.md` for weekly rows.
+  - **Migration:** a `routing-guard` capture written before the pull can be wrong. See the `routing-guard` section's "Known gaps" list in `docs/transcript-analysis.md`.
+  - **Migration:** in `session_pricing`, `usage_drift_detected`, and with it `format_drift_detected`, changed meaning, which breaks its stability promise. The `session_pricing.py` section of `docs/transcript-analysis-architecture.md` states the break.
 - **`transcript-analysis.py`'s `reviewer-yield --redact` now relabels agent types, and the ten `--no-redact` subcommands share one refusal line.**
   - `reviewer-yield --redact` prints each agent type not defined in this toolkit's own `agents/` directory as `agent-type-<N>` in both tables, at any root count. A tracked type prints as its own name. `N` counts from 1 over the sorted distinct untracked names, and labels are stable within one run only. See `docs/transcript-analysis.md` § "reviewer-yield".
   - The ten subcommands that register `--no-redact` are `cost`, `cache-efficiency`, `cache-rebuild`, `context-composition`, `context-distribution`, `edit-format`, `handoff-signal-response`, `plan-boundary`, `read-scope` and `rearm-backtest`. Both root resolvers, `resolve_scan_roots` and `_resolve_cost_roots`, now apply the refusal too.
@@ -780,6 +789,7 @@ All notable changes to `claude-config` are documented here. Format follows [Keep
 
 ### Removed
 
+- **The default-off `/code-review` fix-plan pilot is removed.** Every stow consumer's `code-review/SKILL.md` loses the `DISPOSITION_RULE` region that ran `config-get.sh architect_fix_plan_pilot` on each round with a reviewer-spawned finding, so those rounds no longer make that call. No skill reads the key, and its row stays in `config-keys.psv` at `false`. The row stays because the session config-keys recorder logs it, the routing guard reads that log, and a scaffolded `claude-config.toml` that holds it reads without a warning. Set the key `false` on any account that enabled it. A leftover `true` changes no behavior, but the routing guard still labels it `on`. See `docs/session-config-keys-log.md`, `docs/transcript-analysis.md` § "routing-guard" and `docs/design-decisions/architect-fix-plan-pilot-not-adopted.md`.
 - **Python older than 3.14 is no longer supported: install Python 3.14 or newer so its `python3` is first on the PATH Claude Code starts with.**
   - 3.14 is the one minor CI tests. `_config.sh` holds the floor, and a test fails when it, `README.md`'s floor or ruff's `target-version` differs from CI's pin.
   - `install.sh` exits before changing anything when `python3` reports a lower version or none it can read.

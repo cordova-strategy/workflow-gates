@@ -4,7 +4,16 @@ import pytest
 from transcript_analysis import cost, pricing, review_rounds
 
 from ._pr_cost_helpers import _REPRICED_ROUND_MODEL
-from .conftest import _asst, _cost_args, _extract_grand_total, _priced, _tool_result, _user_msg, _write_jsonl
+from .conftest import (
+    _asst,
+    _cost_args,
+    _extract_grand_total,
+    _priced,
+    _tool_result,
+    _usage_drift_records,
+    _user_msg,
+    _write_jsonl,
+)
 
 
 class TestPriceTurnArity:
@@ -285,11 +294,7 @@ class TestDedupTurnsByRequestId:
         one warning per process (see _warn_if_run_usage_drift) and other
         tests in this module-scoped process may have already tripped it."""
         monkeypatch.setattr(pricing, "_usage_drift_warned", False)
-        rec1 = _asst("claude-sonnet-5", content=[{"type": "thinking", "thinking": "..."}], request_id="req-1")
-        rec1["message"]["usage"] = {"input_tokens": 100, "output_tokens": 3}
-        rec2 = _asst("claude-sonnet-5", content=[{"type": "text", "text": "done"}], request_id="req-1")
-        rec2["message"]["usage"] = {"input_tokens": 999, "output_tokens": 50}
-        pricing.dedup_turns_by_request_id([rec1, rec2])
+        pricing.dedup_turns_by_request_id(_usage_drift_records("req-1"))
         assert "WARNING" in capsys.readouterr().err
 
     def test_ascending_output_tokens_within_run_emits_no_warning(self, monkeypatch, capsys):
@@ -657,9 +662,10 @@ class TestCacheMissReason:
         assert pricing._cache_miss_reason(message) == "unavailable"
 
     def test_merged_run_takes_cache_miss_reason_from_first_record(self):
-        """_merge_assistant_run takes every non-content, non-usage field from
-        a requestId run's first record unchanged -- a merged turn's own
-        diagnostics survives with no extra collapsing logic added for it."""
+        """_merge_assistant_run takes every field except message.content,
+        message.usage and message.model from a requestId run's first record
+        unchanged -- a merged turn's own diagnostics survives with no extra
+        collapsing logic added for it."""
         rec_a = _priced("claude-opus-5", output=10, request_id="req-1")
         rec_a["message"]["diagnostics"] = {
             "cache_miss_reason": {"type": "model_changed", "cache_missed_input_tokens": 999},

@@ -2,6 +2,8 @@
 
 *2026-10-08.*
 
+**Superseded in part (2026-11-24):** the pilot's `code-review` region, its pin tests and its anchor-set entry are removed under the "Revert contract" paragraph below. `architect_fix_plan_pilot` is inert: no skill reads it, and its schema row stays at `false`. `git log -S 'DISPOSITION_RULE:code-review-fix-plan-pilot' -- claude-skills/skills/code-review/SKILL.md` lists the commits that added and removed the region. To restore the pilot, revert the removing change. The schema row was never removed, so the "Reverting the merge commit is not the rollback" sentence below describes the change that added the key.
+
 **Superseded in part by [The architect-authored fix-plan pilot is not adopted](architect-fix-plan-pilot-not-adopted.md) (2026-10-25):** the pilot is not adopted. The key stays default-false and the sections below describe a dormant mechanism, not a standing recommendation. The "Measurement and enabling" section's conditions were not met before enabling, and the linked record says what that cost the assessment.
 
 **Superseded in part by [Dispatch prompts mark relayed text by path, source and blockquote, not by fence](dispatch-prompts-mark-relayed-text-by-source.md) (2026-10-20):** in the "No untrusted-data rule or row delimiter" bullet below, the clause saying findings, diff and plan text reach the consult with no rule marking them as data no longer holds. The Agent Core rule in `claude/.claude/CLAUDE.md` now makes that text data, and the linked record says how a dispatcher marks that text when inlining it. Every other clause here stands.

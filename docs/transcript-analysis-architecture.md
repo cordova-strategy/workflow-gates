@@ -167,6 +167,15 @@ The `unpriced_model_count` field reports the count either way. This default dive
 own tiering for the identical model-ID exposure risk, a deliberate tradeoff rather than an oversight.
 See `cost.py`'s `_print_excluded_spend_banner` docstring for that tiering's own rationale.
 
+**Breaking change: `usage_drift_detected` leaves some records out of its comparison.** A `<synthetic>`
+record whose usage token fields are all zero is left out of a requestId run's comparison, unless every record
+in the run is one. A run that differs only by such a record now reports `False`, and `format_drift_detected`
+narrows with it. Other promised fields can also differ for the same transcript, `micro_dollars_by_day` and
+unpriced figures among them, because:
+
+- A merged turn takes its usage and model from the last record kept.
+- A non-contiguous group that differs only by a left-out record now merges.
+
 **Error contract.** `price_sessions_by_utc_day` raises `ValueError` when `start` is after `end` or a
 path cannot be passed to the operating system (it contains a NUL byte or does not encode in the
 filesystem encoding), and `TypeError` for a wrongly typed argument, before it reads any session.

@@ -19,7 +19,7 @@ from transcript_analysis import corpus, pricing
 __all__ = ["SessionPricingError", "SessionPricingResult", "SessionSpend", "price_sessions_by_utc_day"]
 
 _USAGE_TOKEN_KEYS = ("input_tokens", "output_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
-_CACHE_CREATION_TOKEN_KEYS = ("ephemeral_1h_input_tokens", "ephemeral_5m_input_tokens")
+_CACHE_CREATION_TOKEN_KEYS = pricing._CACHE_CREATION_SPLIT_KEYS
 _MICRO_DOLLARS_PER_DOLLAR = 1_000_000
 
 
@@ -80,7 +80,8 @@ class SessionPricingResult:
     pricing_reverify_by: the earliest re-verify-by date among models priced in-window, or None when no
         in-window turn was priced.
     usage_drift_detected: a requestId run merged during this call, in or out of the window, had non-identical
-        input or cache usage across its records.
+        input or cache usage across its compared records. A `<synthetic>` record whose usage token fields are
+        all zero is not compared, unless every record in its run is one.
     subagent_format_drift_detected: this call's sessions recorded subagent spawns but no sidechain assistant
         turns, counting every record read regardless of window.
     request_id_collision_count: distinct non-empty requestIds on assistant records in more than one session,

@@ -45,10 +45,10 @@ _PINNED_DISPOSITION_CHALLENGE_CLAUSE = (
     "`~/.claude/scripts/config-get.sh architect_disposition_challenge_pilot`; "
     "only exit 0 applies this rule.** A `/review-pr` pass is one run under that "
     "skill's standing override to report findings and change nothing. This rule "
-    "runs after the contradiction route's carries and settled-site stops and any "
-    "valid fix-plan table, and the round's heavier-mechanism consults and any "
+    "runs after the contradiction route's carries and settled-site stops, and the "
+    "round's heavier-mechanism consults and any "
     "`code-writer` dispatch wait for its result. A row is the orchestrator's own "
-    "unless a valid fix-plan table or the human decided it, it is a carry, or it "
+    "unless the human decided it, it is a carry, or it "
     "is on the contradiction route. An ADDRESS row the heavier-mechanism rule "
     "routes to a consult is the orchestrator's own. Mark as barred each of those "
     "rows whose finding the enforcement-invariant rule above or a loaded project "
@@ -411,6 +411,14 @@ class TestRoundCapSecondNoiseVerdictStop:
     )
     def test_region_carries_clause(self, clause: str) -> None:
         assert clause in self._region_text(), f"the round-cap region no longer carries {clause!r}"
+
+    def test_first_verdict_is_the_re_plan_verdict(self) -> None:
+        """The second-noise stop's *Re-plan* option points at the first verdict by position."""
+        region_text = self._region_text()
+        first_bullet_start = region_text.find("- **")
+        assert first_bullet_start != -1 and region_text[first_bullet_start + len("- **") :].startswith(
+            "Foundation is wrong"
+        ), "the round-cap consult region's first verdict bullet must be the re-plan verdict (`Foundation is wrong`)"
 
     def test_the_three_options_appear_in_order(self) -> None:
         region_text = self._region_text()
