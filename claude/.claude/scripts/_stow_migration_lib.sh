@@ -416,14 +416,10 @@ stow_unadopt_entry() {
 # Print, NUL-separated, the top-level names under REPO_DIR/claude/.claude
 # that are physically present but not tracked by git -- the entries a prior
 # `stow --adopt` pulled into the package that this repo's own manifest never
-# claimed. Ported from setup-claude-accounts.sh's git-ls-files/find set
-# difference (that script's package root is claude/.claude itself, one level
-# below install.sh's claude/, which is why its own --ignore patterns are
-# anchored differently -- see install.sh's stow-adopt-ignore comment).
-# Shared by install.sh's un-adopt loop and its --ignore-arg construction so
-# both see one derivation instead of two hardcoded name lists. Never reports
-# plans/, handoffs/, or briefs/, even when physically present and untracked
-# -- see the exclusion below.
+# claimed. Shared by install.sh's un-adopt loop and its --ignore-arg
+# construction so both see one derivation instead of two hardcoded name
+# lists. Never reports plans/, handoffs/, or briefs/, even when physically
+# present and untracked -- see the exclusion below.
 stow_untracked_package_entries() {
   local repo_dir="$1"
   local package_dir="$repo_dir/claude/.claude"

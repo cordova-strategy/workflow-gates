@@ -1,14 +1,12 @@
-# Fix bare-`~/.claude` failures for non-personal Claude accounts
+# Fix bare-`~/.claude` failures for non-default Claude accounts
 
 ## Context
 
-The user's machine runs a per-account Claude Code config-dir scheme
-(`<private-setup-repo>`'s `accounts.tsv` + `use_claude_account`): the `personal`
-account stays at `~/.claude`, every other account resolves to
-`~/.config/claude-accounts/<account>/` via `CLAUDE_CONFIG_DIR`. Sessions
-anchored in a non-personal container reported three symptoms: handoffs/briefs
-failing to write, plans failing, and `transcript-analysis` finding no
-sessions for a container that clearly had them.
+A machine can run more than one Claude Code account. The default account stays
+at `~/.claude`. A non-default account uses its own config dir, set through
+`CLAUDE_CONFIG_DIR`. Sessions under a non-default account reported three
+symptoms: handoffs/briefs failing to write, plans failing, and
+`transcript-analysis` finding no sessions that the account clearly had.
 
 The initial hypothesis — that claude-config's hooks/scripts hardcode
 `$HOME/.claude` instead of honoring `CLAUDE_CONFIG_DIR` — was wrong for the
@@ -30,7 +28,7 @@ independent, narrower causes instead:
    (`git ls-files -- 'claude/.claude/*'` returns only 9 top-level entries).
    A brand-new clone on a brand-new machine would never touch any of them.
    What actually happened: a one-time, undocumented event on this specific
-   machine (most likely the user manually migrating a pre-existing personal
+   machine (most likely the user manually migrating a pre-existing
    `~/.claude` into this repo while bootstrapping it) physically populated
    all 37 paths inside `claude/.claude/` — after which every subsequent
    `install.sh` re-run has correctly kept maintaining those symlinks, since
@@ -55,31 +53,29 @@ independent, narrower causes instead:
    shell command line, keeps the denied path out of argv entirely.
 3. **The `plan-review` routing gate** (`ROUTING.md`) has two distinct
    failure modes conflated in the original report: an *unsatisfiable* Read
-   denial under non-personal accounts (root cause: `CLAUDE_CONFIG_DIR`
-   relocates the skill's base directory into the `~/.config/**` prefix a
-   separate, Kandji-managed `managed-settings.json` denies — confirmed via
+   denial under a non-default account (root cause: when a non-default config
+   dir sits under `~/.config/`, `CLAUDE_CONFIG_DIR` moves the skill's base
+   directory there, where a `Read/Edit(~/.config/**)` deny rule blocks the
+   Read — relocation confirmed via
    `claude-directory.md:1435` and the bundle's `dirname(skill.filePath)`
    base-dir logic; not fixable from this repo, see Out of scope), and an
    *avoidable* ordering race that trips for roughly a fifth of plan-review
    sessions regardless of account (`log-routing-read.sh` only credits a Read
    that happens *after* `marker.sh activate` — reproduced live during this
-   plan's own `/plan-review` pass, on the personal account, when a
+   plan's own `/plan-review` pass, on the default account, when a
    deactivate-then-reactivate cycle left an active marker with no
    routing-read credit).
 4. Ten hardcoded `~/.claude/skills/...` references across 8 skill/agent
    files could use the documented `${CLAUDE_SKILL_DIR}` substitution
    instead — but only 2 of the 10 are actually eligible (see item 3 below).
 
-**Out of scope, named explicitly:** the `~/.config/**` managed deny (item
+**Out of scope, named explicitly:** the `~/.config/**` deny rule (item
 3's root cause) is not fixable from this repo. `permissions.deny` has no
 allow-carve-out (`permissions.md:39`: "a deny rule can't carry allowlist
 exceptions"); the one documented mechanism that *does* support a scoped
 re-allow, `sandbox.filesystem.denyRead`/`allowRead`
 (`sandboxing.md:180-181`), governs sandboxed Bash subprocesses only, not the
-`Read` tool the gate actually needs. Decomposing the blanket rule requires
-confirming who owns `managed-settings.json` (Kandji MDM vs. hand-authored —
-unresolved as of this plan) and is tracked as a prerequisite for a future
-session, not this one.
+`Read` tool the gate actually needs.
 
 ## Approach
 
@@ -93,11 +89,12 @@ a systemic `CLAUDE_CONFIG_DIR` support gap.
   for the entire `~/.claude` tree, including `skills/`.
   `[verified: claude-directory.md:1435 — "If you set CLAUDE_CONFIG_DIR,
   every ~/.claude path on this page lives under that directory instead"]`
-- G2: the `personal` account must stay at bare `~/.claude` (the harness
+- G2: the default account must stay at bare `~/.claude` (the harness
   default with zero configuration).
-  `[verified: env-vars/claude-directory docs + <private-setup-repo>'s own
-  documented rationale]`
-- G3: the managed `Read/Edit(~/.config/**)` deny is fixed for this plan.
+  `[verified: env-vars/claude-directory docs, for the default location
+  only]` The requirement that it stay there is
+  `[unverified: not verifiable from this tree]`.
+- G3: the `Read/Edit(~/.config/**)` deny rule is fixed for this plan.
   `[engineer-verified — user's explicit decision after /verify-sources
   confirmed no carve-out mechanism exists at that permission layer]`
 - G4: cross-account transcript content must stay unreadable via the `Read`
@@ -137,9 +134,9 @@ a systemic `CLAUDE_CONFIG_DIR` support gap.
   reassignment: that log is scoped to the *running* account's own
   schema-drift history, not to session enumeration — the original reported
   symptom — so there is no reason for a cross-account `--config-dir` to
-  redirect it. Reads at the OS level, so the managed
-  `Read/Edit` deny never applies (it governs Claude's built-in file tools
-  and Bash file-commands only). `[verified: permissions.md:272]`. Two
+  redirect it. Reads at the OS level, so the `Read/Edit` deny rule never
+  applies (it governs Claude's built-in file tools and Bash file-commands
+  only). `[verified: permissions.md:272]`. Two
   lighter/narrower alternatives considered and rejected in favor of this
   minimal primitive: (a) keep the existing `CLAUDE_CONFIG_DIR=... python3
   ...` inline workaround — rejected, confirmed broken (9 matching Bash
@@ -150,7 +147,7 @@ a systemic `CLAUDE_CONFIG_DIR` support gap.
   convention for machine-local lookup files
   (`private-projects.md`-style, read via `_lib_config_lines`), and
   account-name resolution is specific to one machine's scheme and belongs
-  in `<private-setup-repo>`, not the public repo.
+  in a stow user's own machine setup, outside this repository.
 - **Migrate to `${CLAUDE_SKILL_DIR}`, narrowly** — `anchors: root`.
   Mechanism: the documented harness substitution, which resolves to *the
   referencing skill's own directory*. Scope confirmed at the substitution's
@@ -280,7 +277,7 @@ workaround as the fix. Delete it once `--config-dir` ships.
   5 read sites (`:1498, :1500, :1537, :1604, :2437`). Make `--this-repo`
   under a set `--config-dir` error loudly on zero matching project slugs
   rather than silently returning empty — this directly closes the original
-  reported symptom (declaring no sessions exist for a container that has
+  reported symptom (declaring no sessions exist for an account that has
   them). `config_dir()` itself (not `PROJECTS_DIR`) is called at one other
   site, `:3100`'s `.handoff-nudge.log` diagnostic — reassigning
   `PROJECTS_DIR` does **not** cover it, and this is intentional, not a gap:
@@ -357,8 +354,8 @@ workaround as the fix. Delete it once `--config-dir` ships.
    Confirm no `~/.config` path appears in the subprocess's own argv when
    the flag is used.
 3. **`${CLAUDE_SKILL_DIR}`:** invoke `plan-review` for real, **under the
-   personal account specifically** — under any other account the Read
-   would additionally cross the `~/.config/**` managed deny (this plan's
+   default account specifically** — under any other account the Read
+   would additionally cross the `~/.config/**` deny rule (this plan's
    own item-3 root cause, out of scope), which would fail for a reason
    indistinguishable from a broken substitution and make the check
    uninterpretable. Confirm the routing-read marker gets written (i.e., the
@@ -373,16 +370,16 @@ workaround as the fix. Delete it once `--config-dir` ships.
 
 ## Out of scope
 
-- **Decomposing the managed `~/.config/**` deny.** Blocked on confirming
-  Kandji ownership of `managed-settings.json`; no in-repo fix exists.
-- **Relocating non-personal account dirs out of `~/.config`.** Considered
-  and rejected early: would work around a misconfigured deny by moving a
+- **Decomposing the `~/.config/**` deny rule.** No in-repo fix exists.
+- **Relocating non-default config dirs out of `~/.config`.** Considered
+  and rejected early: would work around the deny rule by moving a
   correctly-placed, XDG-conventional directory, and would forfeit the
   cross-account transcript isolation the user explicitly wants to keep
   (G4).
-- **Account-name-to-config-dir resolution.** Belongs in `<private-setup-repo>`
-  (a thin wrapper can call `transcript-analysis.py --config-dir $(resolved
-  path)`); rejected from this plan at `/plan-review` Step 4.
+- **Account-name-to-config-dir resolution.** Belongs in a stow user's own
+  machine setup, outside this repository (a thin wrapper can call
+  `transcript-analysis.py --config-dir $(resolved path)`); rejected from
+  this plan at `/plan-review` Step 4.
 - **TTL on the abandoned-activation gap**
   (`.plan-review-active.d/$SESSION_ID` has no freshness check, so a
   crashed/abandoned plan-review's markers can silently authorize a later,

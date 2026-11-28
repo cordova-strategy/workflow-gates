@@ -52,11 +52,12 @@ Two open questions from discovery were resolved this session:
    10, twelve days before the worktree Bash-guard was even documented)
    introduced the templated form on the belief that a hardcoded
    `~/.claude/scripts/transcript-analysis.py` "broke under a relocated
-   config dir." That belief does not hold on the engineer's own machine.
-   `$HOME` is shared across every `claude_account` row, including
-   non-`personal` ones — `ls -la ~/.local/state/claude-accounts/*/scripts`
-   and `~/.claude/scripts` both resolve to the identical `claude-config`
-   checkout symlink target `[verified: ls -la output, this session]`. That
+   config dir." That belief does not hold for a stowed install.
+   `CLAUDE_CONFIG_DIR` leaves `$HOME` unchanged, so `~/.claude/scripts/<name>`
+   still reaches the stowed `claude-config` checkout. Where a non-default
+   config dir's `scripts/` also links into that checkout,
+   `<config-dir>/scripts` and `~/.claude/scripts` resolve to the same files
+   `[verified: ls -la output, this session]`. That
    alone only shows reachability, not correct behavior, so it was tested
    directly rather than left inferred: running the single hardcoded
    `python3 ~/.claude/scripts/transcript-analysis.py sessions --paths`
@@ -72,8 +73,7 @@ Two open questions from discovery were resolved this session:
    `marker.sh` exactly — and the templated form was never buying the
    correctness it was written for; it only cost Trigger-B guard-safety. `docs/worktree-bash-guard.md`'s "already-accepted
    gap ... whose ~/.claude isn't a live install (e.g. a secondary account
-   container)" caveat describes a hypothetical this engineer's own multi-account
-   setup does not actually exhibit — `$CLAUDE_CONFIG_DIR` isolates
+   container)" caveat does not apply to such a config dir — `$CLAUDE_CONFIG_DIR` isolates
    account-scoped *state* (handoffs, briefs, transcripts, credentials,
    markers), never script/hook *content*, which is uniformly
    shared-checkout content on every account regardless of `$CLAUDE_CONFIG_DIR`.
@@ -169,7 +169,7 @@ never needed templating at all.
 |---|---|---|
 | G1 | The worktree-isolation Bash guard is harness-native; no hook or script in this repo implements, intercepts, or disables it. Anthropic owns it. | `[verified: docs/worktree-bash-guard.md:3-9]` |
 | G2 | The guard's refusals do not reproduce on demand as of the last re-verification, so this change cannot be validated by triggering a refusal before and after. The cause was never isolated and lies outside this repo. | `[verified: docs/worktree-bash-guard.md:115-129]` |
-| G3 | Every git-tracked file under `claude/.claude/` resolves into one shared checkout regardless of the active account, so `~/.claude/scripts/<name>` names the same file under every `CLAUDE_CONFIG_DIR`, and the launched process still reads `$CLAUDE_CONFIG_DIR` from its own environment. Fixed by the stow layout and the operator's account provisioning, not by this plan. | `[engineer-verified]` (plan §Step 4.2: `sessions --paths` executed under three `CLAUDE_CONFIG_DIR` values, each scanning that account's own projects dir) |
+| G3 | Every git-tracked file under `claude/.claude/` resolves into one shared checkout regardless of the active account, so `~/.claude/scripts/<name>` names the same file under every `CLAUDE_CONFIG_DIR`. The launched process still reads `$CLAUDE_CONFIG_DIR` from its own environment. Fixed by the stow layout, and for a non-default config dir by its `scripts/` and `hooks/` linking into the same checkout, not by this plan. | `[engineer-verified]` (plan §Step 4.2: `sessions --paths` executed under three `CLAUDE_CONFIG_DIR` values, each scanning that account's own projects dir). The `hooks/` link is `[unverified]`: §Step 4.2's recorded `ls` covered only `scripts/`. |
 | G4 | `handoffs/` and `briefs/` are genuinely per-account state, unlike `scripts/`/`hooks/`. | `[engineer-verified]`, corroborated `[verified: claude/.claude/skills/tests/test_skills.py:2839-2851 — _PER_ACCOUNT_STATE_PATH_RE matches ~/.claude/handoffs/ and ~/.claude/briefs/, and deliberately excludes scripts/hooks/ per its own :2829-2838 comment]` |
 | G5 | `marker.sh`'s literal-path form is locked by a triple — `settings.json` allow-rules, `enforce-marker-script-shape.sh`'s anchor, and the SKILL.md literals — that changes in lockstep or not at all. Changing it is a separate decision spanning a gate hook and the permission surface. | `[verified: claude/.claude/skills/plan-review/SKILL.md:38; test_skills.py:2857-2872 and :2969-2977; claude/.claude/settings.json:4-19]` |
 
@@ -185,7 +185,7 @@ never needed templating at all.
 | 6 | Supersede `TestTranscriptToolkitInterpreterPathContract` — which currently mandates the templated form for the three toolkit skills — with a repo-wide contract banning both the templated and the `<config-dir>/` prose form on any `scripts/`/`hooks/` path, across SKILL.md bodies, agent bodies, `claude/.claude/CLAUDE.md`, and the `_all_doc_paths()` corpus. This is the root-closing move: the earlier sweep missed sites because nothing enforced the shape. A narrow regex anchored on `/scripts/` or `/hooks/` immediately after the expansion leaves all ~25 legitimate per-account-state templating sites untouched — verified by running that exact grep repo-wide, which returns only in-scope sites. The new test reuses `_fence_excluded_by_marker` (mirroring `TestTriggerAFenceScan`, not `TestPerAccountStatePathContract`), because its corpus includes SKILL.md bodies with pytest-executed `HOOK_TEST_FIXTURE` fenced blocks that would otherwise false-positive against the regex. | `[verified: git grep -nE 'CLAUDE_CONFIG_DIR[^}]*\}/(scripts\|hooks)/' and git grep -nE 'config-dir[>}]?/(scripts\|hooks)/' — the complete match set is the in-scope list in Critical files, plus the two .claude/plans/*.md files, which _all_doc_paths() does not cover]` | root |
 | 7 | Correct `TestPerAccountStatePathContract`'s failure text at `test_skills.py:2939`, which currently prescribes the templated form "for a runnable command." Point it at in-script `config_dir()`/`_lib_config_dir` resolution instead. Left as-is, the suite's own error message teaches the shape rows 1-6 remove. | `[verified: test_skills.py:2932-2940]` | root |
 | 8 | Add `("handoff", "~/.claude/scripts/marker.sh status")` to `_MARKER_TRIPLE_SITES`, so row 2's newly-literal site is pinned like the other 14. | `[verified: test_skills.py:2857-2872]` | row2, G5 |
-| 9 | Correct `docs/worktree-bash-guard.md:107-109`, which asserts an inherited "already-accepted gap … whose `~/.claude` isn't a live install (e.g. a secondary account container)." G3 disproves this for the setup it describes; leaving it in place would contradict the convention this plan makes mandatory. This paragraph describes a present property, not a past event, so CLAUDE.md's preserved-content rule (Axis 3) does not cover it — the Site sweep table above it does record a past sweep and is not touched. | `[verified: docs/worktree-bash-guard.md:57-83 vs :107-109; CLAUDE.md Scope-discipline Axis 3 decision test]` | root, G3 |
+| 9 | Correct `docs/worktree-bash-guard.md:107-109`, which asserts an inherited "already-accepted gap … whose `~/.claude` isn't a live install (e.g. a secondary account container)." G3 disproves this for a non-default config dir whose `scripts/` and `hooks/` link into the same `claude-config` checkout as `~/.claude`. Leaving it in place would contradict the convention this plan makes mandatory. This paragraph describes a present property, not a past event, so CLAUDE.md's preserved-content rule (Axis 3) does not cover it. The Site sweep table above it does record a past sweep and is not touched. | `[verified: docs/worktree-bash-guard.md:57-83 vs :107-109; CLAUDE.md Scope-discipline Axis 3 decision test]` | root, G3 |
 | 10 | No new rule text in `claude/.claude/CLAUDE.md`. Lines 88-96 already state "no `$CLAUDE_CONFIG_DIR` reference" and already name `~/.claude/scripts/` as where dedicated scripts live; lines 130-131 were a violation of that bullet, not a gap in it. Adding a restatement would be a second prose layer over a rule that is about to gain mechanical enforcement (row 6) — the compounding-layers tell. | `[verified: CLAUDE.md:88-96,130-131]` | root |
 
 **Alternatives set aside at the whole-plan level.** A wrapper script per
