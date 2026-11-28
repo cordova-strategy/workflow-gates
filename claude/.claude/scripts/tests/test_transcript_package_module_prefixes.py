@@ -149,6 +149,8 @@ TEST_FILES = (
     "test_transcript_read_cost_report.py",
     "test_transcript_scope.py",
     "test_transcript_scope_scan.py",
+    "test_transcript_scope_worktree_admission.py",
+    "test_transcript_analysis_branch_prefilter.py",
     "test_transcript_scope_absolute_projects.py",
     "test_transcript_publication_scope.py",
     "test_transcript_ledger_dispositions.py",

@@ -32,7 +32,9 @@ handler reads at call time, not `cli.py`.
 JSONL transcript read/parse and session iteration: `iter_sessions`, `read_session_file`,
 `SUBAGENT_SUBDIR` (the `<session_id>/subagents/*.jsonl` split-transcript convention),
 `CONVERSATION_RECORD_TYPES` (the record types a walk over `message.content` must filter to), `_parse_ts`,
-and `_index_subagent_dispatches` (one session's toolUseId → paired subagent `.jsonl`/requested-model
+`_session_source_files` (one session's main file, then its sorted subagent files), `_branch_prefilter`
+(the `--this-repo` `--branches` skip of a session no filtered name can match), and
+`_index_subagent_dispatches` (one session's toolUseId → paired subagent `.jsonl`/requested-model
 join). The harness writes every nested dispatch's `.meta.json` into the session's own flat
 `subagents/` directory. One session's index therefore also resolves a dispatch spawned from inside
 another subagent. `review_rounds.py`'s nested-dispatch descent reuses it. No dependency on scope
@@ -56,7 +58,7 @@ The rule itself is documented in `docs/transcript-analysis.md` under "Subagent a
 
 `scope.py` also owns `_add_project_scope_args`, which registers the mutually exclusive
 `--projects`/`--this-repo` flags on a subparser. `_resolve_project_scope` reads the `this_repo`
-attribute that function defines. `_add_extra_config_dirs_arg` registers the repeatable subcommand-level
+attribute that function defines. `review-cost-by-size` also reads it, and never calls `_resolve_project_scope`. `_add_extra_config_dirs_arg` registers the repeatable subcommand-level
 `--config-dir`, whose `extra_config_dirs` values `_resolve_cost_roots` reads.
 
 `scope.py` also owns the shared `--no-redact` refusal. `_refuse_no_redact_above_one_root` exits 2 when the flag
@@ -827,7 +829,7 @@ is the one name `build_parser()` reaches bare.
 The sessions command: `cmd_sessions`, the resolved scope's transcript paths one per line, plus split
 subagent files under `--include-subagents`, and the `_add_sessions_subparser` registration. Imports
 `corpus` and `scope` both by module (attribute access), matching `cost.py`'s convention: it reads
-`corpus.SUBAGENT_SUBDIR`. `_add_sessions_subparser` is the one name `build_parser()` reaches bare.
+`corpus._session_source_files`. `_add_sessions_subparser` is the one name `build_parser()` reaches bare.
 
 ### `context_distribution.py`
 
@@ -918,9 +920,10 @@ the existing tests live.
 `corpus.py`'s, `pricing.py`'s, `redaction.py`'s, and `render.py`'s tests live in
 `tests/test_transcript_corpus.py`, `tests/test_transcript_pricing.py`,
 `tests/test_transcript_redaction.py`, and `tests/test_transcript_render.py`. `scope.py`'s
-scan-traversal, scan-gap, and glob-selection classes are tested in
-`tests/test_transcript_scope_scan.py`, its absolute `--projects` value class in
-`tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
+scan-traversal, scan-gap, glob-selection, and branch-prefilter-gap classes are tested in
+`tests/test_transcript_scope_scan.py`. Its `--this-repo` worktree-prefix admission and the resolved-scope header's
+live/unlisted counts are tested in `tests/test_transcript_scope_worktree_admission.py`, its absolute `--projects`
+value class in `tests/test_transcript_scope_absolute_projects.py`, its active-account narrowing helpers in
 `tests/test_transcript_scope_active_account.py`, its shared `--no-redact` refusal in
 `tests/test_transcript_scope_no_redact.py`, and the rest of `scope.py` in
 `tests/test_transcript_scope.py`. `reviewer_yield.py`'s `AgentType` label map, both the `--redact` relabelling and the raw path's control-character strip, is tested in

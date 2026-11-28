@@ -547,7 +547,8 @@ class TestPrDescriptionCostSectionWiring:
     delimiters, the heading, and the reproducibility trailer are emitted by
     pr-cost-section.sh and pinned byte-exactly by test_pr_cost_section.py.
     This class only proves the skill body still names the script, both
-    delimiters, the heading, and the raw-markdown rule.
+    delimiters, the heading, the raw-markdown rule, the call's ten-minute
+    ceiling, its wait, its re-run, and exit 3's kill case.
     """
 
     def _body(self):
@@ -571,6 +572,36 @@ class TestPrDescriptionCostSectionWiring:
         body = self._body()
         assert "raw markdown" in body
         assert "code fence" in body
+
+    def test_declares_call_ceiling_wait_and_kill_reading(self):
+        body = self._body()
+        for cost_call_clause, cost_call_context in (
+            (
+                "Resolve the section with one foreground Bash call with `timeout: 600000`:",
+                "the cost call's ceiling",
+            ),
+            (
+                "- **Moved to the background by the harness:** start no second copy, and read its exit status "
+                "and stdout as below once its completion notification arrives.",
+                "the cost call's background wait",
+            ),
+            (
+                "- **Killed by the harness timeout:** a kill is not an exit status, so re-run a killed call once.",
+                "the cost call's re-run of a killed call",
+            ),
+        ):
+            _assert_pinned_clause_right_bounded(
+                cost_call_clause,
+                body,
+                context=f"pr-description no longer carries {cost_call_context}",
+            )
+        _assert_pinned_clause_right_bounded(
+            "- **Exit 3, or a call the harness killed twice:** the cost report failed or never "
+            "finished — omit the block and note in the body that the report failed to generate, "
+            "unlike exit 1's silent deletion.",
+            body,
+            context="pr-description's exit-3 bullet no longer carries the twice-killed case and its omit-and-note outcome",
+        )
 
 
 class TestPrDescriptionProseTighteningPassWiring:

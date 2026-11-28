@@ -30,7 +30,7 @@ Get the transcript file set and read only those files:
 python3 ~/.claude/scripts/transcript-analysis.py sessions --paths --this-repo --include-subagents
 ```
 
-`sessions --paths` prints its resolved-scope header (`SESSIONS SOURCES (...)`) to stderr — record that line. This invocation passes `--this-repo`, so its scope label then reads `this repo (...)` and the root-count clause says how many accounts were read. Step 2 reads this repo's live worktrees only; for sessions outside them, see the subdirectory-session fallback in `docs/transcript-analysis.md`'s "Scoping to this repo" section.
+`sessions --paths` prints its resolved-scope header (`SESSIONS SOURCES (...)`) to stderr — record that line. This invocation passes `--this-repo`, so its scope label then reads `this repo (...)` and the root-count clause says how many accounts were read. Step 2 reads the project directories `docs/transcript-analysis.md` § "Scoping to this repo: `--this-repo`" says `--this-repo` admits; for sessions outside them, see that section's subdirectory-session fallback.
 
 Read each returned path directly with the Read tool. Do not vendor a script or hand-roll a shell expression or glob for this step — `sessions --paths` is the single source of the file set. Check the `SESSIONS SOURCES (...)` line from Step 2: if its root-count clause reads "1 root (no ~/.claude/transcript-config-dirs declared)", the corpus covers only the active account — say so in the case study rather than assuming every declared account was scanned. From the records you read, filter to turns where:
 - `role == "user"`

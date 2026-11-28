@@ -611,7 +611,7 @@ class TestCost:
         cost._cost_report(_cost_args(this_repo=True), date(2026, 8, 2))
         out = capsys.readouterr().out
         assert (
-            "COST SOURCES (this repo (1 project dirs); "
+            "COST SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); "
             "1 root (no ~/.claude/transcript-config-dirs declared))"
         ) in out
         cols = _table_cols(out, header_contains="Class", row_contains="input", row_startswith=True)
@@ -766,9 +766,9 @@ class TestCostResolveRoots:
         self, tmp_path, monkeypatch, fake_config_dir_factory
     ):
         """--this-repo no longer refuses an explicit --config-dir extra:
-        _iter_scoped_sessions matches slugs by basename and
-        _path_to_project_slug derives them from `git worktree list` alone,
-        both root-independent, so the refusal's own rationale ("--this-repo
+        _iter_scoped_sessions admits a directory by its name (a live slug or
+        the worktrees-directory prefix) and _path_to_project_slug derives the
+        slugs from `git worktree list` alone, both root-independent, so the refusal's own rationale ("--this-repo
         cannot filter a foreign config dir's worktrees") didn't match the
         mechanism. _resolve_cost_roots just returns the union of both roots;
         --this-repo's own filtering happens downstream in
@@ -887,6 +887,20 @@ class TestCostMultiRootReport:
         out = capsys.readouterr().out
         assert "cost: account-1: scanned 0 transcripts, 0 skipped (unreadable)" in out
         assert "WARNING: cost: account-1: no transcripts found for this scope" in out
+
+    def test_this_repo_scan_count_includes_an_unlisted_worktree_dir(self, tmp_path, monkeypatch, capsys):
+        """A root holding only a removed worktree's directory (named under the main checkout's worktrees
+        directory, listed by no live worktree) still counts that directory's transcript in the per-root scan line."""
+        root = _write_cost_root(tmp_path, "acct-a", "-home-user-this-repo--claude-worktrees-gone", "sess-a",
+                                 [_priced("claude-sonnet-5", input=1_000_000)])
+        args = _cost_args(this_repo=True)
+        args._this_repo_slugs = ["-home-user-this-repo"]
+        monkeypatch.setattr(scope, "_repo_scoped_project_slugs", lambda *a, **k: args._this_repo_slugs)
+
+        cost._cost_report(args, date(2026, 8, 2), roots=[root])
+        out = capsys.readouterr().out
+        assert "cost: account-1: scanned 1 transcripts, 0 skipped (unreadable)" in out
+        assert "no transcripts found for this scope" not in out
 
     def test_permission_error_while_scanning_root_caught_and_reported_per_root(
         self, tmp_path, capsys

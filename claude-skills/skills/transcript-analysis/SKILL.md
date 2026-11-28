@@ -22,7 +22,7 @@ Before quoting a corpus-wide statistic from this toolkit's output, include the r
 Add one of these to the same command to widen a run whose header reads `1 root (active account only; --this-repo or --all-accounts also reads ~/.claude/transcript-config-dirs)`:
 
 - `--all-accounts` reads every declared account with no repository bound.
-- `--this-repo` reads every declared account and bounds the run to this repo's live worktrees. It replaces `--projects`, and a branch or PR question passes it, since that branch may have been worked from another account.
+- `--this-repo` reads every declared account and bounds the run to the project dirs of this repo's live worktrees and of removed worktrees under the main checkout's `.claude/worktrees/` (`docs/transcript-analysis.md` § "Scoping to this repo: `--this-repo`" lists what else it admits). It replaces `--projects`, and a branch or PR question passes it, since that branch may have been worked from another account.
 
 Widen only for a question that needs accounts beyond the active one, not as a routine rerun. Widened output is not for publication: report it to the owner, never in a public artifact (see `docs/private-project-redaction.md` § "A wider corpus goes to the owner, never into a public artifact"). `--this-repo` together with a single top-level `--config-dir` reads one account. Quoting output publicly needs that bound, but it does not make the run a publication instrument (see `docs/private-project-redaction.md` § "This repository, one account").
 

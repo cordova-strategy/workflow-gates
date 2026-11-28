@@ -305,7 +305,7 @@ def _review_trace_session_events(
                 continue
 
         rec_type = rec.get("type", "")
-        evt_branch = scope._attribute_carried_branch(last_branch, rec, branch_context) or "?"
+        evt_branch = scope._attribute_carried_branch(last_branch, rec, branch_context) or corpus.UNTAGGED_BRANCH_LABEL
         evt_model = render._fam(last_model) if last_model else "?"
 
         # --- Signals 1 + 3: skill invocations and reviewer-agent spawns ---
@@ -792,7 +792,9 @@ def cmd_review_trace(args: argparse.Namespace) -> None:
     # Only the timeline narrows to the active account; --deny-summary never does.
     active_account_only = scope._narrows_to_active_account(args) and not deny_summary
     roots = scope.resolve_scan_roots(args, active_account_only=active_account_only)
-    session_iter, scope_label = scope._resolve_project_scope(args, "review-trace", include_subagents=True, roots=roots)
+    session_iter, scope_label = scope._resolve_project_scope(
+        args, "review-trace", include_subagents=True, roots=roots, branch_prefilter=branch_filter,
+    )
 
     since_ts, until_epoch = scope._parse_absolute_window_args(args, "review-trace")
 

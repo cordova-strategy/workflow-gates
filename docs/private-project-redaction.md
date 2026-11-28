@@ -100,7 +100,11 @@ A measurement of this repo's own tooling in use is publishable when it
 is computed over this repository's own corpus on a single
 `CLAUDE_CONFIG_DIR` account. That corpus holds no private-engagement
 record, so a figure drawn from it carries no engagement's fingerprint
-to redact.
+to redact. Under `--this-repo` that corpus also takes in the
+over-inclusions listed in
+`docs/transcript-analysis.md` § "Scoping to this repo: `--this-repo`",
+so the premise holds only while none of them belongs to another
+repository.
 
 Scope it with a command that *refuses* a wider corpus, and cite that
 command beside the figure. Avoiding a wider corpus by choosing flags

@@ -3564,6 +3564,24 @@ def record_subprocess_runs(monkeypatch: pytest.MonkeyPatch) -> list[tuple[tuple,
     return recorded_calls
 
 
+def worktree_porcelain(*paths: str) -> str:
+    """`git worktree list --porcelain` output naming each of `paths` as a worktree, for tests that stub subprocess.run."""
+    return "\n".join(f"worktree {p}\nHEAD 0000\nbranch refs/heads/x\n" for p in paths)
+
+
+def stub_git_worktree_listing(monkeypatch: pytest.MonkeyPatch, porcelain: str, cwd: str, toplevel: str) -> None:
+    """Make `scope._repo_scoped_project_slugs` see `porcelain` as `git worktree list --porcelain`, `toplevel` as
+    `git rev-parse --show-toplevel`, and `cwd` as the working directory. Any other git call fails the test."""
+    monkeypatch.setattr(os, "getcwd", lambda: cwd)
+
+    def fake_run(cmd, *a, **k):
+        if cmd == ["git", "worktree", "list", "--porcelain"]:
+            return subprocess.CompletedProcess(cmd, 0, porcelain, "")
+        assert cmd == ["git", "rev-parse", "--show-toplevel"]
+        return subprocess.CompletedProcess(cmd, 0, toplevel + "\n", "")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+
 def assert_each_stub_warm_exec_ed_once(recorded_calls: list[tuple[tuple, dict]], stub_paths: list[Path]) -> None:
     assert sorted(args[0] for args, _ in recorded_calls) == sorted([str(stub_path)] for stub_path in stub_paths)
     for args, kwargs in recorded_calls:

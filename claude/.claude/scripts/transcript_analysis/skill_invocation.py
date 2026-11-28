@@ -29,9 +29,10 @@ def _normalize_skill_name(raw: str) -> str:
 
     Collapsing these spellings stops one skill from splitting across several rows.
     This is row-hygiene, not the security control: within a repo-scoped read the
-    only path fragment that can appear is *this* repo's own worktree branch (its
-    project dirs are the only ones read), which is public. Cross-project
-    minimization is enforced upstream by _repo_scoped_project_slugs, not here.
+    path fragments that can appear come from this repo's admitted project dirs,
+    which can include a foreign clone under its worktrees directory.
+    Cross-project minimization is enforced upstream by
+    scope._RepoProjectDirMatcher, not here.
 
     A remaining ``plugin:skill`` or ``dir:skill`` prefix is deliberately kept: it
     carries no path, and dropping it would need this script to hardcode the stow
@@ -42,7 +43,7 @@ def _normalize_skill_name(raw: str) -> str:
 
 
 def cmd_skill_invocation(args: argparse.Namespace) -> None:
-    """Per-skill invocation-source tally across the full corpus.
+    """Per-skill invocation-source tally across the `--this-repo` scope, or the `--projects` glob when given.
 
     Three invocation buckets are counted per skill:
     - top-level: Skill tool_use on a main-thread assistant turn with no attributionSkill.
@@ -68,7 +69,7 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     --branches scopes to named branches, matching each record's attributed branch
     (scope._attributed_branch): a subagent record counts under the branch its
     dispatching main thread was on, never its own gitBranch. --projects scopes to
-    project dirs. Left unset, it defaults to this repo's own project dirs, and an
+    project dirs. Left unset, it defaults to the `--this-repo` scope, and an
     explicit glob is the escape hatch for a cross-repo read.
     """
     branch_filter = scope._branch_filter(args)
@@ -78,7 +79,8 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
     # strings and can themselves be private-project identifiers (a plugin
     # namespace with no path separator at all), so the control is WHAT records
     # are read, not scrubbing names after the fact. The default (--projects unset)
-    # scopes the read to this repo's own project dirs (_repo_scoped_project_slugs).
+    # scopes the read to this repo's own project dirs (scope._RepoProjectDirMatcher,
+    # which docs/transcript-analysis.md "Scoping to this repo" describes).
     # No run of this command is a publication instrument
     # (docs/transcript-analysis.md, Limits). An explicit --projects is an escape
     # hatch for corpus analysis; the caller then owns the output's scope.
@@ -110,7 +112,9 @@ def cmd_skill_invocation(args: argparse.Namespace) -> None:
         else:
             session_iter = corpus.iter_sessions(roots[0], projects_arg, include_subagents=include_subagents)
     else:
-        session_iter = scope._iter_scoped_sessions(scope._repo_scoped_project_slugs(), include_subagents, roots=roots)
+        session_iter = scope._iter_scoped_sessions(
+            scope._repo_scoped_project_slugs(), include_subagents, roots=roots, branch_prefilter=branch_filter,
+        )
 
     # Counters are keyed by (skill, thread). Without --include-subagents every
     # thread is "main", which keeps the default output shape unchanged.
@@ -270,7 +274,7 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope = p_skill_inv.add_mutually_exclusive_group()
     p_skill_inv_scope.add_argument(
         "--projects", default=None, metavar="GLOB",
-        help="Project-dir glob. Default: this repo's own worktrees only, read across every declared account "
+        help=f"Project-dir glob. Default: {scope._THIS_REPO_SCOPE_HELP}, read across every declared account "
              "unless a top-level --config-dir names one. "
              "No run of this command is a publication instrument (docs/transcript-analysis.md, Limits). "
              "Passing an explicit glob is an escape hatch — output is then not scoped to this repo. "
@@ -279,8 +283,8 @@ def _add_skill_invocation_subparser(subparsers: argparse._SubParsersAction) -> N
     p_skill_inv_scope.add_argument(
         "--this-repo", action="store_true",
         help=(
-            "Explicit no-op: skill-invocation already defaults to this repo's own "
-            "worktrees. Kept for flag uniformity with every other --projects subcommand."
+            f"Explicit no-op: skill-invocation already defaults to {scope._THIS_REPO_SCOPE_HELP}. "
+            "Kept for flag uniformity with every other --projects subcommand."
         ),
     )
     scope._add_all_accounts_arg(p_skill_inv)

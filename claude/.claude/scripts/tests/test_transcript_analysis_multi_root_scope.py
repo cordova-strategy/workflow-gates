@@ -416,9 +416,9 @@ class TestRootsThreadingSpy:
         calls: list[list | None] = []
         real_scoped = scope._iter_scoped_sessions
 
-        def spy_scoped(slugs, include_subagents, roots=None):
+        def spy_scoped(slugs, include_subagents, roots=None, **kwargs):
             calls.append(list(roots) if roots is not None else None)
-            return real_scoped(slugs, include_subagents, roots=roots)
+            return real_scoped(slugs, include_subagents, roots=roots, **kwargs)
 
         monkeypatch.setattr(scope, "_iter_scoped_sessions", spy_scoped)
         monkeypatch.setattr(os, "getcwd", lambda: "/repo/main")

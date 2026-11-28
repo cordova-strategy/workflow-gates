@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence, Set
 from datetime import datetime
 from pathlib import Path
 from typing import NamedTuple
@@ -35,6 +35,8 @@ from _config_dir import (
     declared_transcript_roots,
 )
 from transcript_analysis.corpus import (
+    _branch_prefilter,
+    _BranchPrefilter,
     _parse_ts,
     _projects_glob_steps_to_parent,
     _read_session_file_partitioned,
@@ -93,25 +95,64 @@ def _path_to_project_slug(path: str) -> str:
     return re.sub(r"[/.]", "-", path)
 
 
-def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[str]:
-    """Exact project-dir slugs for this repo's own worktrees (main + linked).
+# A linked worktree under `<main>/.claude/worktrees/` slugs to the main checkout's slug, this infix, then its directory name.
+_WORKTREE_SLUG_INFIX = "--claude-worktrees-"
 
-    This is the minimization control for any caller (`command_label`) that must
-    scope a transcript read to this repo, since transcripts under
-    ~/.claude/projects/ span every project on the machine. Scoping the read to
-    this repository — by *identity*, via `git worktree list`, matched as exact dir
-    names — keeps other projects' own sessions out of the read. It bounds
-    projects, not accounts: a caller that reads every declared account still
-    pools them, so its output is local-only. A subagent file
-    under an in-repo session is read regardless of the repo the subagent worked
-    in, so scoping alone does not bound skill names under `--include-subagents`.
-    The scope is deliberately not a path glob: a `<slug>*`-style match scopes by where a dir
-    sits in the path string, which a foreign repo cloned under this repo's
-    worktrees/, a sibling `<repo>-fork`, or a lossy-slug collision all defeat. A
-    session started in a repo *subdirectory* is a known exception this exactness
-    does not cover: its project dir is slugged from that subdirectory path and
-    is string-unequal to every worktree-root slug, so it is silently excluded —
-    the documented prefix-glob fallback covers that case instead.
+
+class _RepoProjectDirMatcher(NamedTuple):
+    """The `--this-repo` admission rule for one project-dir name.
+
+    This is the minimization control for any caller that must scope a transcript read to this repo, since transcripts
+    under ~/.claude/projects/ span every project on the machine. docs/transcript-analysis.md "Scoping to this repo"
+    states what it admits and "Over-inclusions" the cases it admits beyond this repo.
+
+    Comparison is plain `str`, never `fnmatch` or `Path.glob`, so a glob metacharacter in the machine's home or
+    username path cannot widen the match.
+    """
+
+    live_slugs: frozenset[str]
+    worktrees_dir_prefix: str | None
+
+    def is_live(self, name: str) -> bool:
+        return name in self.live_slugs
+
+    def admits(self, name: str) -> bool:
+        if self.is_live(name):
+            return True
+        prefix = self.worktrees_dir_prefix
+        return prefix is not None and name.startswith(prefix) and len(name) > len(prefix)
+
+
+def _repo_project_dir_matcher(slugs: Sequence[str]) -> _RepoProjectDirMatcher:
+    """`slugs[0]` is the first worktree `git worktree list` prints, as `_repo_scoped_project_slugs` returns it.
+
+    Callers must not reorder `slugs`.
+
+    An empty `slugs` admits nothing: the prefix stays None rather than `""`, which every name would start with.
+    """
+    prefix = slugs[0] + _WORKTREE_SLUG_INFIX if slugs else None
+    return _RepoProjectDirMatcher(frozenset(slugs), prefix)
+
+
+def _repo_scoped_project_slugs(command_label: str = "skill-invocation") -> list[str]:
+    """Project-dir slugs for this repo's own worktrees (main + linked), the first being the first worktree git lists.
+
+    That first worktree is the main checkout, or the bare repository's directory in a bare layout. A removed
+    worktree's directory carries no live slug, so `_RepoProjectDirMatcher`, built from these slugs, also admits the
+    names that extend the first slug with `_WORKTREE_SLUG_INFIX`.
+
+    It bounds projects, not accounts: a caller that reads every declared account still pools them, so its output is
+    local-only.
+
+    A subagent file under an in-repo session is read regardless of the repo the subagent worked in, so scoping alone
+    does not bound skill names under `--include-subagents`.
+    The scope is deliberately not a `<slug>*` path glob: that scopes by where a dir sits in the path string, which a
+    sibling `<repo>-fork` and every main-checkout subdirectory defeat.
+
+    A session started in a subdirectory of the main checkout is excluded. The documented prefix glob covers only
+    the main checkout's subdirectories.
+    A session started in a subdirectory of a worktree outside `<main>/.claude/worktrees/` is excluded.
+    Each such session's project dir is slugged from the subdirectory path, so no live slug or prefix matches it.
 
     Fails closed (SystemExit) rather than returning a machine-wide scope whenever
     the environment is not a recognizable git worktree of this repo — a silent
@@ -237,6 +278,14 @@ def _stat_mode_unless_absent(path: Path) -> int | None:
         raise
 
 
+def _resolved_project_dir(candidate: Path) -> Path | None:
+    """`candidate`'s resolved real path, or None when it is absent or not a directory. Any other `OSError` propagates."""
+    mode = _stat_mode_unless_absent(candidate)
+    if mode is None or not stat.S_ISDIR(mode):
+        return None
+    return candidate.resolve()
+
+
 def _dedup_new_project_dirs(
     candidates: Iterable[Path], visited_dirs: set[Path], *, scan_gaps: Counter[str] | None = None,
 ) -> Iterator[Path]:
@@ -264,16 +313,13 @@ def _dedup_new_project_dirs(
     """
     for candidate in candidates:
         try:
-            mode = _stat_mode_unless_absent(candidate)
-            if mode is None or not stat.S_ISDIR(mode):
-                continue
-            resolved_dir = candidate.resolve()
+            resolved_dir = _resolved_project_dir(candidate)
         except OSError as exc:
             if scan_gaps is None:
                 raise _path_stripped_scan_error(exc) from None
             scan_gaps[_SCAN_GAP_PROJECT_DIR] += 1
             continue
-        if resolved_dir in visited_dirs:
+        if resolved_dir is None or resolved_dir in visited_dirs:
             continue
         visited_dirs.add(resolved_dir)
         yield candidate
@@ -329,6 +375,42 @@ def _list_dir_recording_gaps(
         return []
 
 
+class _RepoProjectDirCounts(NamedTuple):
+    live: int
+    unlisted: int
+
+
+def _repo_project_dir_counts(
+    slugs: Sequence[str], roots: Sequence[Path], *, scan_gaps: Counter[str] | None = None,
+) -> _RepoProjectDirCounts:
+    """Count the project dirs under `roots` that `_RepoProjectDirMatcher` admits, once per resolved path as
+    `_iter_scoped_sessions` reads them.
+
+    A dir is `live` when a listed worktree has its name, and `unlisted` otherwise. An entry whose stat fails with an
+    errno that does not mean absent counts too, keyed on its unresolved path, because the iterator records it as a
+    gap or raises.
+    """
+    matcher = _repo_project_dir_matcher(slugs)
+    counted_dirs: set[Path] = set()
+    live = unlisted = 0
+    for root in roots:
+        for entry in _list_dir_recording_gaps(root, scan_gaps, _SCAN_GAP_ROOT):
+            if not matcher.admits(entry.name):
+                continue
+            try:
+                counted_dir = _resolved_project_dir(entry)
+            except OSError:
+                counted_dir = entry
+            if counted_dir is None or counted_dir in counted_dirs:
+                continue
+            counted_dirs.add(counted_dir)
+            if matcher.is_live(entry.name):
+                live += 1
+            else:
+                unlisted += 1
+    return _RepoProjectDirCounts(live, unlisted)
+
+
 def _failed_transcript_read_is_gap(jsonl: Path) -> bool:
     """A transcript that failed to read is a gap only while it is still a
     regular file. A missing path or a non-regular file is an empty scope,
@@ -344,6 +426,7 @@ def _failed_transcript_read_is_gap(jsonl: Path) -> bool:
 
 def _iter_project_dir_sessions(
     project_dirs: Iterable[Path], include_subagents: bool, scan_gaps: Counter[str] | None,
+    prefilter: _BranchPrefilter | None = None,
 ) -> Iterator[tuple[Path, list[dict]]]:
     """Shared inner generator for both multi-root iterators
     (_iter_scoped_sessions, _iter_glob_scoped_sessions): lists each project
@@ -355,17 +438,21 @@ def _iter_project_dir_sessions(
 
     `scan_gaps` here cannot see any subagent-level drop. With
     include_subagents=True, a real Counter stays blind to all of:
-    - _read_session_file_partitioned's subagent_dir.is_dir() OSError
-      swallowing (that function takes no scan_gaps parameter),
+    - _session_source_files' subagent_dir.is_dir() OSError swallowing (it takes
+      no scan_gaps parameter),
     - an unlistable subagents/ directory (Path.glob swallows the OSError),
     - an unreadable subagent file (_parse_jsonl_records returns None and the
       file is skipped).
+
+    A transcript the `prefilter` skips is never read, so it records no gap.
     """
     for project_dir in project_dirs:
         for jsonl in _list_dir_recording_gaps(project_dir, scan_gaps, _SCAN_GAP_PROJECT_DIR):
             # Transcripts are not deduplicated by resolved path, so a *.jsonl
             # symlink to another in-root transcript is read twice.
             if not fnmatch.fnmatchcase(jsonl.name, "*.jsonl"):
+                continue
+            if prefilter is not None and not prefilter.may_carry(jsonl, include_subagents):
                 continue
             groups = _read_session_file_partitioned(jsonl, include_subagents)
             if not groups:
@@ -379,20 +466,16 @@ def _iter_project_dir_sessions(
 
 def _iter_scoped_sessions(
     slugs: list[str], include_subagents: bool, roots: Sequence[Path] | None = None,
-    *, scan_gaps: Counter[str] | None = None,
+    *, scan_gaps: Counter[str] | None = None, branch_prefilter: Set[str] | None = None,
 ):
-    """Yield sessions from an explicit set of exact project-dir slugs.
+    """Yield sessions from the project dirs `_RepoProjectDirMatcher` admits for `slugs`.
 
-    Matching is by identity, not location: enumerate the directory names under
-    each root in `roots` (default: PROJECTS_DIR alone, so every caller other
-    than cost's --config-dir is unaffected) and keep only those whose name is
-    string-equal to one of the scoped slugs. This deliberately does NOT route
-    the slug through Path.glob — a slug containing a glob metacharacter (a
-    `*`/`?`/`[` in the machine's home or username path) would otherwise be
-    interpreted as a wildcard and could widen the match beyond this repo's own
-    worktrees. Visiting each directory at most once (by resolved real path,
-    spanning every root — covers a root nested inside another, not just two
-    identical roots) also makes double-counting impossible.
+    Enumerate the directory names under each root in `roots` (default:
+    PROJECTS_DIR alone, so every caller other than cost's --config-dir is
+    unaffected) and keep only those the matcher admits. Visiting each directory
+    at most once (by resolved real path, spanning every root — covers a root
+    nested inside another, not just two identical roots) makes double-counting
+    impossible.
 
     A root that raises OSError while being listed (an unreadable directory,
     not merely a missing one — `root.is_dir()` above only requires the
@@ -401,10 +484,14 @@ def _iter_scoped_sessions(
     cost's per-root diagnostic), so the reported detail always omits the raw
     path — an OSError's `strerror` (e.g. "Permission denied"), never
     `str(exc)`, which embeds the offending path.
+
+    `branch_prefilter` skips a session unparsed when no `gitBranch` field of its files holds one of its names.
+    Only a caller whose output reads no record outside its `--branches` filter passes it.
     """
     if roots is None:
         roots = (_projects_dir(),)
-    wanted = set(slugs)
+    matcher = _repo_project_dir_matcher(slugs)
+    prefilter = _branch_prefilter(branch_prefilter)
     visited_dirs: set[Path] = set()
     multi_root = len(roots) > 1
     # Ordinal, not scan-order index: the same physical root must read as the
@@ -421,7 +508,7 @@ def _iter_scoped_sessions(
         if not root.is_dir():
             continue
         try:
-            candidates = [p for p in sorted(root.iterdir()) if p.name in wanted]
+            candidates = [p for p in sorted(root.iterdir()) if matcher.admits(p.name)]
         except OSError as exc:
             if scan_gaps is not None:
                 scan_gaps[_SCAN_GAP_ROOT] += 1
@@ -434,6 +521,7 @@ def _iter_scoped_sessions(
             continue
         yield from _iter_project_dir_sessions(
             _dedup_new_project_dirs(candidates, visited_dirs, scan_gaps=scan_gaps), include_subagents, scan_gaps,
+            prefilter,
         )
 
 
@@ -550,25 +638,33 @@ def resolve_scan_roots(parsed: argparse.Namespace, *, active_account_only: bool 
     return roots
 
 
+# The one-sentence statement of the --this-repo scope that every --help text describing that scope reuses.
+_THIS_REPO_SCOPE_HELP = (
+    "the project dirs of this repo's live worktrees, and of removed worktrees under the main "
+    "checkout's .claude/worktrees/ (see docs/transcript-analysis.md for what else it admits)"
+)
+
+
 def _add_project_scope_args(parser: argparse.ArgumentParser, *, this_repo_help: str | None = None) -> None:
     """Add the shared --projects/--this-repo scope flags to a subparser.
 
-    The flags are mutually exclusive. _resolve_project_scope routes --this-repo through
-    _repo_scoped_project_slugs(), an identity-based minimization control. --projects defaults to the
-    glob "*", which matches every project directory under each scanned root.
+    The flags are mutually exclusive. For a caller that routes through _resolve_project_scope,
+    --this-repo is bounded by _RepoProjectDirMatcher, a minimization control built from
+    _repo_scoped_project_slugs(). --projects defaults to the glob "*", which matches every project directory
+    under each scanned root.
+    this_repo_help replaces the --this-repo help for a caller whose --this-repo means something else.
     """
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--projects", default="*", metavar="GLOB")
     group.add_argument(
         "--this-repo", action="store_true",
-        help=this_repo_help or "Scope to this repo's own worktrees only (see docs/transcript-analysis.md).",
+        help=this_repo_help or f"Scope to {_THIS_REPO_SCOPE_HELP}.",
     )
 
 
 # The narrowed commands' --this-repo help: unlike the shared default, it says the read spans every declared account.
 _POOLED_THIS_REPO_HELP = (
-    "Scope to this repo's own worktrees, read from every declared account unless a top-level --config-dir names one"
-    " (see docs/transcript-analysis.md)."
+    f"Scope to {_THIS_REPO_SCOPE_HELP}, read from every declared account unless a top-level --config-dir names one."
 )
 
 
@@ -594,6 +690,7 @@ def _resolve_project_scope(
     roots: Sequence[Path] | None = None,
     *,
     scan_gaps: Counter[str] | None = None,
+    branch_prefilter: Set[str] | None = None,
 ) -> tuple[Iterator[tuple[Path, list[dict]]], str]:
     """Resolve --projects/--this-repo into a fresh session iterator and a scope label.
 
@@ -625,17 +722,19 @@ def _resolve_project_scope(
     populated ~/.claude/transcript-config-dirs makes --this-repo multi-root by
     default with no --config-dir flag at all, so the this_repo branch below
     unions across every root in `roots` via _iter_scoped_sessions' own
-    basename match.
+    admission rule.
 
     Under an explicit top-level --config-dir (a different flag from cost's
-    and context-distribution's own --config-dir above — see main()), zero of
-    the resolved slugs matching an actual directory under ANY resolved root
+    and context-distribution's own --config-dir above — see main()), no
+    directory under ANY resolved root being admitted by _RepoProjectDirMatcher
     fails closed (sys.exit(1)) instead of returning an iterator that silently
     yields nothing — this is the original reported symptom (declaring no
     sessions exist for a container that has them), so an empty --this-repo
     scope here is far more likely a wrong --config-dir than a genuinely
     session-less repo. Without --config-dir, an empty scope stays silent,
-    matching every other subcommand's long-standing behavior. config_dir is
+    matching every other subcommand's long-standing behavior. Under --config-dir, a root that
+    cannot be listed fails closed with its own cannot-list message, not the
+    zero-match one. config_dir is
     read via getattr (unlike this_repo above): it's a top-level parser flag
     rather than something _add_project_scope_args wires per subparser, and
     this file's many hand-built test `args` fixtures predate it, so its
@@ -652,6 +751,13 @@ def _resolve_project_scope(
     cannot record gaps, so it raises ValueError rather than ignore the
     counter. See _iter_project_dir_sessions's own docstring for the
     subagent-level drops this counter cannot see even off that branch.
+
+    `branch_prefilter`, the branch names of a `--branches` filter, skips a --this-repo session unparsed when no
+    `gitBranch` field of its files holds one of them.
+    Only a caller whose output reads no record outside its `--branches` filter passes it.
+    The glob arms ignore it, so they only run slower.
+    A skip never changes a figure such a caller prints, except that `cost --summary`'s `PRICING INTEGRITY` banner can
+    print less (`docs/transcript-analysis.md` § "cost").
     """
     if roots is None:
         roots = (_projects_dir(),)
@@ -660,19 +766,32 @@ def _resolve_project_scope(
         if slugs is None:
             slugs = _repo_scoped_project_slugs(subcommand)
             args._this_repo_slugs = slugs
+        # A private counter, not `scan_gaps`: the iterator below records an unlistable root into `scan_gaps` itself.
+        listing_gaps: Counter[str] = Counter()
+        counts = _repo_project_dir_counts(slugs, roots, scan_gaps=listing_gaps)
         config_dir_arg = getattr(args, "config_dir", None)
-        if config_dir_arg and not any((root / slug).is_dir() for root in roots for slug in slugs):
+        if config_dir_arg and counts.live + counts.unlisted == 0:
+            if listing_gaps[_SCAN_GAP_ROOT]:
+                print(
+                    f"{subcommand}: --this-repo cannot list a --config-dir projects directory, so it "
+                    "cannot tell whether any project directory matches — refusing to report an empty "
+                    "scope silently.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
             print(
                 f"{subcommand}: --this-repo matched zero project directories under "
-                f"--config-dir {config_dir_arg} (checked {len(slugs)} candidate worktree "
-                "slug(s)) — refusing to report an empty scope silently; confirm "
+                f"--config-dir (checked {len(slugs)} live worktree slug(s) and the main checkout's "
+                "worktrees-directory prefix) — refusing to report an empty scope silently; confirm "
                 "--config-dir points at the account these sessions actually live in.",
                 file=sys.stderr,
             )
             sys.exit(1)
         return (
-            _iter_scoped_sessions(slugs, include_subagents, roots=roots, scan_gaps=scan_gaps),
-            f"this repo ({len(slugs)} project dirs)",
+            _iter_scoped_sessions(
+                slugs, include_subagents, roots=roots, scan_gaps=scan_gaps, branch_prefilter=branch_prefilter,
+            ),
+            f"this repo ({counts.live + counts.unlisted} project dirs: {counts.live} live, {counts.unlisted} unlisted)",
         )
     glob = getattr(args, "projects", None) or "*"
     _refuse_absolute_projects_glob(glob, subcommand)
@@ -813,7 +932,8 @@ def _resolve_cost_roots(args: argparse.Namespace, subcommand: str = "cost") -> l
     own docstring) rather than exiting, since a stale roots-file line must not
     break every invocation the way a bad command-line flag should.
     --this-repo unions across every resolved root here, including
-    --config-dir extras: _iter_scoped_sessions matches by basename, and
+    --config-dir extras: _iter_scoped_sessions admits a directory by its name
+    (a live slug or the worktrees-directory prefix), and
     _path_to_project_slug derives slugs from `git worktree list` alone, so
     one checkout's slugs are root-independent. --no-redact on more than one
     root exits 2 here through _refuse_no_redact_above_one_root, rather than
@@ -902,15 +1022,15 @@ def _scan_root_transcripts(root: Path, projects_glob: str, slugs: Sequence[str] 
     case. Callers scanning multiple untrusted roots catch this per root so
     one bad root doesn't abort the whole report.
 
-    `slugs`, when given, restricts the scan to those exact project-dir names
-    (mirroring _iter_scoped_sessions' identity match, not a glob) instead of
-    `projects_glob` — required for --this-repo, whose _projects_glob(args) is
+    `slugs`, when given, restricts the scan to the project dirs
+    `_RepoProjectDirMatcher` admits for them (mirroring _iter_scoped_sessions,
+    not a glob) instead of `projects_glob` — required for --this-repo, whose _projects_glob(args) is
     always "*" regardless of scope. Without this, the diagnostic line would
     report the whole config dir's transcript count under --this-repo, masking
     a genuinely-empty repo-scoped result behind an unrelated nonzero total —
     the exact silent-zero failure Step 8 exists to surface. Both branches dedup
     matched project dirs by resolved real path via _dedup_new_project_dirs, so
-    a project dir aliased to another (by symlink, whether reached by slug or
+    a project dir aliased to another (by symlink, whether reached by name or
     by glob) doesn't double-count in this diagnostic either.
 
     A `projects_glob` with a `..` component counts nothing (0, 0) when
@@ -921,7 +1041,13 @@ def _scan_root_transcripts(root: Path, projects_glob: str, slugs: Sequence[str] 
     if slugs is None and _projects_glob_steps_to_parent(projects_glob):
         return 0, 0
     visited_dirs: set[Path] = set()
-    candidates = (root / slug for slug in slugs) if slugs is not None else sorted(root.glob(projects_glob))
+    if slugs is not None:
+        matcher = _repo_project_dir_matcher(slugs)
+        candidates = [
+            entry for entry in _list_dir_recording_gaps(root, None, _SCAN_GAP_ROOT) if matcher.admits(entry.name)
+        ]
+    else:
+        candidates = sorted(root.glob(projects_glob))
     jsonl_paths = [
         jsonl
         # Throwaway counter: a non-None scan_gaps makes _dedup_new_project_dirs skip a
@@ -1178,7 +1304,9 @@ def _attributed_branch(rec: dict, ctx: _SessionBranchContext) -> str | None:
     Returns None — the "?" sentinel (see cmd_review_trace's docstring for the
     carry-forward convention this parallels) — for a main-thread record
     with no gitBranch, and for a sidechain record in a session with no
-    branch-bearing main-thread record."""
+    branch-bearing main-thread record.
+
+    corpus._BranchPrefilter relies on every branch this returns being a gitBranch string from the session's own records."""
     return _attribute_pre_branch(*_timeline_entry(rec, ctx), ctx.pre_branch_run)
 
 

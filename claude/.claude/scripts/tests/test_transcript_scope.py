@@ -8,6 +8,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from helpers import worktree_porcelain
 from transcript_analysis import buckets, corpus, cost, scope, skill_invocation
 
 from .conftest import (
@@ -16,7 +17,6 @@ from .conftest import (
     _option_help,
     _priced,
     _two_declared_roots,
-    _worktree_porcelain,
     _write_cost_root,
     _write_jsonl,
 )
@@ -167,7 +167,7 @@ class TestRepoScopedProjectSlugsGuard:
         monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit):
             scope._repo_scoped_project_slugs("duration")
@@ -180,7 +180,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -194,7 +194,7 @@ class TestRepoScopedProjectSlugsGuard:
         monkeypatch.setattr(os, "getcwd", lambda: "/repo-fork/nested")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         with pytest.raises(SystemExit):
@@ -212,7 +212,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/outer\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -228,7 +228,7 @@ class TestRepoScopedProjectSlugsGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             raise FileNotFoundError("git")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -246,7 +246,7 @@ class TestRepoScopedProjectSlugsContainmentGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -262,7 +262,7 @@ class TestRepoScopedProjectSlugsContainmentGuard:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo", "/other/wt"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo", "/other/wt"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/other/wt\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -279,7 +279,7 @@ class TestRepoWorktreePaths:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo", "/other/wt"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo", "/other/wt"), "")
             return subprocess.CompletedProcess(cmd, 0, "/repo\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
 
@@ -289,7 +289,7 @@ class TestRepoWorktreePaths:
         monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
         monkeypatch.setattr(
             subprocess, "run",
-            lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), ""),
+            lambda cmd, *a, **k: subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), ""),
         )
 
         with pytest.raises(SystemExit) as raised:
@@ -357,7 +357,7 @@ class TestRepoScopedProjectSlugsGitCallFailureModes:
                     raise subprocess.TimeoutExpired(cmd, k["timeout"])
                 pytest.fail("git call passed no timeout")
             assert cmd == ["git", "worktree", "list", "--porcelain"]
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         with pytest.raises(SystemExit) as exc_info:
@@ -390,7 +390,7 @@ class TestResolveProjectScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -417,7 +417,7 @@ class TestResolveProjectScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -425,7 +425,7 @@ class TestResolveProjectScope:
         buckets.cmd_buckets(type("A", (), {"projects": "*", "this_repo": True, "branches": None})())
         out_repo = capsys.readouterr().out
         assert (
-            "BUCKETS SOURCES (this repo (1 project dirs); "
+            "BUCKETS SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); "
             "1 root (no ~/.claude/transcript-config-dirs declared))"
         ) in out_repo
 
@@ -513,7 +513,7 @@ class TestThisRepoUnionsAcrossRoots:
     ):
         """Pins a known, accepted residual risk: the slug mapping [/.]→- is
         not injective, so /a/b.c and /a/b/c collide, not a bug to fix here.
-        _iter_scoped_sessions matches by basename equality alone, so it
+        _iter_scoped_sessions admits by directory name alone, so it
         cannot distinguish this repo's own project dir from a foreign
         account's unrelated project dir that happens to collide onto the
         same slug -- under --this-repo, both are admitted. A future change to
@@ -565,7 +565,7 @@ class TestThisRepoUnionsAcrossRoots:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                porcelain = _worktree_porcelain("/repo/main")
+                porcelain = worktree_porcelain("/repo/main")
                 return subprocess.CompletedProcess(cmd, 0, porcelain, "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
@@ -578,9 +578,9 @@ class TestThisRepoUnionsAcrossRoots:
         assert "2 roots" in out
 
     def test_this_repo_fail_closed_across_all_roots(self, tmp_path):
-        """The fail-closed deny case: zero slug matches under EVERY
-        resolved root still exits 1 — direct unit coverage of `any(...
-        for root in roots for slug in slugs)` iterating every root, not just
+        """The fail-closed deny case: zero admitted directories under EVERY
+        resolved root still exits 1 — direct unit coverage of
+        _repo_project_dir_counts counting across every root, not just
         roots[0]. Calls _resolve_project_scope directly with a hand-built
         multi-element `roots` list (unreachable through the real CLI today,
         since an explicit top-level --config-dir always collapses `roots` to
@@ -598,8 +598,7 @@ class TestThisRepoUnionsAcrossRoots:
     def test_this_repo_allow_case_when_only_a_non_first_root_matches(self, tmp_path):
         """Companion allow-case to the deny test above: a match under the
         SECOND resolved root (not roots[0]) must not fail closed — proves the
-        `any(...)` genuinely iterates every root rather than short-circuiting
-        on the first."""
+        count genuinely spans every root rather than stopping at the first."""
         root_a = tmp_path / "acct-a"
         root_a.mkdir()
         root_b = tmp_path / "acct-b"
@@ -607,7 +606,7 @@ class TestThisRepoUnionsAcrossRoots:
         args = argparse.Namespace(this_repo=True, projects="*", config_dir=str(root_a), _this_repo_slugs=["-repo-main"])
         session_iter, scope_label = scope._resolve_project_scope(args, "buckets", roots=[root_a, root_b])
         assert list(session_iter) == []  # no sessions written, but no SystemExit either
-        assert scope_label == "this repo (1 project dirs)"
+        assert scope_label == "this repo (1 project dirs: 1 live, 0 unlisted)"
 
 
 class TestSingleLevelProjectsGlob:
@@ -897,8 +896,8 @@ class TestResolvedScopeHeaderDirectUnit:
             tmp_path / "acct-b" / "projects",
             tmp_path / "acct-c" / "projects",
         ]
-        header = scope._resolved_scope_header("cost", "this repo (2 project dirs)", roots)
-        assert header == "COST SOURCES (this repo (2 project dirs); 3 roots)"
+        header = scope._resolved_scope_header("cost", "this repo (2 project dirs: 2 live, 0 unlisted)", roots)
+        assert header == "COST SOURCES (this repo (2 project dirs: 2 live, 0 unlisted); 3 roots)"
 
 
 class TestRootCountDescDirectUnit:
@@ -952,9 +951,11 @@ class TestAddProjectScopeArgsThisRepoHelp:
     def test_a_caller_that_omits_this_repo_help_keeps_the_shared_worktree_wording(self):
         parser = argparse.ArgumentParser()
         scope._add_project_scope_args(parser)
-        assert _option_help(parser, "--this-repo") == (
-            "Scope to this repo's own worktrees only (see docs/transcript-analysis.md)."
-        )
+        assert _option_help(parser, "--this-repo") == f"Scope to {scope._THIS_REPO_SCOPE_HELP}."
+
+    def test_the_shared_scope_statement_names_live_and_removed_worktrees(self):
+        for fact in ("live worktrees", "removed worktrees", ".claude/worktrees/"):
+            assert fact in scope._THIS_REPO_SCOPE_HELP
 
     def test_this_repo_help_keyword_replaces_the_shared_wording(self):
         parser = argparse.ArgumentParser()

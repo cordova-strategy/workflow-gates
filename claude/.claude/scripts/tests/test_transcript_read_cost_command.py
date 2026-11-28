@@ -122,6 +122,6 @@ class TestScopeRefusal:
         read_cost.cmd_read_cost(_read_cost_args())
 
         assert capsys.readouterr().out.splitlines()[0] == (
-            "READ COST SOURCES (this repo (1 project dirs); reads one account (the active account),"
+            "READ COST SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); reads one account (the active account),"
             " the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)"
         )

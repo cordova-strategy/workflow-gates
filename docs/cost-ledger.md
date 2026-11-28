@@ -37,6 +37,14 @@ transcript records alongside the main thread, matching `review-trace`'s own
 widened default scope. A row recorded before that date and one recorded
 after it are not comparable on this column alone.
 
+Every column that reads `--this-repo` scope (`usd`, `context_pct`, `opus_pct`,
+`ge200k_pct`, `denials`, and `reviewer_gap_pp`) widened when `--this-repo` began
+reading the project directories of removed worktrees under
+`<main>/.claude/worktrees/`. A row recorded with `--this-repo` before that
+change and one recorded after it are not comparable. The default `--record`
+scope is machine-wide and did not change. Each machine takes the change at its
+own `git pull`, and the ledger has no scope column that marks which rows
+predate it.
 Rows recorded before and after the recording machine pulled the request-merge
 commit can differ on `usd`, `context_pct`, `opus_pct` and `ge200k_pct` for the
 same transcripts, even under one `rates` stamp. `--record` writes only the

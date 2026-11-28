@@ -2108,8 +2108,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_szz.add_argument("--local-dir", default=str(DEFAULT_LOCAL_DIR), help="Where to write the candidate shortlist.")
     p_szz.set_defaults(func=cmd_mine_szz)
 
-    # No scope flag: this miner is always scoped to this repo's own worktrees
-    # on exactly one config-dir root.
+    # No scope flag: this miner is always scoped as `--this-repo` is (see "Scoping to
+    # this repo" in docs/transcript-analysis.md) on exactly one config-dir root.
     p_rounds = sub.add_parser(
         "mine-rounds",
         help="Mine later-review-round candidates from this account's own session transcripts.",

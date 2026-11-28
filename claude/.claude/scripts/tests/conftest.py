@@ -1646,11 +1646,6 @@ def _read_use(
     return {"type": "tool_use", "id": tool_id, "name": "Read", "input": tool_input}
 
 
-def _worktree_porcelain(*paths: str) -> str:
-    """`git worktree list --porcelain` output naming each of `paths` as a worktree, for tests that stub subprocess.run."""
-    return "\n".join(f"worktree {p}\nHEAD 0000\nbranch refs/heads/x\n" for p in paths)
-
-
 def _exit_plan_mode(tool_id: str = "epm1") -> dict:
     return {"type": "tool_use", "id": tool_id, "name": "ExitPlanMode", "input": {}}
 

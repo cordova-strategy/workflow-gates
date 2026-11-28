@@ -327,6 +327,18 @@ The comparison that never depends on the rate table is the token total: the sum 
 
 A pooled total may sum dollars as recorded across differing `rate_stamp` values, carrying a label that states whether every contributing row meets the comparability rule above. The rule extends from a pair to a pool of any size by comparing every row against a single fixed reference, the most recent pricing state among them, rather than against each other pairwise. A dollar comparison across eras, groups, or any other split is made only when every row on every side of that split meets that rule. Across the attribution cutover, the rule is necessary but not sufficient; see "Comparing dollars across the cutover" below.
 
+### Comparing rows recorded with `--this-repo`
+
+A row recorded with `--this-repo` before the scope widening and one recorded after it are not comparable.
+
+- **What widened:** `--record --this-repo` reads the project directories of removed worktrees under `<main>/.claude/worktrees/`, as well as live worktrees. The default `--record` scope is machine-wide and did not change.
+- **Affected columns:** every transcript-derived column, including `model_breakdown` and the `review_rounds` cell.
+- **Unaffected columns:** the columns read from GitHub, the key columns, `rate_stamp` and `captured_at`.
+- **No marker:** the ledger has no scope column or `note` column to mark the change, and each machine takes the change at its own `git pull`.
+- **Telling a row's side:** compare its `captured_at` against the capturing checkout's pull date. The widening is independent of the attribution cutover below, so judge each separately.
+- **Re-capturing:** to bring a row recorded before the widening onto the new scope, re-capture it with `--record --force --pr N --this-repo`. Run it on the machine that captured the row, from a checkout that has pulled the widening, inside `cleanupPeriodDays`. The widening only adds directories, so a re-capture never reads fewer sessions.
+- **Pooled totals:** a pooled total spanning the widening carries a comparability label, as a total spanning the attribution cutover does.
+- **Over-inclusion after the widening:** the scope is a directory-name prefix rule, so a post-widening row can also include a same-named branch's sessions from another repo cloned under `<main>/.claude/worktrees/`. The PR-body block's `Transcript files scanned` cell, from `cost --summary`, also counts every transcript file of such a directory, whatever the branch or date.
 **The request-merge boundary.** The rate-stamp rule and addition-only do not cover how the records of one `requestId` become a turn. Two changes make this boundary:
 - All-zero `<synthetic>` records are left out of usage and model selection and the usage comparisons, unless a run holds only such records. Their content is still merged, and one that comes first still supplies the turn's timestamp and `gitBranch`. A session that holds one can give a different figure, higher or lower.
 - A merged turn's usage and model both come from the last record that is not left out. A run whose records name different models is priced under that record's model, with or without a `<synthetic>` record.
@@ -365,7 +377,7 @@ Finding an affected row:
 
 **Comparing dollars across the cutover.**
 - Rows are comparable across the attribution cutover only when all are new-rule, all are old-rule, or every old-rule row was re-captured from a pulled checkout. Meeting the rate-stamp rule does not establish this.
-- Re-capture an old-rule row with `--record --force --pr N` inside `cleanupPeriodDays`, on the machine that captured it and from a checkout that has already pulled the commit.
+- Re-capture an old-rule row with `--record --force --pr N` and the original capture's `--projects` or `--this-repo` flag, inside `cleanupPeriodDays`, on the machine that captured it and from a checkout that has already pulled the commit.
 - A re-capture from an unpulled checkout writes another old-rule row.
 - A PR captured on several machines needs each machine's row re-captured.
 - A new-rule row needs no re-capture.

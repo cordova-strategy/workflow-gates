@@ -1,5 +1,8 @@
 import json
 import os
+import time
+import tracemalloc
+from pathlib import Path
 
 import pytest
 from transcript_analysis import corpus
@@ -403,3 +406,276 @@ class TestProjectsGlobStepsToParent:
     @pytest.mark.parametrize("projects_glob", ["a..b", "..*", "...", ".hidden*", "*"])
     def test_dotdot_inside_a_component_does_not_step_to_parent(self, projects_glob):
         assert corpus._projects_glob_steps_to_parent(projects_glob) is False
+
+
+_OTHER_BRANCH_LINE = b'{"type":"user","gitBranch":"other-branch"}\n'
+_ONE_MIB = 1024 * 1024
+_BOUNDED_TIME_BYTES = 4 * _ONE_MIB
+_BOUNDED_TIME_CEILING_SECONDS = 10
+# Sized so a branch-field pattern led by `.*` or `[ \t\r]*` takes about 4 to 11 s on these shapes and fails the 1 s
+# ceiling in seconds, where a 4 MiB run would hang it for hours. The shipped linear pattern takes milliseconds.
+_LONG_RUN_BYTES = 64 * 1024
+_REPEATED_SHAPE_BYTES = 40 * 1024
+_LONG_RUN_CEILING_SECONDS = 1
+
+
+def _write_raw_session(jsonl: Path, main_lines: list[bytes], subagent_files: list[list[bytes]] | None = None) -> None:
+    """Write a session as raw bytes, bypassing _write_jsonl's `json.dumps`, which escapes non-ASCII."""
+    jsonl.parent.mkdir(parents=True, exist_ok=True)
+    jsonl.write_bytes(b"".join(main_lines))
+    if subagent_files:
+        subagent_dir = jsonl.parent / jsonl.stem / corpus.SUBAGENT_SUBDIR
+        subagent_dir.mkdir(parents=True, exist_ok=True)
+        for position, lines in enumerate(subagent_files):
+            (subagent_dir / f"agent-{position}.jsonl").write_bytes(b"".join(lines))
+
+
+def _git_branch_line(written_value: bytes) -> bytes:
+    return b'{"type":"user","gitBranch":"' + written_value + b'"}\n'
+
+
+class TestBranchPrefilter:
+    """corpus._branch_prefilter and _BranchPrefilter.may_carry: a session is skipped unparsed only when no
+    `gitBranch` field of its read files holds a filtered name."""
+
+    @pytest.mark.parametrize(
+        "branch_names",
+        [None, set(), {"?"}, {"feature-x", "?"}],
+        ids=["none", "empty-set", "untagged-label-only", "untagged-label-among-names"],
+    )
+    def test_no_prefilter_without_a_name_to_match(self, branch_names):
+        assert corpus._branch_prefilter(branch_names) is None
+
+    def test_a_bare_string_is_rejected_rather_than_read_as_single_character_names(self):
+        with pytest.raises(TypeError):
+            corpus._branch_prefilter("feature-x")
+
+    @pytest.mark.parametrize(
+        ("branch_name", "written_value"),
+        [
+            ("GH-42/add-auth", rb"GH-42\/add-auth"),
+            ('a"b', rb"a\"b"),
+            ("fé-x", rb"f\u00e9-x"),
+            ("fé-x", "fé-x".encode()),
+        ],
+        ids=["slash-escaped", "quote-escaped", "unicode-escaped", "raw-utf8"],
+    )
+    def test_an_escaped_name_keeps_the_session_and_a_raw_utf8_one_matches(
+        self, tmp_path, branch_name, written_value,
+    ):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, [_OTHER_BRANCH_LINE, _git_branch_line(written_value)])
+        assert corpus._branch_prefilter({branch_name}).may_carry(jsonl, False) is True
+
+    @pytest.mark.parametrize(
+        "field",
+        [
+            b'"gitBranch":"feature-x"',
+            b'"gitBranch": "feature-x"',
+            b'"gitBranch" : "feature-x"',
+            b'"gitBranch"\t:\t"feature-x"',
+            b'"gitBranch"\r:\r"feature-x"',
+        ],
+        ids=["compact", "dumps", "space-before", "tab-each-side", "cr-each-side"],
+    )
+    def test_the_field_is_found_with_json_whitespace_around_the_colon(self, tmp_path, field):
+        jsonl = tmp_path / "s.jsonl"
+        named_line = b'{"type":"user",' + field + b"}\n"
+        _write_raw_session(jsonl, [_OTHER_BRANCH_LINE, named_line])
+        assert json.loads(named_line.decode())["gitBranch"] == "feature-x"
+        assert corpus._branch_prefilter({"feature-x"}).may_carry(jsonl, False) is True
+
+    @pytest.mark.parametrize(
+        ("branch_name", "lines"),
+        [
+            (
+                "feature-x",
+                [b'{"type":"user","message":{"content":"on feature-x"},"gitBranch":"other-branch"}\n'],
+            ),
+            (
+                "feature-x",
+                [b'{"cwd":"/repo/main/.claude/worktrees/feature-x","gitBranch":"other-branch"}\n'],
+            ),
+            ("feature-x", [_OTHER_BRANCH_LINE, _git_branch_line(b"feature-x-2")]),
+            ("fé-x", [_OTHER_BRANCH_LINE, _git_branch_line("fé-y".encode())]),
+            (
+                "GH-42/add-auth",
+                [_OTHER_BRANCH_LINE, _git_branch_line(b"GH-42"), _git_branch_line(b"add-auth")],
+            ),
+            (
+                "feature-x",
+                [
+                    b'{"type":"user","message":{"content":"{\\"gitBranch\\":\\"feature-x\\"}"},'
+                    b'"gitBranch":"other-branch"}\n',
+                ],
+            ),
+        ],
+        ids=["message-text", "cwd", "longer-tag", "raw-utf8-other-name", "slash-parts", "escaped-json-string"],
+    )
+    def test_a_name_outside_a_gitbranch_value_is_not_carried(self, tmp_path, branch_name, lines):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, lines)
+        assert corpus._branch_prefilter({branch_name}).may_carry(jsonl, False) is False
+
+    @pytest.mark.parametrize(
+        "lines",
+        [
+            [_OTHER_BRANCH_LINE, b'{"gitBranch":"bad\\x"}\n'],
+            [
+                _OTHER_BRANCH_LINE,
+                b'{"type":"user","gitBranch":"fea\n',
+                b'{"gitBranch":"feature-x","type":"user"}\n',
+            ],
+            [_OTHER_BRANCH_LINE, b'{"gitBranch":"\xff"}\n'],
+        ],
+        ids=["invalid-escape", "cut-line", "invalid-utf8"],
+    )
+    def test_a_value_the_prefilter_cannot_compare_keeps_the_session(self, tmp_path, lines):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, lines)
+        assert corpus._branch_prefilter({"feature-x"}).may_carry(jsonl, False) is True
+
+    @pytest.mark.parametrize(
+        ("case", "expected_carried", "ceiling_mib"),
+        [
+            ("long-closed", False, 16),
+            ("unclosed", True, 16),
+            ("many-distinct", False, 6),
+            ("many-files", False, 16),
+        ],
+    )
+    def test_a_large_file_or_session_is_scanned_in_bounded_memory(
+        self, tmp_path, case, expected_carried, ceiling_mib,
+    ):
+        """Peak traced memory stays under the ceiling: the scan holds one file and one value at a time."""
+        jsonl = tmp_path / "s.jsonl"
+        subagent_files: list[list[bytes]] | None = None
+        include_subagents = False
+        if case == "long-closed":
+            main_lines = [_OTHER_BRANCH_LINE, b'{"gitBranch":"' + b"a" * (2 * _ONE_MIB) + b'"}\n']
+        elif case == "unclosed":
+            main_lines = [_OTHER_BRANCH_LINE, b'{"gitBranch":"' + b"a" * (2 * _ONE_MIB)]
+        elif case == "many-distinct":
+            main_lines = [_OTHER_BRANCH_LINE] + [b'{"gitBranch":"%08d"}\n' % value for value in range(100_000)]
+        else:
+            padded_line = b'{"gitBranch":"other-branch","pad":"' + b"a" * (5 * _ONE_MIB) + b'"}\n'
+            main_lines = [padded_line]
+            subagent_files = [[padded_line] for _ in range(3)]
+            include_subagents = True
+        _write_raw_session(jsonl, main_lines, subagent_files)
+        del main_lines, subagent_files
+        prefilter = corpus._branch_prefilter({"feature-x"})
+
+        was_tracing = tracemalloc.is_tracing()
+        if was_tracing:
+            tracemalloc.reset_peak()
+        else:
+            tracemalloc.start()
+        baseline_bytes, _baseline_peak = tracemalloc.get_traced_memory()
+        try:
+            carried = prefilter.may_carry(jsonl, include_subagents)
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            if not was_tracing:
+                tracemalloc.stop()
+
+        own_peak = peak - baseline_bytes
+        assert carried is expected_carried
+        assert own_peak < ceiling_mib * _ONE_MIB, f"{case}: peak {own_peak} bytes passed the {ceiling_mib} MiB ceiling"
+
+    @pytest.mark.timing
+    @pytest.mark.parametrize(
+        ("shape", "expected_carried", "ceiling_seconds"),
+        [
+            (b'"gitBranch"' + b" " * _LONG_RUN_BYTES, True, _LONG_RUN_CEILING_SECONDS),
+            ((b'"gitBranch"' + b" " * 64) * (_REPEATED_SHAPE_BYTES // 75), True, _LONG_RUN_CEILING_SECONDS),
+            (b'"gitBranch":' + b" " * _LONG_RUN_BYTES, True, _LONG_RUN_CEILING_SECONDS),
+            (
+                (b'"gitBranch":' + b" " * 64 + b"x") * (_REPEATED_SHAPE_BYTES // 77),
+                True,
+                _LONG_RUN_CEILING_SECONDS,
+            ),
+            (b'"gitBranch":"' + b"a" * _BOUNDED_TIME_BYTES, True, _BOUNDED_TIME_CEILING_SECONDS),
+            (b'"gitBranch":"other-branch"\n' * (_BOUNDED_TIME_BYTES // 27), False, _BOUNDED_TIME_CEILING_SECONDS),
+        ],
+        ids=[
+            "whitespace-no-colon",
+            "repeated-key-and-spaces",
+            "colon-and-whitespace-no-quote",
+            "repeated-colon-and-whitespace-no-quote",
+            "unclosed-value",
+            "many-closed-values",
+        ],
+    )
+    def test_adversarial_shapes_are_scanned_in_bounded_time(self, tmp_path, shape, expected_carried, ceiling_seconds):
+        """A ceiling far above a linear scan's cost, so only a backtracking pattern fails it."""
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, [shape])
+        prefilter = corpus._branch_prefilter({"feature-x"})
+
+        started = time.monotonic()
+        carried = prefilter.may_carry(jsonl, False)
+        elapsed_seconds = time.monotonic() - started
+
+        assert carried is expected_carried
+        assert elapsed_seconds < ceiling_seconds, f"scan took {elapsed_seconds:.1f}s"
+
+    # A file mixing plain-key and escaped-key `gitBranch` records is a documented unpinned residual,
+    # because no known writer varies key escaping within one file.
+    @pytest.mark.parametrize(
+        "lines",
+        [
+            [b'{"type":"user","message":{"content":"hello"}}\n'],
+            [b'{"git\\u0042ranch":"other-branch"}\n', b'{"git\\u0042ranch":"feature-x"}\n'],
+        ],
+        ids=["no-field", "escaped-key"],
+    )
+    def test_a_file_with_no_gitbranch_match_keeps_the_session(self, tmp_path, lines):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, lines)
+        assert corpus._branch_prefilter({"feature-x"}).may_carry(jsonl, False) is True
+
+    def test_a_name_only_in_a_subagent_file_is_carried_only_with_subagents(self, tmp_path):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, [_OTHER_BRANCH_LINE], [[_OTHER_BRANCH_LINE, _git_branch_line(b"feature-x")]])
+        prefilter = corpus._branch_prefilter({"feature-x"})
+        assert prefilter.may_carry(jsonl, True) is True
+        assert prefilter.may_carry(jsonl, False) is False
+
+    @pytest.mark.parametrize(
+        ("include_subagents", "expected_carried"), [(True, True), (False, False)],
+        ids=["with-subagents", "without-subagents"],
+    )
+    def test_a_subagent_file_with_no_match_keeps_the_session_only_with_subagents(
+        self, tmp_path, include_subagents, expected_carried,
+    ):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(
+            jsonl, [_OTHER_BRANCH_LINE],
+            [[b'{"git\\u0042ranch":"other-branch"}\n', b'{"git\\u0042ranch":"feature-x"}\n']],
+        )
+        carried = corpus._branch_prefilter({"feature-x"}).may_carry(jsonl, include_subagents)
+        assert carried is expected_carried
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    @pytest.mark.parametrize("unreadable", ["main-file", "subagent-file"])
+    def test_an_unreadable_file_keeps_the_session(self, tmp_path, unreadable):
+        jsonl = tmp_path / "s.jsonl"
+        _write_raw_session(jsonl, [_OTHER_BRANCH_LINE], [[_OTHER_BRANCH_LINE]])
+        unreadable_path = jsonl if unreadable == "main-file" else tmp_path / "s" / "subagents" / "agent-0.jsonl"
+        os.chmod(unreadable_path, 0o000)
+        try:
+            carried = corpus._branch_prefilter({"feature-x"}).may_carry(jsonl, True)
+        finally:
+            os.chmod(unreadable_path, 0o644)
+        assert carried is True
+
+    def test_a_session_holding_any_one_filtered_name_is_carried(self, tmp_path):
+        names_feature_a, names_feature_b, names_neither = (tmp_path / f"{n}.jsonl" for n in ("a", "b", "n"))
+        _write_raw_session(names_feature_a, [_git_branch_line(b"feature-a")])
+        _write_raw_session(names_feature_b, [_git_branch_line(b"feature-b")])
+        _write_raw_session(names_neither, [_git_branch_line(b"feature-c")])
+        prefilter = corpus._branch_prefilter({"feature-a", "feature-b"})
+        assert prefilter.may_carry(names_feature_a, False) is True
+        assert prefilter.may_carry(names_feature_b, False) is True
+        assert prefilter.may_carry(names_neither, False) is False

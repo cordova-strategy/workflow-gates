@@ -1,4 +1,4 @@
-"""scope.py's scan-traversal, scan-gap and glob-selection classes."""
+"""scope.py's scan-traversal, scan-gap, glob-selection and branch-prefilter-gap (`TestBranchPrefilterGaps`) classes."""
 import argparse
 import errno
 import os
@@ -25,6 +25,18 @@ class TestScanRootTranscripts:
         root = tmp_path / "locked"
         root.mkdir()
         os.chmod(root, 0o000)
+        try:
+            with pytest.raises(PermissionError):
+                scope._scan_root_transcripts(root, "*")
+        finally:
+            os.chmod(root, 0o755)
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_searchable_but_unlistable_root_raises_permission_error(self, tmp_path):
+        """A probe regressed to X_OK only would return (0, 0) for this root instead of raising."""
+        root = tmp_path / "locked"
+        root.mkdir()
+        os.chmod(root, 0o311)  # searchable and writable, but not listable
         try:
             with pytest.raises(PermissionError):
                 scope._scan_root_transcripts(root, "*")
@@ -108,7 +120,7 @@ class TestScanRootTranscripts:
     def test_project_dir_symlinked_outside_the_root_is_counted(self, tmp_path, mode):
         """Only a '..' in the raw glob is rejected. With a single scan root,
         a project directory symlinked to a readable location outside `root`
-        stays in scope, in both the glob and the exact-slug branch, matching
+        stays in scope, in both the glob and the slug-admission branch, matching
         iter_sessions. Multi-root consumers that attribute each session to a
         root do not tolerate it (see the pooled-layer tests in
         test_transcript_review_rounds.py)."""
@@ -326,9 +338,9 @@ class TestScanGapCounter:
     def test_iter_scoped_sessions_symlink_loop_is_skipped_without_raising(self, tmp_path):
         """The slug-matched sibling of
         test_project_dir_symlink_loop_without_scan_gaps_is_skipped_without_raising:
-        _iter_scoped_sessions selects project dirs by exact slug match rather
-        than glob, but shares _dedup_new_project_dirs, so a symlink-loop
-        project dir is skipped there too."""
+        _iter_scoped_sessions selects project dirs by the --this-repo admission
+        rule rather than a glob, but shares _dedup_new_project_dirs, so a
+        symlink-loop project dir is skipped there too."""
         root = tmp_path / "acct-a"
         root.mkdir(parents=True)
         loop_link = root / "-repo-loop"
@@ -410,8 +422,8 @@ class TestScanGapCounter:
     @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
     def test_iter_scoped_sessions_unreadable_project_dir_records_project_dir_gap(self, tmp_path):
         """The structural sibling of the project-dir test above: _iter_scoped_sessions
-        selects project dirs by exact slug match rather than glob, but shares
-        _iter_project_dir_sessions."""
+        selects project dirs by the --this-repo admission rule rather than a glob,
+        but shares _iter_project_dir_sessions."""
         root = tmp_path / "acct-a"
         proj_open = root / "-repo-open"
         proj_open.mkdir(parents=True)
@@ -771,3 +783,29 @@ class TestGlobScopedSessionsSelection:
             assert yielded_paths < every_project_paths
         assert backup_copy not in every_project_paths
         assert non_transcript not in every_project_paths
+
+
+class TestBranchPrefilterGaps:
+    """scope._iter_scoped_sessions with a branch prefilter: a skipped session is no scan gap."""
+
+    @pytest.mark.skipif(os.geteuid() == 0, reason="root bypasses file permission bits")
+    def test_a_skipped_session_records_no_gap_and_an_unreadable_one_still_does(self, tmp_path):
+        root = tmp_path / "acct-a"
+        proj = root / "-repo-main"
+        proj.mkdir(parents=True)
+        carried = proj / "carried.jsonl"
+        _write_jsonl(carried, [_asst("claude-sonnet-4-6", branch="feature-x")])
+        _write_jsonl(proj / "skipped.jsonl", [_asst("claude-sonnet-4-6", branch="other-branch")])
+        unreadable = proj / "unreadable.jsonl"
+        unreadable.write_text("{}\n")
+        os.chmod(unreadable, 0o000)
+        scan_gaps = Counter()
+        try:
+            sessions = list(scope._iter_scoped_sessions(
+                ["-repo-main"], False, roots=[root], scan_gaps=scan_gaps, branch_prefilter={"feature-x"},
+            ))
+        finally:
+            os.chmod(unreadable, 0o644)
+
+        assert [jsonl for jsonl, _records in sessions] == [carried]
+        assert scan_gaps == Counter({scope._SCAN_GAP_SESSION_FILE: 1})

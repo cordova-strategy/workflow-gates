@@ -5,7 +5,6 @@ import json
 import math
 import random
 import re
-import shlex
 import stat
 import subprocess
 import sys
@@ -19,8 +18,8 @@ from typing import NamedTuple
 import _config
 import _config_dir
 import pytest
-from helpers import REPO_ROOT
-from transcript_analysis import corpus, pricing, review_rounds, routing_guard, scope
+from helpers import REPO_ROOT, stub_git_worktree_listing, worktree_porcelain
+from transcript_analysis import corpus, pricing, review_rounds, review_trace, routing_guard
 
 from ._pr_cost_helpers import _enable_pr_cost
 from ._review_round_helpers import _SONNET
@@ -48,7 +47,17 @@ from ._routing_guard_helpers import (
     _write_log,
     _write_noisy_config_state_file,
 )
-from .conftest import _agent_use, _commit, _init_repo, _priced, _skill_block, _user_msg, _write_jsonl, _write_subagent_dispatch
+from .conftest import (
+    _agent_use,
+    _commit,
+    _hook_deny_current,
+    _init_repo,
+    _priced,
+    _skill_block,
+    _user_msg,
+    _write_jsonl,
+    _write_subagent_dispatch,
+)
 
 _SCRIPT = Path(__file__).parent.parent / "transcript-analysis.py"
 # "transcript_analysis" below never touches sys.modules (module_from_spec + exec_module
@@ -1958,52 +1967,40 @@ class TestGitCheckFailure:
 
 
 class TestUnlistedDenyRemedyCommand:
-    """The command capture's unlisted-branch refusal names parses through the CLI's own parser."""
-
-    _SLUG_PLACEHOLDER = "<main-project-slug>"
-    _A_MAIN_CHECKOUT = "/placeholder/checkout"
+    """The command capture's unlisted-branch refusal names, run through the real parser and handler, reads a removed worktree."""
 
     @staticmethod
-    def _remedy_words() -> list[str]:
+    def _remedy_argv(config_dir: Path) -> list[str]:
+        """The refusal's `transcript-analysis.py ...` command with its `<placeholder>` replaced by `config_dir`."""
         unlisted_deny = routing_guard._DenyFact("unlisted-branch", 1.0, "sess-1")
         reconciliation = routing_guard._reconcile_denies(
             [unlisted_deny], [routing_guard._KeyState("on", None)], [], Path("/placeholder/account"), set(), {}, {},
         )
         (refusal,) = reconciliation.refusals
-        return [word.rstrip(",;") for word in refusal.split()]
-
-    @pytest.mark.parametrize("scope_form", ["this-repo", "projects-glob"])
-    def test_the_named_review_trace_command_parses_in_each_scope_form(self, tmp_path, scope_form):
-        words = self._remedy_words()
-        assert {"--config-dir", "review-trace", "--deny-only"} <= set(words)
-        if scope_form == "this-repo":
-            assert "--this-repo" in words
-            scope_args = ["--this-repo"]
-        else:
-            (projects_word,) = (word for word in words if word.startswith("--projects"))
-            assert self._SLUG_PLACEHOLDER in projects_word
-            main_project_slug = scope._path_to_project_slug(self._A_MAIN_CHECKOUT)
-            scope_args = shlex.split(projects_word.replace(self._SLUG_PLACEHOLDER, main_project_slug))
-
-        args = _mod.build_parser().parse_args(
-            ["--config-dir", str(tmp_path), "review-trace", "--deny-only", *scope_args],
+        command_start, command_end_delimiter = "transcript-analysis.py ", ";"
+        assert command_start in refusal and command_end_delimiter in refusal.split(command_start, 1)[1], (
+            f"refusal must carry `{command_start}<command>{command_end_delimiter}`: {refusal!r}"
         )
+        command = refusal.split(command_start, 1)[1].split(command_end_delimiter, 1)[0]
+        placeholder = re.search(r"<[^>]*>", command)
+        assert placeholder, f"refusal's command carries no <placeholder> for --config-dir: {refusal!r}"
+        return [*command[: placeholder.start()].split(), str(config_dir), *command[placeholder.end():].split()]
+
+    def test_the_named_review_trace_command_reads_a_removed_worktrees_session(self, tmp_path, monkeypatch, capsys):
+        removed_worktree_dir = "-repo-main--claude-worktrees-gone"
+        project_dir = tmp_path / "projects" / removed_worktree_dir
+        project_dir.mkdir(parents=True)
+        _write_jsonl(project_dir / "removed-worktree-session.jsonl", [
+            _hook_deny_current("Commit blocked by code-review gate: run /code-review.", branch="gone"),
+        ])
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+
+        args = _mod.build_parser().parse_args(self._remedy_argv(tmp_path))
+        review_trace.cmd_review_trace(args)
 
         assert args.deny_only is True
-        if scope_form == "this-repo":
-            assert args.this_repo is True
-        else:
-            removed_worktree_slug = scope._path_to_project_slug(f"{self._A_MAIN_CHECKOUT}/.claude/worktrees/removed-branch")
-            projects_root = tmp_path / "projects"
-            removed_worktree_project = projects_root / removed_worktree_slug
-            removed_worktree_project.mkdir(parents=True)
-            session_file = removed_worktree_project / "sess-removed.jsonl"
-            _write_jsonl(session_file, [_user_msg("hello", branch="removed-branch")])
-            other_project = projects_root / scope._path_to_project_slug("/placeholder/other-checkout")
-            other_project.mkdir()
-            _write_jsonl(other_project / "sess-other.jsonl", [_user_msg("hello", branch="other")])
-
-            assert [path for path, _records in corpus.iter_sessions(projects_root, args.projects)] == [session_file]
+        assert args.this_repo is True
+        assert "removed-worktree-session.jsonl" in capsys.readouterr().out
 
 
 # --- the reads compute makes -------------------------------------------------

@@ -79,8 +79,8 @@ class TestRefuseWiderScope:
 
 class TestScopeHeader:
     def test_header_is_titled_by_the_command_label(self):
-        assert publication_scope._scope_header("this repo (2 project dirs)", "reviewer-reads") == (
-            "REVIEWER READS SOURCES (this repo (2 project dirs); reads one account (the active account),"
+        assert publication_scope._scope_header("this repo (2 project dirs: 2 live, 0 unlisted)", "reviewer-reads") == (
+            "REVIEWER READS SOURCES (this repo (2 project dirs: 2 live, 0 unlisted); reads one account (the active account),"
             " the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)"
         )
 

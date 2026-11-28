@@ -6,6 +6,7 @@ import os
 import subprocess
 
 import pytest
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import cli, scope, skill_invocation
 
 from ._account_scope_helpers import (
@@ -24,7 +25,6 @@ from .conftest import (
     _table_cols,
     _two_declared_roots,
     _user_msg,
-    _worktree_porcelain,
     _write_jsonl,
     _write_subagent_jsonl,
 )
@@ -524,7 +524,7 @@ class TestSkillInvocationRepoScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/repo/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/repo/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -551,7 +551,7 @@ class TestSkillInvocationRepoScope:
         monkeypatch.setattr(os, "getcwd", lambda: "/somewhere/else")
 
         def fake_run(cmd, *a, **k):
-            return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/a/foreign/repo"), "")
+            return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/a/foreign/repo"), "")
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit):
             skill_invocation.cmd_skill_invocation(argparse.Namespace(projects=None, branches=None, include_subagents=False))
@@ -594,7 +594,7 @@ class TestSkillInvocationRepoScope:
 
         def fake_run(cmd, *a, **k):
             if cmd[:3] == ["git", "worktree", "list"]:
-                return subprocess.CompletedProcess(cmd, 0, _worktree_porcelain("/r*/main"), "")
+                return subprocess.CompletedProcess(cmd, 0, worktree_porcelain("/r*/main"), "")
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/r*/main\n", "")
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -628,7 +628,7 @@ class TestSkillInvocationRepoScope:
             if cmd[:3] == ["git", "worktree", "list"]:
                 return subprocess.CompletedProcess(
                     cmd, 0,
-                    _worktree_porcelain("/repo", "/repo/.claude/worktrees/feat"), "",
+                    worktree_porcelain("/repo", "/repo/.claude/worktrees/feat"), "",
                 )
             assert cmd == ["git", "rev-parse", "--show-toplevel"]
             return subprocess.CompletedProcess(cmd, 0, "/repo/.claude/worktrees/feat\n", "")
@@ -638,6 +638,33 @@ class TestSkillInvocationRepoScope:
         out = capsys.readouterr().out
         assert "code-review" in out, "the main worktree's skill must appear"
         assert "handoff" in out, "the linked worktree's skill must appear"
+
+    def test_a_removed_worktree_dir_is_in_default_scope_and_a_fork_is_not(self, tmp_path, monkeypatch, capsys):
+        """A removed worktree's project dir (no `git worktree list` entry, but named under the main checkout's
+        worktrees directory) is read by the default scope; a sibling fork's dir is not."""
+        projects = tmp_path / "projects"
+        main_dir = projects / "-repo"
+        removed_dir = projects / "-repo--claude-worktrees-gone"
+        fork_dir = projects / "-repo-fork"
+        for project_dir in (main_dir, removed_dir, fork_dir):
+            project_dir.mkdir(parents=True)
+        monkeypatch.setattr(scope, "PROJECTS_DIR", projects)
+        _write_jsonl(main_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="main", content=[_skill_use("m1", "code-review")]),
+        ])
+        _write_jsonl(removed_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="gone", content=[_skill_use("r1", "handoff")]),
+        ])
+        _write_jsonl(fork_dir / "s.jsonl", [
+            _asst("claude-sonnet-4-6", branch="fork", content=[_skill_use("f1", "plan-review")]),
+        ])
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo"), "/repo", "/repo")
+
+        skill_invocation.cmd_skill_invocation(argparse.Namespace(projects=None, branches=None, include_subagents=False))
+        out = capsys.readouterr().out
+        assert "code-review" in out, "the main worktree's skill must appear"
+        assert "handoff" in out, "the removed worktree's skill must appear"
+        assert "plan-review" not in out, "a sibling fork's dir must stay out of the default scope"
 
 
 def test_slash_invocation_counts_the_command_name_and_never_its_command_args(fake_projects, capsys):

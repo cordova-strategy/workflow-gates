@@ -23,6 +23,7 @@ from types import SimpleNamespace
 import pytest
 import run_review_bench
 from helpers import TASK_NOTIFICATION_TEXT as _TASK_NOTIFICATION_TEXT
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from review_bench import defects, mine_pr_comments, mine_review_rounds, mine_szz
 from review_bench.defects import Candidate, ConfirmedDefect
 from transcript_analysis import corpus, review_rounds, reviewer_yield
@@ -1961,12 +1962,31 @@ class TestResolvePrNumber:
     """resolve_pr_number is the module's only `gh`-boundary call, with
     subprocess.run monkeypatched in place of the real binary."""
 
-    def test_well_formed_payload_returns_the_number(self, tmp_path, monkeypatch):
+    def test_same_repo_payload_returns_the_number(self, tmp_path, monkeypatch):
         def fake_run(*args, **kwargs):
-            return subprocess.CompletedProcess(args, 0, stdout=json.dumps([{"number": 42}]), stderr="")
+            payload = [{"number": 42, "isCrossRepository": False}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
 
         monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
         assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") == 42
+
+    def test_cross_repo_first_payload_returns_none(self, tmp_path, monkeypatch):
+        """A fork PR sharing the head-branch name must not supply the PR number."""
+        def fake_run(*args, **kwargs):
+            payload = [{"number": 42, "isCrossRepository": True}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+
+        monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
+        assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") is None
+
+    @pytest.mark.parametrize("cross_repository_flag", [None, "false", 0])
+    def test_a_non_boolean_cross_repository_flag_returns_none(self, tmp_path, monkeypatch, cross_repository_flag):
+        def fake_run(*args, **kwargs):
+            payload = [{"number": 42, "isCrossRepository": cross_repository_flag}]
+            return subprocess.CompletedProcess(args, 0, stdout=json.dumps(payload), stderr="")
+
+        monkeypatch.setattr(mine_review_rounds.subprocess, "run", fake_run)
+        assert mine_review_rounds.resolve_pr_number(tmp_path, "feat") is None
 
     def test_empty_payload_returns_none(self, tmp_path, monkeypatch):
         def fake_run(*args, **kwargs):
@@ -2278,6 +2298,20 @@ class TestResolveScopedSessionsRootGuard:
         assert exc_info.value.code == 2
 
 
+class TestResolveScopedSessionsWorktreeScope:
+    def test_reads_a_removed_worktree_dir_and_not_a_sibling_fork(self, tmp_path, monkeypatch):
+        root = tmp_path / "projects"
+        removed_worktree_dir = root / "-repo-main--claude-worktrees-gone"
+        sibling_fork_dir = root / "-repo-main-fork"
+        _write_jsonl(removed_worktree_dir / "removed.jsonl", [_assistant(branch="gone-branch")])
+        _write_jsonl(sibling_fork_dir / "fork.jsonl", [_assistant(branch="fork-branch")])
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+
+        session_paths = [jsonl for jsonl, _records in mine_review_rounds.resolve_scoped_sessions(roots=(root,))]
+
+        assert session_paths == [removed_worktree_dir / "removed.jsonl"]
+
+
 # --- mine_review_rounds: which round windows become entries -----------------
 
 
@@ -2363,8 +2397,7 @@ class TestMinerFollowsTheSharedWindowAcrossATaskNotification:
         entries = mine_review_rounds._collect_round_entries([(jsonl, records)])
 
         assert [entry.window for entry in entries] == [(0, 4, "code-review")]
-        scope_keys = mine_review_rounds._round_scope(records, entries[0].window, entries[0].dispatch_index)
-        assert reviewer_yield._normalize_cited_path(only_second_reviewer_read, "/repo") in scope_keys
+        assert reviewer_yield._normalize_cited_path(only_second_reviewer_read, "/repo") in entries[0].scope_keys
 
     def test_fix_edited_after_a_task_notification_and_before_the_next_round_is_not_counted_as_edited_between(
         self, tmp_path,
@@ -2456,31 +2489,72 @@ class TestCollectRoundEntriesPreBranchAttribution:
         assert [entry.branch for entry in entries] == ["feat-x"]
 
 
+class TestMainThreadWriteEventsSkipMalformedTargets:
+    def test_edit_whose_file_path_is_a_list_is_not_a_write_and_does_not_abort_collection(self, tmp_path):
+        records = [
+            _assistant(
+                ts="2026-01-01T00:00:00Z",
+                content=[
+                    _skill_use("s1", "code-review"),
+                    {"type": "tool_use", "id": "e1", "name": "Edit", "input": {"file_path": ["/repo/app.py"]}},
+                    _edit_use("e2", "/repo/other.py"),
+                ],
+            ),
+            _user("done", ts="2026-01-01T00:01:00Z"),
+        ]
+        jsonl = tmp_path / "sess-malformed-write-target.jsonl"
+        _write_jsonl(jsonl, records)
+
+        entries = mine_review_rounds._collect_round_entries([(jsonl, records)])
+
+        valid_target_key = reviewer_yield._normalize_cited_path("/repo/other.py", "/repo")
+        assert [target for _index, target in entries[0].session_writes] == [valid_target_key]
+
+
 class TestMainThreadEditedBetween:
-    def test_edit_of_a_line_suffixed_citation_target_is_detected(self):
-        """A line-suffixed citation (":line", the shape TestMineReviewRoundsCandidates'
-        own fixtures use) must still match a real edit of that same file, so the
-        comparison normalizes the citation's raw_path before comparing it against the
-        write target's clean path rather than comparing them as raw strings."""
+    def test_edit_of_a_line_suffixed_citation_target_is_detected(self, tmp_path):
+        """An Edit's target keys to the same normalized path as a `:line`-suffixed
+        citation of that file, so the edit counts as between the rounds."""
         edit_record = _assistant(
             ts="2026-01-01T12:00:00Z", cwd="/repo",
             content=[{"type": "tool_use", "id": "e1", "name": "Edit", "input": {"file_path": "/repo/app.py"}}],
         )
         records = [
             _assistant(ts="2026-01-01T00:00:00Z", content=[_skill_use("s1", "code-review")]),
+            _user("done", ts="2026-01-01T00:01:00Z"),
             edit_record,
             _assistant(ts="2026-01-02T00:00:00Z", content=[_skill_use("s2", "code-review")]),
         ]
-        jsonl = Path("/tmp/sess-main-thread-edited-between.jsonl")
-        earlier = mine_review_rounds._RoundEntry(
-            jsonl=jsonl, records=records, dispatch_index={}, window=(0, 1, "code-review"), branch="feat", ts=1.0,
-        )
-        later = mine_review_rounds._RoundEntry(
-            jsonl=jsonl, records=records, dispatch_index={}, window=(2, 3, "code-review"), branch="feat", ts=2.0,
-        )
+        jsonl = tmp_path / "sess-main-thread-edited-between.jsonl"
+        _write_jsonl(jsonl, records)
+        earlier, later = mine_review_rounds._collect_round_entries([(jsonl, records)])
         key = reviewer_yield._normalize_cited_path("/repo/app.py:12", "/repo")
 
         assert mine_review_rounds._main_thread_edited_between(earlier, later, key) is True
+
+    @pytest.mark.parametrize(
+        ("write_index", "later_jsonl_name", "expected"),
+        [
+            pytest.param(3, "a.jsonl", True, id="write-at-earlier-window-end-counts"),
+            pytest.param(7, "a.jsonl", False, id="write-at-later-window-open-does-not-count"),
+            pytest.param(5, "b.jsonl", False, id="entries-from-different-transcripts-never-count"),
+        ],
+    )
+    def test_the_between_range_is_inclusive_of_the_earlier_end_exclusive_of_the_later_open(
+        self, tmp_path, write_index, later_jsonl_name, expected,
+    ):
+        session_writes = [(write_index, "app.py")]
+
+        def entry(jsonl_name: str, window: tuple[int, int, str]) -> mine_review_rounds._RoundEntry:
+            return mine_review_rounds._RoundEntry(
+                jsonl=tmp_path / jsonl_name, window=window, branch="feat", ts=0.0,
+                scope_keys={}, later_citations={}, session_writes=session_writes,
+            )
+
+        earlier = entry("a.jsonl", (0, 3, "x"))
+        later = entry(later_jsonl_name, (7, 9, "x"))
+
+        assert mine_review_rounds._main_thread_edited_between(earlier, later, "app.py") is expected
 
 
 class TestMineReviewRoundsCandidates:
@@ -2724,6 +2798,21 @@ class TestMineReviewRoundsCandidates:
             raise AssertionError("an empty branch name must not reach branch resolution")
 
         monkeypatch.setattr(mine_review_rounds, "_resolve_branch", fail_if_called)
+
+        candidates = self._mine(tmp_path, monkeypatch)
+
+        assert candidates == []
+        assert "2 round(s) skipped for an empty branch name" in capsys.readouterr().err
+
+    def test_an_empty_branch_round_never_reads_its_reviewer_transcripts(self, tmp_path, monkeypatch, capsys):
+        """An empty-branch round is never matched, so a line holding a non-object
+        JSON value in its reviewer subagent transcript must not abort the run.
+        `corpus._parse_jsonl_records` keeps such a line and the reviewer-transcript
+        scan aborts on it."""
+        self._build_session(tmp_path, branch="")
+        reviewer_transcript = tmp_path / "projects" / "test-slug" / "sess-1" / "subagents" / "agent-1.jsonl"
+        with reviewer_transcript.open("a") as handle:
+            handle.write("[]\n")
 
         candidates = self._mine(tmp_path, monkeypatch)
 

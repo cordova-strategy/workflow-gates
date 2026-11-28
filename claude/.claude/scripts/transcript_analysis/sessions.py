@@ -21,15 +21,14 @@ def cmd_sessions(args: argparse.Namespace) -> None:
     --paths is required: it names the one action this subcommand supports today,
     leaving room for a second sessions action later without a bare `sessions`
     invocation silently doing nothing. Sourced from scope.resolve_scan_roots plus
-    scope._resolve_project_scope (not a flat glob), so a main session file only
-    reaches this repo's own worktrees under --this-repo the same way every other
-    subcommand does. --include-subagents additionally emits each split subagent
-    file's own path, found the same way read_session_file locates
-    them for its own record merge -- <session>/subagents/*.jsonl under the main
-    file's own directory -- rather than a flat glob across the whole scope, so a
-    caller that reads only the emitted paths gets exactly the same file set
-    read_session_file(include_subagents=True) would have merged, split back out
-    into individually readable files. The resolved-scope header goes to stderr,
+    scope._resolve_project_scope (not a flat glob). Scope follows `--this-repo`'s
+    rule; see "Scoping to this repo" in docs/transcript-analysis.md.
+    --include-subagents additionally emits each split subagent
+    file's own path, listed by the same corpus._session_source_files call
+    read_session_file uses -- <session>/subagents/*.jsonl under the main
+    file's own directory -- rather than a flat glob across the whole scope.
+    The reader drops an unreadable or empty subagent file from its merge and
+    this command still prints it. The resolved-scope header goes to stderr,
     matching audit-routing-samples' convention — stdout here is meant to be
     piped to xargs/Read, not mixed with a header line.
     """
@@ -47,10 +46,8 @@ def cmd_sessions(args: argparse.Namespace) -> None:
     for jsonl, _records in session_iter:
         print(jsonl)
         if include_subagents:
-            subagent_dir = jsonl.parent / jsonl.stem / corpus.SUBAGENT_SUBDIR
-            if subagent_dir.is_dir():
-                for sub_jsonl in sorted(subagent_dir.glob("*.jsonl")):
-                    print(sub_jsonl)
+            for sub_jsonl in corpus._session_source_files(jsonl, include_subagents)[1:]:
+                print(sub_jsonl)
 
 
 def _add_sessions_subparser(subparsers: argparse._SubParsersAction) -> None:

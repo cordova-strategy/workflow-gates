@@ -152,7 +152,7 @@ class TestReport:
         args, _calls = _reviewer_reads_args(monkeypatch)
 
         assert _report_text(args, fake_projects, capsys).splitlines()[0] == (
-            "REVIEWER READS SOURCES (this repo (1 project dirs); reads one account (the active account),"
+            "REVIEWER READS SOURCES (this repo (1 project dirs: 1 live, 0 unlisted); reads one account (the active account),"
             " the working directory's repository only; ~/.claude/transcript-config-dirs not consulted)"
         )
 
@@ -229,11 +229,37 @@ class TestReport:
         self, fake_projects, stub_repo_tracked_agent_types, monkeypatch, capsys,
     ):
         stub_repo_tracked_agent_types()
-        args, _calls = _reviewer_reads_args(monkeypatch, worktree_paths=(_WORKTREE_PATH, f"{_WORKTREE_PATH}/.claude/worktrees/b"))
+        second_worktree_path = f"{_WORKTREE_PATH}/.claude/worktrees/b"
+        (fake_projects.parent / scope._path_to_project_slug(second_worktree_path)).mkdir()
+        args, _calls = _reviewer_reads_args(monkeypatch, worktree_paths=(_WORKTREE_PATH, second_worktree_path))
 
         assert _report_text(args, fake_projects, capsys).splitlines()[0].startswith(
-            "REVIEWER READS SOURCES (this repo (2 project dirs);"
+            "REVIEWER READS SOURCES (this repo (2 project dirs: 2 live, 0 unlisted);"
         )
+
+    def test_a_removed_worktrees_window_is_counted_and_only_the_listed_paths_ledger_file_is_read(
+        self, fake_projects, stub_repo_tracked_agent_types, tmp_path, monkeypatch, capsys,
+    ):
+        stub_repo_tracked_agent_types(_TRACKED_AGENT_TYPE)
+        removed_worktree_path = f"{_WORKTREE_PATH}/.claude/worktrees/gone"
+        removed_project = fake_projects.parent / scope._path_to_project_slug(removed_worktree_path)
+        removed_project.mkdir()
+        args, _calls = _reviewer_reads_args(monkeypatch)
+        dispatch = _agent_use("dispatch-agent-removed", _TRACKED_AGENT_TYPE)
+        _write_jsonl(removed_project / f"{_SESSION_ID}.jsonl", [_reviewer_turn("m0", [dispatch])])
+        _reviewer_window(removed_project, "agent-removed", [_reviewer_turn("a-removed", [])])
+        _write_this_repo_ledger_file(tmp_path, _WORKTREE_PATH, "listed-slot", [_address_row("listed")])
+        _write_this_repo_ledger_file(
+            tmp_path, removed_worktree_path, "removed-slot", [_address_row("removed-1"), _address_row("removed-2")],
+        )
+
+        report = _report_text(args, fake_projects, capsys)
+
+        assert report.splitlines()[0].startswith("REVIEWER READS SOURCES (this repo (2 project dirs: 1 live, 1 unlisted);")
+        assert "sessions=1 reviewer_windows=1" in report
+        assert "ledger files: directory=present read=1 unreadable=0" in report
+        assert "terminal rows: ADDRESS=1 DEFER=0 SETTLED=0 total=1" in report
+        assert "sessions with a disposition row=1 covered by the transcript scan=1" in report
 
 
 def _structured_result_leaking_text(tool_id: str, path: str, *, num_lines: int, total_lines: int) -> dict:

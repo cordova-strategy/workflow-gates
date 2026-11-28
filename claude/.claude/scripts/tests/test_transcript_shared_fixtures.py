@@ -3,6 +3,7 @@ so a fixture that comes to depend on the shim fails here first."""
 import os
 
 import pytest
+from helpers import stub_git_worktree_listing, worktree_porcelain
 from transcript_analysis import cost_ledger, ledger_common, pr_cost_ledger, scope
 
 from .conftest import _pin_transcript_corpus_lookups, _table_cols
@@ -58,6 +59,26 @@ def test_cost_ledger_fixtures_patch_their_targets_without_a_shim(
     assert cost_ledger._cost_ledger_path() == cost_ledger_file
     assert cost_ledger.config_dir() == cost_ledger_enabled
     assert ledger_common.config_dir() == cost_ledger_enabled
+
+
+class TestStubGitWorktreeListingHelper:
+    def test_scope_resolution_sees_the_stubbed_listing_and_working_directory(self, monkeypatch):
+        stub_git_worktree_listing(
+            monkeypatch, worktree_porcelain("/repo/main", "/repo/wt"), "/repo/wt/nested", "/repo/wt",
+        )
+
+        assert scope._repo_scoped_project_slugs("buckets") == ["-repo-main", "-repo-wt"]
+
+    @pytest.mark.parametrize(
+        "unstubbed_git_argv",
+        [["git", "status"], ["git", "worktree", "list"], ["git", "worktree", "list", "--porcelain", "-z"]],
+        ids=["other-subcommand", "listing-without-porcelain", "listing-with-extra-flag"],
+    )
+    def test_a_git_call_other_than_the_two_it_stubs_fails_the_test(self, monkeypatch, unstubbed_git_argv):
+        stub_git_worktree_listing(monkeypatch, worktree_porcelain("/repo/main"), "/repo/main", "/repo/main")
+
+        with pytest.raises(AssertionError):
+            scope.subprocess.run(unstubbed_git_argv)
 
 
 class TestTableColsHelper:

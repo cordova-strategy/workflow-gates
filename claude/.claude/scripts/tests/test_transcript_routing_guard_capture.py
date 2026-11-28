@@ -2103,9 +2103,10 @@ class TestReconcileDenies:
         assert "2026-08-01 10:31 UTC" in outcome.err
         for load_bearing_token in (
             "falls on a branch the note does not list", "review-trace", "--config-dir", "--deny-only", "--this-repo",
-            "--projects=", "docs/transcript-analysis.md",
+            "docs/transcript-analysis.md",
         ):
             assert load_bearing_token in outcome.err
+        assert "--projects" not in outcome.err
         assert "--deny-summary" not in outcome.err
         assert "unlisted-work" not in outcome.err + outcome.out
         assert _published_files(world) == []
@@ -2385,6 +2386,7 @@ def _add_linked_worktree(world: _World, branch: str) -> Path:
 class TestScope:
     def test_an_orphaned_worktree_directory_is_read_and_a_sibling_fork_directory_is_not(self, world, capsys):
         orphan_slug = world.main_slug + _WORKTREE_INFIX + "removed-worktree"
+        _write_session(world, _clean_loop("branch-main", tag="m"), session_id="sess-m", log=_KEYS_OFF)
         _write_session(world, _clean_loop("branch-orphan", tag="o"), slug=orphan_slug, session_id="sess-o", log=_KEYS_OFF)
         _write_session(
             world, _clean_loop("branch-fork", tag="f"), slug=world.main_slug + "-fork", session_id="sess-f", log=_KEYS_OFF,
@@ -2396,6 +2398,9 @@ class TestScope:
         assert outcome.code == 3
         assert "note line 1: captured" in outcome.out
         assert "note line 2: missing (no-records)" in outcome.out
+        # The main checkout's directory is the count's live term and the orphan's is its unlisted term; a count that
+        # dropped either would print "1 of 1".
+        assert "scanning project directory 1 of 2" in outcome.err
 
     def test_a_cwd_outside_any_repo_gets_scopes_own_exit_1(self, world, capsys, monkeypatch, tmp_path):
         nowhere = tmp_path / "nowhere"
