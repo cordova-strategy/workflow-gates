@@ -22,6 +22,7 @@ from helpers import (
     run_hook_advisory,
     scaled_shim_sleep,
     symlink_hooks_lib_chain,
+    which_tool,
     write_scaled_timeout_shim,
 )
 
@@ -211,7 +212,7 @@ class TestConsumeDurableContinuityFileOnRead:
         shadow_bin = tmp_path / "shadow-bin"
         shadow_bin.mkdir()
         for cmd in ["timeout", "bash", "cat", "mktemp", "mv", "chmod", "dirname"]:
-            cmd_path = shutil.which(cmd)
+            cmd_path = which_tool(cmd)
             if cmd_path:
                 (shadow_bin / cmd).symlink_to(cmd_path)
 

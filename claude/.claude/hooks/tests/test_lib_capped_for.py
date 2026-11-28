@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
+from helpers import skip_without_timeout_binary, which_tool
 
 from ._lib_sh_helpers import _LIB_SH, _SKILL_MANAGEMENT_PLUGIN_LIB, _run_lib_call
 
@@ -20,9 +21,8 @@ def test_lib_capped_for_enforces_cap_when_timeout_present(tmp_path: Path) -> Non
     """timeout(1) on PATH, no gtimeout: _lib_capped_for kills a hung command at the given cap, exit 124."""
     import shutil
 
-    timeout_path = shutil.which("timeout")
-    if not timeout_path:
-        pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+    skip_without_timeout_binary()
+    timeout_path = which_tool("timeout")
     bash_path = shutil.which("bash")
     if not bash_path:
         pytest.skip("bash not found in PATH")
@@ -58,9 +58,8 @@ def test_lib_capped_for_enforces_cap_via_gtimeout_when_timeout_absent(tmp_path: 
     """timeout(1) absent, gtimeout(1) present (Homebrew coreutils naming): _lib_capped_for still enforces the cap."""
     import shutil
 
-    timeout_path = shutil.which("timeout")
-    if not timeout_path:
-        pytest.skip("timeout(1) not available to alias as gtimeout — BSD/macOS without coreutils")
+    skip_without_timeout_binary()
+    timeout_path = which_tool("timeout")
     bash_path = shutil.which("bash")
     if not bash_path:
         pytest.skip("bash not found in PATH")
@@ -187,9 +186,8 @@ def test_lib_capped_for_prefers_timeout_over_gtimeout_when_both_present(tmp_path
     """
     import shutil
 
-    timeout_path = shutil.which("timeout")
-    if not timeout_path:
-        pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+    skip_without_timeout_binary()
+    timeout_path = which_tool("timeout")
     bash_path = shutil.which("bash")
     if not bash_path:
         pytest.skip("bash not found in PATH")
@@ -274,9 +272,8 @@ def test_lib_capped_for_kills_a_sigterm_immune_child_via_the_grace(tmp_path: Pat
     cap+grace, not hang to the fixture's own much longer sleep. The grace's
     SIGKILL reports 137, not timeout(1)'s ordinary 124, so the wall time is
     asserted alongside the status."""
-    timeout_path = shutil.which("timeout")
-    if not timeout_path:
-        pytest.skip("timeout(1) not available — BSD/macOS without coreutils")
+    skip_without_timeout_binary()
+    timeout_path = which_tool("timeout")
     bash_path = shutil.which("bash")
     if not bash_path:
         pytest.skip("bash not found in PATH")
@@ -341,7 +338,7 @@ def test_status_consistent_with_cap_kill_rejects_absent_empty_and_non_numeric_un
 def _cap_fire_path_env(tmp_path: Path) -> dict:
     """A PATH holding only the real timeout(1) and the tools _lib.sh and the composition cases need."""
     for name in ("timeout", "bash", "sleep", "dirname"):
-        real_path = shutil.which(name)
+        real_path = which_tool(name)
         if not real_path:
             pytest.skip(f"{name} not found in PATH")
         (tmp_path / name).symlink_to(real_path)

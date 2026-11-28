@@ -112,7 +112,7 @@ seam = "One test class, so the seam is test-method families inside `TestDenyPriv
 issue = 1531
 
 ["claude/.claude/hooks/tests/test_deny_reviewer_tree_mutation.py"]
-ceiling = 1622
+ceiling = 1623
 verdict = "split pending"
 seam = "Test-class families `TestFileWriteTools`, `TestBashGitWrites`, `TestBashInPlaceEditFamily`, `TestCommandWordResolution`, `TestKnownGapBypass` and `TestFullRoster`"
 
@@ -122,7 +122,7 @@ verdict = "split pending"
 seam = "Test-class families `TestPerFileShape` and `TestFaultInjection`"
 
 ["claude/.claude/hooks/tests/test_enforce_marker_script_shape.py"]
-ceiling = 4370
+ceiling = 4363
 verdict = "split pending"
 seam = "Test-class families following the hook's write-scan and shape-matcher halves: shape (`TestEnforceMarkerScriptShape`, `TestPrescriptionAllowlistAlignment`), gate-release authority (`TestGateReleaseAuthority`, `TestGateReleaseAuthorityFileWrites`) and ledger paths (`TestReviewLedgerAppendAuthority`, `TestReviewLedgerStatePaths`)"
 
@@ -158,7 +158,7 @@ verdict = "split pending"
 seam = "Test-class families `TestLibHashDiffText`, `TestGitDiffEntryShapes`, `TestLibCumulativeReviewValue`, `TestLibActivePlanHash` and `TestLibRepoRoot`"
 
 ["claude/.claude/hooks/tests/test_marker_script.py"]
-ceiling = 7303
+ceiling = 7300
 verdict = "split pending"
 seam = "Test-class families following marker.sh's status and write halves: write (`TestMarkerScriptHappyPath`, `TestMarkerScriptVerification`), status (`TestMarkerScriptStatusCompletionMarkers`, `TestMarkerScriptStatusActiveBypass`), `TestMarkerScriptClearStale`, `TestMarkerScriptCheck` and `TestMarkerScriptReviewPr`"
 issue = 1530
@@ -204,12 +204,12 @@ verdict = "split pending"
 seam = "Test-class families `TestRequireRespondPr`, `TestRespondPrStructuralInvariants`, `TestReviewPrBareReadsAreDenied` and `TestReviewPrWriteDeniedUnconditionally`"
 
 ["claude/.claude/hooks/tests/test_require_skill_review.py"]
-ceiling = 6014
+ceiling = 6013
 verdict = "split pending"
 seam = "Test-class families `TestRequireSkillReview`, `TestSharedGateDiffBaseClosureResidual`, `TestSkillReviewGateMergeAwareVerdict`, `TestSkillReviewGateConflictMarkerHardDeny`, `TestSkillReviewPathspecParity` and `TestCorpusBudgetWarning`"
 
 ["claude/.claude/hooks/tests/test_require_worktree_for_git_writes.py"]
-ceiling = 1895
+ceiling = 1896
 verdict = "split pending"
 seam = "Test-class families `TestRequireWorktreeForGitWrites`, `TestMachineLevelMarker`, `TestMachineMarkerUnderConfigDir` and `TestWorktreeCollisionGuard`"
 
@@ -330,7 +330,7 @@ verdict = "split pending"
 seam = "Test-class families by mode and flag: base resolution and fallback (`TestNormalPathAgainstMain`, `TestGhPrViewFailureFallback`, `TestStackBaseKeyPath`), record flag (`TestRecordFlag`, `TestRecordFlagWithoutASession`), diff-file flag (`TestDiffFileFlag`, `TestDiffFileFlagWithoutASession`), staged mode (`TestStagedMode`, `TestStagedModeWithoutASession`)"
 
 ["claude/.claude/scripts/tests/test_reconcile_project_plugins.py"]
-ceiling = 2345
+ceiling = 2364
 verdict = "split pending"
 seam = "Test-class families by concern: preconditions and scope (`TestPreconditionRefusals`, `TestScopeGuard`, `TestLocalOptOut`), marketplace (`TestMarketplacePrecondition`, `TestLocalFiltersRunBeforeMarketplaceListing`), install (`TestInstallArgv`, `TestInstallCapKill`), lock and ceiling (`TestLock`, `TestWallClockCeiling`), audit log (`TestAuditLogFields`, `TestAuditLogConcurrency`, `TestAuditLogSizeCap`)"
 
@@ -486,7 +486,7 @@ verdict = "split pending"
 seam = "Scan-root and project scope (`resolve_scan_roots`, `_resolve_project_scope`, `_resolve_cost_roots`), scoped session iteration (`_iter_scoped_sessions`, `_iter_project_dir_sessions`), branch attribution (`_session_branch_context`, `_attributed_branch`, `_pre_branch_run`)"
 
 ["claude/.claude/tests/helpers.py"]
-ceiling = 4434
+ceiling = 4441
 verdict = "structural exception"
 reason = "#1015 declines decomposition until its data and mapping gates hold, and governs over #1396's proposal to decompose the file. A helper used by one test tree goes in that tree's local module, not in helpers.py."
 

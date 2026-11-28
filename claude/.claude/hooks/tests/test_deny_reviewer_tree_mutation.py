@@ -17,6 +17,7 @@ from helpers import (
     review_only_agents,
     run_hook,
     run_hook_reason,
+    which_tool,
     write_input,
 )
 
@@ -1552,7 +1553,7 @@ def _run_hook_with_jq_failing_on(payload: dict, fail_token: str, tmp_path) -> st
     )
     fake_jq.chmod(0o755)
     for cmd in ("bash", "timeout", "cat", "printf", "head", "tail", "cut", "dirname", "sed", "grep", "tr"):
-        cmd_path = shutil.which(cmd)
+        cmd_path = which_tool(cmd)
         if cmd_path:
             (tmp_path / cmd).symlink_to(cmd_path)
     return run_hook_reason(HOOK, payload, extra_env={"PATH": str(tmp_path)})

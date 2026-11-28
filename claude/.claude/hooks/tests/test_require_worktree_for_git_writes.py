@@ -18,6 +18,7 @@ from helpers import (
     run_hook_context,
     run_hook_payload,
     run_hook_reason,
+    which_tool,
 )
 
 from .conftest import _dead_pid, _seed_session, _worktree_lock_reason
@@ -707,7 +708,7 @@ class TestRequireWorktreeForGitWrites:
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("cat", "dirname", "git", "jq", "timeout"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)
@@ -729,7 +730,7 @@ class TestRequireWorktreeForGitWrites:
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("cat", "dirname", "git", "jq"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)
@@ -801,7 +802,7 @@ class TestRequireWorktreeForGitWrites:
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("bash", "cat", "dirname", "git", "jq", "ps", "python3", "tr"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)
@@ -1541,7 +1542,7 @@ exec "{real_git}" "$@"
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("cat", "dirname", "jq", "timeout"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)
@@ -1581,7 +1582,7 @@ exec "{real_git}" "$@"
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("cat", "dirname", "git", "jq", "ps", "timeout", "tr"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)
@@ -1615,7 +1616,7 @@ exec "{real_git}" "$@"
         stub_bin = tmp_path / "_stub_bin"
         stub_bin.mkdir()
         for tool in ("cat", "dirname", "git", "jq", "ps", "timeout", "tr"):
-            real_path = shutil.which(tool)
+            real_path = which_tool(tool)
             if not real_path:
                 pytest.skip(f"{tool} not found in PATH")
             (stub_bin / tool).symlink_to(real_path)

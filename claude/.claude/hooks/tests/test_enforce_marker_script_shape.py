@@ -18,6 +18,7 @@ from helpers import (
     build_path_without,
     run_hook,
     run_hook_reason,
+    which_tool,
 )
 from helpers import bash_input as _bash_input
 from helpers import edit_input as _edit_input
@@ -46,6 +47,26 @@ def _past_realpath_budget_padding() -> str:
     """`tee` targets that each spend one unit of the budget, one more than it
     holds, so a target listed after them gets no realpath-normalized form."""
     return " ".join(f"~/.claude/pad{i}" for i in range(_marker_write_realpath_budget() + 1))
+
+
+def _no_realpath_stub_path(tmp_path) -> str:
+    """A PATH holding what the hook needs except `realpath` and `grealpath`."""
+    stub_bin = tmp_path / "no-realpath-bin"
+    stub_bin.mkdir()
+    # Only the hook's Bash arm needs `tr`, which `_lib_strip_shell_quotes` runs.
+    for binary in ("bash", "jq", "grep", "sed", "dirname", "basename", "cat", "test", "timeout", "tr"):
+        resolved = which_tool(binary)
+        if resolved:
+            (stub_bin / binary).symlink_to(resolved)
+    assert shutil.which("realpath", path=str(stub_bin)) is None
+    assert shutil.which("grealpath", path=str(stub_bin)) is None
+    # Without these, `_lib_realpath_m`'s fallback loop can fail on a missing command other than `realpath`.
+    required_binaries = ["test", "basename", "dirname"]
+    if which_tool("timeout") is not None:
+        required_binaries.append("timeout")
+    for binary in required_binaries:
+        assert shutil.which(binary, path=str(stub_bin)) is not None, f"{binary!r} is missing from the stub PATH"
+    return str(stub_bin)
 
 
 # The harness sets `agent_id` only inside a subagent call, and sets
@@ -1373,16 +1394,7 @@ class TestGateReleaseAuthorityBashRedirectAndUtility:
         """Mirrors TestGateReleaseAuthorityFileWrites' same-named test: the
         nested loop's no-realpath fallback has to hold
         for N extracted Bash targets, not just the Write arm's one."""
-        stub_bin = tmp_path / "no-realpath-bin"
-        stub_bin.mkdir()
-        # Adds `tr` to the Write-arm counterpart's binary list: the Bash arm's
-        # redirect-target extraction quote-strips via _lib_strip_shell_quotes,
-        # which the Write arm's file_path-only path never needs.
-        for binary in ("bash", "jq", "grep", "sed", "dirname", "cat", "timeout", "tr"):
-            resolved = shutil.which(binary)
-            if resolved:
-                (stub_bin / binary).symlink_to(resolved)
-        assert shutil.which("realpath", path=str(stub_bin)) is None
+        stub_path = _no_realpath_stub_path(tmp_path)
 
         sneaky = str(marker_home / "unrelated" / ".." / ".claude" / "code-review-markers" / "m")
         assert (
@@ -1390,7 +1402,7 @@ class TestGateReleaseAuthorityBashRedirectAndUtility:
                 ENFORCE_MARKER_SCRIPT_SHAPE_HOOK,
                 bash_input(f"printf x > {sneaky}", agent_type="code-writer"),
                 home=marker_home,
-                extra_env={"PATH": str(stub_bin)},
+                extra_env={"PATH": stub_path},
             )
             == "deny"
         )
@@ -1888,14 +1900,7 @@ class TestGateReleaseAuthorityFileWrites:
         silently ALLOW this write on those machines — turning a missing
         optional binary into a gate bypass.
         """
-        stub_bin = tmp_path / "no-realpath-bin"
-        stub_bin.mkdir()
-        # A PATH containing everything the hook needs EXCEPT realpath.
-        for binary in ("bash", "jq", "grep", "sed", "dirname", "cat", "timeout"):
-            resolved = shutil.which(binary)
-            if resolved:
-                (stub_bin / binary).symlink_to(resolved)
-        assert shutil.which("realpath", path=str(stub_bin)) is None
+        stub_path = _no_realpath_stub_path(tmp_path)
 
         sneaky = str(marker_home / "unrelated" / ".." / ".claude" / "code-review-markers" / "m")
         assert (
@@ -1903,7 +1908,7 @@ class TestGateReleaseAuthorityFileWrites:
                 ENFORCE_MARKER_SCRIPT_SHAPE_HOOK,
                 write_input(sneaky, agent_type="code-writer"),
                 home=marker_home,
-                extra_env={"PATH": str(stub_bin)},
+                extra_env={"PATH": stub_path},
             )
             == "deny"
         )
@@ -3444,19 +3449,7 @@ class TestReviewLedgerStatePaths:
 
     @pytest.fixture
     def no_realpath_path(self, tmp_path):
-        """A PATH holding what the hook needs except `realpath` and `grealpath`,
-        so no normalized candidate form exists. The premise is asserted in
-        process here and by running the resolver once, in
-        test_the_stub_path_leaves_no_normalized_form."""
-        stub_bin = tmp_path / "no-realpath-bin"
-        stub_bin.mkdir()
-        for binary in ("bash", "jq", "grep", "sed", "dirname", "cat", "timeout", "tr"):
-            resolved = shutil.which(binary)
-            if resolved:
-                (stub_bin / binary).symlink_to(resolved)
-        assert shutil.which("realpath", path=str(stub_bin)) is None
-        assert shutil.which("grealpath", path=str(stub_bin)) is None
-        return str(stub_bin)
+        return _no_realpath_stub_path(tmp_path)
 
     def test_the_stub_path_leaves_no_normalized_form(self, tmp_path, no_realpath_path):
         """Every without-a-normalized-form case below rests on the stub PATH
