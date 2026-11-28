@@ -27,6 +27,10 @@ from replay_bench.spend import SpendAppendError, SpendFile
 SMOKE_ARM_NAMES = (arms_mod.TOOLKIT.name, arms_mod.BARE.name)
 CONDITION_READ_GRANT_DENIED = "read-grant-denied"
 CONDITION_READ_GRANT_UNEXERCISED = "read-grant-unexercised"
+READ_GRANT_UNEXERCISED_NO_EDIT_HINT = (
+    f"; the toolkit run made no {', '.join(checks.WRITE_TOOL_NAMES[:-1])} or {checks.WRITE_TOOL_NAMES[-1]} call that "
+    "ran, so the reviewer-file Reads the self-review requires after an edit may not have been triggered"
+)
 # The printed nominal ceiling still counts two attempts per run, as an upper bound.
 SMOKE_NO_RETRY_REASONS = NO_RETRY_REASONS | {review_runner.MISSING_REASON_TIMEOUT}
 
@@ -47,6 +51,10 @@ def _shown(values) -> str:
 
 def _denied_call_label(call: dict) -> str:
     return call["tool"] if call["command"] is None else f"{call['tool']}: {call['command']}"
+
+
+def _file_call_label(call: dict) -> str:
+    return f"{call['tool']} {call['path']} ({call['status']})"
 
 
 def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
@@ -73,7 +81,20 @@ def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
     if arm_name == arms_mod.TOOLKIT.name:
         ran = sum(1 for read in record.allow_list_reads if not read["denied"])
         lines.append(f"  Reads of allow-list paths that ran: {ran}")
+    transcript = outcome.final.transcript
+    if transcript is None:
+        lines.append("  file tool calls: not shown, the transcript is not available")
+    else:
+        incompleteness = checks.transcript_incompleteness_signals(transcript)
+        caveat = f" (list may be incomplete: {'; '.join(incompleteness)})" if incompleteness else ""
+        lines.append(
+            f"  file tool calls{caveat}: {_shown(_file_call_label(call) for call in checks.file_tool_calls(transcript))}"
+        )
     metrics = record.metrics or {}
+    if record.metrics is None:
+        lines.append("  changed paths: not captured")
+    else:
+        lines.append(f"  changed paths: {_shown(record.metrics['changed_paths'])}")
     lines.append(
         f"  non_file_entries: {metrics.get('non_file_entries', 0)}, ignored_paths: {record.ignored_paths_count}, "
         f"undecodable_files: {metrics.get('undecodable_files', 0)}"
@@ -81,7 +102,8 @@ def format_run_report(arm_name: str, outcome: RunOutcome) -> list[str]:
     if metrics:
         lines.append(
             f"  metrics: non-test code lines {metrics['line_counts']['non_test']['code']}, "
-            f"comment-plus-docstring words {metrics['comment_words']['non_test']}"
+            f"test code lines {metrics['line_counts']['test']['code']}, "
+            f"non-test comment-plus-docstring words {metrics['comment_words']['non_test']}"
         )
     lines.append(
         f"  cost: ${record.total_cost_usd:.2f}, fixture build: {record.fixture_build_s}, wall clock: {record.wall_clock_s:.1f} s"
@@ -126,7 +148,15 @@ def evaluate_conditions(block: BlockOutcome, account: Account) -> tuple[list[tup
         if any(read["denied"] for read in reads):
             failed.append((CONDITION_READ_GRANT_DENIED, "a toolkit Read of an allow-list path was denied"))
         if not any(not read["denied"] for read in reads):
-            failed.append((CONDITION_READ_GRANT_UNEXERCISED, "no toolkit Read of an allow-list path ran"))
+            detail = "no toolkit Read of an allow-list path ran"
+            toolkit_transcript = toolkit_final.transcript
+            if (
+                toolkit_transcript is not None
+                and not checks.transcript_incompleteness_signals(toolkit_transcript)
+                and not checks.made_write_call_that_ran(toolkit_transcript)
+            ):
+                detail += READ_GRANT_UNEXERCISED_NO_EDIT_HINT
+            failed.append((CONDITION_READ_GRANT_UNEXERCISED, detail))
     if toolkit_final.completed and bare_final.completed and toolkit_final.log is not None:
         body_term, margin, claude_md_chars, rule_chars = calibration_terms(account, toolkit_final)
         verdict = checks.block_calibration_verdict(
