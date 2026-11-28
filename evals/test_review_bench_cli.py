@@ -35,13 +35,17 @@ from test_review_bench_mining import (
     _commit,
     _confirm_args,
     _confirm_workspace,
+    _confirm_workspace_by_flag,
+    _declined_ids_path,
     _feed_answers,
     _feed_answers_then_interrupt,
     _git,
     _init_repo,
     _pin_refs,
     _StdinThatFailsOnAReadPastEndOfInput,
+    _stub_path_at_base_flags,
     _write,
+    _write_ids_file,
 )
 
 _ARM_1, _ARM_2 = arms_mod.ARM_CURRENT_RULE, arms_mod.ARM_FUNCTION_CONTEXT
@@ -4383,10 +4387,6 @@ def _run_confirm(local_dir: Path, defects_path: Path, *extra_flags: str) -> int:
     return run_review_bench.cmd_confirm(_confirm_args(local_dir, defects_path, *extra_flags))
 
 
-def _declined_ids_path(local_dir: Path) -> Path:
-    return local_dir / run_review_bench._CONFIRM_DECLINED_IDS_FILENAME
-
-
 def _recorded_declined_ids(local_dir: Path) -> list[str]:
     return json.loads(_declined_ids_path(local_dir).read_text())
 
@@ -5083,14 +5083,8 @@ class TestConfirmSourceFilter:
         assert set(run_review_bench._CONFIRM_SOURCE_ORDER) == defects.KNOWN_SOURCES
 
 
-def _write_ids_file(tmp_path: Path, text: str, file_name: str = "ids.txt") -> Path:
-    ids_file_path = tmp_path / file_name
-    ids_file_path.write_text(text, encoding="utf-8")
-    return ids_file_path
-
-
 class TestConfirmIdsFile:
-    def test_ids_file_restricts_the_prompts_to_the_listed_ids_in_the_files_order_and_the_header_names_it(
+    def test_ids_file_restricts_the_prompts_to_the_listed_ids_in_confirms_order_and_the_header_names_it(
         self, tmp_path: Path, monkeypatch, capsys,
     ) -> None:
         _, local_dir, defects_path, _ = _confirm_workspace(tmp_path, monkeypatch, {}, {}, {})
@@ -5101,14 +5095,15 @@ class TestConfirmIdsFile:
 
         stderr = capsys.readouterr().err
         assert "confirm: 2 candidate(s) to review." in stderr
-        assert f"prompting only for the IDs listed in {ids_file_path}, in that order" in stderr
+        assert f"prompting only for the IDs listed in {ids_file_path}\n" in stderr
+        assert "in that order" not in stderr
         assert stderr.count("[y/n/q]") == 2
-        assert stderr.index("candidate c-3") < stderr.index("candidate c-1")
+        assert stderr.index("candidate c-1") < stderr.index("candidate c-3")
         assert "candidate c-2" not in stderr
-        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-3"]
-        assert _recorded_declined_ids(local_dir) == ["c-1"]
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-1"]
+        assert _recorded_declined_ids(local_dir) == ["c-3"]
 
-    def test_the_files_order_replaces_the_source_order(self, tmp_path: Path, monkeypatch, capsys) -> None:
+    def test_the_sources_order_holds_whatever_order_the_file_lists(self, tmp_path: Path, monkeypatch, capsys) -> None:
         _, local_dir, defects_path, _ = _confirm_workspace(
             tmp_path, monkeypatch, {"source": "szz"}, {"source": "review-round"},
         )
@@ -5118,9 +5113,44 @@ class TestConfirmIdsFile:
         _run_confirm(local_dir, defects_path, "--ids-file", str(ids_file_path))
 
         stderr = capsys.readouterr().err
-        assert stderr.index("candidate c-1") < stderr.index("candidate c-2")
-        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-1"]
-        assert _recorded_declined_ids(local_dir) == ["c-2"]
+        assert stderr.index("candidate c-2") < stderr.index("candidate c-1")
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-2"]
+        assert _recorded_declined_ids(local_dir) == ["c-1"]
+
+    def test_a_miner_order_that_is_not_ascending_id_order_holds_within_one_source_and_flag_value(
+        self, tmp_path: Path, monkeypatch, capsys,
+    ) -> None:
+        _, local_dir, defects_path, _ = _confirm_workspace(
+            tmp_path, monkeypatch, {"id": "c-2"}, {"id": "c-1"}, {"id": "c-3"},
+        )
+        ids_file_path = _write_ids_file(tmp_path, "c-3\nc-1\nc-2\n")
+        _feed_answers(monkeypatch, "n", "n", "n")
+
+        _run_confirm(local_dir, defects_path, "--ids-file", str(ids_file_path))
+
+        stderr = capsys.readouterr().err
+        assert stderr.index("candidate c-2") < stderr.index("candidate c-1") < stderr.index("candidate c-3")
+
+    def test_a_previously_declined_no_candidate_is_offered_at_its_sorted_position_only_under_include_declined(
+        self, tmp_path: Path, monkeypatch, capsys,
+    ) -> None:
+        _, local_dir, defects_path = _confirm_workspace_by_flag(tmp_path, monkeypatch, "no", "yes")
+        _declined_ids_path(local_dir).write_text('["c-1"]')
+        ids_file_path = _write_ids_file(tmp_path, "c-1\nc-2\n")
+        _feed_answers(monkeypatch, "n")
+
+        assert _run_confirm(local_dir, defects_path, "--ids-file", str(ids_file_path)) == 0
+
+        stderr = capsys.readouterr().err
+        assert "candidate c-1" not in stderr
+        assert "candidate c-2" in stderr
+
+        _feed_answers(monkeypatch, "n", "n")
+        assert _run_confirm(local_dir, defects_path, "--ids-file", str(ids_file_path), "--include-declined") == 0
+
+        stderr = capsys.readouterr().err
+        assert stderr.count("[y/n/q]") == 2
+        assert stderr.index("candidate c-2") < stderr.index("candidate c-1")
 
     def test_comments_blank_lines_whitespace_and_crlf_are_ignored_and_a_repeated_id_keeps_its_first_line(
         self, tmp_path: Path, monkeypatch, capsys,
@@ -5134,10 +5164,10 @@ class TestConfirmIdsFile:
         stderr = capsys.readouterr().err
         assert "confirm: 2 candidate(s) to review." in stderr
         assert stderr.count("candidate c-2") == 1
-        assert stderr.index("candidate c-2") < stderr.index("candidate c-1")
+        assert stderr.index("candidate c-1") < stderr.index("candidate c-2")
         assert "candidate c-3" not in stderr
-        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-2"]
-        assert _recorded_declined_ids(local_dir) == ["c-1"]
+        assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-1"]
+        assert _recorded_declined_ids(local_dir) == ["c-2"]
 
     @pytest.mark.parametrize("terminal", [True, False])
     def test_ids_matching_no_candidate_exit_2_naming_the_file_the_count_and_the_first_three_with_nothing_written(
@@ -5172,7 +5202,7 @@ class TestConfirmIdsFile:
         stderr = capsys.readouterr().err
         assert "confirm: 2 candidate(s) to review." in stderr
         assert "prompting only for source(s) szz" in stderr
-        assert stderr.index("candidate c-3") < stderr.index("candidate c-1")
+        assert stderr.index("candidate c-1") < stderr.index("candidate c-3")
         assert "candidate c-2" not in stderr
         assert f"1 of the 3 ID(s) listed in {ids_file_path} not prompted (1 outside --source)" in stderr
 
@@ -5197,7 +5227,7 @@ class TestConfirmIdsFile:
 
         stderr = capsys.readouterr().err
         assert stderr.count("[y/n/q]") == 2
-        assert stderr.index("candidate c-2") < stderr.index("candidate c-1")
+        assert stderr.index("candidate c-1") < stderr.index("candidate c-2")
         assert "not prompted" not in stderr
 
     @pytest.mark.parametrize("terminal", [True, False])
@@ -5377,7 +5407,7 @@ class TestConfirmIdsFile:
 
         stderr = capsys.readouterr().err
         assert "confirm: 2 candidate(s) to review." in stderr
-        assert stderr.index("candidate c-2") < stderr.index("candidate c-1")
+        assert stderr.index("candidate c-1") < stderr.index("candidate c-2")
 
     def test_a_trailing_comment_is_part_of_the_line_so_the_id_is_unknown_and_confirm_exits_2(
         self, tmp_path: Path, monkeypatch, capsys,
@@ -5623,6 +5653,16 @@ class TestConfirmAnswersFile:
         assert "[y/n/q]" not in capsys.readouterr().err
         assert [d.id for d in defects.load_confirmed_defects(defects_path)] == ["c-1"]
         assert not _declined_ids_path(local_dir).exists()
+
+    def test_the_at_base_helper_is_not_called(self, tmp_path: Path, monkeypatch) -> None:
+        _, local_dir, defects_path, _ = _confirm_workspace(tmp_path, monkeypatch, {}, {})
+        asked_ids = _stub_path_at_base_flags(monkeypatch, {})
+        answers_file_path = _write_answers_file(tmp_path, [_answers_file_row("c-1", "n"), _answers_file_row("c-2", "n")])
+        _feed_answers(monkeypatch, terminal=False)
+
+        assert _run_confirm_with_answers(local_dir, defects_path, answers_file_path) == 0
+
+        assert asked_ids == []
 
     def test_a_description_copied_from_an_excerpt_is_skipped_and_reported_and_the_other_rows_are_still_written(
         self, tmp_path: Path, monkeypatch, capsys,
@@ -6739,7 +6779,7 @@ class TestConfirmEchoedPathsAreEscaped:
                 "c-9\n", None, [], True, 2, "confirm: {path} lists 1 ID(s) that match no candidate", id="unknown-id",
             ),
             pytest.param(
-                "c-1\n", None, ["n"], True, 0, "prompting only for the IDs listed in {path}, in that order",
+                "c-1\n", None, ["n"], True, 0, "prompting only for the IDs listed in {path}",
                 id="prompt-header",
             ),
             pytest.param(
